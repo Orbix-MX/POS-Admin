@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import {
   login as loginApi,
+  logout as logoutApi,
   selectTenant as selectTenantApi,
   fetchCapabilities,
   fetchMe,
@@ -24,7 +25,7 @@ interface AuthState {
   init: () => Promise<void>
   login: (email: string, password: string) => Promise<void>
   confirmTenant: (slug: string) => Promise<void>
-  logout: () => void
+  logout: () => Promise<void>
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -102,7 +103,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  logout: () => {
+  logout: async () => {
+    await logoutApi().catch(() => {})
     clearAccessToken()
     set({
       isAuthenticated: false,

@@ -1,4 +1,4 @@
-﻿import {
+import {
   Injectable,
   UnauthorizedException,
   ConflictException,
@@ -7,8 +7,10 @@
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../../../database/prisma.service';
 import { PasswordUtil } from '../../../common/utils/password.util';
+import { TokenBlacklistService } from './services/token-blacklist.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import {
@@ -32,6 +34,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private tokenBlacklist: TokenBlacklistService,
   ) {}
 
   async register(registerDto: RegisterDto): Promise<AuthResponseDto> {
@@ -74,13 +77,24 @@ export class AuthService {
     const memberships = user.tenantMemberships as MembershipWithTenant[];
     const activeMemberships = memberships.filter((m) => m.tenant.status !== 'CANCELLED');
 
-    // Always issue a preliminary JWT (no tenantId) — client must call select-tenant next
     const accessToken = this.generateToken({ sub: user.id, email: user.email });
     return {
       accessToken,
       user: this.mapUser(user),
       availableTenants: activeMemberships.map((m) => this.mapMembership(m)),
     };
+  }
+
+  logout(token: string): void {
+    if (!token) return;
+    try {
+      const decoded = this.jwtService.decode<JwtPayload>(token);
+      if (decoded?.jti && decoded?.exp) {
+        this.tokenBlacklist.revoke(decoded.jti, decoded.exp * 1000);
+      }
+    } catch {
+      // ignore malformed tokens
+    }
   }
 
   async getProfile(userId: string): Promise<ProfileResponseDto> {
@@ -155,7 +169,6 @@ export class AuthService {
     };
   }
 
-  /** Select tenant — saves to DB and returns a new JWT with tenantId embedded. */
   async selectTenant(
     userId: string,
     userEmail: string,
@@ -203,7 +216,6 @@ export class AuthService {
     };
   }
 
-  /** Returns true if the user's permissions in this tenant are all POS-scoped. */
   private async isPosOnlyUser(userId: string, tenantId: string): Promise<boolean> {
     const POS_PERMISSIONS = new Set([
       'pos:access',
@@ -236,7 +248,6 @@ export class AuthService {
     return allPermissions.every((key) => POS_PERMISSIONS.has(key));
   }
 
-  /** Select branch — saves to DB and returns a new JWT with branchId embedded. */
   async selectBranch(
     userId: string,
     userEmail: string,
@@ -281,7 +292,8 @@ export class AuthService {
   }
 
   private generateToken(payload: JwtPayload): string {
-    return this.jwtService.sign(payload);
+    const jti = randomUUID();
+    return this.jwtService.sign({ ...payload, jti });
   }
 
   private mapUser(user: any): UserResponseDto {

@@ -50,6 +50,14 @@ export function usePOS() {
 
   // ---- cart ----
   const [carrito, setCarrito]     = useState<CartItem[]>([])
+  const [stockWarning, setStockWarning] = useState<string | null>(null)
+  const stockWarnTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const flashStockWarning = useCallback((msg: string) => {
+    setStockWarning(msg)
+    if (stockWarnTimer.current) clearTimeout(stockWarnTimer.current)
+    stockWarnTimer.current = setTimeout(() => setStockWarning(null), 2500)
+  }, [])
 
   // ---- customer ----
   const [cliente, setCliente]     = useState<Cliente | null>(null)
@@ -299,15 +307,21 @@ export function usePOS() {
   // ---- cart actions ----
   const addToCart = useCallback((p: Product) => {
     if (!p.id) return
-    setCarrito(prev => {
-      const existing = prev.find(i => i.id === p.id && i.type === 'PRODUCT')
-      if (existing) {
-        if (existing.qty >= p.stock) return prev
-        return prev.map(i => i.id === p.id && i.type === 'PRODUCT' ? { ...i, qty: i.qty + 1 } : i)
+    const existing = carrito.find(i => i.id === p.id && i.type === 'PRODUCT')
+    if (existing) {
+      if (existing.qty >= p.stock) {
+        flashStockWarning(`Stock máximo de "${p.name}" alcanzado (${p.stock} disponibles)`)
+        return
       }
-      return [...prev, { id: p.id!, name: p.name, sku: p.sku, price: Number(p.price), stock: p.stock, qty: 1, type: 'PRODUCT' as const }]
-    })
-  }, [])
+      setCarrito(prev => prev.map(i => i.id === p.id && i.type === 'PRODUCT' ? { ...i, qty: i.qty + 1 } : i))
+      return
+    }
+    if (p.stock <= 0) {
+      flashStockWarning(`"${p.name}" sin stock disponible`)
+      return
+    }
+    setCarrito(prev => [...prev, { id: p.id!, name: p.name, sku: p.sku, price: Number(p.price), stock: p.stock, qty: 1, type: 'PRODUCT' as const }])
+  }, [carrito, flashStockWarning])
 
   const addServiceToCart = useCallback((s: Service, customPrice?: number) => {
     const price = customPrice ?? Number(s.basePrice)
@@ -335,10 +349,14 @@ export function usePOS() {
   }, [manualService])
 
   const updateQty = useCallback((id: string, delta: number) => {
+    const item = carrito.find(i => i.id === id)
+    if (item && delta > 0 && item.type === 'PRODUCT' && item.qty + delta > item.stock) {
+      flashStockWarning(`Stock máximo de "${item.name}" alcanzado (${item.stock} disponibles)`)
+    }
     setCarrito(prev => prev.map(i =>
       i.id === id ? { ...i, qty: Math.max(1, Math.min(i.qty + delta, i.stock)) } : i
     ))
-  }, [])
+  }, [carrito, flashStockWarning])
 
   const removeItem = useCallback((id: string) => {
     setCarrito(prev => prev.filter(i => i.id !== id))
@@ -519,7 +537,7 @@ export function usePOS() {
     serviceSearch, setServiceSearch,
     serviciosFiltrados,
     // cart
-    carrito, totals,
+    carrito, totals, stockWarning,
     addToCart, addServiceToCart, addManualService, updateQty, removeItem, clearCart,
     // manual service
     manualServiceOpen, setManualServiceOpen,

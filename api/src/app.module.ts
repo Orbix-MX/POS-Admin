@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -37,6 +38,7 @@ import { ServiceQuotesModule } from './modules/retail/service-quotes/service-quo
     CommonModule,
     ConfigModule,
     DatabaseModule,
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
 
     // Core
     AuthModule,

@@ -61,6 +61,7 @@ model Tenant {
   cashMovements      CashMovement[]
   services           Service[]
   serviceQuotes      ServiceQuote[]
+  auditLogs          AuditLog[]
 
   usersLastSelected  User[] @relation("UserLastTenant")
 
@@ -133,6 +134,8 @@ model User {
   servicesCreated           Service[]          @relation("ServiceCreatedBy")
   servicesUpdated           Service[]          @relation("ServiceUpdatedBy")
   serviceQuotesCreated      ServiceQuote[]     @relation("ServiceQuoteCreatedBy")
+  ordersCancelled           Order[]            @relation("OrderCancelledBy")
+  auditLogs                 AuditLog[]         @relation("AuditLogUser")
 
   roleAssignments  UserRoleAssignment[]
   permissionGrants UserPermissionGrant[]
@@ -669,6 +672,10 @@ model Order {
   estimatedDeliveryDate DateTime?
   deliveredAt           DateTime?
 
+  cancelledAt        DateTime?
+  cancellationReason String?
+  cancelledById      String?
+
   createdById String?
   updatedById String?
   createdAt   DateTime @default(now())
@@ -685,6 +692,7 @@ model Order {
   accountReceivable AccountReceivable?
   createdBy         User?              @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy         User?              @relation("OrderUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  cancelledBy       User?              @relation("OrderCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, orderNumber])
   @@map("orders")
@@ -966,6 +974,28 @@ model CashMovement {
   createdBy       User?            @relation("CashMovementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@map("cash_movements")
+}
+
+// ============= Audit Log (critical operations) =============
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  tenantId   String
+  userId     String?
+  action     String // ORDER_CANCEL, ORDER_RETURN, INVENTORY_ADJUST, PRICE_CHANGE
+  entityType String // Order, Product, ...
+  entityId   String
+  before     Json?
+  after      Json?
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation("AuditLogUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, action, createdAt])
+  @@map("audit_logs")
 }
 
 // ============= Permissions & Roles (tenant-scoped) =============

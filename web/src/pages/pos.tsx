@@ -456,6 +456,15 @@ function SuccessToast({ orderNumber }: { orderNumber: string | null }) {
   )
 }
 
+function StockWarningToast({ message }: { message: string }) {
+  return (
+    <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-amber-500 text-white rounded-xl px-6 py-3.5 shadow-2xl z-400 flex items-center gap-2.5 text-sm font-semibold">
+      <AlertCircle className="w-5 h-5 shrink-0" />
+      {message}
+    </div>
+  )
+}
+
 // ─── Quote Panel ─────────────────────────────────────────────────────────────
 
 const STATUS_LABEL: Record<string, string> = {
@@ -542,7 +551,7 @@ export function POS() {
     catalogTab, setCatalogTab,
     serviceSearch, setServiceSearch,
     serviciosFiltrados,
-    carrito, totals,
+    carrito, totals, stockWarning,
     addToCart, addServiceToCart, addManualService, updateQty, removeItem, clearCart,
     manualServiceOpen, setManualServiceOpen,
     manualService, setManualService,
@@ -903,6 +912,9 @@ export function POS() {
 
       {/* success toast */}
       {stage === 'success' && <SuccessToast orderNumber={successNumber} />}
+
+      {/* stock warning toast */}
+      {stockWarning && <StockWarningToast message={stockWarning} />}
     </div>
   )
 }

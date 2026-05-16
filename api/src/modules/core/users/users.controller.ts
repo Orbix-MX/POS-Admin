@@ -49,7 +49,6 @@ export class UsersController {
   @RequirePermissions('users:create')
   @ApiOperation({ summary: 'Create a new user' })
   create(@Body() createUserDto: CreateUserDto) {
-    console.log(createUserDto);
     return this.usersService.create(createUserDto);
   }
 

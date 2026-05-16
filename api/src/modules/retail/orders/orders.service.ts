@@ -6,7 +6,15 @@ import { PaginatedResponse } from '../../../common/dto/pagination.dto';
 import { QueryOrdersDto } from './dto/query-orders.dto';
 import { Order, OrderStatus, Coupon, PaymentStatus } from '@prisma/client';
 import { CouponsService } from '../coupons/coupons.service';
+import { AuditService } from '../../../common/services/audit.service';
 import { CreateOrderDto } from './dto/create-order.dto';
+import {
+  roundMoney,
+  sumMoney,
+  calculateLineSubtotal,
+  calculateTax,
+  convertMoney,
+} from '../../../common/utils/money.util';
 
 @Injectable()
 export class OrdersService {
@@ -15,6 +23,7 @@ export class OrdersService {
     private auditContext: AuditContextService,
     private tenantContext: TenantContextService,
     private couponsService: CouponsService,
+    private audit: AuditService,
   ) { }
 
   async create(dto: CreateOrderDto): Promise<Order> {
@@ -60,9 +69,24 @@ export class OrdersService {
     const serviceMap = new Map(catalogServices.map((s) => [s.id, s]));
 
     const productMap = new Map(products.map((p) => [p.id, p]));
-    const subtotal = dto.items.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0,
+
+    // Tenant default tax rate (percent) from settings JSON; product.taxRate overrides per item
+    const tenantId = this.tenantContext.requireTenantId();
+    const tenantRow = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { settings: true },
+    });
+    const tenantSettings = (tenantRow?.settings ?? {}) as Record<string, unknown>;
+    const tenantDefaultTaxRate = Number(tenantSettings.defaultTaxRate ?? 0) || 0;
+
+    const resolveTaxRate = (productId?: string): number => {
+      if (!productId) return tenantDefaultTaxRate;
+      const p = productMap.get(productId);
+      return p?.taxRate != null ? Number(p.taxRate) : tenantDefaultTaxRate;
+    };
+
+    const subtotal = sumMoney(
+      dto.items.map((item) => item.price * item.quantity),
     );
 
     let discountAmount = 0;
@@ -94,13 +118,42 @@ export class OrdersService {
       }
     }
 
-    const shippingCost = dto.shippingCost ?? 0;
-    const tax = 0;
-    const total = Math.max(0, subtotal - discountAmount + shippingCost + tax);
+    // Per-item line math (discount, tax, subtotal, total) computed once and reused
+    const lineMath = new Map<
+      (typeof dto.items)[number],
+      { discount: number; tax: number; subtotal: number; total: number }
+    >();
+    for (const item of dto.items) {
+      const itemDiscount = roundMoney(item.discount ?? 0);
+      const itemSubtotal = calculateLineSubtotal(
+        item.price,
+        item.quantity,
+        itemDiscount,
+      );
+      const isProduct = !item.itemType || item.itemType === 'PRODUCT';
+      // Explicit per-item tax wins; otherwise derive from product/tenant rate
+      const explicitTax = roundMoney(item.tax ?? 0);
+      const derivedTax = isProduct
+        ? calculateTax(itemSubtotal, resolveTaxRate(item.productId))
+        : 0;
+      const itemTax = explicitTax > 0 ? explicitTax : derivedTax;
+      lineMath.set(item, {
+        discount: itemDiscount,
+        tax: itemTax,
+        subtotal: itemSubtotal,
+        total: roundMoney(itemSubtotal + itemTax),
+      });
+    }
+
+    const shippingCost = roundMoney(dto.shippingCost ?? 0);
+    discountAmount = roundMoney(discountAmount);
+    const tax = sumMoney([...lineMath.values()].map((l) => l.tax));
+    const total = roundMoney(
+      Math.max(0, subtotal - discountAmount + shippingCost + tax),
+    );
     const orderNumber = `V-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 
     const createdById = this.auditContext.getUserId() ?? null;
-    const tenantId = this.tenantContext.requireTenantId();
     const branchId = this.tenantContext.getBranchId() ?? null;
 
     // Validate source quote if provided
@@ -149,10 +202,7 @@ export class OrdersService {
       // Create product order items
       for (const item of productItems) {
         const product = productMap.get(item.productId!)!;
-        const itemDiscount = item.discount ?? 0;
-        const itemTax = item.tax ?? 0;
-        const itemSubtotal = Math.max(0, item.price * item.quantity - itemDiscount);
-        const itemTotal = itemSubtotal + itemTax;
+        const m = lineMath.get(item)!;
         await tx.orderItem.create({
           data: {
             orderId: newOrder.id,
@@ -163,10 +213,10 @@ export class OrdersService {
             description: item.description ?? null,
             quantity: item.quantity,
             price: item.price,
-            discount: itemDiscount,
-            tax: itemTax,
-            subtotal: itemSubtotal,
-            total: itemTotal,
+            discount: m.discount,
+            tax: m.tax,
+            subtotal: m.subtotal,
+            total: m.total,
           },
         });
       }
@@ -174,10 +224,7 @@ export class OrdersService {
       // Create service order items (no stock impact)
       for (const item of serviceItems) {
         const catalogSvc = item.serviceId ? serviceMap.get(item.serviceId) : null;
-        const itemDiscount = item.discount ?? 0;
-        const itemTax = item.tax ?? 0;
-        const itemSubtotal = Math.max(0, item.price * item.quantity - itemDiscount);
-        const itemTotal = itemSubtotal + itemTax;
+        const m = lineMath.get(item)!;
         await tx.orderItem.create({
           data: {
             orderId: newOrder.id,
@@ -188,20 +235,35 @@ export class OrdersService {
             description: item.description ?? null,
             quantity: item.quantity,
             price: item.price,
-            discount: itemDiscount,
-            tax: itemTax,
-            subtotal: itemSubtotal,
-            total: itemTotal,
+            discount: m.discount,
+            tax: m.tax,
+            subtotal: m.subtotal,
+            total: m.total,
           },
         });
       }
 
-      // Decrement stock only for product items
+      // Decrement stock only for product items — guarded against negative stock.
+      // updateMany with stock>=qty is atomic at row level; count===0 means the
+      // product is untracked-with-insufficient or a concurrent sale drained it.
       for (const item of productItems) {
-        await tx.product.update({
-          where: { id: item.productId! },
-          data: { stock: { decrement: item.quantity } },
-        });
+        const product = productMap.get(item.productId!)!;
+        if (product.trackInventory) {
+          const res = await tx.product.updateMany({
+            where: { id: item.productId!, stock: { gte: item.quantity } },
+            data: { stock: { decrement: item.quantity } },
+          });
+          if (res.count === 0) {
+            throw new BadRequestException(
+              `Stock insuficiente para "${product.name}". Disponible: ${product.stock}, solicitado: ${item.quantity}`,
+            );
+          }
+        } else {
+          await tx.product.update({
+            where: { id: item.productId! },
+            data: { stock: { decrement: item.quantity } },
+          });
+        }
       }
 
       // Decrement branch inventory for product items only
@@ -228,7 +290,7 @@ export class OrdersService {
         for (const split of dto.payments) {
           const currency = split.currency ?? 'MXN';
           const isUsd = currency === 'USD';
-          const amountMxnEquivalent = isUsd ? Math.round(split.amount * exchangeRate * 100) / 100 : split.amount;
+          const amountMxnEquivalent = isUsd ? convertMoney(split.amount, exchangeRate) : roundMoney(split.amount);
           await tx.payment.create({
             data: {
               orderId: newOrder.id,
@@ -317,7 +379,7 @@ export class OrdersService {
           p.method === 'CASH' && p.amountReceived != null
             ? Number(p.amountReceived)
             : Number(p.amount);
-        const amountMxnEquivalent = isUsd ? Math.round(netAmount * exchangeRate * 100) / 100 : netAmount;
+        const amountMxnEquivalent = isUsd ? convertMoney(netAmount, exchangeRate) : roundMoney(netAmount);
         await tx.cashMovement.create({
           data: {
             tenantId,
@@ -342,8 +404,8 @@ export class OrdersService {
       if (dto.changeAmount && dto.changeAmount > 0 && dto.changeCurrency && cashMovementSessionId) {
         const isUsdChange = dto.changeCurrency === 'USD';
         const changeAmountMxn = isUsdChange
-          ? Math.round(dto.changeAmount * exchangeRate * 100) / 100
-          : dto.changeAmount;
+          ? convertMoney(dto.changeAmount, exchangeRate)
+          : roundMoney(dto.changeAmount);
         await tx.cashMovement.create({
           data: {
             tenantId,
@@ -465,6 +527,178 @@ export class OrdersService {
         ...(fullyPaid && { paymentStatus: 'PAID' }),
       },
       include: { customer: true, items: true, payments: true },
+    });
+  }
+
+  /** Cancel an order: void it, restore inventory/cash/CxC. */
+  async cancelOrder(id: string, reason: string): Promise<Order> {
+    return this.reverseOrder(id, reason, 'CANCEL');
+  }
+
+  /** Return a sale (full refund MVP): restore inventory/cash, mark REFUNDED. */
+  async returnOrder(id: string, reason: string): Promise<Order> {
+    return this.reverseOrder(id, reason, 'RETURN');
+  }
+
+  private async reverseOrder(
+    id: string,
+    reason: string,
+    mode: 'CANCEL' | 'RETURN',
+  ): Promise<Order> {
+    const tenantId = this.tenantContext.requireTenantId();
+    const userId = this.auditContext.getUserId() ?? null;
+
+    const order = await this.prisma.order.findFirst({
+      where: { id, tenantId },
+      include: {
+        items: true,
+        payments: true,
+        accountReceivable: { include: { payments: true } },
+      },
+    });
+    if (!order) throw new NotFoundException('Venta no encontrada');
+    if (order.status === 'CANCELLED' || order.status === 'REFUNDED') {
+      throw new BadRequestException('La venta ya fue cancelada o devuelta');
+    }
+
+    const before = { status: order.status, paymentStatus: order.paymentStatus };
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Restore stock for product items
+      for (const it of order.items) {
+        if (it.itemType !== 'PRODUCT' || !it.productId) continue;
+        const prod = await tx.product.findUnique({
+          where: { id: it.productId },
+          select: { trackInventory: true },
+        });
+        if (!prod?.trackInventory) continue;
+
+        await tx.product.update({
+          where: { id: it.productId },
+          data: { stock: { increment: it.quantity } },
+        });
+        if (order.branchId) {
+          await tx.branchInventory.upsert({
+            where: {
+              branchId_productId: {
+                branchId: order.branchId,
+                productId: it.productId,
+              },
+            },
+            update: { stock: { increment: it.quantity } },
+            create: {
+              branchId: order.branchId,
+              productId: it.productId,
+              stock: it.quantity,
+            },
+          });
+        }
+        await tx.inventoryMovement.create({
+          data: {
+            tenantId,
+            type: 'DEVOLUCION',
+            productId: it.productId,
+            branchId: order.branchId ?? null,
+            quantity: it.quantity,
+            referenceId: order.id,
+            referenceType: 'ORDER',
+            notes: `Reversa por ${mode}`,
+            createdById: userId,
+          },
+        });
+      }
+
+      // 2. Reverse cash movements tied to this order
+      const activeSession = await tx.cashSession.findFirst({
+        where: {
+          tenantId,
+          branchId: order.branchId ?? undefined,
+          status: 'ABIERTA',
+        },
+        select: { id: true },
+      });
+      const orderMovements = await tx.cashMovement.findMany({
+        where: { tenantId, referenceId: order.id, referenceType: { in: ['ORDER', 'CHANGE_OUT'] } },
+      });
+      for (const m of orderMovements) {
+        // SALE (cash in) → reverse with EXPENSE; CHANGE_OUT (cash out) → reverse with INCOME
+        const reverseType = m.type === 'EXPENSE' ? 'INCOME' : 'EXPENSE';
+        await tx.cashMovement.create({
+          data: {
+            tenantId,
+            cashSessionId: activeSession?.id ?? null,
+            type: reverseType,
+            currency: m.currency,
+            amount: m.amount,
+            ...(m.exchangeRateUsed != null && { exchangeRateUsed: m.exchangeRateUsed }),
+            ...(m.amountOriginalCurrency != null && { amountOriginalCurrency: m.amountOriginalCurrency }),
+            ...(m.amountMxnEquivalent != null && { amountMxnEquivalent: m.amountMxnEquivalent }),
+            paymentMethod: m.paymentMethod,
+            referenceId: order.id,
+            referenceType: `REVERSAL_${mode}`,
+            notes: `Reversa de venta ${order.orderNumber}`,
+            createdById: userId,
+          },
+        });
+      }
+
+      // 3. Reverse CxC: delete if nothing collected, otherwise close it out
+      if (order.accountReceivable) {
+        const collected = order.accountReceivable.payments.length > 0;
+        if (!collected) {
+          await tx.accountReceivable.delete({
+            where: { id: order.accountReceivable.id },
+          });
+        } else {
+          await tx.accountReceivable.update({
+            where: { id: order.accountReceivable.id },
+            data: {
+              balance: 0,
+              status: 'PAGADO',
+              notes: `Anulada por ${mode}: ${reason}`,
+            },
+          });
+        }
+      }
+
+      // 4. Reverse customer stats
+      if (order.customerId) {
+        await tx.customer.update({
+          where: { id: order.customerId },
+          data: {
+            totalOrders: { decrement: 1 },
+            totalSpent: { decrement: Number(order.total) },
+          },
+        });
+      }
+
+      // 5. Update order status
+      const updated = await tx.order.update({
+        where: { id: order.id },
+        data: {
+          status: mode === 'CANCEL' ? 'CANCELLED' : 'REFUNDED',
+          paymentStatus: 'REFUNDED',
+          cancelledAt: new Date(),
+          cancellationReason: reason,
+          cancelledById: userId,
+        },
+        include: { customer: true, items: true, payments: true },
+      });
+
+      // 6. Audit trail
+      await this.audit.log(
+        {
+          action: mode === 'CANCEL' ? 'ORDER_CANCEL' : 'ORDER_RETURN',
+          entityType: 'Order',
+          entityId: order.id,
+          before,
+          after: { status: updated.status, paymentStatus: updated.paymentStatus },
+          reason,
+        },
+        tx,
+      );
+
+      return updated;
     });
   }
 

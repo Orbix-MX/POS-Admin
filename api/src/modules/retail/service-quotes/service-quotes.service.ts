@@ -7,6 +7,7 @@ import { CreateServiceQuoteDto } from './dto/create-service-quote.dto';
 import { UpdateServiceQuoteDto } from './dto/update-service-quote.dto';
 import { QueryServiceQuotesDto } from './dto/query-service-quotes.dto';
 import { ConvertQuoteDto } from './dto/convert-quote.dto';
+import { roundMoney, sumMoney, multiplyMoney } from '../../../common/utils/money.util';
 
 @Injectable()
 export class ServiceQuotesService {
@@ -204,9 +205,11 @@ export class ServiceQuotesService {
       productMap = new Map(products.map((p) => [p.id, p]));
     }
 
-    const serviceSubtotal = quote.items.reduce((s, i) => s + Number(i.total), 0);
-    const productSubtotal = (dto.extraProducts ?? []).reduce((s, i) => s + i.price * i.quantity, 0);
-    const subtotal = serviceSubtotal + productSubtotal;
+    const serviceSubtotal = sumMoney(quote.items.map((i) => Number(i.total)));
+    const productSubtotal = sumMoney(
+      (dto.extraProducts ?? []).map((i) => i.price * i.quantity),
+    );
+    const subtotal = roundMoney(serviceSubtotal + productSubtotal);
     const total = subtotal;
     const orderNumber = `V-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 
@@ -254,10 +257,10 @@ export class ServiceQuotesService {
         });
       }
 
-      // Create product order items + decrement stock
+      // Create product order items + decrement stock (guarded against negative)
       for (const item of dto.extraProducts ?? []) {
         const product = productMap.get(item.productId)!;
-        const itemSubtotal = item.price * item.quantity;
+        const itemSubtotal = multiplyMoney(item.price, item.quantity);
         await tx.orderItem.create({
           data: {
             orderId: newOrder.id,
@@ -273,10 +276,22 @@ export class ServiceQuotesService {
             total: itemSubtotal,
           },
         });
-        await tx.product.update({
-          where: { id: item.productId },
-          data: { stock: { decrement: item.quantity } },
-        });
+        if (product.trackInventory) {
+          const res = await tx.product.updateMany({
+            where: { id: item.productId, stock: { gte: item.quantity } },
+            data: { stock: { decrement: item.quantity } },
+          });
+          if (res.count === 0) {
+            throw new BadRequestException(
+              `Stock insuficiente para "${product.name}". Disponible: ${product.stock}, solicitado: ${item.quantity}`,
+            );
+          }
+        } else {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: { stock: { decrement: item.quantity } },
+          });
+        }
       }
 
       // Create initial payment placeholder

@@ -6,6 +6,7 @@ import { PaginatedResponse } from '../../../common/dto/pagination.dto';
 import { AccountReceivableStatus } from '@prisma/client';
 import { QueryReceivablesDto } from './dto/query-receivables.dto';
 import { RegisterCxCPaymentDto } from './dto/register-payment.dto';
+import { roundMoney, isZeroMoney } from '../../../common/utils/money.util';
 
 @Injectable()
 export class ReceivablesService {
@@ -84,15 +85,16 @@ export class ReceivablesService {
       throw new BadRequestException('Esta cuenta ya está completamente pagada');
     }
 
-    const balance = Number(record.balance);
-    if (dto.amount > balance) {
+    const balance = roundMoney(Number(record.balance));
+    const payAmount = roundMoney(dto.amount);
+    if (payAmount > balance) {
       throw new BadRequestException(
-        `El monto (${dto.amount}) excede el saldo pendiente (${balance})`,
+        `El monto (${payAmount}) excede el saldo pendiente (${balance})`,
       );
     }
 
-    const newBalance = balance - dto.amount;
-    const newStatus: AccountReceivableStatus = newBalance === 0 ? 'PAGADO' : 'PARCIAL';
+    const newBalance = roundMoney(balance - payAmount);
+    const newStatus: AccountReceivableStatus = isZeroMoney(newBalance) ? 'PAGADO' : 'PARCIAL';
 
     const userId = this.auditContext.getUserId();
 
@@ -100,14 +102,14 @@ export class ReceivablesService {
       const payment = await tx.accountReceivablePayment.create({
         data: {
           accountReceivableId: id,
-          amount: dto.amount,
+          amount: payAmount,
           paymentMethod: dto.paymentMethod,
           reference: dto.reference ?? null,
           notes: dto.notes ?? null,
         },
       });
 
-      if (newBalance === 0 && record.orderId) {
+      if (isZeroMoney(newBalance) && record.orderId) {
         await tx.order.update({
           where: { id: record.orderId },
           data: { paymentStatus: 'PAID' },
@@ -124,7 +126,7 @@ export class ReceivablesService {
           tenantId,
           cashSessionId: activeSession?.id ?? null,
           type: 'CXC_PAYMENT',
-          amount: dto.amount,
+          amount: payAmount,
           paymentMethod: dto.paymentMethod,
           referenceId: payment.id,
           referenceType: 'CXC_PAYMENT',

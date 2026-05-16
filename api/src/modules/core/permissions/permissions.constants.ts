@@ -69,11 +69,16 @@ export const ALL_PERMISSIONS: PermissionDef[] = [
   // cash sessions (Corte de caja)
   { key: 'cash:view',   name: 'Ver caja',        description: 'Ver sesiones y cortes de caja',       module: 'cash', action: 'view'   },
   { key: 'cash:manage', name: 'Gestionar caja',  description: 'Abrir y cerrar sesiones de caja',     module: 'cash', action: 'manage' },
+  // branches (sucursales)
+  { key: 'branches:view',      name: 'Ver sucursales',              description: 'Ver listado y detalle de sucursales',       module: 'branches', action: 'view'      },
+  { key: 'branches:manage',    name: 'Gestionar sucursales',        description: 'Crear, editar y eliminar sucursales',        module: 'branches', action: 'manage'    },
+  { key: 'branches:inventory', name: 'Gestionar inventario sucursal', description: 'Actualizar y transferir stock por sucursal', module: 'branches', action: 'inventory' },
   // reports
   { key: 'reports:view', name: 'Ver reportes', module: 'reports', action: 'view' },
 ];
 
 export const MODULES_ORDER = [
   'dashboard', 'pos', 'products', 'categories', 'orders',
-  'customers', 'receivables', 'suppliers', 'purchases', 'payables', 'cash', 'coupons', 'users', 'roles', 'reports',
+  'customers', 'receivables', 'suppliers', 'purchases', 'payables', 'cash', 'coupons',
+  'branches', 'users', 'roles', 'reports',
 ];

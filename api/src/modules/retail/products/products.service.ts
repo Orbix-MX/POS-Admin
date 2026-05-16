@@ -6,6 +6,7 @@
 } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
+import { AuditService } from '../../../common/services/audit.service';
 import { SlugUtil } from '../../../common/utils/slug.util';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -19,6 +20,7 @@ export class ProductsService {
   constructor(
     private prisma: PrismaService,
     private tenantContext: TenantContextService,
+    private audit: AuditService,
   ) { }
 
   async create(createProductDto: CreateProductDto): Promise<Product> {
@@ -69,7 +71,6 @@ export class ProductsService {
     queryDto: QueryProductDto,
   ): Promise<PaginatedResponse<Product>> {
     const { skip, limit, page, search, categoryId, status } = queryDto;
-    console.log('Im here');
     const tenantId = this.tenantContext.requireTenantId();
     const where: Prisma.ProductWhereInput = { tenantId };
 
@@ -169,7 +170,7 @@ export class ProductsService {
       );
     }
 
-    return this.prisma.product.update({
+    const updated = await this.prisma.product.update({
       where: { id },
       data: {
         ...updateProductDto,
@@ -180,6 +181,22 @@ export class ProductsService {
         images: true,
       },
     });
+
+    // Audit price changes (sensitive — affects revenue)
+    if (
+      updateProductDto.price != null &&
+      Number(updateProductDto.price) !== Number(product.price)
+    ) {
+      await this.audit.log({
+        action: 'PRICE_CHANGE',
+        entityType: 'Product',
+        entityId: id,
+        before: { price: Number(product.price) },
+        after: { price: Number(updated.price) },
+      });
+    }
+
+    return updated;
   }
 
   async remove(id: string): Promise<void> {
@@ -262,10 +279,21 @@ export class ProductsService {
       throw new BadRequestException('Insufficient stock');
     }
 
-    return this.prisma.product.update({
+    const updated = await this.prisma.product.update({
       where: { id },
       data: { stock: newStock },
     });
+
+    await this.audit.log({
+      action: 'INVENTORY_ADJUST',
+      entityType: 'Product',
+      entityId: id,
+      before: { stock: product.stock },
+      after: { stock: updated.stock },
+      reason: `Ajuste manual (${quantity >= 0 ? '+' : ''}${quantity})`,
+    });
+
+    return updated;
   }
 
   async getLowStock(limit = 10) {

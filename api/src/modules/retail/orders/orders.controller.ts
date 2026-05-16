@@ -2,6 +2,7 @@
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { CancelOrderDto } from './dto/cancel-order.dto';
 import { QueryOrdersDto } from './dto/query-orders.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
 import { OrderStatus } from '@prisma/client';
@@ -56,6 +57,20 @@ export class OrdersController {
   @ApiOperation({ summary: 'Update order status and mark as PAID if fully paid and not credit' })
   updateStatusAndPayment(@Param('id') id: string, @Body('status') status: OrderStatus) {
     return this.ordersService.updateStatusAndPayment(id, status);
+  }
+
+  @Post(':id/cancel')
+  @RequirePermissions('orders:edit')
+  @ApiOperation({ summary: 'Cancel an order — reverses inventory, cash and CxC' })
+  cancel(@Param('id') id: string, @Body() dto: CancelOrderDto) {
+    return this.ordersService.cancelOrder(id, dto.reason);
+  }
+
+  @Post(':id/return')
+  @RequirePermissions('orders:edit')
+  @ApiOperation({ summary: 'Return a sale (full refund) — reverses inventory and cash' })
+  returnSale(@Param('id') id: string, @Body() dto: CancelOrderDto) {
+    return this.ordersService.returnOrder(id, dto.reason);
   }
 
   @Post(':id/send-receipt')

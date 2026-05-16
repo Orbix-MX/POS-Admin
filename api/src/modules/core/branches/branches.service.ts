@@ -3,6 +3,7 @@
 } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
+import { AuditService } from '../../../common/services/audit.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { BulkUpdateInventoryDto, TransferStockDto } from './dto/update-inventory.dto';
@@ -13,6 +14,7 @@ export class BranchesService {
   constructor(
     private prisma: PrismaService,
     private tenantContext: TenantContextService,
+    private audit: AuditService,
   ) {}
 
   async create(dto: CreateBranchDto): Promise<Branch> {
@@ -139,11 +141,27 @@ export class BranchesService {
     const branch = await this.prisma.branch.findFirst({ where: { id: branchId, tenantId } });
     if (!branch) throw new NotFoundException('Branch not found');
 
-    return this.prisma.branchInventory.upsert({
+    const existing = await this.prisma.branchInventory.findUnique({
+      where: { branchId_productId: { branchId, productId } },
+      select: { stock: true },
+    });
+
+    const result = await this.prisma.branchInventory.upsert({
       where: { branchId_productId: { branchId, productId } },
       update: { stock },
       create: { branchId, productId, stock },
     });
+
+    await this.audit.log({
+      action: 'INVENTORY_ADJUST',
+      entityType: 'BranchInventory',
+      entityId: `${branchId}:${productId}`,
+      before: { stock: existing?.stock ?? 0 },
+      after: { stock: result.stock },
+      reason: 'Ajuste manual de inventario de sucursal',
+    });
+
+    return result;
   }
 
   async bulkUpdateInventory(branchId: string, dto: BulkUpdateInventoryDto): Promise<void> {

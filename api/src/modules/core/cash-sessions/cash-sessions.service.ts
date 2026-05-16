@@ -7,6 +7,7 @@ import { Prisma } from '@prisma/client';
 import { OpenCashSessionDto } from './dto/open-session.dto';
 import { CloseCashSessionDto } from './dto/close-session.dto';
 import { QueryCashSessionsDto } from './dto/query-sessions.dto';
+import { roundMoney } from '../../../common/utils/money.util';
 
 const CASH_INCOME_TYPES = ['SALE', 'CXC_PAYMENT', 'INCOME'] as const;
 const CASH_EXPENSE_TYPES = ['SUPPLIER_PAYMENT', 'EXPENSE'] as const;
@@ -83,9 +84,9 @@ export class CashSessionsService {
       'USD',
     );
 
-    const differenceMxn = dto.cashCounted - expectedCashMxn;
-    const cashCountedUsd = dto.cashCountedUsd ?? 0;
-    const differenceUsd = cashCountedUsd - expectedCashUsd;
+    const differenceMxn = roundMoney(dto.cashCounted - expectedCashMxn);
+    const cashCountedUsd = roundMoney(dto.cashCountedUsd ?? 0);
+    const differenceUsd = roundMoney(cashCountedUsd - expectedCashUsd);
 
     return this.prisma.cashSession.update({
       where: { id },

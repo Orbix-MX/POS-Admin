@@ -6,6 +6,7 @@ import { PaginatedResponse } from '../../../common/dto/pagination.dto';
 import { AccountPayableStatus, Prisma } from '@prisma/client';
 import { QueryPayablesDto } from './dto/query-payables.dto';
 import { RegisterPayablePaymentDto } from './dto/register-payment.dto';
+import { roundMoney, isZeroMoney } from '../../../common/utils/money.util';
 
 @Injectable()
 export class PayablesService {
@@ -74,21 +75,22 @@ export class PayablesService {
       throw new BadRequestException('Esta cuenta ya está completamente pagada');
     }
 
-    const balance = Number(record.balance);
-    if (dto.amount > balance) {
+    const balance = roundMoney(Number(record.balance));
+    const payAmount = roundMoney(dto.amount);
+    if (payAmount > balance) {
       throw new BadRequestException(
-        `El monto (${dto.amount}) excede el saldo pendiente (${balance})`,
+        `El monto (${payAmount}) excede el saldo pendiente (${balance})`,
       );
     }
 
-    const newBalance = balance - dto.amount;
-    const newStatus: AccountPayableStatus = newBalance === 0 ? 'PAGADO' : 'PARCIAL';
+    const newBalance = roundMoney(balance - payAmount);
+    const newStatus: AccountPayableStatus = isZeroMoney(newBalance) ? 'PAGADO' : 'PARCIAL';
 
     return this.prisma.$transaction(async (tx) => {
       const payment = await tx.supplierPayment.create({
         data: {
           accountPayableId: id,
-          amount: dto.amount,
+          amount: payAmount,
           paymentMethod: dto.paymentMethod,
           paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : new Date(),
           reference: dto.reference ?? null,
@@ -106,7 +108,7 @@ export class PayablesService {
           tenantId,
           cashSessionId: activeSession?.id ?? null,
           type: 'SUPPLIER_PAYMENT',
-          amount: dto.amount,
+          amount: payAmount,
           paymentMethod: dto.paymentMethod,
           supplierPaymentId: payment.id,
           notes: dto.notes ?? null,
