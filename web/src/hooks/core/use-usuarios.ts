@@ -1,11 +1,18 @@
 ﻿import { useState, useMemo, useEffect, useCallback } from 'react'
-import { fetchUsuarios, createUsuario, updateUsuario, deleteUsuario, setUserRoles } from '@/services/core/users-service'
-import type { Usuario, UpdateUsuarioInput } from '@/services/core/users-service'
+import {
+  fetchUsuarios, createUsuario, updateUsuario, deleteUsuario, setUserRoles,
+  activateUsuario, deactivateUsuario, fetchUserCapacity,
+} from '@/services/core/users-service'
+import type { Usuario, UpdateUsuarioInput, UserCapacity, MembershipStatus } from '@/services/core/users-service'
 
 export type { Usuario }
 
-type FormState = { firstName: string; lastName: string; email: string; password: string; roleId: string; status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' }
-type EditFormState = { firstName: string; lastName: string; email: string; roleId: string; status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' }
+type FormState = { firstName: string; lastName: string; email: string; password: string; roleId: string; status: MembershipStatus }
+type EditFormState = { firstName: string; lastName: string; email: string; roleId: string; status: MembershipStatus }
+
+function errMessage(e: unknown, fallback: string): string {
+  return (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? fallback
+}
 
 const EMPTY_FORM: FormState = { firstName: '', lastName: '', email: '', password: '', roleId: '', status: 'ACTIVE' }
 const EMPTY_EDIT: EditFormState = { firstName: '', lastName: '', email: '', roleId: '', status: 'ACTIVE' }
@@ -14,6 +21,8 @@ const PER_PAGE = 8
 
 export function useUsuarios() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
+  const [capacity, setCapacity] = useState<UserCapacity | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -31,7 +40,9 @@ export function useUsuarios() {
     setLoading(true)
     setError(null)
     try {
-      setUsuarios(await fetchUsuarios())
+      const [list, cap] = await Promise.all([fetchUsuarios(), fetchUserCapacity()])
+      setUsuarios(list)
+      setCapacity(cap)
     } catch {
       setError('Error al cargar usuarios')
     } finally {
@@ -63,6 +74,7 @@ export function useUsuarios() {
 
   const handleSave = useCallback(async () => {
     setSaving(true)
+    setActionError(null)
     try {
       const newUser = await createUsuario({
         firstName: form.firstName,
@@ -76,9 +88,37 @@ export function useUsuarios() {
       await loadUsuarios()
       setModalOpen(false)
       setForm(EMPTY_FORM)
-    } catch (e) { console.error(e) }
+    } catch (e) {
+      setActionError(errMessage(e, 'No se pudo crear el usuario'))
+    }
     finally { setSaving(false) }
   }, [form, loadUsuarios])
+
+  const handleActivate = useCallback(async (id: string) => {
+    setSaving(true)
+    setActionError(null)
+    try {
+      await activateUsuario(id)
+      await loadUsuarios()
+      setSelected(null)
+    } catch (e) {
+      setActionError(errMessage(e, 'No se pudo activar el usuario'))
+    }
+    finally { setSaving(false) }
+  }, [loadUsuarios])
+
+  const handleDeactivate = useCallback(async (id: string) => {
+    setSaving(true)
+    setActionError(null)
+    try {
+      await deactivateUsuario(id)
+      await loadUsuarios()
+      setSelected(null)
+    } catch (e) {
+      setActionError(errMessage(e, 'No se pudo desactivar el usuario'))
+    }
+    finally { setSaving(false) }
+  }, [loadUsuarios])
 
   const handleOpenNew = useCallback(() => { setForm(EMPTY_FORM); setModalOpen(true) }, [])
   const handleCloseModal = useCallback(() => { setModalOpen(false); setForm(EMPTY_FORM) }, [])
@@ -107,20 +147,25 @@ export function useUsuarios() {
 
   const handleDelete = useCallback(async (id: string) => {
     setSaving(true)
+    setActionError(null)
     try {
       await deleteUsuario(id)
       await loadUsuarios()
       setSelected(null)
-    } catch (e) { console.error(e) }
+    } catch (e) {
+      setActionError(errMessage(e, 'No se pudo eliminar el usuario'))
+    }
     finally { setSaving(false) }
   }, [loadUsuarios])
 
   return {
-    usuarios, loading, error, search, setSearch, rolFilter, setRolFilter,
+    usuarios, capacity, actionError, setActionError,
+    loading, error, search, setSearch, rolFilter, setRolFilter,
     page, setPage, modalOpen, editModalOpen, selected, setSelected,
     editing, form, setForm, editForm, setEditForm,
     filtered, pageData, stats, saving,
     handleSave, handleOpenNew, handleCloseModal,
-    handleOpenEdit, handleCloseEdit, handleUpdate, handleDelete, loadUsuarios,
+    handleOpenEdit, handleCloseEdit, handleUpdate, handleDelete,
+    handleActivate, handleDeactivate, loadUsuarios,
   }
 }

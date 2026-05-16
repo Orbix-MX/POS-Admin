@@ -59,6 +59,27 @@ export class UsersController {
     return this.usersService.findAll(paginationDto);
   }
 
+  @Get('capacity')
+  @RequirePermissions('users:view')
+  @ApiOperation({ summary: 'Plan user capacity for the current tenant' })
+  getCapacity() {
+    return this.usersService.getCapacity();
+  }
+
+  @Patch(':id/activate')
+  @RequirePermissions('users:edit')
+  @ApiOperation({ summary: 'Activate a user in the current tenant (needs a free seat)' })
+  activate(@Param('id') id: string) {
+    return this.usersService.setMembershipStatus(id, 'ACTIVE');
+  }
+
+  @Patch(':id/deactivate')
+  @RequirePermissions('users:edit')
+  @ApiOperation({ summary: 'Deactivate a user in the current tenant (keeps history)' })
+  deactivate(@Param('id') id: string) {
+    return this.usersService.setMembershipStatus(id, 'INACTIVE');
+  }
+
   @Get(':id')
   @RequirePermissions('users:view')
   @ApiOperation({ summary: 'Get user by ID' })

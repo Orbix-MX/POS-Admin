@@ -106,3 +106,43 @@ export function getModulesForPlan(plan: TenantPlan): SystemModule[] {
   const tierIndex = PLAN_ORDER.indexOf(plan)
   return MODULES_BY_TIER.filter((_, i) => i <= tierIndex).flatMap((t) => t.modules)
 }
+
+// ─── Per-tenant access state (lives on TenantMembership, NOT on the global User)
+// ────────────────────────────────────────────────────────────────────────────
+
+export type MembershipStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'INVITED'
+
+// Only ACTIVE memberships consume a plan seat.
+export const SEAT_CONSUMING_STATUS: MembershipStatus = 'ACTIVE'
+
+// ─── User limits per plan tier ────────────────────────────────────────────────
+// `null` means unlimited (ENTERPRISE). A non-null `Tenant.userLimitOverride`
+// takes precedence over the plan default for ANY plan.
+
+export const PLAN_USER_LIMITS: Record<TenantPlan, number | null> = {
+  FREE: 1,
+  STARTER: 5,
+  PRO: 10,
+  PLUS: 20,
+  ENTERPRISE: null,
+}
+
+/**
+ * Max active users allowed for a tenant.
+ * Returns `null` when unlimited. A positive `override` wins over the plan default.
+ */
+export function getMaxUsersForPlan(
+  plan: TenantPlan,
+  override?: number | null,
+): number | null {
+  if (override != null && override > 0) return override
+  return PLAN_USER_LIMITS[plan]
+}
+
+/** True when `activeUsers` is within the limit (unlimited => always true). */
+export function isWithinUserLimit(
+  activeUsers: number,
+  maxUsers: number | null,
+): boolean {
+  return maxUsers == null || activeUsers <= maxUsers
+}

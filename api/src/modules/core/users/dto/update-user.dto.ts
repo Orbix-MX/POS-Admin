@@ -1,6 +1,6 @@
 ﻿import { IsEmail, IsString, IsEnum, IsOptional, MinLength, MaxLength } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { UserRole, UserStatus } from '@prisma/client';
+import { UserRole, MembershipStatus } from '@prisma/client';
 
 export class UpdateUserDto {
   @ApiPropertyOptional()
@@ -27,8 +27,11 @@ export class UpdateUserDto {
   @IsEnum(UserRole)
   role?: UserRole;
 
-  @ApiPropertyOptional({ enum: UserStatus })
+  @ApiPropertyOptional({
+    enum: MembershipStatus,
+    description: 'Per-tenant access status. Routed to the tenant membership.',
+  })
   @IsOptional()
-  @IsEnum(UserStatus)
-  status?: UserStatus;
+  @IsEnum(MembershipStatus)
+  status?: MembershipStatus;
 }

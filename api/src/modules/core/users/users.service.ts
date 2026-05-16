@@ -1,35 +1,62 @@
-﻿import {
+import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
+import { PlanLimitsService, UserCapacity } from '../../../common/services/plan-limits.service';
+import { AuditService } from '../../../common/services/audit.service';
 import { PasswordUtil } from '../../../common/utils/password.util';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { PaginationDto, PaginatedResponse } from '../../../common/dto/pagination.dto';
-import { User, UserStatus } from '@prisma/client';
+import { User, MembershipStatus } from '@prisma/client';
 
 export interface PermissionGrantInput {
   permissionId: string;
   granted: boolean;
 }
 
+// User as returned to a tenant-scoped client: `status` / `isOwner` reflect the
+// membership in the CURRENT tenant, not the global account.
+type TenantScopedUser = Omit<User, 'password' | 'status'> & {
+  status: MembershipStatus;
+  isOwner: boolean;
+};
+
 @Injectable()
 export class UsersService {
   constructor(
     private prisma: PrismaService,
     private tenantContext: TenantContextService,
+    private planLimits: PlanLimitsService,
+    private audit: AuditService,
   ) {}
 
-  async create(createUserDto: CreateUserDto): Promise<Omit<User, 'password'>> {
+  private async getOwnerUserId(tenantId: string): Promise<string | null> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { ownerUserId: true },
+    });
+    return tenant?.ownerUserId ?? null;
+  }
+
+  async create(createUserDto: CreateUserDto): Promise<TenantScopedUser> {
     const tenantId = this.tenantContext.requireTenantId();
 
     const existingUser = await this.prisma.user.findUnique({
       where: { email: createUserDto.email },
     });
     if (existingUser) throw new ConflictException('Email already exists');
+
+    const membershipStatus: MembershipStatus = createUserDto.status ?? 'ACTIVE';
+
+    // A new ACTIVE member consumes a plan seat — validate before creating.
+    if (membershipStatus === 'ACTIVE') {
+      await this.planLimits.assertCanAddActiveUser(tenantId);
+    }
 
     const hashedPassword = await PasswordUtil.hash(createUserDto.password);
 
@@ -40,27 +67,27 @@ export class UsersService {
         firstName: createUserDto.firstName,
         lastName: createUserDto.lastName,
         role: createUserDto.role,
-        status: createUserDto.status ?? UserStatus.ACTIVE,
+        // Global account stays ACTIVE; per-tenant access is the membership.
+        status: 'ACTIVE',
       },
     });
 
-    // Automatically enroll the new user as a STAFF member of the current tenant
     await this.prisma.tenantMembership.create({
-      data: { tenantId, userId: user.id, role: 'STAFF' },
+      data: { tenantId, userId: user.id, role: 'STAFF', status: membershipStatus },
     });
 
+    const ownerUserId = await this.getOwnerUserId(tenantId);
     const { password, ...result } = user;
-    return result;
+    return { ...result, status: membershipStatus, isOwner: ownerUserId === user.id };
   }
 
-  async findAll(paginationDto: PaginationDto): Promise<PaginatedResponse<Omit<User, 'password'>>> {
+  async findAll(paginationDto: PaginationDto): Promise<PaginatedResponse<TenantScopedUser>> {
     const tenantId = this.tenantContext.requireTenantId();
     const { skip, limit, page } = paginationDto;
 
-    // Filter to users who are members of the current tenant
     const where = { tenantMemberships: { some: { tenantId } } };
 
-    const [users, total] = await Promise.all([
+    const [users, total, ownerUserId] = await Promise.all([
       this.prisma.user.findMany({
         where,
         skip,
@@ -70,33 +97,45 @@ export class UsersService {
           _count: { select: { roleAssignments: true, permissionGrants: true } },
           tenantMemberships: {
             where: { tenantId },
-            select: { role: true },
+            select: { role: true, status: true },
           },
         },
       }),
       this.prisma.user.count({ where }),
+      this.getOwnerUserId(tenantId),
     ]);
 
-    const usersWithoutPassword = users.map(({ password, ...user }) => user);
+    const data = users.map(({ password, tenantMemberships, ...user }) => ({
+      ...user,
+      tenantMemberships,
+      status: tenantMemberships[0]?.status ?? 'ACTIVE',
+      isOwner: ownerUserId === user.id,
+    }));
 
     return {
-      data: usersWithoutPassword,
+      data,
       meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
   }
 
-  async findOne(id: string): Promise<Omit<User, 'password'>> {
+  async findOne(id: string): Promise<TenantScopedUser> {
     const tenantId = this.tenantContext.requireTenantId();
     const user = await this.prisma.user.findFirst({
       where: { id, tenantMemberships: { some: { tenantId } } },
+      include: { tenantMemberships: { where: { tenantId }, select: { status: true } } },
     });
 
     if (!user) throw new NotFoundException('User not found');
-    const { password, ...result } = user;
-    return result;
+    const ownerUserId = await this.getOwnerUserId(tenantId);
+    const { password, tenantMemberships, ...result } = user;
+    return {
+      ...result,
+      status: tenantMemberships[0]?.status ?? 'ACTIVE',
+      isOwner: ownerUserId === user.id,
+    };
   }
 
-  async update(id: string, updateUserDto: UpdateUserDto): Promise<Omit<User, 'password'>> {
+  async update(id: string, updateUserDto: UpdateUserDto): Promise<TenantScopedUser> {
     const tenantId = this.tenantContext.requireTenantId();
     const user = await this.prisma.user.findFirst({
       where: { id, tenantMemberships: { some: { tenantId } } },
@@ -110,13 +149,74 @@ export class UsersService {
       if (existingUser) throw new ConflictException('Email already exists');
     }
 
-    const updated = await this.prisma.user.update({
-      where: { id },
-      data: updateUserDto,
+    // Per-tenant status is routed to the membership (with limit/owner checks),
+    // never to the global User account.
+    const { status, ...userFields } = updateUserDto;
+    if (status) {
+      await this.setMembershipStatus(id, status);
+    }
+
+    if (Object.keys(userFields).length > 0) {
+      await this.prisma.user.update({ where: { id }, data: userFields });
+    }
+
+    return this.findOne(id);
+  }
+
+  /**
+   * Change a user's access status in the CURRENT tenant. Never deletes data.
+   * - Activating requires an available seat.
+   * - The protected tenant owner cannot be moved out of ACTIVE.
+   */
+  async setMembershipStatus(
+    userId: string,
+    status: MembershipStatus,
+  ): Promise<TenantScopedUser> {
+    const tenantId = this.tenantContext.requireTenantId();
+    const membership = await this.prisma.tenantMembership.findUnique({
+      where: { tenantId_userId: { tenantId, userId } },
+      select: { status: true },
+    });
+    if (!membership) throw new NotFoundException('User not found');
+
+    if (membership.status === status) return this.findOne(userId);
+
+    const ownerUserId = await this.getOwnerUserId(tenantId);
+    if (ownerUserId === userId && status !== 'ACTIVE') {
+      throw new BadRequestException(
+        'No puedes desactivar al propietario de la empresa.',
+      );
+    }
+
+    // Going from a non-seat state to ACTIVE consumes a seat.
+    if (status === 'ACTIVE' && membership.status !== 'ACTIVE') {
+      await this.planLimits.assertCanAddActiveUser(tenantId);
+    }
+
+    await this.prisma.tenantMembership.update({
+      where: { tenantId_userId: { tenantId, userId } },
+      data: { status },
     });
 
-    const { password, ...result } = updated;
-    return result;
+    // Releasing a seat may bring the tenant back under its limit.
+    await this.planLimits.recomputeOverLimit(tenantId);
+
+    await this.audit.log({
+      action: 'USER_STATUS_CHANGE',
+      entityType: 'TenantMembership',
+      entityId: `${tenantId}:${userId}`,
+      before: { status: membership.status },
+      after: { status },
+      reason: 'Cambio manual de estado de acceso',
+    });
+
+    return this.findOne(userId);
+  }
+
+  /** Plan capacity for the current tenant. */
+  async getCapacity(): Promise<UserCapacity> {
+    const tenantId = this.tenantContext.requireTenantId();
+    return this.planLimits.getCapacity(tenantId);
   }
 
   async remove(id: string): Promise<void> {
@@ -125,6 +225,13 @@ export class UsersService {
       where: { id, tenantMemberships: { some: { tenantId } } },
     });
     if (!user) throw new NotFoundException('User not found');
+
+    const ownerUserId = await this.getOwnerUserId(tenantId);
+    if (ownerUserId === id) {
+      throw new BadRequestException(
+        'No puedes eliminar al propietario de la empresa.',
+      );
+    }
 
     await this.prisma.user.delete({ where: { id } });
   }

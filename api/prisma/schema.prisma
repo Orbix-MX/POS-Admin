@@ -31,6 +31,16 @@ enum TenantRole {
   STAFF
 }
 
+// Per-tenant access state. Decoupled from the global User.status so that
+// disabling a user in one tenant never affects their access elsewhere and
+// historical records/audit are always preserved (no physical deletion).
+enum MembershipStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  INVITED
+}
+
 model Tenant {
   id       String       @id @default(uuid())
   name     String
@@ -39,6 +49,16 @@ model Tenant {
   plan           TenantPlan   @default(FREE)
   enabledModules String[]     @default([])
   settings       Json? // { currency, timezone, logo, address, taxId, ... }
+
+  // ── SaaS user-limit control ────────────────────────────────────────────────
+  // overUserLimit is set on downgrade when active users exceed the new plan
+  // limit. Soft enforcement: tenant keeps operating but cannot add/activate
+  // more users until back under the limit. No automatic deactivation.
+  overUserLimit     Boolean @default(false) @map("over_user_limit")
+  // Manual cap that overrides the plan default for ANY plan (e.g. ENTERPRISE).
+  userLimitOverride Int?    @map("user_limit_override")
+  // Protected owner — cannot be deactivated.
+  ownerUserId       String? @map("owner_user_id")
 
   trialEndsAt DateTime?
   createdAt   DateTime  @default(now())
@@ -65,14 +85,17 @@ model Tenant {
 
   usersLastSelected  User[] @relation("UserLastTenant")
 
+  owner User? @relation("TenantOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+
   @@map("tenants")
 }
 
 model TenantMembership {
   tenantId   String
   userId     String
-  role       TenantRole @default(STAFF)
-  assignedAt DateTime   @default(now())
+  role       TenantRole       @default(STAFF)
+  status     MembershipStatus @default(ACTIVE)
+  assignedAt DateTime         @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -148,6 +171,8 @@ model User {
 
   lastTenantSelected Tenant? @relation("UserLastTenant", fields: [lastTenantSelectedId], references: [id], onDelete: SetNull)
   lastBranchSelected Branch? @relation("UserLastBranch", fields: [lastBranchSelectedId], references: [id], onDelete: SetNull)
+
+  tenantsOwned Tenant[] @relation("TenantOwner")
 
   @@map("users")
 }

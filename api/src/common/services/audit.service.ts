@@ -7,7 +7,8 @@ export type AuditAction =
   | 'ORDER_CANCEL'
   | 'ORDER_RETURN'
   | 'INVENTORY_ADJUST'
-  | 'PRICE_CHANGE';
+  | 'PRICE_CHANGE'
+  | 'USER_STATUS_CHANGE';
 
 interface AuditEntry {
   action: AuditAction;

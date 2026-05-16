@@ -1,4 +1,4 @@
-﻿import { IsString, IsOptional, IsEnum, IsEmail, MinLength } from 'class-validator';
+﻿import { IsString, IsOptional, IsEnum, IsEmail, IsInt, Min, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TenantPlan } from '@prisma/client';
 
@@ -19,6 +19,12 @@ export class CreateTenantDto {
   @ApiPropertyOptional({ description: 'JSON settings: currency, timezone, logo, address...' })
   @IsOptional()
   settings?: Record<string, any>;
+
+  @ApiPropertyOptional({ description: 'Manual active-user cap overriding the plan default (any plan)' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  userLimitOverride?: number;
 
   /** Owner user — required when creating from super-admin panel */
   @ApiPropertyOptional({ example: 'owner@store.com' })

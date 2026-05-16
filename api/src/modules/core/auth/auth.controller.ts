@@ -95,10 +95,11 @@ export class AuthController {
   @Get('me/capabilities')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get plan capabilities for current tenant session' })
-  getCapabilities(@CurrentUser() user: AuthUser): CapabilitiesResponseDto {
+  getCapabilities(@CurrentUser() user: AuthUser): Promise<CapabilitiesResponseDto> {
     return this.authService.getCapabilities(
       user.plan ?? 'FREE',
       user.enabledModules ?? [],
+      user.tenantId,
     );
   }
 }
