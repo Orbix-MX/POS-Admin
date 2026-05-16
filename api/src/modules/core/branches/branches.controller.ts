@@ -7,7 +7,9 @@ import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { BulkUpdateInventoryDto, TransferStockDto } from './dto/update-inventory.dto';
 import { RequirePlanGuard, RequirePlan } from '../../../common/guards/require-plan.guard';
+import { RequireModule } from '../../../common/guards/require-module.guard';
 
+@RequireModule('branches')
 @ApiTags('Branches')
 @ApiBearerAuth()
 @UseGuards(RequirePlanGuard)

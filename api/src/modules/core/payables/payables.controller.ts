@@ -4,7 +4,9 @@ import { PayablesService } from './payables.service';
 import { QueryPayablesDto } from './dto/query-payables.dto';
 import { RegisterPayablePaymentDto } from './dto/register-payment.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
+import { RequireModule } from '../../../common/guards/require-module.guard';
 
+@RequireModule('cxp')
 @ApiTags('Payables')
 @ApiBearerAuth()
 @Controller('payables')

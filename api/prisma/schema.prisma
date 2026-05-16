@@ -36,8 +36,9 @@ model Tenant {
   name     String
   slug     String       @unique // subdomain / identifier
   status   TenantStatus @default(TRIAL)
-  plan     TenantPlan   @default(FREE)
-  settings Json? // { currency, timezone, logo, address, taxId, ... }
+  plan           TenantPlan   @default(FREE)
+  enabledModules String[]     @default([])
+  settings       Json? // { currency, timezone, logo, address, taxId, ... }
 
   trialEndsAt DateTime?
   createdAt   DateTime  @default(now())

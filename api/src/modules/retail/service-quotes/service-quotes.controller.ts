@@ -7,7 +7,9 @@ import { CreateServiceQuoteDto } from './dto/create-service-quote.dto';
 import { UpdateServiceQuoteDto } from './dto/update-service-quote.dto';
 import { QueryServiceQuotesDto } from './dto/query-service-quotes.dto';
 import { ConvertQuoteDto } from './dto/convert-quote.dto';
+import { RequireModule } from '../../../common/guards/require-module.guard';
 
+@RequireModule('cotizaciones')
 @ApiTags('Service Quotes')
 @ApiBearerAuth()
 @Controller('service-quotes')

@@ -7,6 +7,7 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../../common/guards/permissions.guard';
+import { RequireModuleGuard } from '../../../common/guards/require-module.guard';
 import { APP_GUARD } from '@nestjs/core';
 
 @Module({
@@ -33,6 +34,10 @@ import { APP_GUARD } from '@nestjs/core';
     {
       provide: APP_GUARD,
       useClass: PermissionsGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RequireModuleGuard,
     },
   ],
   exports: [AuthService],

@@ -5,7 +5,9 @@ import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
+import { RequireModule } from '../../../common/guards/require-module.guard';
 
+@RequireModule('proveedores')
 @ApiTags('Suppliers')
 @ApiBearerAuth()
 @Controller('suppliers')

@@ -8,10 +8,11 @@ import {
   ProfileResponseDto,
   SelectTenantResponseDto,
   SelectBranchResponseDto,
+  CapabilitiesResponseDto,
 } from './dto/auth-response.dto';
 import { Public } from '../../../common/decorators/public.decorator';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
-import { TenantRole } from '@prisma/client';
+import { TenantRole, TenantPlan } from '@prisma/client';
 
 type AuthUser = {
   id: string;
@@ -19,6 +20,8 @@ type AuthUser = {
   tenantId?: string;
   tenantRole?: TenantRole;
   branchId?: string;
+  plan?: TenantPlan;
+  enabledModules?: string[];
 };
 
 @ApiTags('Auth')
@@ -70,6 +73,18 @@ export class AuthController {
       user.tenantId,
       user.tenantRole,
       branchId,
+      user.plan,
+      user.enabledModules,
+    );
+  }
+
+  @Get('me/capabilities')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get plan capabilities for current tenant session' })
+  getCapabilities(@CurrentUser() user: AuthUser): CapabilitiesResponseDto {
+    return this.authService.getCapabilities(
+      user.plan ?? 'FREE',
+      user.enabledModules ?? [],
     );
   }
 }

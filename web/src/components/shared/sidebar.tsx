@@ -8,42 +8,45 @@ import {
 import { useERPStore } from '@/store/erp-store'
 import { useAuthStore } from '@/store/auth-store'
 import { AvatarInitials } from './avatar-initials'
-import type { ModuleId } from '@/types/erp'
 
-const NAV = [
+const ALL_NAV = [
   {
-    group: "Negocio", key: "business", items: [
-      { id: "dashboard" as ModuleId, label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
-      { id: "ventas" as ModuleId, label: "Ventas", icon: ShoppingBag, path: "/ventas" },
-      { id: "compras" as ModuleId, label: "Compras", icon: ShoppingCart, path: "/compras" },
-      { id: "inventario" as ModuleId, label: "Inventario", icon: Package, path: "/inventario" },
-      { id: "clientes" as ModuleId, label: "Clientes", icon: Users, path: "/clientes" },
-      { id: "proveedores" as ModuleId, label: "Proveedores", icon: Truck, path: "/proveedores" },
-      { id: "servicios" as ModuleId, label: "Servicios", icon: Wrench, path: "/servicios" },
-      { id: "cotizaciones" as ModuleId, label: "Cotizaciones", icon: FileText, path: "/cotizaciones" },
-    ]
+    group: 'Negocio', key: 'business', items: [
+      { module: 'dashboard', label: 'Dashboard',    icon: LayoutDashboard, path: '/dashboard' },
+      { module: 'ventas',    label: 'Ventas',       icon: ShoppingBag,     path: '/ventas'    },
+      { module: 'compras',   label: 'Compras',      icon: ShoppingCart,    path: '/compras'   },
+      { module: 'inventario',label: 'Inventario',   icon: Package,         path: '/inventario'},
+      { module: 'clientes',  label: 'Clientes',     icon: Users,           path: '/clientes'  },
+      { module: 'proveedores',label: 'Proveedores', icon: Truck,           path: '/proveedores'},
+      { module: 'servicios', label: 'Servicios',    icon: Wrench,          path: '/servicios' },
+      { module: 'cotizaciones',label: 'Cotizaciones',icon: FileText,       path: '/cotizaciones'},
+    ],
   },
   {
-    group: "Administración", key: "management", items: [
-      // { id: "contabilidad" as ModuleId, label: "Contabilidad",       icon: DollarSign,  path: "/contabilidad" },
-      { id: "cxc" as ModuleId, label: "Cuentas por Cobrar", icon: TrendingUp, path: "/cxc" },
-      { id: "cxp" as ModuleId, label: "Cuentas por Pagar", icon: Receipt, path: "/cxp" },
-      { id: "caja" as ModuleId, label: "Corte de Caja", icon: Landmark, path: "/caja" },
-      { id: "reportes" as ModuleId, label: "Reportes", icon: FileText, path: "/reportes" },
-      { id: "usuarios" as ModuleId, label: "Usuarios", icon: Users, path: "/usuarios" },
-      { id: "roles" as ModuleId, label: "Roles y Permisos", icon: Shield, path: "/roles" },
-      { id: "configuracion" as ModuleId, label: "Configuración", icon: Settings, path: "/configuracion" },
-    ]
-  }
+    group: 'Administración', key: 'management', items: [
+      { module: 'cxc',          label: 'Cuentas por Cobrar', icon: TrendingUp, path: '/cxc'          },
+      { module: 'cxp',          label: 'Cuentas por Pagar',  icon: Receipt,    path: '/cxp'          },
+      { module: 'caja',         label: 'Corte de Caja',      icon: Landmark,   path: '/caja'         },
+      { module: 'reportes',     label: 'Reportes',           icon: FileText,   path: '/reportes'     },
+      { module: 'usuarios',     label: 'Usuarios',           icon: Users,      path: '/usuarios'     },
+      { module: 'roles',        label: 'Roles y Permisos',   icon: Shield,     path: '/roles'        },
+      { module: 'configuracion',label: 'Configuración',      icon: Settings,   path: '/configuracion'},
+    ],
+  },
 ]
 
 export function Sidebar() {
   const { empresa } = useERPStore()
-  const { user, logout } = useAuthStore()
+  const { user, logout, enabledModules } = useAuthStore()
   const [expanded, setExpanded] = useState<Record<string, boolean>>({ business: true, management: true })
 
   const displayName = user ? `${user.firstName} ${user.lastName}` : empresa.usuario
   const displayEmail = user?.email ?? empresa.email
+
+  const visibleGroups = ALL_NAV.map(group => ({
+    ...group,
+    items: group.items.filter(item => enabledModules.includes(item.module)),
+  })).filter(group => group.items.length > 0)
 
   return (
     <div className="w-[210px] shrink-0 border-r border-border bg-card flex flex-col h-full overflow-hidden">
@@ -65,7 +68,7 @@ export function Sidebar() {
 
       {/* Nav */}
       <div className="flex-1 overflow-y-auto py-3">
-        {NAV.map(group => (
+        {visibleGroups.map(group => (
           <div key={group.key} className="mb-1">
             <button
               onClick={() => setExpanded(p => ({ ...p, [group.key]: !p[group.key] }))}
@@ -78,7 +81,7 @@ export function Sidebar() {
               const Icon = item.icon
               return (
                 <NavLink
-                  key={item.id}
+                  key={item.module}
                   to={item.path}
                   className={({ isActive }) => `w-full flex items-center gap-2.5 px-4 py-2 border-none cursor-pointer text-[13px] text-left relative transition-all
                     ${isActive ? 'bg-secondary font-semibold text-primary' : 'bg-transparent font-normal text-muted-foreground hover:bg-muted/50'}`}

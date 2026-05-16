@@ -45,7 +45,15 @@ export class ProfileResponseDto {
 export class SelectTenantResponseDto {
   @ApiProperty() accessToken: string;
   @ApiProperty() posOnly: boolean;
+  @ApiProperty({ enum: TenantPlan }) plan: TenantPlan;
+  @ApiProperty({ type: [String] }) enabledModules: string[];
   @ApiProperty({ type: TenantSummaryDto }) tenant: TenantSummaryDto;
+}
+
+export class CapabilitiesResponseDto {
+  @ApiProperty({ enum: TenantPlan }) plan: TenantPlan;
+  @ApiProperty({ type: [String] }) enabledModules: string[];
+  @ApiProperty({ type: [String] }) effectiveModules: string[];
 }
 
 export class SelectBranchResponseDto {

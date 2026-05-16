@@ -4,7 +4,9 @@ import { ReceivablesService } from './receivables.service';
 import { QueryReceivablesDto } from './dto/query-receivables.dto';
 import { RegisterCxCPaymentDto } from './dto/register-payment.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
+import { RequireModule } from '../../../common/guards/require-module.guard';
 
+@RequireModule('cxc')
 @ApiTags('Receivables')
 @ApiBearerAuth()
 @Controller('receivables')

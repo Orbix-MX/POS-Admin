@@ -16,7 +16,9 @@ import { QueryProductDto } from './dto/query-product.dto';
 import { AddImageDto } from './dto/add-image.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
 import { Public } from '../../../common/decorators/public.decorator';
+import { RequireModule } from '../../../common/guards/require-module.guard';
 
+@RequireModule('inventario')
 @ApiTags('Products')
 @Controller('products')
 export class ProductsController {

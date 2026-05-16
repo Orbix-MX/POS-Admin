@@ -13,7 +13,9 @@ import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
 import { Public } from '../../../common/decorators/public.decorator';
+import { RequireModule } from '../../../common/guards/require-module.guard';
 
+@RequireModule('inventario')
 @ApiTags('Categories')
 @Controller('categories')
 export class CategoriesController {

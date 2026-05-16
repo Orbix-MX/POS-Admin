@@ -17,7 +17,9 @@ import { UpdateCouponDto } from './dto/update-coupon.dto';
 import { QueryCouponDto } from './dto/query-coupon.dto';
 import { ValidateCouponDto } from './dto/validate-coupon.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
+import { RequireModule } from '../../../common/guards/require-module.guard';
 
+@RequireModule('inventario')
 @ApiTags('Coupons')
 @Controller('coupons')
 export class CouponsController {

@@ -18,9 +18,11 @@ import {
   ProfileResponseDto,
   SelectTenantResponseDto,
   SelectBranchResponseDto,
+  CapabilitiesResponseDto,
 } from './dto/auth-response.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
-import { TenantMembership, Tenant, TenantRole } from '@prisma/client';
+import { TenantMembership, Tenant, TenantRole, TenantPlan } from '@prisma/client';
+import { getModulesForPlan } from '@ventasy/types';
 
 type MembershipWithTenant = TenantMembership & { tenant: Tenant };
 
@@ -177,11 +179,17 @@ export class AuthService {
       },
     });
 
+    const { plan, enabledModules: extraModules } = membership.tenant;
+    const planModules = getModulesForPlan(plan) as unknown as string[];
+    const effectiveModules = [...new Set([...planModules, ...extraModules])];
+
     const accessToken = this.generateToken({
       sub: userId,
       email: userEmail,
       tenantId: membership.tenantId,
       tenantRole: membership.role,
+      plan,
+      enabledModules: effectiveModules,
     });
 
     const posOnly = await this.isPosOnlyUser(userId, membership.tenantId);
@@ -189,7 +197,9 @@ export class AuthService {
     return {
       accessToken,
       posOnly,
-      tenant: this.mapMembership(membership as MembershipWithTenant),
+      plan,
+      enabledModules: effectiveModules,
+      tenant: this.mapMembership(membership),
     };
   }
 
@@ -233,6 +243,8 @@ export class AuthService {
     tenantId: string | undefined,
     tenantRole: TenantRole | undefined,
     branchId: string,
+    plan?: TenantPlan,
+    enabledModules?: string[],
   ): Promise<SelectBranchResponseDto> {
     if (!tenantId) {
       throw new BadRequestException('Select a tenant before selecting a branch');
@@ -255,9 +267,17 @@ export class AuthService {
       tenantId,
       tenantRole,
       branchId,
+      plan,
+      enabledModules,
     });
 
     return { branchId, accessToken };
+  }
+
+  getCapabilities(plan: TenantPlan, enabledModules: string[]): CapabilitiesResponseDto {
+    const planModules = getModulesForPlan(plan) as unknown as string[];
+    const effectiveModules = [...new Set([...planModules, ...enabledModules])];
+    return { plan, enabledModules, effectiveModules };
   }
 
   private generateToken(payload: JwtPayload): string {

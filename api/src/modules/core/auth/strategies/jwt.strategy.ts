@@ -3,7 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PrismaService } from '../../../../database/prisma.service';
-import { TenantRole } from '@prisma/client';
+import { TenantRole, TenantPlan } from '@prisma/client';
 
 export interface JwtPayload {
   sub: string;
@@ -11,6 +11,8 @@ export interface JwtPayload {
   tenantId?: string;
   tenantRole?: TenantRole;
   branchId?: string;
+  plan?: TenantPlan;
+  enabledModules?: string[];
 }
 
 @Injectable()
@@ -40,6 +42,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       tenantId: payload.tenantId,
       tenantRole: payload.tenantRole,
       branchId: payload.branchId,
+      plan: payload.plan,
+      enabledModules: payload.enabledModules ?? [],
     };
   }
 }

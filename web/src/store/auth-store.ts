@@ -1,7 +1,9 @@
-﻿import { create } from 'zustand'
+import { create } from 'zustand'
 import {
   login as loginApi,
   selectTenant as selectTenantApi,
+  fetchCapabilities,
+  fetchMe,
   setAccessToken,
   clearAccessToken,
   getAccessToken,
@@ -15,7 +17,11 @@ interface AuthState {
   isAuthenticated: boolean
   loading: boolean
   error: string | null
+  plan: string | null
+  enabledModules: string[]
+  capabilitiesLoaded: boolean
 
+  init: () => Promise<void>
   login: (email: string, password: string) => Promise<void>
   confirmTenant: (slug: string) => Promise<void>
   logout: () => void
@@ -28,6 +34,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isAuthenticated: !!getAccessToken(),
   loading: false,
   error: null,
+  plan: null,
+  enabledModules: [],
+  capabilitiesLoaded: !getAccessToken(), // true if no token (not authenticated)
+
+  init: async () => {
+    if (!getAccessToken()) { set({ capabilitiesLoaded: true }); return }
+    try {
+      const [caps, profile] = await Promise.all([fetchCapabilities(), fetchMe()])
+      set({
+        plan: caps.plan ?? null,
+        enabledModules: caps.effectiveModules ?? [],
+        capabilitiesLoaded: true,
+        user: profile.user,
+      })
+    } catch {
+      set({ capabilitiesLoaded: true }) // interceptor handles 401 reload
+    }
+  },
 
   login: async (email, password) => {
     set({ loading: true, error: null })
@@ -35,9 +59,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const { accessToken, user, availableTenants } = await loginApi(email, password)
 
       if (availableTenants.length === 1) {
-        const { accessToken: finalToken } = await selectTenantApi(availableTenants[0].slug, accessToken)
-        setAccessToken(finalToken)
-        set({ isAuthenticated: true, user, tempToken: null, availableTenants: null, loading: false })
+        const res = await selectTenantApi(availableTenants[0].slug, accessToken)
+        setAccessToken(res.accessToken)
+        set({
+          isAuthenticated: true,
+          user,
+          tempToken: null,
+          availableTenants: null,
+          loading: false,
+          plan: res.plan ?? null,
+          enabledModules: res.enabledModules ?? [],
+          capabilitiesLoaded: true,
+        })
       } else {
         set({ tempToken: accessToken, user, availableTenants, loading: false })
       }
@@ -52,9 +85,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!tempToken) return
     set({ loading: true, error: null })
     try {
-      const { accessToken: finalToken } = await selectTenantApi(slug, tempToken)
-      setAccessToken(finalToken)
-      set({ isAuthenticated: true, tempToken: null, availableTenants: null, loading: false })
+      const res = await selectTenantApi(slug, tempToken)
+      setAccessToken(res.accessToken)
+      set({
+        isAuthenticated: true,
+        tempToken: null,
+        availableTenants: null,
+        loading: false,
+        plan: res.plan ?? null,
+        enabledModules: res.enabledModules ?? [],
+        capabilitiesLoaded: true,
+      })
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Error al seleccionar tienda'
       set({ error: msg, loading: false })
@@ -63,6 +104,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: () => {
     clearAccessToken()
-    set({ isAuthenticated: false, user: null, tempToken: null, availableTenants: null, error: null })
+    set({
+      isAuthenticated: false,
+      user: null,
+      tempToken: null,
+      availableTenants: null,
+      error: null,
+      plan: null,
+      enabledModules: [],
+      capabilitiesLoaded: true,
+    })
   },
 }))

@@ -44,7 +44,29 @@ export interface LoginResponse {
 export interface SelectTenantResponse {
   accessToken: string
   posOnly: boolean
+  plan: string
+  enabledModules: string[]
   tenant: Tenant
+}
+
+export interface CapabilitiesResponse {
+  plan: string
+  enabledModules: string[]
+  effectiveModules: string[]
+}
+
+export interface ProfileResponse {
+  user: AuthUser
+}
+
+export async function fetchMe(): Promise<ProfileResponse> {
+  const { data } = await api.get<ProfileResponse>('/auth/me')
+  return data
+}
+
+export async function fetchCapabilities(): Promise<CapabilitiesResponse> {
+  const { data } = await api.get<CapabilitiesResponse>('/auth/me/capabilities')
+  return data
 }
 
 export async function login(email: string, password: string): Promise<LoginResponse> {
