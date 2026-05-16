@@ -1,0 +1,75 @@
+﻿import { Controller, Post, Get, Patch, Body, Param } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { AuthService } from './auth.service';
+import { RegisterDto } from './dto/register.dto';
+import { LoginDto } from './dto/login.dto';
+import {
+  AuthResponseDto,
+  ProfileResponseDto,
+  SelectTenantResponseDto,
+  SelectBranchResponseDto,
+} from './dto/auth-response.dto';
+import { Public } from '../../../common/decorators/public.decorator';
+import { CurrentUser } from '../../../common/decorators/current-user.decorator';
+import { TenantRole } from '@prisma/client';
+
+type AuthUser = {
+  id: string;
+  email: string;
+  tenantId?: string;
+  tenantRole?: TenantRole;
+  branchId?: string;
+};
+
+@ApiTags('Auth')
+@Controller('auth')
+export class AuthController {
+  constructor(private authService: AuthService) {}
+
+  @Public()
+  @Post('register')
+  @ApiOperation({ summary: 'Register a new user' })
+  async register(@Body() registerDto: RegisterDto): Promise<AuthResponseDto> {
+    return this.authService.register(registerDto);
+  }
+
+  @Public()
+  @Post('login')
+  @ApiOperation({ summary: 'Login — returns preliminary JWT + available tenants' })
+  async login(@Body() loginDto: LoginDto): Promise<AuthResponseDto> {
+    return this.authService.login(loginDto);
+  }
+
+  @Get('me')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get current user profile with active tenant/branch' })
+  async getProfile(@CurrentUser() user: AuthUser): Promise<ProfileResponseDto> {
+    return this.authService.getProfile(user.id);
+  }
+
+  @Patch('select-tenant/:slug')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Select active tenant — returns new JWT with tenantId embedded' })
+  selectTenant(
+    @CurrentUser() user: AuthUser,
+    @Param('slug') slug: string,
+  ): Promise<SelectTenantResponseDto> {
+    return this.authService.selectTenant(user.id, user.email, slug);
+  }
+
+  @Patch('select-branch/:branchId')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Select active branch — returns new JWT with branchId embedded' })
+  selectBranch(
+    @CurrentUser() user: AuthUser,
+    @Param('branchId') branchId: string,
+  ): Promise<SelectBranchResponseDto> {
+    return this.authService.selectBranch(
+      user.id,
+      user.email,
+      user.tenantId,
+      user.tenantRole,
+      branchId,
+    );
+  }
+}

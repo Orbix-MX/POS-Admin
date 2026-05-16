@@ -1,0 +1,60 @@
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+
+interface FormModalProps {
+  open: boolean
+  onClose: () => void
+  title: string
+  children: React.ReactNode
+}
+
+export function FormModal({ open, onClose, title, children }: FormModalProps) {
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-[520px] max-h-[90vh] flex flex-col overflow-hidden p-0">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border shrink-0">
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <div className="overflow-y-auto flex-1 px-6 py-4">
+          {children}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+interface FormFieldProps {
+  label: string
+  type?: string
+  value: string
+  onChange: (v: string) => void
+  options?: string[]
+}
+
+export function FormField({ label, type = "text", value, onChange, options }: FormFieldProps) {
+  return (
+    <div className="mb-3.5">
+      <label className="block text-xs font-semibold text-muted-foreground mb-1.5">{label}</label>
+      {options ? (
+        <select
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
+        >
+          {options.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      ) : (
+        <input
+          type={type}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
+        />
+      )}
+    </div>
+  )
+}

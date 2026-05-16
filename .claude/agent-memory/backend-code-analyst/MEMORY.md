@@ -1,0 +1,2 @@
+- [pos-admin project architecture](project_architecture.md) — Stack NestJS+Prisma+React, dirs clave, patrón multi-tenant, estado de BD Neon sin historial de migraciones
+- [usar db push en lugar de migrate dev](feedback_prisma_migrations.md) — prisma migrate dev detecta drift y destruye datos; usar db push + generate

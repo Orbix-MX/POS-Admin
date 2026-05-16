@@ -1,0 +1,1040 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============= Tenants =============
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  TRIAL
+  CANCELLED
+}
+
+enum TenantPlan {
+  FREE
+  STARTER
+  PRO
+  PLUS
+  ENTERPRISE
+}
+
+enum TenantRole {
+  OWNER
+  ADMIN
+  MANAGER
+  STAFF
+}
+
+model Tenant {
+  id       String       @id @default(uuid())
+  name     String
+  slug     String       @unique // subdomain / identifier
+  status   TenantStatus @default(TRIAL)
+  plan     TenantPlan   @default(FREE)
+  settings Json? // { currency, timezone, logo, address, taxId, ... }
+
+  trialEndsAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  memberships        TenantMembership[]
+  customers          Customer[]
+  categories         Category[]
+  products           Product[]
+  coupons            Coupon[]
+  orders             Order[]
+  roles              Role[]
+  branches           Branch[]
+  suppliers          Supplier[]
+  purchaseOrders     PurchaseOrder[]
+  inventoryMovements InventoryMovement[]
+  accountReceivables AccountReceivable[]
+  accountsPayable    AccountPayable[]
+  cashSessions       CashSession[]
+  cashMovements      CashMovement[]
+  services           Service[]
+  serviceQuotes      ServiceQuote[]
+
+  usersLastSelected  User[] @relation("UserLastTenant")
+
+  @@map("tenants")
+}
+
+model TenantMembership {
+  tenantId   String
+  userId     String
+  role       TenantRole @default(STAFF)
+  assignedAt DateTime   @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, userId])
+  @@map("tenant_memberships")
+}
+
+// ============= Admin Users =============
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  STAFF
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+model User {
+  id        String     @id @default(uuid())
+  email     String     @unique
+  password  String
+  firstName String
+  lastName  String
+  role      UserRole   @default(STAFF)
+  status    UserStatus @default(ACTIVE)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  tenantMemberships TenantMembership[]
+
+  // Auditoría
+  customersCreated  Customer[] @relation("CustomerCreatedBy")
+  customersUpdated  Customer[] @relation("CustomerUpdatedBy")
+  categoriesCreated Category[] @relation("CategoryCreatedBy")
+  categoriesUpdated Category[] @relation("CategoryUpdatedBy")
+  productsCreated   Product[]  @relation("ProductCreatedBy")
+  productsUpdated   Product[]  @relation("ProductUpdatedBy")
+  ordersCreated     Order[]    @relation("OrderCreatedBy")
+  ordersUpdated     Order[]    @relation("OrderUpdatedBy")
+  couponsCreated    Coupon[]   @relation("CouponCreatedBy")
+  couponsUpdated    Coupon[]   @relation("CouponUpdatedBy")
+
+  suppliersCreated Supplier[] @relation("SupplierCreatedBy")
+  suppliersUpdated Supplier[] @relation("SupplierUpdatedBy")
+
+  purchaseOrdersCreated     PurchaseOrder[]    @relation("POCreatedBy")
+  purchaseOrdersUpdated     PurchaseOrder[]    @relation("POUpdatedBy")
+  purchaseReceiptsReceived  PurchaseReceipt[]  @relation("ReceiptReceivedBy")
+  inventoryMovementsCreated InventoryMovement[] @relation("MovementCreatedBy")
+  supplierPaymentsCreated   SupplierPayment[]  @relation("SupplierPaymentCreatedBy")
+  cashMovementsCreated      CashMovement[]     @relation("CashMovementCreatedBy")
+  cashSessionsOpened        CashSession[]      @relation("CashSessionOpenedBy")
+  cashSessionsClosed        CashSession[]      @relation("CashSessionClosedBy")
+  servicesCreated           Service[]          @relation("ServiceCreatedBy")
+  servicesUpdated           Service[]          @relation("ServiceUpdatedBy")
+  serviceQuotesCreated      ServiceQuote[]     @relation("ServiceQuoteCreatedBy")
+
+  roleAssignments  UserRoleAssignment[]
+  permissionGrants UserPermissionGrant[]
+
+  managedBranches  Branch[]           @relation("BranchManager")
+  branchMemberships BranchMembership[]
+
+  lastTenantSelectedId String? @map("last_tenant_selected_id")
+  lastBranchSelectedId String? @map("last_branch_selected_id")
+
+  lastTenantSelected Tenant? @relation("UserLastTenant", fields: [lastTenantSelectedId], references: [id], onDelete: SetNull)
+  lastBranchSelected Branch? @relation("UserLastBranch", fields: [lastBranchSelectedId], references: [id], onDelete: SetNull)
+
+  @@map("users")
+}
+
+// ============= Customers =============
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+}
+
+enum CustomerType {
+  NEW
+  REGULAR
+  VIP
+  WHOLESALE
+}
+
+model Customer {
+  id        String         @id @default(uuid())
+  tenantId  String
+  email     String
+  firstName String
+  lastName  String
+  phone      String?
+  company    String?
+  city       String?
+  legalName  String?  @map("legal_name")
+  status    CustomerStatus @default(ACTIVE)
+
+  type        CustomerType @default(NEW)
+  totalOrders Int          @default(0)
+  totalSpent  Decimal      @default(0) @db.Decimal(10, 2)
+
+  hasCredit   Boolean      @default(false)
+  creditLimit Decimal?     @db.Decimal(10, 2)
+  creditDays  Int          @default(0)
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  addresses          CustomerAddress[]
+  orders             Order[]
+  accountReceivables AccountReceivable[]
+  serviceQuotes      ServiceQuote[]
+  createdBy          User?               @relation("CustomerCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy          User?               @relation("CustomerUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, email])
+  @@map("customers")
+}
+
+model CustomerAddress {
+  id         String   @id @default(uuid())
+  customerId String
+  label      String
+  firstName  String
+  lastName   String
+  phone      String
+  address1   String
+  address2   String?
+  city       String
+  state      String
+  zipCode    String
+  country    String   @default("US")
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  orders   Order[]
+
+  @@map("customer_addresses")
+}
+
+// ============= Suppliers =============
+enum SupplierStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model Supplier {
+  id           String         @id @default(uuid())
+  tenantId     String
+  name         String
+  contactName  String?
+  email        String
+  phone        String?
+  city         String?
+  category     String?
+  paymentTerms String?
+  status       SupplierStatus @default(ACTIVE)
+  totalOrders  Int            @default(0)
+  totalSpent   Decimal        @default(0) @db.Decimal(12, 2)
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy       User?            @relation("SupplierCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy       User?            @relation("SupplierUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  purchaseOrders  PurchaseOrder[]
+  accountsPayable AccountPayable[]
+
+  @@unique([tenantId, email])
+  @@map("suppliers")
+}
+
+// ============= Purchases =============
+
+enum PurchaseOrderStatus {
+  BORRADOR
+  ENVIADA
+  PARCIAL
+  COMPLETADA
+  CANCELADA
+}
+
+enum InventoryMovementType {
+  COMPRA
+  VENTA
+  AJUSTE
+  TRANSFERENCIA
+  DEVOLUCION
+}
+
+model PurchaseOrder {
+  id          String              @id @default(uuid())
+  tenantId    String
+  orderNumber String
+  supplierId  String
+  status      PurchaseOrderStatus @default(BORRADOR)
+  orderDate   DateTime            @default(now())
+  expectedDate DateTime?
+  subtotal    Decimal             @db.Decimal(10, 2)
+  tax         Decimal             @default(0) @db.Decimal(10, 2)
+  total       Decimal             @db.Decimal(10, 2)
+  notes       String?
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant         Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier       Supplier             @relation(fields: [supplierId], references: [id])
+  items          PurchaseOrderItem[]
+  receipts       PurchaseReceipt[]
+  accountPayable AccountPayable?
+  createdBy      User?                @relation("POCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy      User?                @relation("POUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, orderNumber])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id              String  @id @default(uuid())
+  purchaseOrderId String
+  productId       String
+  quantityOrdered Int
+  unitCost        Decimal @db.Decimal(10, 2)
+  tax             Decimal @default(0) @db.Decimal(10, 2)
+  total           Decimal @db.Decimal(10, 2)
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product       Product       @relation(fields: [productId], references: [id])
+
+  @@map("purchase_order_items")
+}
+
+model PurchaseReceipt {
+  id              String   @id @default(uuid())
+  purchaseOrderId String
+  receivedById    String?
+  receivedDate    DateTime @default(now())
+  notes           String?
+  createdAt       DateTime @default(now())
+
+  purchaseOrder PurchaseOrder        @relation(fields: [purchaseOrderId], references: [id])
+  receivedBy    User?                @relation("ReceiptReceivedBy", fields: [receivedById], references: [id], onDelete: SetNull)
+  items         PurchaseReceiptItem[]
+
+  @@map("purchase_receipts")
+}
+
+model PurchaseReceiptItem {
+  id                String @id @default(uuid())
+  purchaseReceiptId String
+  productId         String
+  quantityReceived  Int
+
+  receipt PurchaseReceipt @relation(fields: [purchaseReceiptId], references: [id], onDelete: Cascade)
+  product Product         @relation(fields: [productId], references: [id])
+
+  @@map("purchase_receipt_items")
+}
+
+model InventoryMovement {
+  id            String               @id @default(uuid())
+  tenantId      String
+  type          InventoryMovementType
+  productId     String
+  branchId      String?
+  quantity      Int
+  referenceId   String?
+  referenceType String?
+  notes         String?
+  createdById   String?
+  createdAt     DateTime             @default(now())
+
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id])
+  branch    Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  createdBy User?   @relation("MovementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@map("inventory_movements")
+}
+
+// ============= Categories =============
+enum CategoryStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model Category {
+  id          String         @id @default(uuid())
+  tenantId    String
+  name        String
+  slug        String
+  description String?
+  parentId    String?
+  status      CategoryStatus @default(ACTIVE)
+  sortOrder   Int            @default(0)
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent    Category?  @relation("CategoryToCategory", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Category[] @relation("CategoryToCategory")
+  products  Product[]
+  coupons   Coupon[]
+  createdBy User?      @relation("CategoryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User?      @relation("CategoryUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, slug])
+  @@map("categories")
+}
+
+// ============= Products =============
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum TaxCode {
+  IVA_16
+  IVA_11
+  IVA_8
+  EXCENTO
+}
+
+model Product {
+  id              String        @id @default(uuid())
+  tenantId        String
+  sku             String
+  name            String
+  slug            String
+  description     String?
+  price           Decimal       @db.Decimal(10, 2)
+  taxRate         Decimal?      @db.Decimal(10, 2)
+  taxCode         TaxCode?      @default(IVA_16)
+  comparePrice    Decimal?      @db.Decimal(10, 2)
+  costPrice       Decimal?      @db.Decimal(10, 2)
+  categoryId      String?
+  status          ProductStatus @default(DRAFT)
+  stock           Int           @default(0)
+  trackInventory  Boolean       @default(true)
+  lowStockAlert   Int           @default(5)
+  metaTitle       String?
+  metaDescription String?
+  lastCost        Decimal?      @db.Decimal(10, 2)
+  avgCost         Decimal?      @db.Decimal(10, 2)
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant               Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category             Category?            @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  images               ProductImage[]
+  orderItems           OrderItem[]
+  coupons              Coupon[]
+  branchInventory      BranchInventory[]
+  purchaseOrderItems   PurchaseOrderItem[]
+  purchaseReceiptItems PurchaseReceiptItem[]
+  inventoryMovements   InventoryMovement[]
+  quoteItems           ServiceQuoteItem[]
+  createdBy            User?                @relation("ProductCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy            User?                @relation("ProductUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, sku])
+  @@unique([tenantId, slug])
+  @@map("products")
+}
+
+model ProductImage {
+  id        String   @id @default(uuid())
+  productId String
+  url       String
+  altText   String?
+  sortOrder Int      @default(0)
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("product_images")
+}
+
+// ============= Coupons =============
+enum CouponType {
+  PERCENTAGE
+  FIXED
+}
+
+enum CouponScope {
+  GLOBAL
+  PRODUCT
+  CATEGORY
+}
+
+model Coupon {
+  id          String      @id @default(uuid())
+  tenantId    String
+  code        String
+  description String?
+  type        CouponType
+  value       Decimal     @db.Decimal(10, 2)
+  scope       CouponScope
+
+  productId  String?
+  categoryId String?
+
+  autoApply           Boolean        @default(false)
+  customerTypes       CustomerType[]
+  isFirstPurchaseOnly Boolean        @default(false)
+  minOrders           Int?
+
+  minPurchase           Decimal? @db.Decimal(10, 2)
+  maxDiscount           Decimal? @db.Decimal(10, 2)
+  usageLimit            Int?
+  usageLimitPerCustomer Int?
+  usageCount            Int      @default(0)
+
+  startDate DateTime
+  endDate   DateTime?
+  isActive  Boolean   @default(true)
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product   Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  category  Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  createdBy User?     @relation("CouponCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User?     @relation("CouponUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  orders    Order[]
+
+  @@unique([tenantId, code])
+  @@map("coupons")
+}
+
+// ============= Services =============
+
+model Service {
+  id                String   @id @default(uuid())
+  tenantId          String
+  name              String
+  description       String?
+  basePrice         Decimal  @db.Decimal(10, 2)
+  estimatedDuration String?
+  hasVariablePrice  Boolean  @default(false)
+  isActive          Boolean  @default(true)
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant     Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy  User?              @relation("ServiceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy  User?              @relation("ServiceUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  quoteItems ServiceQuoteItem[]
+  orderItems OrderItem[]
+
+  @@map("services")
+}
+
+// ============= Service Quotes =============
+
+enum ServiceQuoteStatus {
+  DRAFT
+  SENT
+  APPROVED
+  REJECTED
+  EXPIRED
+  CONVERTED
+}
+
+model ServiceQuote {
+  id                    String             @id @default(uuid())
+  tenantId              String
+  customerId            String
+  quoteNumber           String
+  status                ServiceQuoteStatus @default(DRAFT)
+  estimatedDeliveryDate DateTime?
+  subtotal              Decimal            @db.Decimal(10, 2)
+  tax                   Decimal            @default(0) @db.Decimal(10, 2)
+  total                 Decimal            @db.Decimal(10, 2)
+  notes                 String?
+
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer  Customer           @relation(fields: [customerId], references: [id])
+  items     ServiceQuoteItem[]
+  orders    Order[]
+  createdBy User?              @relation("ServiceQuoteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, quoteNumber])
+  @@map("service_quotes")
+}
+
+model ServiceQuoteItem {
+  id             String  @id @default(uuid())
+  serviceQuoteId String
+  itemType       String  @default("SERVICE")
+  serviceId      String?
+  productId      String?
+  sku            String?
+  description    String
+  quantity       Int
+  unitPrice      Decimal @db.Decimal(10, 2)
+  total          Decimal @db.Decimal(10, 2)
+
+  serviceQuote ServiceQuote @relation(fields: [serviceQuoteId], references: [id], onDelete: Cascade)
+  service      Service?     @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  product      Product?     @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@map("service_quote_items")
+}
+
+// ============= Orders =============
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum DeliveryStatus {
+  PENDING
+  IN_PROGRESS
+  READY
+  DELIVERED
+}
+
+enum OrderItemType {
+  PRODUCT
+  SERVICE
+}
+
+model Order {
+  id            String        @id @default(uuid())
+  tenantId      String
+  orderNumber   String
+  customerId    String?
+  addressId     String?
+  status        OrderStatus   @default(PENDING)
+  paymentStatus PaymentStatus @default(PENDING)
+  subtotal      Decimal       @db.Decimal(10, 2)
+  tax           Decimal       @default(0) @db.Decimal(10, 2)
+  shippingCost  Decimal       @default(0) @db.Decimal(10, 2)
+  discount      Decimal       @default(0) @db.Decimal(10, 2)
+  total         Decimal       @db.Decimal(10, 2)
+  notes         String?
+
+  couponId   String?
+  couponCode String?
+
+  branchId String?
+
+  exchangeRateUsed      Decimal?        @db.Decimal(10, 4)
+  serviceQuoteId        String?
+  deliveryStatus        DeliveryStatus?
+  estimatedDeliveryDate DateTime?
+  deliveredAt           DateTime?
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer          Customer?          @relation(fields: [customerId], references: [id])
+  shippingAddress   CustomerAddress?   @relation(fields: [addressId], references: [id])
+  coupon            Coupon?            @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  branch            Branch?            @relation(fields: [branchId], references: [id])
+  serviceQuote      ServiceQuote?      @relation(fields: [serviceQuoteId], references: [id], onDelete: SetNull)
+  items             OrderItem[]
+  payments          Payment[]
+  accountReceivable AccountReceivable?
+  createdBy         User?              @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy         User?              @relation("OrderUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, orderNumber])
+  @@map("orders")
+}
+
+model OrderItem {
+  id          String        @id @default(uuid())
+  orderId     String
+  itemType    OrderItemType @default(PRODUCT)
+  productId   String?
+  serviceId   String?
+  name        String
+  description String?
+  sku         String?
+  quantity    Int
+  price       Decimal       @db.Decimal(10, 2)
+  discount    Decimal       @default(0) @db.Decimal(10, 2)
+  tax         Decimal       @default(0) @db.Decimal(10, 2)
+  subtotal    Decimal       @db.Decimal(10, 2)
+  total       Decimal       @db.Decimal(10, 2)
+  createdAt   DateTime      @default(now())
+
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id])
+  service Service? @relation(fields: [serviceId], references: [id])
+
+  @@map("order_items")
+}
+
+// ============= Branches =============
+enum BranchStatus {
+  ACTIVE
+  INACTIVE
+  CLOSED
+}
+
+model Branch {
+  id        String       @id @default(uuid())
+  tenantId  String
+  name      String
+  code      String
+  address   String?
+  city      String?
+  state     String?
+  zipCode   String?
+  phone     String?
+  email     String?
+  managerId String?
+  isMain    Boolean      @default(false)
+  status    BranchStatus @default(ACTIVE)
+  settings  Json?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  manager            User?               @relation("BranchManager", fields: [managerId], references: [id], onDelete: SetNull)
+  memberships        BranchMembership[]
+  inventory          BranchInventory[]
+  orders             Order[]
+  inventoryMovements InventoryMovement[]
+  cashSessions       CashSession[]
+
+  usersLastSelected  User[] @relation("UserLastBranch")
+
+  @@unique([tenantId, code])
+  @@map("branches")
+}
+
+model BranchMembership {
+  branchId   String
+  userId     String
+  isPrimary  Boolean  @default(false)
+  assignedAt DateTime @default(now())
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([branchId, userId])
+  @@map("branch_memberships")
+}
+
+model BranchInventory {
+  branchId  String
+  productId String
+  stock     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([branchId, productId])
+  @@map("branch_inventory")
+}
+
+// ============= Payments =============
+model Payment {
+  id                     String        @id @default(uuid())
+  orderId                String
+  paymentMethod          String
+  transactionId          String?
+  currency               String        @default("MXN")
+  amount                 Decimal       @db.Decimal(10, 2)
+  amountReceived         Decimal?      @db.Decimal(10, 2)
+  changeGiven            Decimal?      @db.Decimal(10, 2)
+  changeCurrency         String?
+  exchangeRateUsed       Decimal?      @db.Decimal(10, 4)
+  amountOriginalCurrency Decimal?      @db.Decimal(10, 2)
+  amountMxnEquivalent    Decimal?      @db.Decimal(10, 2)
+  status                 PaymentStatus @default(PENDING)
+  gatewayResponse        Json?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@map("payments")
+}
+
+// ============= Accounts Receivable (CxC) =============
+enum AccountReceivableStatus {
+  PENDIENTE
+  PARCIAL
+  PAGADO
+  VENCIDO
+}
+
+model AccountReceivable {
+  id          String                  @id @default(uuid())
+  tenantId    String
+  orderId     String                  @unique
+  customerId  String?
+  totalAmount Decimal                 @db.Decimal(10, 2)
+  balance     Decimal                 @db.Decimal(10, 2)
+  status      AccountReceivableStatus @default(PENDIENTE)
+  dueDate     DateTime
+  notes       String?
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+
+  tenant   Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  order    Order                      @relation(fields: [orderId], references: [id])
+  customer Customer?                  @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  payments AccountReceivablePayment[]
+
+  @@map("account_receivables")
+}
+
+model AccountReceivablePayment {
+  id                  String   @id @default(uuid())
+  accountReceivableId String
+  amount              Decimal  @db.Decimal(10, 2)
+  paymentDate         DateTime @default(now())
+  paymentMethod       String
+  reference           String?
+  notes               String?
+  createdAt           DateTime @default(now())
+
+  accountReceivable AccountReceivable @relation(fields: [accountReceivableId], references: [id], onDelete: Cascade)
+
+  @@map("account_receivable_payments")
+}
+
+// ============= Accounts Payable (CxP) =============
+
+enum AccountPayableStatus {
+  PENDIENTE
+  PARCIAL
+  PAGADO
+}
+
+enum SupplierPaymentMethod {
+  CASH
+  TRANSFER
+  CARD
+}
+
+enum CashSessionStatus {
+  ABIERTA
+  CERRADA
+}
+
+enum CashMovementType {
+  SALE
+  CXC_PAYMENT
+  SUPPLIER_PAYMENT
+  INCOME
+  EXPENSE
+}
+
+model CashSession {
+  id                  String            @id @default(uuid())
+  tenantId            String
+  branchId            String?
+  status              CashSessionStatus @default(ABIERTA)
+  exchangeRateUsdMxn  Decimal           @default(1) @db.Decimal(10, 4)
+  openingAmount       Decimal           @db.Decimal(10, 2)
+  openingAmountUsd    Decimal           @default(0) @db.Decimal(10, 2)
+  closingAmount       Decimal?          @db.Decimal(10, 2)
+  cashCounted         Decimal?          @db.Decimal(10, 2)
+  cashCountedUsd      Decimal?          @db.Decimal(10, 2)
+  difference          Decimal?          @db.Decimal(10, 2)
+  differenceUsd       Decimal?          @db.Decimal(10, 2)
+  notes               String?
+  openedById          String?
+  closedById          String?
+  openedAt            DateTime          @default(now())
+  closedAt            DateTime?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch    Branch?        @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  openedBy  User?          @relation("CashSessionOpenedBy", fields: [openedById], references: [id], onDelete: SetNull)
+  closedBy  User?          @relation("CashSessionClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+  movements CashMovement[]
+
+  @@map("cash_sessions")
+}
+
+model AccountPayable {
+  id              String               @id @default(uuid())
+  tenantId        String
+  purchaseOrderId String               @unique
+  supplierId      String
+  totalAmount     Decimal              @db.Decimal(10, 2)
+  balance         Decimal              @db.Decimal(10, 2)
+  status          AccountPayableStatus @default(PENDIENTE)
+  notes           String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder    @relation(fields: [purchaseOrderId], references: [id])
+  supplier      Supplier         @relation(fields: [supplierId], references: [id])
+  payments      SupplierPayment[]
+
+  @@map("accounts_payable")
+}
+
+model SupplierPayment {
+  id               String                @id @default(uuid())
+  accountPayableId String
+  amount           Decimal               @db.Decimal(10, 2)
+  paymentMethod    SupplierPaymentMethod
+  paymentDate      DateTime              @default(now())
+  reference        String?
+  notes            String?
+  createdById      String?
+  createdAt        DateTime              @default(now())
+
+  accountPayable AccountPayable @relation(fields: [accountPayableId], references: [id], onDelete: Cascade)
+  createdBy      User?          @relation("SupplierPaymentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  cashMovements  CashMovement[]
+
+  @@map("supplier_payments")
+}
+
+model CashMovement {
+  id                     String           @id @default(uuid())
+  tenantId               String
+  cashSessionId          String?
+  type                   CashMovementType
+  currency               String           @default("MXN")
+  amount                 Decimal          @db.Decimal(10, 2)
+  exchangeRateUsed       Decimal?         @db.Decimal(10, 4)
+  amountOriginalCurrency Decimal?         @db.Decimal(10, 2)
+  amountMxnEquivalent    Decimal?         @db.Decimal(10, 2)
+  paymentMethod          String
+  supplierPaymentId      String?          @unique
+  referenceId            String?
+  referenceType          String?
+  notes                  String?
+  createdById            String?
+  createdAt              DateTime         @default(now())
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cashSession     CashSession?     @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
+  supplierPayment SupplierPayment? @relation(fields: [supplierPaymentId], references: [id], onDelete: SetNull)
+  createdBy       User?            @relation("CashMovementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@map("cash_movements")
+}
+
+// ============= Permissions & Roles (tenant-scoped) =============
+
+model Permission {
+  id          String @id @default(uuid())
+  key         String @unique
+  name        String
+  description String?
+  module      String
+  action      String
+
+  rolePermissions RolePermission[]
+  userGrants      UserPermissionGrant[]
+
+  @@map("permissions")
+}
+
+model Role {
+  id          String  @id @default(uuid())
+  tenantId    String
+  name        String
+  description String?
+  isSystem    Boolean @default(false)
+  color       String? @default("#6366f1")
+
+  tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  permissions     RolePermission[]
+  userAssignments UserRoleAssignment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, name])
+  @@map("roles")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRoleAssignment {
+  userId     String
+  roleId     String
+  tenantId   String
+  assignedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_role_assignments")
+}
+
+model UserPermissionGrant {
+  userId       String
+  permissionId String
+  tenantId     String
+  granted      Boolean @default(true)
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, permissionId])
+  @@map("user_permission_grants")
+}

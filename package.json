@@ -1,0 +1,27 @@
+{
+  "name": "@ventasy/root",
+  "private": true,
+  "packageManager": "pnpm@10.22.0",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "@prisma/engines",
+      "@scarf/scarf",
+      "bcrypt",
+      "esbuild",
+      "msw",
+      "prisma",
+      "puppeteer",
+      "unrs-resolver"
+    ]
+  }
+}

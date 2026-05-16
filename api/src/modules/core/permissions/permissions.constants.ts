@@ -1,0 +1,79 @@
+﻿export interface PermissionDef {
+  key: string;
+  name: string;
+  description?: string;
+  module: string;
+  action: string;
+}
+
+export const ALL_PERMISSIONS: PermissionDef[] = [
+  // dashboard
+  { key: 'dashboard:view', name: 'Ver dashboard', module: 'dashboard', action: 'view' },
+  // pos
+  { key: 'pos:access',         name: 'Acceder al POS',               module: 'pos', action: 'access' },
+  { key: 'pos.quotes:create',  name: 'Crear cotizaciones desde POS',  module: 'pos', action: 'quotes:create' },
+  { key: 'pos.quotes:view',    name: 'Ver cotizaciones desde POS',    module: 'pos', action: 'quotes:view' },
+  { key: 'pos.quotes:load',    name: 'Cargar cotizaciones al carrito', module: 'pos', action: 'quotes:load' },
+  // products
+  { key: 'products:view',   name: 'Ver productos',      module: 'products', action: 'view'   },
+  { key: 'products:create', name: 'Crear productos',    module: 'products', action: 'create' },
+  { key: 'products:edit',   name: 'Editar productos',   module: 'products', action: 'edit'   },
+  { key: 'products:delete', name: 'Eliminar productos', module: 'products', action: 'delete' },
+  // categories
+  { key: 'categories:view',   name: 'Ver categorías',      module: 'categories', action: 'view'   },
+  { key: 'categories:create', name: 'Crear categorías',    module: 'categories', action: 'create' },
+  { key: 'categories:edit',   name: 'Editar categorías',   module: 'categories', action: 'edit'   },
+  { key: 'categories:delete', name: 'Eliminar categorías', module: 'categories', action: 'delete' },
+  // orders
+  { key: 'orders:view',   name: 'Ver ventas',    module: 'orders', action: 'view'   },
+  { key: 'orders:create', name: 'Crear ventas',  module: 'orders', action: 'create' },
+  { key: 'orders:edit',   name: 'Editar ventas', module: 'orders', action: 'edit'   },
+  // customers
+  { key: 'customers:view',   name: 'Ver clientes',      module: 'customers', action: 'view'   },
+  { key: 'customers:create', name: 'Crear clientes',    module: 'customers', action: 'create' },
+  { key: 'customers:edit',   name: 'Editar clientes',   module: 'customers', action: 'edit'   },
+  { key: 'customers:delete', name: 'Eliminar clientes', module: 'customers', action: 'delete' },
+  // coupons
+  { key: 'coupons:view',   name: 'Ver cupones',      module: 'coupons', action: 'view'   },
+  { key: 'coupons:create', name: 'Crear cupones',    module: 'coupons', action: 'create' },
+  { key: 'coupons:edit',   name: 'Editar cupones',   module: 'coupons', action: 'edit'   },
+  { key: 'coupons:delete', name: 'Eliminar cupones', module: 'coupons', action: 'delete' },
+  // users
+  { key: 'users:view',   name: 'Ver usuarios',      module: 'users', action: 'view'   },
+  { key: 'users:create', name: 'Crear usuarios',    module: 'users', action: 'create' },
+  { key: 'users:edit',   name: 'Editar usuarios',   module: 'users', action: 'edit'   },
+  { key: 'users:delete', name: 'Eliminar usuarios', module: 'users', action: 'delete' },
+  // roles
+  { key: 'roles:view',   name: 'Ver roles',      module: 'roles', action: 'view'   },
+  { key: 'roles:create', name: 'Crear roles',    module: 'roles', action: 'create' },
+  { key: 'roles:edit',   name: 'Editar roles',   module: 'roles', action: 'edit'   },
+  { key: 'roles:delete', name: 'Eliminar roles', module: 'roles', action: 'delete' },
+  // suppliers
+  { key: 'suppliers:view',   name: 'Ver proveedores',      module: 'suppliers', action: 'view'   },
+  { key: 'suppliers:create', name: 'Crear proveedores',    module: 'suppliers', action: 'create' },
+  { key: 'suppliers:edit',   name: 'Editar proveedores',   module: 'suppliers', action: 'edit'   },
+  { key: 'suppliers:delete', name: 'Eliminar proveedores', module: 'suppliers', action: 'delete' },
+  // purchases
+  { key: 'purchases:view',    name: 'Ver compras',       description: 'Ver listado y detalle de órdenes de compra', module: 'purchases', action: 'view'    },
+  { key: 'purchases:create',  name: 'Crear compras',     description: 'Crear nuevas órdenes de compra',             module: 'purchases', action: 'create'  },
+  { key: 'purchases:edit',    name: 'Editar compras',    description: 'Editar órdenes en borrador',                 module: 'purchases', action: 'edit'    },
+  { key: 'purchases:send',    name: 'Enviar órdenes',    description: 'Confirmar y enviar órdenes de compra',       module: 'purchases', action: 'send'    },
+  { key: 'purchases:receive', name: 'Recibir mercancía', description: 'Registrar recepciones de mercancía',         module: 'purchases', action: 'receive' },
+  { key: 'purchases:cancel',  name: 'Cancelar órdenes',  description: 'Cancelar órdenes de compra',                 module: 'purchases', action: 'cancel'  },
+  // receivables (CxC)
+  { key: 'receivables:view', name: 'Ver CxC',          description: 'Ver cuentas por cobrar',      module: 'receivables', action: 'view' },
+  { key: 'receivables:pay',  name: 'Registrar pagos',  description: 'Registrar pagos en CxC',      module: 'receivables', action: 'pay'  },
+  // payables (CxP)
+  { key: 'payables:view', name: 'Ver CxP',            description: 'Ver cuentas por pagar',           module: 'payables', action: 'view' },
+  { key: 'payables:pay',  name: 'Pagar a proveedores', description: 'Registrar pagos a proveedores',  module: 'payables', action: 'pay'  },
+  // cash sessions (Corte de caja)
+  { key: 'cash:view',   name: 'Ver caja',        description: 'Ver sesiones y cortes de caja',       module: 'cash', action: 'view'   },
+  { key: 'cash:manage', name: 'Gestionar caja',  description: 'Abrir y cerrar sesiones de caja',     module: 'cash', action: 'manage' },
+  // reports
+  { key: 'reports:view', name: 'Ver reportes', module: 'reports', action: 'view' },
+];
+
+export const MODULES_ORDER = [
+  'dashboard', 'pos', 'products', 'categories', 'orders',
+  'customers', 'receivables', 'suppliers', 'purchases', 'payables', 'cash', 'coupons', 'users', 'roles', 'reports',
+];
