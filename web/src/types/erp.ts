@@ -189,3 +189,4 @@ export type ModuleId =
   | 'roles'
   | 'servicios'
   | 'cotizaciones'
+  | 'ordenes-trabajo'

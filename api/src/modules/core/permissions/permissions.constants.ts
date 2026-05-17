@@ -73,6 +73,11 @@ export const ALL_PERMISSIONS: PermissionDef[] = [
   { key: 'branches:view',      name: 'Ver sucursales',              description: 'Ver listado y detalle de sucursales',       module: 'branches', action: 'view'      },
   { key: 'branches:manage',    name: 'Gestionar sucursales',        description: 'Crear, editar y eliminar sucursales',        module: 'branches', action: 'manage'    },
   { key: 'branches:inventory', name: 'Gestionar inventario sucursal', description: 'Actualizar y transferir stock por sucursal', module: 'branches', action: 'inventory' },
+  // work orders
+  { key: 'work-orders:view',   name: 'Ver órdenes de trabajo',    description: 'Ver listado y detalle de órdenes de trabajo', module: 'work-orders', action: 'view'   },
+  { key: 'work-orders:create', name: 'Crear órdenes de trabajo',  description: 'Crear nuevas órdenes de trabajo',             module: 'work-orders', action: 'create' },
+  { key: 'work-orders:edit',   name: 'Editar órdenes de trabajo', description: 'Editar y actualizar órdenes de trabajo',      module: 'work-orders', action: 'edit'   },
+  { key: 'work-orders:assign', name: 'Asignar técnicos',          description: 'Asignar usuarios a órdenes de trabajo',       module: 'work-orders', action: 'assign' },
   // reports
   { key: 'reports:view', name: 'Ver reportes', module: 'reports', action: 'view' },
 ];

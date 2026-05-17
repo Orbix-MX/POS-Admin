@@ -20,6 +20,7 @@ const ALL_NAV = [
       { module: 'proveedores',label: 'Proveedores', icon: Truck,           path: '/proveedores'},
       { module: 'servicios', label: 'Servicios',    icon: Wrench,          path: '/servicios' },
       { module: 'cotizaciones',label: 'Cotizaciones',icon: FileText,       path: '/cotizaciones'},
+      { module: 'ordenes-trabajo', label: 'Órdenes de Trabajo', icon: Wrench, path: '/ordenes-trabajo' },
     ],
   },
   {

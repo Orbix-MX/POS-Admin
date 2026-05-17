@@ -61,6 +61,7 @@ model Tenant {
   cashMovements      CashMovement[]
   services           Service[]
   serviceQuotes      ServiceQuote[]
+  workOrders         WorkOrder[]
   auditLogs          AuditLog[]
 
   usersLastSelected  User[] @relation("UserLastTenant")
@@ -136,6 +137,8 @@ model User {
   serviceQuotesCreated      ServiceQuote[]     @relation("ServiceQuoteCreatedBy")
   ordersCancelled           Order[]            @relation("OrderCancelledBy")
   auditLogs                 AuditLog[]         @relation("AuditLogUser")
+  workOrdersCreated         WorkOrder[]        @relation("WorkOrderCreatedBy")
+  workOrderAssignments      WorkOrderAssignment[] @relation("WorkOrderAssignments")
 
   roleAssignments  UserRoleAssignment[]
   permissionGrants UserPermissionGrant[]
@@ -196,6 +199,7 @@ model Customer {
   orders             Order[]
   accountReceivables AccountReceivable[]
   serviceQuotes      ServiceQuote[]
+  workOrders         WorkOrder[]
   createdBy          User?               @relation("CustomerCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy          User?               @relation("CustomerUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
@@ -556,6 +560,7 @@ model Service {
   updatedBy  User?              @relation("ServiceUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   quoteItems ServiceQuoteItem[]
   orderItems OrderItem[]
+  workOrders WorkOrder[]
 
   @@map("services")
 }
@@ -587,11 +592,12 @@ model ServiceQuote {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer  Customer           @relation(fields: [customerId], references: [id])
-  items     ServiceQuoteItem[]
-  orders    Order[]
-  createdBy User?              @relation("ServiceQuoteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  tenant         Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer       Customer           @relation(fields: [customerId], references: [id])
+  items          ServiceQuoteItem[]
+  orders         Order[]
+  workOrderLinks WorkOrderQuote[]
+  createdBy      User?              @relation("ServiceQuoteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, quoteNumber])
   @@map("service_quotes")
@@ -1068,4 +1074,66 @@ model UserPermissionGrant {
 
   @@id([userId, permissionId])
   @@map("user_permission_grants")
+}
+
+// ============= Work Orders =============
+
+enum WorkOrderStatus {
+  PENDING
+  IN_PROGRESS
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+model WorkOrder {
+  id          String          @id @default(uuid())
+  tenantId    String
+  orderNumber String
+  customerId  String
+  serviceId   String?
+  description String
+  status      WorkOrderStatus @default(PENDING)
+  dueDate     DateTime?
+  notes       String?
+
+  createdById String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  tenant      Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer    Customer              @relation(fields: [customerId], references: [id])
+  service     Service?              @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  createdBy   User?                 @relation("WorkOrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  assignments WorkOrderAssignment[]
+  quoteLink   WorkOrderQuote?
+
+  @@unique([tenantId, orderNumber])
+  @@map("work_orders")
+}
+
+model WorkOrderAssignment {
+  id          String    @id @default(uuid())
+  workOrderId String
+  userId      String
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  notes       String?
+  createdAt   DateTime  @default(now())
+
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  user      User      @relation("WorkOrderAssignments", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("work_order_assignments")
+}
+
+model WorkOrderQuote {
+  workOrderId    String @unique
+  serviceQuoteId String
+
+  workOrder    WorkOrder    @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  serviceQuote ServiceQuote @relation(fields: [serviceQuoteId], references: [id], onDelete: Cascade)
+
+  @@id([workOrderId, serviceQuoteId])
+  @@map("work_order_quotes")
 }

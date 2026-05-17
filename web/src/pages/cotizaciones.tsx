@@ -1,4 +1,5 @@
 ﻿import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   FileText, Plus, Search, ChevronRight, Check, X,
   User, Calendar, Package, Wrench, Download, ShoppingCart, RefreshCw,
@@ -215,13 +216,14 @@ function CreateQuoteModal({
 // ─── Detail Modal ─────────────────────────────────────────────────────────────
 
 function DetailModal({
-  quote, onClose, onApprove, onUpdateStatus, onOpenInPOS,
+  quote, onClose, onApprove, onUpdateStatus, onOpenInPOS, onOpenWorkOrder,
 }: {
   quote: ServiceQuote
   onClose: () => void
   onApprove: (id: string) => void
   onUpdateStatus: (id: string, status: string) => void
   onOpenInPOS: (id: string) => void
+  onOpenWorkOrder: (quoteId: string, customerId: string) => void
 }) {
   const [downloadingPdf, setDownloadingPdf] = useState(false)
 
@@ -330,16 +332,10 @@ function DetailModal({
         {/* Actions */}
         <div className="flex gap-2 flex-wrap">
           {quote.status === 'DRAFT' && (
-            <>
-              <button onClick={() => onUpdateStatus(quote.id, 'SENT')}
-                className="flex-1 px-3 py-2 border border-border rounded-lg text-[11px] font-semibold text-foreground bg-card hover:bg-muted cursor-pointer">
-                Marcar enviada
-              </button>
-              <button onClick={() => onApprove(quote.id)}
-                className="flex-1 px-3 py-2 bg-green-600 text-white rounded-lg text-[11px] font-bold cursor-pointer flex items-center justify-center gap-1">
-                <Check className="w-3 h-3" /> Aprobar
-              </button>
-            </>
+            <button onClick={() => onUpdateStatus(quote.id, 'SENT')}
+              className="w-full px-3 py-2 bg-blue-600 text-white rounded-lg text-[11px] font-bold cursor-pointer flex items-center justify-center gap-1.5">
+              <ChevronRight className="w-3.5 h-3.5" /> Marcar como enviada
+            </button>
           )}
           {quote.status === 'SENT' && (
             <>
@@ -354,10 +350,19 @@ function DetailModal({
             </>
           )}
           {quote.status === 'APPROVED' && (
-            <button onClick={() => onOpenInPOS(quote.id)}
-              className="w-full px-3 py-2.5 bg-primary text-primary-foreground rounded-lg text-[12px] font-bold cursor-pointer flex items-center justify-center gap-2">
-              <ShoppingCart className="w-4 h-4" /> Abrir en POS
-            </button>
+            <>
+              {quote.items.some((i) => i.itemType === 'SERVICE') && (
+                <button
+                  onClick={() => onOpenWorkOrder(quote.id, quote.customerId)}
+                  className="flex-1 px-3 py-2.5 border border-border rounded-lg text-[11px] font-bold cursor-pointer flex items-center justify-center gap-1.5 text-foreground bg-card hover:bg-muted">
+                  <Wrench className="w-3.5 h-3.5" /> Abrir orden de trabajo
+                </button>
+              )}
+              <button onClick={() => onOpenInPOS(quote.id)}
+                className="flex-1 px-3 py-2.5 bg-primary text-primary-foreground rounded-lg text-[12px] font-bold cursor-pointer flex items-center justify-center gap-2">
+                <ShoppingCart className="w-4 h-4" /> Abrir en POS
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -368,6 +373,7 @@ function DetailModal({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function Cotizaciones() {
+  const navigate = useNavigate()
   const {
     loading, error,
     search, setSearch,
@@ -383,6 +389,10 @@ export function Cotizaciones() {
     openInPOS,
     fmt: fmtLocal,
   } = useCotizaciones()
+
+  function handleOpenWorkOrder(quoteId: string, customerId: string) {
+    navigate(`/ordenes-trabajo?quoteId=${quoteId}&customerId=${customerId}`)
+  }
 
   const columns = useMemo((): Column<ServiceQuote>[] => [
     {
@@ -552,6 +562,7 @@ export function Cotizaciones() {
           onApprove={handleApprove}
           onUpdateStatus={handleUpdateStatus}
           onOpenInPOS={openInPOS}
+          onOpenWorkOrder={handleOpenWorkOrder}
         />
       )}
     </div>
