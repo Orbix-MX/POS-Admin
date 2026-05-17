@@ -54,6 +54,10 @@ export class CapabilitiesResponseDto {
   @ApiProperty({ enum: TenantPlan }) plan: TenantPlan;
   @ApiProperty({ type: [String] }) enabledModules: string[];
   @ApiProperty({ type: [String] }) effectiveModules: string[];
+  @ApiPropertyOptional({ description: 'Max active users; null = unlimited', nullable: true })
+  maxUsers: number | null;
+  @ApiProperty() activeUsers: number;
+  @ApiProperty() overUserLimit: boolean;
 }
 
 export class SelectBranchResponseDto {

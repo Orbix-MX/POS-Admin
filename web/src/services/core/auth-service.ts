@@ -53,6 +53,9 @@ export interface CapabilitiesResponse {
   plan: string
   enabledModules: string[]
   effectiveModules: string[]
+  maxUsers: number | null
+  activeUsers: number
+  overUserLimit: boolean
 }
 
 export interface ProfileResponse {

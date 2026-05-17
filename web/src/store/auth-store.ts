@@ -20,6 +20,7 @@ interface AuthState {
   error: string | null
   plan: string | null
   enabledModules: string[]
+  overUserLimit: boolean
   capabilitiesLoaded: boolean
 
   init: () => Promise<void>
@@ -37,6 +38,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   error: null,
   plan: null,
   enabledModules: [],
+  overUserLimit: false,
   capabilitiesLoaded: !getAccessToken(), // true if no token (not authenticated)
 
   init: async () => {
@@ -46,6 +48,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({
         plan: caps.plan ?? null,
         enabledModules: caps.effectiveModules ?? [],
+        overUserLimit: caps.overUserLimit ?? false,
         capabilitiesLoaded: true,
         user: profile.user,
       })
@@ -114,6 +117,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       error: null,
       plan: null,
       enabledModules: [],
+      overUserLimit: false,
       capabilitiesLoaded: true,
     })
   },

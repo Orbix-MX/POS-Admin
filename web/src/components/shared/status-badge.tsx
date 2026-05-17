@@ -8,6 +8,8 @@ const STATUS_MAP: Record<string, { bg: string; color: string; label: string }> =
   "Cancelado": { bg: "#f3f4f6", color: "#6b7280", label: "Cancelado" },
   "Activo": { bg: "#dcfce7", color: "#166534", label: "Activo" },
   "Inactivo": { bg: "#f3f4f6", color: "#6b7280", label: "Inactivo" },
+  "Suspendido": { bg: "#fee2e2", color: "#991b1b", label: "Suspendido" },
+  "Invitado": { bg: "#dbeafe", color: "#1e40af", label: "Invitado" },
   "OK": { bg: "#dcfce7", color: "#166534", label: "OK" },
   "Bajo": { bg: "#fef9c3", color: "#854d0e", label: "Stock Bajo" },
   "Agotado": { bg: "#fee2e2", color: "#991b1b", label: "Agotado" },

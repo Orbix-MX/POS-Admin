@@ -23,6 +23,7 @@ import {
   CapabilitiesResponseDto,
 } from './dto/auth-response.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
+import { PlanLimitsService } from '../../../common/services/plan-limits.service';
 import { TenantMembership, Tenant, TenantRole, TenantPlan } from '@prisma/client';
 import { getModulesForPlan } from '@ventasy/types';
 
@@ -35,6 +36,7 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private tokenBlacklist: TokenBlacklistService,
+    private planLimits: PlanLimitsService,
   ) {}
 
   async register(registerDto: RegisterDto): Promise<AuthResponseDto> {
@@ -184,6 +186,19 @@ export class AuthService {
       throw new BadRequestException('Tenant is not available');
     }
 
+    // Per-tenant access gate. Global User.status is checked at login; here we
+    // block users whose membership in THIS tenant is not active.
+    if (membership.status !== 'ACTIVE') {
+      const messages: Record<string, string> = {
+        INACTIVE: 'Tu acceso a esta empresa está desactivado. Contacta al administrador.',
+        SUSPENDED: 'Tu acceso a esta empresa está suspendido. Contacta al administrador.',
+        INVITED: 'Tu invitación a esta empresa está pendiente de activación.',
+      };
+      throw new UnauthorizedException(
+        messages[membership.status] ?? 'Acceso a esta empresa no disponible.',
+      );
+    }
+
     await this.prisma.user.update({
       where: { id: userId },
       data: {
@@ -285,10 +300,25 @@ export class AuthService {
     return { branchId, accessToken };
   }
 
-  getCapabilities(plan: TenantPlan, enabledModules: string[]): CapabilitiesResponseDto {
+  async getCapabilities(
+    plan: TenantPlan,
+    enabledModules: string[],
+    tenantId?: string,
+  ): Promise<CapabilitiesResponseDto> {
     const planModules = getModulesForPlan(plan) as unknown as string[];
     const effectiveModules = [...new Set([...planModules, ...enabledModules])];
-    return { plan, enabledModules, effectiveModules };
+
+    let maxUsers: number | null = null;
+    let activeUsers = 0;
+    let overUserLimit = false;
+    if (tenantId) {
+      const cap = await this.planLimits.getCapacity(tenantId);
+      maxUsers = cap.maxUsers;
+      activeUsers = cap.activeUsers;
+      overUserLimit = cap.overUserLimit;
+    }
+
+    return { plan, enabledModules, effectiveModules, maxUsers, activeUsers, overUserLimit };
   }
 
   private generateToken(payload: JwtPayload): string {

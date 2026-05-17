@@ -5,6 +5,7 @@
 } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
+import { PlanLimitsService } from '../../../common/services/plan-limits.service';
 import { PasswordUtil } from '../../../common/utils/password.util';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
@@ -15,6 +16,7 @@ export class TenantsService {
   constructor(
     private prisma: PrismaService,
     private tenantContext: TenantContextService,
+    private planLimits: PlanLimitsService,
   ) {}
 
   async create(dto: CreateTenantDto): Promise<Tenant> {
@@ -28,6 +30,7 @@ export class TenantsService {
           slug: dto.slug,
           plan: dto.plan,
           settings: dto.settings,
+          userLimitOverride: dto.userLimitOverride,
           // 30-day trial on creation
           trialEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         },
@@ -51,7 +54,13 @@ export class TenantsService {
         }
 
         await tx.tenantMembership.create({
-          data: { tenantId: tenant.id, userId: user.id, role: 'OWNER' },
+          data: { tenantId: tenant.id, userId: user.id, role: 'OWNER', status: 'ACTIVE' },
+        });
+
+        // Protect the owner from accidental deactivation/removal.
+        await tx.tenant.update({
+          where: { id: tenant.id },
+          data: { ownerUserId: user.id },
         });
       }
 
@@ -94,7 +103,7 @@ export class TenantsService {
       if (conflict) throw new ConflictException('Slug already in use');
     }
 
-    return this.prisma.tenant.update({
+    const updated = await this.prisma.tenant.update({
       where: { id },
       data: {
         ...(dto.name && { name: dto.name }),
@@ -102,8 +111,18 @@ export class TenantsService {
         ...(dto.plan && { plan: dto.plan }),
         ...(dto.status && { status: dto.status }),
         ...(dto.settings !== undefined && { settings: dto.settings }),
+        ...(dto.userLimitOverride !== undefined && { userLimitOverride: dto.userLimitOverride }),
       },
     });
+
+    // Downgrade-safe: never deactivate users. Just flag the tenant when its
+    // active users now exceed the new limit (soft enforcement).
+    if (dto.plan !== undefined || dto.userLimitOverride !== undefined) {
+      await this.planLimits.recomputeOverLimit(id);
+      return this.prisma.tenant.findUniqueOrThrow({ where: { id } });
+    }
+
+    return updated;
   }
 
   async remove(id: string): Promise<void> {
@@ -114,19 +133,35 @@ export class TenantsService {
   /** Add a user to the current tenant */
   async addMember(userId: string, role = 'STAFF' as any): Promise<void> {
     const tenantId = this.tenantContext.requireTenantId();
+    const existing = await this.prisma.tenantMembership.findUnique({
+      where: { tenantId_userId: { tenantId, userId } },
+      select: { status: true },
+    });
+    // A brand-new membership defaults to ACTIVE and consumes a seat.
+    if (!existing) await this.planLimits.assertCanAddActiveUser(tenantId);
+
     await this.prisma.tenantMembership.upsert({
       where: { tenantId_userId: { tenantId, userId } },
       update: { role },
       create: { tenantId, userId, role },
     });
+    if (!existing) await this.planLimits.recomputeOverLimit(tenantId);
   }
 
   /** Remove a user from the current tenant */
   async removeMember(userId: string): Promise<void> {
     const tenantId = this.tenantContext.requireTenantId();
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { ownerUserId: true },
+    });
+    if (tenant?.ownerUserId === userId) {
+      throw new ConflictException('No puedes remover al propietario de la empresa.');
+    }
     await this.prisma.tenantMembership.delete({
       where: { tenantId_userId: { tenantId, userId } },
     });
+    await this.planLimits.recomputeOverLimit(tenantId);
   }
 
   /** Get current tenant settings JSON */

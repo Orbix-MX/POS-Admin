@@ -2,6 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { AuditContextService } from './context/audit-context.service';
 import { TenantContextService } from './context/tenant-context.service';
 import { AuditService } from './services/audit.service';
+import { PlanLimitsService } from './services/plan-limits.service';
 
 /**
  * Global module so that AuditContextService and TenantContextService
@@ -12,7 +13,7 @@ import { AuditService } from './services/audit.service';
  */
 @Global()
 @Module({
-  providers: [AuditContextService, TenantContextService, AuditService],
-  exports: [AuditContextService, TenantContextService, AuditService],
+  providers: [AuditContextService, TenantContextService, AuditService, PlanLimitsService],
+  exports: [AuditContextService, TenantContextService, AuditService, PlanLimitsService],
 })
 export class CommonModule {}

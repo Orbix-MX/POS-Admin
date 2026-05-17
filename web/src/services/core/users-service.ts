@@ -1,14 +1,24 @@
 import { api } from '@/lib/api-client'
 
+export type MembershipStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'INVITED'
+
 interface ApiUser {
   id: string
   email: string
   firstName: string
   lastName: string
   role: 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'STAFF'
-  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED'
+  status: MembershipStatus
+  isOwner?: boolean
   createdAt: string
   _count?: { roleAssignments: number; permissionGrants: number }
+}
+
+export interface UserCapacity {
+  maxUsers: number | null
+  activeUsers: number
+  overUserLimit: boolean
+  hasCapacity: boolean
 }
 
 interface PaginatedResponse<T> {
@@ -22,8 +32,9 @@ export interface Usuario {
   email: string
   rol: string
   rolRaw: 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'STAFF'
-  estado: 'Activo' | 'Inactivo' | 'Suspendido'
-  statusRaw: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED'
+  estado: 'Activo' | 'Inactivo' | 'Suspendido' | 'Invitado'
+  statusRaw: MembershipStatus
+  isOwner: boolean
   desde: string
   firstName: string
   lastName: string
@@ -37,10 +48,11 @@ const ROL_LABELS: Record<string, string> = {
   STAFF: 'Personal',
 }
 
-const STATUS_MAP: Record<string, 'Activo' | 'Inactivo' | 'Suspendido'> = {
+const STATUS_MAP: Record<MembershipStatus, 'Activo' | 'Inactivo' | 'Suspendido' | 'Invitado'> = {
   ACTIVE: 'Activo',
   INACTIVE: 'Inactivo',
   SUSPENDED: 'Suspendido',
+  INVITED: 'Invitado',
 }
 
 function mapUser(u: ApiUser): Usuario {
@@ -52,6 +64,7 @@ function mapUser(u: ApiUser): Usuario {
     rolRaw: u.role,
     estado: STATUS_MAP[u.status] ?? 'Activo',
     statusRaw: u.status,
+    isOwner: u.isOwner ?? false,
     desde: new Date(u.createdAt).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' }),
     firstName: u.firstName,
     lastName: u.lastName,
@@ -64,7 +77,7 @@ export interface CreateUsuarioInput {
   firstName: string
   lastName: string
   role: 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'STAFF'
-  status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED'
+  status?: MembershipStatus
 }
 
 export interface UpdateUsuarioInput {
@@ -72,7 +85,7 @@ export interface UpdateUsuarioInput {
   firstName?: string
   lastName?: string
   role?: 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'STAFF'
-  status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED'
+  status?: MembershipStatus
 }
 
 export async function fetchUsuarios(): Promise<Usuario[]> {
@@ -101,4 +114,19 @@ export async function deleteUsuario(id: string): Promise<void> {
 
 export async function setUserRoles(id: string, roleIds: string[]): Promise<void> {
   await api.put(`/users/${id}/roles`, { roleIds })
+}
+
+export async function activateUsuario(id: string): Promise<Usuario> {
+  const { data } = await api.patch<ApiUser>(`/users/${id}/activate`)
+  return mapUser(data)
+}
+
+export async function deactivateUsuario(id: string): Promise<Usuario> {
+  const { data } = await api.patch<ApiUser>(`/users/${id}/deactivate`)
+  return mapUser(data)
+}
+
+export async function fetchUserCapacity(): Promise<UserCapacity> {
+  const { data } = await api.get<UserCapacity>('/users/capacity')
+  return data
 }
