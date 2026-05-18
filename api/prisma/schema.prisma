@@ -4,7 +4,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
+  directUrl = env("DIRECT_URL")
 }
 
 // ============= Tenants =============
@@ -85,6 +86,7 @@ model Tenant {
   auditLogs          AuditLog[]
 
   usersLastSelected  User[] @relation("UserLastTenant")
+  employees          Employee[]
 
   owner User? @relation("TenantOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
 
@@ -162,6 +164,8 @@ model User {
   auditLogs                 AuditLog[]         @relation("AuditLogUser")
   workOrdersCreated         WorkOrder[]        @relation("WorkOrderCreatedBy")
   workOrderAssignments      WorkOrderAssignment[] @relation("WorkOrderAssignments")
+  employeesCreated          Employee[]         @relation("EmployeeCreatedBy")
+  employeesUpdated          Employee[]         @relation("EmployeeUpdatedBy")
 
   roleAssignments  UserRoleAssignment[]
   permissionGrants UserPermissionGrant[]
@@ -1099,6 +1103,55 @@ model UserPermissionGrant {
 
   @@id([userId, permissionId])
   @@map("user_permission_grants")
+}
+
+// ============= Capital Humano - Employees =============
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  ON_LEAVE
+}
+
+enum ContractType {
+  FULL_TIME
+  PART_TIME
+  CONTRACTOR
+  TEMPORARY
+}
+
+model Employee {
+  id             String         @id @default(uuid())
+  tenantId       String
+  employeeNumber String
+  firstName      String
+  lastName       String
+  email          String
+  phone          String?
+  birthDate      DateTime?
+  curp           String?
+  rfc            String?
+  department     String?
+  position       String?
+  contractType   ContractType   @default(FULL_TIME)
+  hireDate       DateTime       @default(now())
+  salary         Decimal?       @db.Decimal(12, 2)
+  status         EmployeeStatus @default(ACTIVE)
+  notes          String?
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User?  @relation("EmployeeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User?  @relation("EmployeeUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, employeeNumber])
+  @@unique([tenantId, email])
+  @@map("employees")
 }
 
 // ============= Work Orders =============

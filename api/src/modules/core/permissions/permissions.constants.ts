@@ -78,6 +78,11 @@ export const ALL_PERMISSIONS: PermissionDef[] = [
   { key: 'work-orders:create', name: 'Crear órdenes de trabajo',  description: 'Crear nuevas órdenes de trabajo',             module: 'work-orders', action: 'create' },
   { key: 'work-orders:edit',   name: 'Editar órdenes de trabajo', description: 'Editar y actualizar órdenes de trabajo',      module: 'work-orders', action: 'edit'   },
   { key: 'work-orders:assign', name: 'Asignar técnicos',          description: 'Asignar usuarios a órdenes de trabajo',       module: 'work-orders', action: 'assign' },
+  // employees (capital humano)
+  { key: 'employees:view',   name: 'Ver empleados',      description: 'Ver listado y detalle de empleados', module: 'employees', action: 'view'   },
+  { key: 'employees:create', name: 'Dar de alta empleados', description: 'Registrar nuevos empleados',       module: 'employees', action: 'create' },
+  { key: 'employees:edit',   name: 'Editar empleados',   description: 'Editar datos de empleados',           module: 'employees', action: 'edit'   },
+  { key: 'employees:delete', name: 'Dar de baja empleados', description: 'Desactivar empleados',             module: 'employees', action: 'delete' },
   // reports
   { key: 'reports:view', name: 'Ver reportes', module: 'reports', action: 'view' },
 ];
@@ -85,5 +90,5 @@ export const ALL_PERMISSIONS: PermissionDef[] = [
 export const MODULES_ORDER = [
   'dashboard', 'pos', 'products', 'categories', 'orders',
   'customers', 'receivables', 'suppliers', 'purchases', 'payables', 'cash', 'coupons',
-  'branches', 'users', 'roles', 'reports',
+  'employees', 'branches', 'users', 'roles', 'reports',
 ];

@@ -172,6 +172,35 @@ export interface CarritoItem extends POSProducto {
   qty: number
 }
 
+export interface Empleado {
+  id: string
+  // Campos de display (UI)
+  nombre: string
+  puesto: string
+  departamento: string
+  email: string
+  telefono: string
+  numEmpleado: string
+  tipoContrato: string
+  salario: string
+  estado: 'Activo' | 'Inactivo' | 'Suspendido' | 'En permiso'
+  fechaIngreso: string
+  // Campos raw del API (para edición)
+  firstName?: string
+  lastName?: string
+  phone?: string | null
+  department?: string | null
+  position?: string | null
+  contractType?: 'FULL_TIME' | 'PART_TIME' | 'CONTRACTOR' | 'TEMPORARY'
+  status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'ON_LEAVE'
+  hireDate?: string
+  birthDate?: string | null
+  curp?: string | null
+  rfc?: string | null
+  notes?: string | null
+  salaryRaw?: number | null
+}
+
 export type ModuleId =
   | 'dashboard'
   | 'ventas'
@@ -190,3 +219,4 @@ export type ModuleId =
   | 'servicios'
   | 'cotizaciones'
   | 'ordenes-trabajo'
+  | 'empleados'

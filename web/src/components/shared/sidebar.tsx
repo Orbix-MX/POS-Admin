@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, ShoppingBag, ShoppingCart, Package,
   Users, Truck, FileText, Settings, Shield,
-  ChevronDown, LogOut, Monitor, Landmark, Receipt, TrendingUp, Wrench,
+  ChevronDown, LogOut, Monitor, Landmark, Receipt, TrendingUp, Wrench, UserCheck,
 } from 'lucide-react'
 import { useERPStore } from '@/store/erp-store'
 import { useAuthStore } from '@/store/auth-store'
@@ -21,6 +21,7 @@ const ALL_NAV = [
       { module: 'servicios', label: 'Servicios',    icon: Wrench,          path: '/servicios' },
       { module: 'cotizaciones',label: 'Cotizaciones',icon: FileText,       path: '/cotizaciones'},
       { module: 'ordenes-trabajo', label: 'Órdenes de Trabajo', icon: Wrench, path: '/ordenes-trabajo' },
+      { module: 'empleados', label: 'Capital Humano', icon: UserCheck, path: '/empleados' },
     ],
   },
   {

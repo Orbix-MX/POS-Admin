@@ -24,6 +24,7 @@ import { POS } from '@/pages/pos'
 import { Servicios } from '@/pages/servicios'
 import { Cotizaciones } from '@/pages/cotizaciones'
 import { OrdenesTrabajo } from '@/pages/ordenes-trabajo'
+import { Empleados } from '@/pages/empleados'
 import { Download } from 'lucide-react'
 import { useLocation } from 'react-router-dom'
 import type { ModuleId } from '@/types/erp'
@@ -47,6 +48,7 @@ const PATH_TO_MODULE: Record<string, ModuleId> = {
   '/servicios': 'servicios',
   '/cotizaciones': 'cotizaciones',
   '/ordenes-trabajo': 'ordenes-trabajo',
+  '/empleados': 'empleados',
 }
 
 function ModuleRoute({ module, children }: { module: string; children: ReactNode }) {
@@ -104,6 +106,7 @@ function AppLayout() {
             <Route path="/servicios" element={<ModuleRoute module="servicios"><Servicios /></ModuleRoute>} />
             <Route path="/cotizaciones" element={<ModuleRoute module="cotizaciones"><Cotizaciones /></ModuleRoute>} />
             <Route path="/ordenes-trabajo" element={<ModuleRoute module="ordenes-trabajo"><OrdenesTrabajo /></ModuleRoute>} />
+            <Route path="/empleados" element={<ModuleRoute module="empleados"><Empleados /></ModuleRoute>} />
           </Routes>
         </div>
       </div>
