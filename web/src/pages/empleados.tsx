@@ -30,6 +30,7 @@ export function Empleados() {
     page, setPage, modalOpen, editModalOpen, selected, setSelected,
     form, setForm, editForm, setEditForm,
     filtered, pageData, stats, saving,
+    formErrors, editErrors, apiError,
     handleSave, handleOpenNew, handleCloseModal,
     handleOpenEdit, handleCloseEdit, handleUpdate, handleDelete,
     loadEmpleados,
@@ -177,12 +178,18 @@ export function Empleados() {
 
       {/* New employee modal */}
       <FormModal open={modalOpen} onClose={handleCloseModal} title="Alta de Empleado">
+        {apiError && (
+          <div className="sticky top-0 z-10 mb-4 px-3 py-2.5 bg-red-50 dark:bg-red-950/30 border border-red-300 dark:border-red-700 rounded-lg flex items-start gap-2">
+            <span className="text-red-500 font-bold text-sm mt-px">!</span>
+            <span className="text-[12px] text-red-600 dark:text-red-400 leading-snug">{apiError}</span>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-x-4">
-          <FormField label="Núm. Empleado" value={form.employeeNumber} onChange={v => setForm(p => ({ ...p, employeeNumber: v }))} />
+          <FormField label="Núm. Empleado *" value={form.employeeNumber} onChange={v => setForm(p => ({ ...p, employeeNumber: v }))} error={formErrors.employeeNumber} />
           <FormField label="Fecha de Ingreso" type="date" value={form.hireDate} onChange={v => setForm(p => ({ ...p, hireDate: v }))} />
-          <FormField label="Nombre(s)" value={form.firstName} onChange={v => setForm(p => ({ ...p, firstName: v }))} />
-          <FormField label="Apellidos" value={form.lastName} onChange={v => setForm(p => ({ ...p, lastName: v }))} />
-          <FormField label="Email" type="email" value={form.email} onChange={v => setForm(p => ({ ...p, email: v }))} />
+          <FormField label="Nombre(s) *" value={form.firstName} onChange={v => setForm(p => ({ ...p, firstName: v }))} error={formErrors.firstName} />
+          <FormField label="Apellidos *" value={form.lastName} onChange={v => setForm(p => ({ ...p, lastName: v }))} error={formErrors.lastName} />
+          <FormField label="Email *" type="email" value={form.email} onChange={v => setForm(p => ({ ...p, email: v }))} error={formErrors.email} />
           <FormField label="Teléfono" value={form.phone} onChange={v => setForm(p => ({ ...p, phone: v }))} />
           <FormField label="Departamento" value={form.department} onChange={v => setForm(p => ({ ...p, department: v }))} />
           <FormField label="Puesto" value={form.position} onChange={v => setForm(p => ({ ...p, position: v }))} />
@@ -192,7 +199,7 @@ export function Empleados() {
               {CONTRACT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
-          <FormField label="Salario Mensual" type="number" value={form.salary} onChange={v => setForm(p => ({ ...p, salary: v }))} />
+          <FormField label="Salario Mensual" type="number" value={form.salary} onChange={v => setForm(p => ({ ...p, salary: v }))} error={formErrors.salary} />
           <FormField label="RFC" value={form.rfc} onChange={v => setForm(p => ({ ...p, rfc: v }))} />
           <FormField label="CURP" value={form.curp} onChange={v => setForm(p => ({ ...p, curp: v }))} />
           <FormField label="Fecha de Nacimiento" type="date" value={form.birthDate} onChange={v => setForm(p => ({ ...p, birthDate: v }))} />
@@ -210,12 +217,18 @@ export function Empleados() {
 
       {/* Edit modal */}
       <FormModal open={editModalOpen} onClose={handleCloseEdit} title="Editar Empleado">
+        {apiError && (
+          <div className="sticky top-0 z-10 mb-4 px-3 py-2.5 bg-red-50 dark:bg-red-950/30 border border-red-300 dark:border-red-700 rounded-lg flex items-start gap-2">
+            <span className="text-red-500 font-bold text-sm mt-px">!</span>
+            <span className="text-[12px] text-red-600 dark:text-red-400 leading-snug">{apiError}</span>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-x-4">
-          <FormField label="Núm. Empleado" value={editForm.employeeNumber} onChange={v => setEditForm(p => ({ ...p, employeeNumber: v }))} />
+          <FormField label="Núm. Empleado *" value={editForm.employeeNumber} onChange={v => setEditForm(p => ({ ...p, employeeNumber: v }))} error={editErrors.employeeNumber} />
           <FormField label="Fecha de Ingreso" type="date" value={editForm.hireDate} onChange={v => setEditForm(p => ({ ...p, hireDate: v }))} />
-          <FormField label="Nombre(s)" value={editForm.firstName} onChange={v => setEditForm(p => ({ ...p, firstName: v }))} />
-          <FormField label="Apellidos" value={editForm.lastName} onChange={v => setEditForm(p => ({ ...p, lastName: v }))} />
-          <FormField label="Email" type="email" value={editForm.email} onChange={v => setEditForm(p => ({ ...p, email: v }))} />
+          <FormField label="Nombre(s) *" value={editForm.firstName} onChange={v => setEditForm(p => ({ ...p, firstName: v }))} error={editErrors.firstName} />
+          <FormField label="Apellidos *" value={editForm.lastName} onChange={v => setEditForm(p => ({ ...p, lastName: v }))} error={editErrors.lastName} />
+          <FormField label="Email *" type="email" value={editForm.email} onChange={v => setEditForm(p => ({ ...p, email: v }))} error={editErrors.email} />
           <FormField label="Teléfono" value={editForm.phone} onChange={v => setEditForm(p => ({ ...p, phone: v }))} />
           <FormField label="Departamento" value={editForm.department} onChange={v => setEditForm(p => ({ ...p, department: v }))} />
           <FormField label="Puesto" value={editForm.position} onChange={v => setEditForm(p => ({ ...p, position: v }))} />
@@ -231,7 +244,7 @@ export function Empleados() {
               {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
-          <FormField label="Salario Mensual" type="number" value={editForm.salary} onChange={v => setEditForm(p => ({ ...p, salary: v }))} />
+          <FormField label="Salario Mensual" type="number" value={editForm.salary} onChange={v => setEditForm(p => ({ ...p, salary: v }))} error={editErrors.salary} />
           <FormField label="RFC" value={editForm.rfc} onChange={v => setEditForm(p => ({ ...p, rfc: v }))} />
           <FormField label="CURP" value={editForm.curp} onChange={v => setEditForm(p => ({ ...p, curp: v }))} />
           <FormField label="Fecha de Nacimiento" type="date" value={editForm.birthDate ?? ''} onChange={v => setEditForm(p => ({ ...p, birthDate: v }))} />

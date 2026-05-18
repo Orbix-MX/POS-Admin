@@ -26,6 +26,57 @@ const EMPTY_FORM = {
 
 const PER_PAGE = 8
 
+// ── helpers de módulo (fuera del hook para evitar capturas stale) ──────────
+
+const FIELD_LABELS: Record<string, string> = {
+  email:          'Ingresa un email válido',
+  employeeNumber: 'Número de empleado inválido',
+  firstName:      'El nombre es requerido',
+  lastName:       'Los apellidos son requeridos',
+  salary:         'El salario no es válido',
+  phone:          'El teléfono no es válido',
+  rfc:            'El RFC no es válido',
+  curp:           'El CURP no es válido',
+  hireDate:       'La fecha de ingreso no es válida',
+  birthDate:      'La fecha de nacimiento no es válida',
+}
+
+function parseBackendErrors(messages: string[]): Record<string, string> {
+  const errs: Record<string, string> = {}
+  for (const msg of messages) {
+    const field = msg.split(' ')[0]
+    errs[field] = FIELD_LABELS[field] ?? msg
+  }
+  return errs
+}
+
+function validateForm(f: typeof EMPTY_FORM): Record<string, string> {
+  const e: Record<string, string> = {}
+  if (!f.employeeNumber.trim()) e.employeeNumber = 'El número de empleado es requerido'
+  if (!f.firstName.trim())      e.firstName      = 'El nombre es requerido'
+  if (!f.lastName.trim())       e.lastName       = 'Los apellidos son requeridos'
+  if (!f.email.trim())          e.email          = 'El email es requerido'
+  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) e.email = 'Ingresa un email válido'
+  if (f.salary && isNaN(parseFloat(f.salary)))   e.salary = 'El salario debe ser un número'
+  else if (f.salary && parseFloat(f.salary) < 0) e.salary = 'El salario no puede ser negativo'
+  return e
+}
+
+function extractError(e: unknown): { fieldErrors: Record<string, string> | null; message: string } {
+  const resp = (e as any)?.response?.data
+  if (!resp) return { fieldErrors: null, message: 'Error al guardar. Intenta de nuevo.' }
+  if (Array.isArray(resp.message) && resp.message.length > 0) {
+    return {
+      fieldErrors: parseBackendErrors(resp.message),
+      message: 'Revisa los campos marcados en rojo.',
+    }
+  }
+  return {
+    fieldErrors: null,
+    message: typeof resp.message === 'string' ? resp.message : 'Error al guardar. Intenta de nuevo.',
+  }
+}
+
 export function useEmpleados() {
   const [empleados, setEmpleados] = useState<Empleado[]>([])
   const [loading, setLoading] = useState(true)
@@ -41,6 +92,9 @@ export function useEmpleados() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [editForm, setEditForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({})
+  const [apiError, setApiError] = useState<string | null>(null)
 
   const loadEmpleados = useCallback(async () => {
     setLoading(true)
@@ -112,6 +166,14 @@ export function useEmpleados() {
   }), [])
 
   const handleSave = useCallback(async () => {
+    const errors = validateForm(form)
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors)
+      setApiError('Revisa los campos marcados en rojo.')
+      return
+    }
+    setFormErrors({})
+    setApiError(null)
     setSaving(true)
     try {
       await createEmpleado(buildCreateInput(form))
@@ -119,7 +181,9 @@ export function useEmpleados() {
       setModalOpen(false)
       setForm(EMPTY_FORM)
     } catch (e) {
-      console.error(e)
+      const { fieldErrors, message } = extractError(e)
+      if (fieldErrors) setFormErrors(fieldErrors)
+      setApiError(message)
     } finally {
       setSaving(false)
     }
@@ -127,12 +191,16 @@ export function useEmpleados() {
 
   const handleOpenNew = useCallback(() => {
     setForm({ ...EMPTY_FORM, hireDate: new Date().toISOString().substring(0, 10) })
+    setFormErrors({})
+    setApiError(null)
     setModalOpen(true)
   }, [])
 
   const handleCloseModal = useCallback(() => {
     setModalOpen(false)
     setForm(EMPTY_FORM)
+    setFormErrors({})
+    setApiError(null)
   }, [])
 
   const handleOpenEdit = useCallback((empleado: Empleado) => {
@@ -162,9 +230,19 @@ export function useEmpleados() {
     setEditModalOpen(false)
     setEditing(null)
     setEditForm(EMPTY_FORM)
+    setEditErrors({})
+    setApiError(null)
   }, [])
 
   const handleUpdate = useCallback(async () => {
+    const errors = validateForm(editForm)
+    if (Object.keys(errors).length > 0) {
+      setEditErrors(errors)
+      setApiError('Revisa los campos marcados en rojo.')
+      return
+    }
+    setEditErrors({})
+    setApiError(null)
     if (!editing) return
     setSaving(true)
     try {
@@ -189,7 +267,9 @@ export function useEmpleados() {
       await loadEmpleados()
       handleCloseEdit()
     } catch (e) {
-      console.error(e)
+      const { fieldErrors, message } = extractError(e)
+      if (fieldErrors) setEditErrors(fieldErrors)
+      setApiError(message)
     } finally {
       setSaving(false)
     }
@@ -234,6 +314,9 @@ export function useEmpleados() {
     pageData,
     stats,
     saving,
+    formErrors,
+    editErrors,
+    apiError,
     handleSave,
     handleOpenNew,
     handleCloseModal,

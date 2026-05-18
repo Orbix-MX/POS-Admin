@@ -33,28 +33,24 @@ interface FormFieldProps {
   value: string
   onChange: (v: string) => void
   options?: string[]
+  error?: string
 }
 
-export function FormField({ label, type = "text", value, onChange, options }: FormFieldProps) {
+export function FormField({ label, type = "text", value, onChange, options, error }: FormFieldProps) {
+  const inputCls = `w-full px-2.5 py-2 border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary ${
+    error ? 'border-red-400 focus:border-red-400' : 'border-border'
+  }`
   return (
     <div className="mb-3.5">
       <label className="block text-xs font-semibold text-muted-foreground mb-1.5">{label}</label>
       {options ? (
-        <select
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
-        >
+        <select value={value} onChange={e => onChange(e.target.value)} className={inputCls}>
           {options.map(o => <option key={o} value={o}>{o}</option>)}
         </select>
       ) : (
-        <input
-          type={type}
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
-        />
+        <input type={type} value={value} onChange={e => onChange(e.target.value)} className={inputCls} />
       )}
+      {error && <p className="text-[11px] text-red-500 mt-1 leading-tight">{error}</p>}
     </div>
   )
 }
