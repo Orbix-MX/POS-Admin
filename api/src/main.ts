@@ -8,8 +8,12 @@ import { HttpExceptionFilter, AllExceptionsFilter } from './common/filters/http-
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Security headers
-  app.use(helmet());
+  // Security headers — relax CSP for Swagger UI inline scripts
+  app.use(
+    helmet({
+      contentSecurityPolicy: process.env.NODE_ENV !== 'production' ? false : undefined,
+    }),
+  );
 
   // Enable CORS
   app.enableCors({

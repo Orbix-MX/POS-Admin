@@ -1,8 +1,9 @@
-import { Controller, Post, Get, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Public } from '../../../common/decorators/public.decorator';
 import { PlatformAuthService } from './platform-auth.service';
 import { PlatformLoginDto } from './dto/platform-login.dto';
+import { ResetPlatformPasswordDto } from './dto/reset-platform-password.dto';
 import { PlatformAuthResponseDto, PlatformUserResponseDto } from './dto/platform-auth-response.dto';
 import { PlatformJwtAuthGuard } from '../common/guards/platform-jwt-auth.guard';
 import { CurrentPlatformUser } from '../common/decorators/current-platform-user.decorator';
@@ -20,6 +21,15 @@ export class PlatformAuthController {
   @ApiOperation({ summary: 'Platform admin login' })
   login(@Body() dto: PlatformLoginDto): Promise<PlatformAuthResponseDto> {
     return this.platformAuthService.login(dto);
+  }
+
+  @Patch('reset-password')
+  @UseGuards(PlatformJwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Reset a platform user password' })
+  resetPassword(@Body() dto: ResetPlatformPasswordDto): Promise<void> {
+    return this.platformAuthService.resetPassword(dto);
   }
 
   @Get('me')

@@ -1,9 +1,10 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../../database/prisma.service';
 import { PasswordUtil } from '../../../common/utils/password.util';
 import { PlatformLoginDto } from './dto/platform-login.dto';
+import { ResetPlatformPasswordDto } from './dto/reset-platform-password.dto';
 import { PlatformAuthResponseDto, PlatformUserResponseDto } from './dto/platform-auth-response.dto';
 import { PlatformJwtPayload } from './strategies/platform-jwt.strategy';
 import type { PlatformUser } from '@prisma/client';
@@ -29,6 +30,17 @@ export class PlatformAuthService {
 
     const accessToken = this.generateToken(user);
     return { accessToken, user: this.mapUser(user) };
+  }
+
+  async resetPassword(dto: ResetPlatformPasswordDto): Promise<void> {
+    const user = await this.prisma.platformUser.findUnique({ where: { id: dto.userId } });
+    if (!user) throw new NotFoundException('Platform user not found');
+
+    const hashed = await PasswordUtil.hash(dto.newPassword);
+    await this.prisma.platformUser.update({
+      where: { id: dto.userId },
+      data: { password: hashed },
+    });
   }
 
   private generateToken(user: PlatformUser): string {
