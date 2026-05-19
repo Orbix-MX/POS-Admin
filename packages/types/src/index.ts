@@ -131,6 +131,32 @@ export const PLAN_USER_LIMITS: Record<TenantPlan, number | null> = {
   ENTERPRISE: null,
 }
 
+// ─── Branch limits per plan tier ─────────────────────────────────────────────
+
+export const PLAN_BRANCH_LIMITS: Record<TenantPlan, number | null> = {
+  FREE:       1,
+  STARTER:    1,
+  PRO:        3,
+  PLUS:       10,
+  ENTERPRISE: null,
+}
+
+/**
+ * Max active branches allowed for a tenant.
+ * Returns `null` when unlimited. A positive `extraBranchLimit` adds to the
+ * plan default (not override — it stacks on top of the plan).
+ * ENTERPRISE base is unlimited regardless of extra.
+ */
+export function getMaxBranchesForPlan(
+  plan: TenantPlan,
+  extraBranchLimit?: number | null,
+): number | null {
+  const base = PLAN_BRANCH_LIMITS[plan]
+  if (base == null) return null // ENTERPRISE = unlimited regardless
+  const extra = extraBranchLimit != null && extraBranchLimit > 0 ? extraBranchLimit : 0
+  return base + extra
+}
+
 /**
  * Max active users allowed for a tenant.
  * Returns `null` when unlimited. A positive `override` wins over the plan default.

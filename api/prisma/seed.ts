@@ -12,6 +12,29 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log('🌱 Seeding database...');
 
+  // ============= Platform Super Admin =============
+  const platformEmail = process.env.PLATFORM_ADMIN_EMAIL;
+  const platformPassword = process.env.PLATFORM_ADMIN_PASSWORD;
+
+  if (platformEmail && platformPassword) {
+    const platformHashedPw = await bcrypt.hash(platformPassword, 10);
+    await prisma.platformUser.upsert({
+      where: { email: platformEmail },
+      update: {},
+      create: {
+        email: platformEmail,
+        password: platformHashedPw,
+        firstName: 'Platform',
+        lastName: 'Admin',
+        role: 'SUPER_ADMIN',
+        status: 'ACTIVE',
+      },
+    });
+    console.log('✅ Created platform super admin:', platformEmail);
+  } else {
+    console.warn('⚠️  PLATFORM_ADMIN_EMAIL / PLATFORM_ADMIN_PASSWORD not set — skipping platform user seed');
+  }
+
   // Create default tenant (required for multitenant schema)
   const tenant = await prisma.tenant.upsert({
     where: { slug: 'default' },

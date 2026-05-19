@@ -33,6 +33,7 @@ import { PurchasesModule } from './modules/retail/purchases/purchases.module';
 import { ServicesModule } from './modules/retail/services/services.module';
 import { ServiceQuotesModule } from './modules/retail/service-quotes/service-quotes.module';
 import { WorkOrdersModule } from './modules/retail/work-orders/work-orders.module';
+import { PlatformModule } from './modules/platform/platform.module';
 
 @Module({
   imports: [
@@ -67,6 +68,9 @@ import { WorkOrdersModule } from './modules/retail/work-orders/work-orders.modul
     ServicesModule,
     ServiceQuotesModule,
     WorkOrdersModule,
+
+    // Platform (SaaS admin — separate from tenant modules)
+    PlatformModule,
   ],
   controllers: [AppController],
   providers: [

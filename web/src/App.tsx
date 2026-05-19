@@ -1,9 +1,11 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useERPStore } from '@/store/erp-store'
 import { useAuthStore } from '@/store/auth-store'
+import { usePlatformAuthStore } from '@/store/platform-auth-store'
 import { type ReactNode, useEffect } from 'react'
 import { Sidebar } from '@/components/shared/sidebar'
 import { Topbar, MODULE_META } from '@/components/shared/topbar'
+import { PlatformLayout } from '@/components/platform/platform-layout'
 import { Login } from '@/pages/login'
 import { SelectTenant } from '@/pages/select-tenant'
 import { Dashboard } from '@/pages/dashboard'
@@ -25,8 +27,12 @@ import { Servicios } from '@/pages/servicios'
 import { Cotizaciones } from '@/pages/cotizaciones'
 import { OrdenesTrabajo } from '@/pages/ordenes-trabajo'
 import { Empleados } from '@/pages/empleados'
+import { PlatformLogin } from '@/pages/platform/platform-login'
+import { PlatformDashboard } from '@/pages/platform/platform-dashboard'
+import { PlatformEmpresas } from '@/pages/platform/platform-empresas'
+import { PlatformEmpresaDetalle } from '@/pages/platform/platform-empresa-detalle'
+import { PlatformAuditoria } from '@/pages/platform/platform-auditoria'
 import { Download } from 'lucide-react'
-import { useLocation } from 'react-router-dom'
 import type { ModuleId } from '@/types/erp'
 
 const PATH_TO_MODULE: Record<string, ModuleId> = {
@@ -114,7 +120,7 @@ function AppLayout() {
   )
 }
 
-function AuthGate() {
+function TenantAuthGate() {
   const { isAuthenticated, availableTenants, capabilitiesLoaded, init } = useAuthStore()
 
   useEffect(() => { init() }, [init])
@@ -127,15 +133,44 @@ function AuthGate() {
     </div>
   )
 
+  return <AppLayout />
+}
+
+function PlatformGate() {
+  const { isAuthenticated, init } = usePlatformAuthStore()
+
+  useEffect(() => { init() }, [init])
+
+  if (!isAuthenticated) return <PlatformLogin />
+
   return (
-    <BrowserRouter>
-      <AppLayout />
-    </BrowserRouter>
+    <PlatformLayout>
+      <Routes>
+        <Route path="/platform" element={<Navigate to="/platform/dashboard" replace />} />
+        <Route path="/platform/dashboard" element={<PlatformDashboard />} />
+        <Route path="/platform/empresas" element={<PlatformEmpresas />} />
+        <Route path="/platform/empresas/:id" element={<PlatformEmpresaDetalle />} />
+        <Route path="/platform/auditoria" element={<PlatformAuditoria />} />
+        <Route path="*" element={<Navigate to="/platform/dashboard" replace />} />
+      </Routes>
+    </PlatformLayout>
   )
 }
 
+function AppRouter() {
+  const location = useLocation()
+  const isPlatform = location.pathname.startsWith('/platform')
+
+  if (isPlatform) return <PlatformGate />
+  return <TenantAuthGate />
+}
+
 function App() {
-  return <AuthGate />
+  return (
+    <BrowserRouter>
+      <AppRouter />
+    </BrowserRouter>
+  )
 }
 
 export default App

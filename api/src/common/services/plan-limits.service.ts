@@ -1,6 +1,14 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { getMaxUsersForPlan } from '@ventasy/types';
+import { getMaxUsersForPlan, getMaxBranchesForPlan } from '@ventasy/types';
 import { PrismaService } from '../../database/prisma.service';
+
+export interface BranchCapacity {
+  /** null === unlimited */
+  maxBranches: number | null;
+  activeBranches: number;
+  extraBranchLimit: number;
+  hasCapacity: boolean;
+}
 
 export interface UserCapacity {
   /** null === unlimited (ENTERPRISE with no override) */
@@ -57,6 +65,33 @@ export class PlanLimitsService {
     if (cap.maxUsers != null && cap.activeUsers >= cap.maxUsers) {
       throw new BadRequestException(
         `Tu plan permite máximo ${cap.maxUsers} usuario(s) activo(s).`,
+      );
+    }
+  }
+
+  async getBranchCapacity(tenantId: string): Promise<BranchCapacity> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { plan: true, extraBranchLimit: true },
+    });
+    if (!tenant) throw new NotFoundException('Tenant not found');
+
+    const activeBranches = await this.prisma.branch.count({
+      where: { tenantId, status: 'ACTIVE' },
+    });
+
+    const extra = tenant.extraBranchLimit ?? 0;
+    const maxBranches = getMaxBranchesForPlan(tenant.plan, extra);
+    const hasCapacity = maxBranches == null || activeBranches < maxBranches;
+
+    return { maxBranches, activeBranches, extraBranchLimit: extra, hasCapacity };
+  }
+
+  async assertCanAddBranch(tenantId: string): Promise<void> {
+    const cap = await this.getBranchCapacity(tenantId);
+    if (!cap.hasCapacity) {
+      throw new BadRequestException(
+        `Tu plan permite máximo ${cap.maxBranches} sucursal(es) activa(s).`,
       );
     }
   }

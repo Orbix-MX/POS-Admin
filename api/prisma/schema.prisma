@@ -14,6 +14,55 @@ enum TenantStatus {
   SUSPENDED
   TRIAL
   CANCELLED
+  EXPIRED
+  DISABLED
+}
+
+// ============= Platform (SaaS Admin) =============
+
+enum PlatformUserRole {
+  SUPER_ADMIN
+  SUPPORT
+}
+
+enum PlatformUserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model PlatformUser {
+  id        String             @id @default(uuid())
+  email     String             @unique
+  password  String
+  firstName String
+  lastName  String
+  role      PlatformUserRole   @default(SUPER_ADMIN)
+  status    PlatformUserStatus @default(ACTIVE)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  auditLogs PlatformAuditLog[]
+
+  @@map("platform_users")
+}
+
+model PlatformAuditLog {
+  id             String        @id @default(uuid())
+  platformUserId String?
+  tenantId       String?
+  action         String
+  entityType     String
+  entityId       String
+  before         Json?
+  after          Json?
+  notes          String?
+  createdAt      DateTime      @default(now())
+
+  platformUser PlatformUser? @relation(fields: [platformUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, action])
+  @@index([platformUserId, createdAt])
+  @@map("platform_audit_logs")
 }
 
 enum TenantPlan {
@@ -57,6 +106,8 @@ model Tenant {
   overUserLimit     Boolean @default(false) @map("over_user_limit")
   // Manual cap that overrides the plan default for ANY plan (e.g. ENTERPRISE).
   userLimitOverride Int?    @map("user_limit_override")
+  // Extra branches added on top of the plan default (addons, upgrades, etc.)
+  extraBranchLimit  Int?    @default(0) @map("extra_branch_limit")
   // Protected owner — cannot be deactivated.
   ownerUserId       String? @map("owner_user_id")
 
@@ -761,6 +812,7 @@ model OrderItem {
 enum BranchStatus {
   ACTIVE
   INACTIVE
+  SUSPENDED
   CLOSED
 }
 

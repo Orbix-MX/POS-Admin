@@ -143,7 +143,7 @@ export function useEmpleados() {
       if (e.estado === 'Activo') activos++
       else if (e.estado === 'En permiso') enPermiso++
       else inactivos++
-      if (e.salarioRaw) nomina += e.salarioRaw
+      if (e.salario) nomina += parseFloat(e.salario.replace(/[^0-9.]/g, '')) || 0
     }
     return { total: empleados.length, activos, inactivos, enPermiso, nomina }
   }, [empleados])
