@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Search, Loader2, Building2, AlertTriangle, RefreshCw } from 'lucide-react'
 import {
-  fetchTenants, updateTenantStatus, updateTenantPlan,
+  fetchTenants, updateTenantStatus,
 } from '@/services/platform/platform-tenants-service'
 import type { PlatformTenant, TenantStatus, TenantPlan } from '@/services/platform/platform-tenants-service'
 import { TenantStatusBadge, TenantPlanBadge } from '@/components/platform/tenant-status-badge'
