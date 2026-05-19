@@ -50,7 +50,8 @@ export enum SystemModule {
   COMPRAS       = 'compras',
   PROVEEDORES   = 'proveedores',
   SERVICIOS     = 'servicios',
-  COTIZACIONES  = 'cotizaciones',
+  COTIZACIONES      = 'cotizaciones',
+  ORDENES_TRABAJO   = 'ordenes-trabajo',
   CXC           = 'cxc',
   CXP           = 'cxp',
   CAJA          = 'caja',
@@ -59,6 +60,7 @@ export enum SystemModule {
   ROLES         = 'roles',
   CONFIGURACION = 'configuracion',
   BRANCHES      = 'branches',
+  EMPLEADOS     = 'empleados',
   // Future verticals
   GYM           = 'gym',
 }
@@ -89,6 +91,8 @@ const MODULES_BY_TIER: Array<{ plan: TenantPlan; modules: SystemModule[] }> = [
       SystemModule.PROVEEDORES,
       SystemModule.SERVICIOS,
       SystemModule.COTIZACIONES,
+      SystemModule.ORDENES_TRABAJO,
+      SystemModule.EMPLEADOS,
       SystemModule.REPORTES,
     ],
   },

@@ -539,6 +539,7 @@ async function main() {
     'roles:view',
     'reports:view',
     'settings:view',
+    'work-orders:view', 'work-orders:create', 'work-orders:edit', 'work-orders:assign',
   ];
   const gerentePermIds = getPermIds(...gerentePermKeys);
 

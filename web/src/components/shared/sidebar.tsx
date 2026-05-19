@@ -1,25 +1,42 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
+import type { LucideIcon } from 'lucide-react'
 import {
   LayoutDashboard, ShoppingBag, ShoppingCart, Package,
   Users, Truck, FileText, Settings, Shield,
-  ChevronDown, LogOut, Monitor, Landmark, Receipt, TrendingUp, Wrench,
+  ChevronDown, LogOut, Monitor, Landmark, Receipt, TrendingUp, Wrench, UserCheck,
 } from 'lucide-react'
+
+type NavItem = {
+  module: string
+  label: string
+  icon: LucideIcon
+  path: string
+  permission?: string
+}
+
+type NavGroup = {
+  group: string
+  key: string
+  items: NavItem[]
+}
 import { useERPStore } from '@/store/erp-store'
 import { useAuthStore } from '@/store/auth-store'
 import { AvatarInitials } from './avatar-initials'
 
-const ALL_NAV = [
+const ALL_NAV: NavGroup[] = [
   {
     group: 'Negocio', key: 'business', items: [
-      { module: 'dashboard',    label: 'Dashboard',      icon: LayoutDashboard, path: '/dashboard',    permission: 'dashboard:view'  },
-      { module: 'ventas',       label: 'Ventas',         icon: ShoppingBag,     path: '/ventas',       permission: 'orders:view'     },
-      { module: 'compras',      label: 'Compras',        icon: ShoppingCart,    path: '/compras',      permission: 'purchases:view'  },
-      { module: 'inventario',   label: 'Inventario',     icon: Package,         path: '/inventario',   permission: 'products:view'   },
-      { module: 'clientes',     label: 'Clientes',       icon: Users,           path: '/clientes',     permission: 'customers:view'  },
-      { module: 'proveedores',  label: 'Proveedores',    icon: Truck,           path: '/proveedores',  permission: 'suppliers:view'  },
-      { module: 'servicios',    label: 'Servicios',      icon: Wrench,          path: '/servicios',    permission: 'products:view'   },
-      { module: 'cotizaciones', label: 'Cotizaciones',   icon: FileText,        path: '/cotizaciones', permission: 'orders:view'     },
+      { module: 'dashboard', label: 'Dashboard',    icon: LayoutDashboard, path: '/dashboard' },
+      { module: 'ventas',    label: 'Ventas',       icon: ShoppingBag,     path: '/ventas'    },
+      { module: 'compras',   label: 'Compras',      icon: ShoppingCart,    path: '/compras'   },
+      { module: 'inventario',label: 'Inventario',   icon: Package,         path: '/inventario'},
+      { module: 'clientes',  label: 'Clientes',     icon: Users,           path: '/clientes'  },
+      { module: 'proveedores',label: 'Proveedores', icon: Truck,           path: '/proveedores'},
+      { module: 'servicios', label: 'Servicios',    icon: Wrench,          path: '/servicios' },
+      { module: 'cotizaciones',label: 'Cotizaciones',icon: FileText,       path: '/cotizaciones'},
+      { module: 'ordenes-trabajo', label: 'Órdenes de Trabajo', icon: Wrench, path: '/ordenes-trabajo' },
+      { module: 'empleados', label: 'Capital Humano', icon: UserCheck, path: '/empleados' },
     ],
   },
   {

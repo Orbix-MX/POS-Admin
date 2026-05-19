@@ -21,6 +21,7 @@ import { ReceivablesModule } from './modules/core/receivables/receivables.module
 import { PayablesModule } from './modules/core/payables/payables.module';
 import { EmailModule } from './modules/core/email/email.module';
 import { DashboardModule } from './modules/core/dashboard/dashboard.module';
+import { EmployeesModule } from './modules/core/employees/employees.module';
 
 // Retail modules — retail/POS vertical
 import { CategoriesModule } from './modules/retail/categories/categories.module';
@@ -31,6 +32,7 @@ import { SuppliersModule } from './modules/retail/suppliers/suppliers.module';
 import { PurchasesModule } from './modules/retail/purchases/purchases.module';
 import { ServicesModule } from './modules/retail/services/services.module';
 import { ServiceQuotesModule } from './modules/retail/service-quotes/service-quotes.module';
+import { WorkOrdersModule } from './modules/retail/work-orders/work-orders.module';
 
 @Module({
   imports: [
@@ -53,6 +55,7 @@ import { ServiceQuotesModule } from './modules/retail/service-quotes/service-quo
     PayablesModule,
     EmailModule,
     DashboardModule,
+    EmployeesModule,
 
     // Retail
     CategoriesModule,
@@ -63,6 +66,7 @@ import { ServiceQuotesModule } from './modules/retail/service-quotes/service-quo
     PurchasesModule,
     ServicesModule,
     ServiceQuotesModule,
+    WorkOrdersModule,
   ],
   controllers: [AppController],
   providers: [
