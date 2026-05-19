@@ -38,6 +38,7 @@ export interface ApiCashSession {
   closedAt: string | null
   openedBy: { id: string; email: string } | null
   closedBy: { id: string; email: string } | null
+  authorizedBy: { id: string; email: string } | null
   branch: { id: string; name: string } | null
   movements: ApiCashMovement[]
   summary?: SessionSummary
@@ -110,6 +111,34 @@ export async function openCashSession(input: OpenSessionInput): Promise<ApiCashS
 
 export async function closeCashSession(id: string, input: CloseSessionInput): Promise<ApiCashSession> {
   const { data } = await api.patch<ApiCashSession>(`/cash-sessions/${id}/close`, input)
+  return data
+}
+
+export interface CloseWithAuthInput extends CloseSessionInput {
+  authEmail: string
+  authPassword: string
+}
+
+export async function closeSessionWithAuth(id: string, input: CloseWithAuthInput): Promise<ApiCashSession> {
+  const { data } = await api.patch<ApiCashSession>(`/cash-sessions/${id}/close-authorized`, input)
+  return data
+}
+
+export async function verifyCloseAuth(input: { authEmail: string; authPassword: string }): Promise<{ email: string }> {
+  const { data } = await api.post<{ email: string }>('/cash-sessions/verify-auth', input)
+  return data
+}
+
+export interface ManualMovementInput {
+  type: 'INCOME' | 'EXPENSE'
+  amount: number
+  currency?: 'MXN' | 'USD'
+  reason?: string
+  notes?: string
+}
+
+export async function createManualMovement(input: ManualMovementInput): Promise<ApiCashMovement> {
+  const { data } = await api.post<ApiCashMovement>('/cash-sessions/active/movement', input)
   return data
 }
 

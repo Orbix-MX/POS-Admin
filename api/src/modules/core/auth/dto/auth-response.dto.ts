@@ -1,4 +1,4 @@
-﻿import { UserRole, UserStatus, TenantRole, TenantPlan } from '@prisma/client';
+import { UserRole, UserStatus, TenantRole, TenantPlan } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UserResponseDto {

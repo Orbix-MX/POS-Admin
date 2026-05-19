@@ -1,4 +1,5 @@
-﻿import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+﻿import { Injectable, NotFoundException, BadRequestException, UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { AuditContextService } from '../../../common/context/audit-context.service';
@@ -6,6 +7,7 @@ import { PaginatedResponse } from '../../../common/dto/pagination.dto';
 import { Prisma } from '@prisma/client';
 import { OpenCashSessionDto } from './dto/open-session.dto';
 import { CloseCashSessionDto } from './dto/close-session.dto';
+import { CloseWithAuthDto } from './dto/close-with-auth.dto';
 import { QueryCashSessionsDto } from './dto/query-sessions.dto';
 import { roundMoney } from '../../../common/utils/money.util';
 
@@ -180,6 +182,147 @@ export class CashSessionsService {
       movements,
     );
     return { ...session, summary };
+  }
+
+  async createManualMovement(dto: import('./dto/create-movement.dto').CreateManualMovementDto) {
+    const tenantId = this.tenantContext.requireTenantId();
+    const userId = this.auditContext.getUserId();
+
+    const activeSession = await this.prisma.cashSession.findFirst({
+      where: { tenantId, status: 'ABIERTA' },
+    });
+
+    const currency = dto.currency ?? 'MXN';
+    const notesParts = [dto.reason, dto.notes].filter(Boolean);
+    const notes = notesParts.length > 0 ? notesParts.join(' — ') : null;
+
+    return this.prisma.cashMovement.create({
+      data: {
+        tenantId,
+        cashSessionId: activeSession?.id ?? null,
+        type: dto.type,
+        currency,
+        amount: dto.amount,
+        paymentMethod: 'CASH',
+        notes,
+        createdById: userId ?? null,
+      },
+    });
+  }
+
+  async verifyCloseAuth(dto: import('./dto/verify-auth.dto').VerifyAuthDto) {
+    const tenantId = this.tenantContext.requireTenantId();
+
+    const user = await this.prisma.user.findFirst({ where: { email: dto.authEmail } });
+    if (!user) throw new UnauthorizedException('Credenciales incorrectas');
+
+    const passwordValid = await bcrypt.compare(dto.authPassword, user.password);
+    if (!passwordValid) throw new UnauthorizedException('Credenciales incorrectas');
+
+    const membership = await this.prisma.tenantMembership.findFirst({
+      where: { userId: user.id, tenantId },
+    });
+    if (!membership) throw new UnauthorizedException('El usuario autorizador no pertenece a esta organización');
+
+    if (user.role !== 'SUPER_ADMIN') {
+      const perms = await this.getEffectivePermissions(user.id, tenantId);
+      if (!perms.includes('pos.cash:close')) {
+        throw new ForbiddenException('El usuario no tiene permiso para cerrar caja');
+      }
+    }
+
+    return { email: user.email };
+  }
+
+  async closeWithAuth(id: string, dto: CloseWithAuthDto) {
+    const tenantId = this.tenantContext.requireTenantId();
+    const currentUserId = this.auditContext.getUserId();
+
+    // Validate authorizer credentials
+    const adminUser = await this.prisma.user.findFirst({
+      where: { email: dto.authEmail },
+    });
+    if (!adminUser) throw new UnauthorizedException('Credenciales incorrectas');
+
+    const passwordValid = await bcrypt.compare(dto.authPassword, adminUser.password);
+    if (!passwordValid) throw new UnauthorizedException('Credenciales incorrectas');
+
+    // Ensure authorizer belongs to the same tenant
+    const membership = await this.prisma.tenantMembership.findFirst({
+      where: { userId: adminUser.id, tenantId },
+    });
+    if (!membership) throw new UnauthorizedException('El usuario autorizador no pertenece a esta organización');
+
+    // Check authorizer has pos.cash:close permission (SUPER_ADMIN bypasses)
+    if (adminUser.role !== 'SUPER_ADMIN') {
+      const adminPerms = await this.getEffectivePermissions(adminUser.id, tenantId);
+      if (!adminPerms.includes('pos.cash:close')) {
+        throw new ForbiddenException('El usuario autorizador no tiene permiso para cerrar caja');
+      }
+    }
+
+    // Close the session
+    const session = await this.prisma.cashSession.findFirst({
+      where: { id, tenantId },
+      include: { movements: true },
+    });
+    if (!session) throw new NotFoundException('Sesión de caja no encontrada');
+    if (session.status === 'CERRADA') throw new BadRequestException('Esta sesión ya está cerrada');
+
+    const movements = session.movements as unknown as MovementLike[];
+    const expectedCashMxn = this.calculateExpectedCash(Number(session.openingAmount), movements, 'MXN');
+    const expectedCashUsd = this.calculateExpectedCash(Number(session.openingAmountUsd), movements, 'USD');
+    const differenceMxn = roundMoney(dto.cashCounted - expectedCashMxn);
+    const cashCountedUsd = roundMoney(dto.cashCountedUsd ?? 0);
+    const differenceUsd = roundMoney(cashCountedUsd - expectedCashUsd);
+
+    return this.prisma.cashSession.update({
+      where: { id },
+      data: {
+        status: 'CERRADA',
+        closingAmount: expectedCashMxn,
+        cashCounted: dto.cashCounted,
+        cashCountedUsd,
+        difference: differenceMxn,
+        differenceUsd,
+        notes: dto.notes ?? session.notes,
+        closedById: currentUserId ?? null,
+        authorizedById: adminUser.id,
+        closedAt: new Date(),
+      },
+      include: {
+        branch: { select: { id: true, name: true } },
+        openedBy: { select: { id: true, email: true } },
+        closedBy: { select: { id: true, email: true } },
+        authorizedBy: { select: { id: true, email: true } },
+        movements: true,
+      },
+    });
+  }
+
+  private async getEffectivePermissions(userId: string, tenantId: string): Promise<string[]> {
+    const assignments = await this.prisma.userRoleAssignment.findMany({
+      where: { userId, tenantId },
+      include: {
+        role: { include: { permissions: { include: { permission: true } } } },
+      },
+    });
+
+    const keys = new Set<string>();
+    for (const a of assignments) {
+      for (const rp of a.role.permissions) keys.add(rp.permission.key);
+    }
+
+    const grants = await this.prisma.userPermissionGrant.findMany({
+      where: { userId, tenantId },
+      include: { permission: true },
+    });
+    for (const g of grants) {
+      if (g.granted) keys.add(g.permission.key);
+      else keys.delete(g.permission.key);
+    }
+
+    return Array.from(keys);
   }
 
   // ---- helpers ----

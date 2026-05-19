@@ -20,6 +20,7 @@ interface AuthState {
   error: string | null
   plan: string | null
   enabledModules: string[]
+  permissions: string[]
   overUserLimit: boolean
   capabilitiesLoaded: boolean
 
@@ -38,6 +39,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   error: null,
   plan: null,
   enabledModules: [],
+  permissions: [],
   overUserLimit: false,
   capabilitiesLoaded: !getAccessToken(), // true if no token (not authenticated)
 
@@ -48,6 +50,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({
         plan: caps.plan ?? null,
         enabledModules: caps.effectiveModules ?? [],
+        permissions: profile.permissions ?? [],
         overUserLimit: caps.overUserLimit ?? false,
         capabilitiesLoaded: true,
         user: profile.user,
@@ -65,9 +68,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (availableTenants.length === 1) {
         const res = await selectTenantApi(availableTenants[0].slug, accessToken)
         setAccessToken(res.accessToken)
+        // Load permissions now that tenant is selected and token is set
+        const profile = await fetchMe().catch(() => null)
         set({
           isAuthenticated: true,
-          user,
+          user: profile?.user ?? user,
+          permissions: profile?.permissions ?? [],
           tempToken: null,
           availableTenants: null,
           loading: false,
@@ -91,8 +97,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const res = await selectTenantApi(slug, tempToken)
       setAccessToken(res.accessToken)
+      // Load permissions now that tenant is selected and token is set
+      const profile = await fetchMe().catch(() => null)
       set({
         isAuthenticated: true,
+        user: profile?.user ?? get().user,
+        permissions: profile?.permissions ?? [],
         tempToken: null,
         availableTenants: null,
         loading: false,
@@ -117,6 +127,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       error: null,
       plan: null,
       enabledModules: [],
+      permissions: [],
       overUserLimit: false,
       capabilitiesLoaded: true,
     })

@@ -8,6 +8,7 @@ import { UpdateServiceQuoteDto } from './dto/update-service-quote.dto';
 import { QueryServiceQuotesDto } from './dto/query-service-quotes.dto';
 import { ConvertQuoteDto } from './dto/convert-quote.dto';
 import { RequireModule } from '../../../common/guards/require-module.guard';
+import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
 
 @RequireModule('cotizaciones')
 @ApiTags('Service Quotes')
@@ -20,45 +21,53 @@ export class ServiceQuotesController {
   ) {}
 
   @Post()
+  @RequirePermissions('orders:create')
   @ApiOperation({ summary: 'Crear cotización de servicios' })
   create(@Body() dto: CreateServiceQuoteDto) {
     return this.serviceQuotesService.create(dto);
   }
 
   @Get()
+  @RequirePermissions('orders:view')
   findAll(@Query() query: QueryServiceQuotesDto) {
     return this.serviceQuotesService.findAll(query);
   }
 
   @Get('customer/:customerId')
+  @RequirePermissions('orders:view')
   @ApiOperation({ summary: 'Cotizaciones activas de un cliente (para POS)' })
   findByCustomer(@Param('customerId', ParseUUIDPipe) customerId: string) {
     return this.serviceQuotesService.findByCustomer(customerId);
   }
 
   @Get(':id')
+  @RequirePermissions('orders:view')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.serviceQuotesService.findOne(id);
   }
 
   @Patch(':id')
+  @RequirePermissions('orders:edit')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateServiceQuoteDto) {
     return this.serviceQuotesService.update(id, dto);
   }
 
   @Post(':id/approve')
+  @RequirePermissions('orders:edit')
   @ApiOperation({ summary: 'Aprobar cotización' })
   approve(@Param('id', ParseUUIDPipe) id: string) {
     return this.serviceQuotesService.approve(id);
   }
 
   @Post(':id/convert')
+  @RequirePermissions('orders:create')
   @ApiOperation({ summary: 'Convertir cotización aprobada a venta' })
   convert(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ConvertQuoteDto) {
     return this.serviceQuotesService.convert(id, dto);
   }
 
   @Get(':id/pdf')
+  @RequirePermissions('orders:view')
   @ApiOperation({ summary: 'Descargar PDF de cotización' })
   async getPdf(
     @Param('id', ParseUUIDPipe) id: string,

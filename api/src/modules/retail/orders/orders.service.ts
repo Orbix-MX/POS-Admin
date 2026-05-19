@@ -167,12 +167,15 @@ export class OrdersService {
       }
     }
 
-    // Fetch active session for TC (pre-transaction read)
+    // Fetch active session for TC (pre-transaction read) — required for checkout
     const activeSessionForTc = await this.prisma.cashSession.findFirst({
       where: { tenantId, branchId: branchId ?? undefined, status: 'ABIERTA' },
       select: { id: true, exchangeRateUsdMxn: true },
     });
-    const exchangeRate = activeSessionForTc ? Number(activeSessionForTc.exchangeRateUsdMxn) : 1;
+    if (!activeSessionForTc) {
+      throw new BadRequestException('No hay sesión de caja activa. Abre la caja antes de realizar ventas.');
+    }
+    const exchangeRate = Number(activeSessionForTc.exchangeRateUsdMxn);
     const hasUsdPayment = (dto.payments?.some((p) => p.currency === 'USD') ?? false) || dto.changeCurrency === 'USD';
 
     const order = await this.prisma.$transaction(async (tx) => {

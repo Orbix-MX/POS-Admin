@@ -11,6 +11,8 @@ export const ALL_PERMISSIONS: PermissionDef[] = [
   { key: 'dashboard:view', name: 'Ver dashboard', module: 'dashboard', action: 'view' },
   // pos
   { key: 'pos:access',         name: 'Acceder al POS',               module: 'pos', action: 'access' },
+  { key: 'pos.cash:open',      name: 'Abrir caja desde POS',          description: 'Permite abrir sesión de caja desde el punto de venta', module: 'pos', action: 'cash:open' },
+  { key: 'pos.cash:close',     name: 'Cerrar caja desde POS',         description: 'Permite cerrar sesión de caja desde el punto de venta', module: 'pos', action: 'cash:close' },
   { key: 'pos.quotes:create',  name: 'Crear cotizaciones desde POS',  module: 'pos', action: 'quotes:create' },
   { key: 'pos.quotes:view',    name: 'Ver cotizaciones desde POS',    module: 'pos', action: 'quotes:view' },
   { key: 'pos.quotes:load',    name: 'Cargar cotizaciones al carrito', module: 'pos', action: 'quotes:load' },
@@ -75,10 +77,13 @@ export const ALL_PERMISSIONS: PermissionDef[] = [
   { key: 'branches:inventory', name: 'Gestionar inventario sucursal', description: 'Actualizar y transferir stock por sucursal', module: 'branches', action: 'inventory' },
   // reports
   { key: 'reports:view', name: 'Ver reportes', module: 'reports', action: 'view' },
+  // settings
+  { key: 'settings:view',   name: 'Ver configuración',        description: 'Ver ajustes del tenant', module: 'settings', action: 'view'   },
+  { key: 'settings:manage', name: 'Gestionar configuración',  description: 'Editar ajustes del tenant', module: 'settings', action: 'manage' },
 ];
 
 export const MODULES_ORDER = [
   'dashboard', 'pos', 'products', 'categories', 'orders',
   'customers', 'receivables', 'suppliers', 'purchases', 'payables', 'cash', 'coupons',
-  'branches', 'users', 'roles', 'reports',
+  'branches', 'users', 'roles', 'reports', 'settings',
 ];

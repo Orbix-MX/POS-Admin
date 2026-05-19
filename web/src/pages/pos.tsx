@@ -1,12 +1,15 @@
-﻿import { useRef, useEffect } from 'react'
+﻿import { useRef, useEffect, useState, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   ChevronLeft, Search, X, Monitor, AlertCircle,
   ShoppingCart, Check, Loader2, ChevronDown, CreditCard,
   Banknote, Landmark, Wrench, Plus, Package, FileText, ChevronUp,
+  Wallet, Clock, TrendingUp, ArrowUpCircle, ArrowDownCircle, Pause,
 } from 'lucide-react'
-import { usePOS, fmt, type CartItem, type Product, type Cliente, type Service } from '@/hooks/retail/use-pos'
+import { usePOS, fmt, type CartItem, type Product, type Cliente, type Service, type HoldSale } from '@/hooks/retail/use-pos'
 import type { ServiceQuote } from '@/services/retail/cotizaciones-service'
+import { PosSidebar, type PanelId } from '@/components/pos/pos-sidebar'
+import { openCashSession, type ApiCashSession } from '@/services/core/caja-service'
 
 // ─── Product card ────────────────────────────────────────────────────────────
 
@@ -540,11 +543,259 @@ function QuotePanel({
   )
 }
 
+// ─── Bottom bar ──────────────────────────────────────────────────────────────
+
+function PosBottomBar({
+  activeCashSession,
+  cliente,
+  carrito,
+  cartTotal,
+  holdSales,
+  onHoldCart,
+  onOpenPanel,
+}: {
+  activeCashSession: ApiCashSession | null
+  cliente: Cliente | null
+  carrito: CartItem[]
+  cartTotal: number
+  holdSales: HoldSale[]
+  onHoldCart: () => void
+  onOpenPanel: (id: PanelId) => void
+}) {
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 10_000)
+    return () => clearInterval(t)
+  }, [])
+
+  const sessionOpen = activeCashSession !== null
+  const salesCount = activeCashSession?.movements.filter(m => m.type === 'SALE').length ?? 0
+  const itemCount = carrito.reduce((s, i) => s + i.qty, 0)
+
+  return (
+    <div className="h-[52px] shrink-0 bg-card border-t border-border flex items-center px-4 gap-3 z-10">
+      {/* Reloj */}
+      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground shrink-0">
+        <Clock className="w-3 h-3" />
+        {now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+      </div>
+
+      <div className="w-px h-5 bg-border shrink-0" />
+
+      {/* Estado de caja */}
+      <button
+        onClick={() => onOpenPanel('caja')}
+        title="Estado de caja"
+        className="flex items-center gap-1.5 cursor-pointer bg-transparent border-none p-0"
+      >
+        <div className={`w-2 h-2 rounded-full shrink-0 ${sessionOpen ? 'bg-green-500' : 'bg-red-500'}`} />
+        <span className={`text-[11px] font-semibold ${sessionOpen ? 'text-green-600' : 'text-red-500'}`}>
+          {sessionOpen ? 'Caja abierta' : 'Sin caja'}
+        </span>
+      </button>
+
+      <div className="w-px h-5 bg-border shrink-0" />
+
+      {/* Ventas del día */}
+      <button
+        onClick={() => onOpenPanel('ventas')}
+        title="Ventas del día"
+        className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground cursor-pointer bg-transparent border-none p-0 transition-colors"
+      >
+        <TrendingUp className="w-3 h-3 shrink-0" />
+        <span>{salesCount} {salesCount === 1 ? 'venta' : 'ventas'}</span>
+      </button>
+
+      {/* Cliente seleccionado */}
+      {cliente && (
+        <>
+          <div className="w-px h-5 bg-border shrink-0" />
+          <div className="flex items-center gap-1.5 text-[11px] text-blue-600 min-w-0 max-w-[130px]">
+            <div className="w-4 h-4 rounded-full bg-blue-100 flex items-center justify-center text-[9px] font-bold shrink-0">
+              {cliente.nombre.charAt(0).toUpperCase()}
+            </div>
+            <span className="truncate font-medium">{cliente.nombre}</span>
+          </div>
+        </>
+      )}
+
+      {/* Resumen carrito */}
+      {carrito.length > 0 && (
+        <>
+          <div className="w-px h-5 bg-border shrink-0" />
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground shrink-0">
+            <ShoppingCart className="w-3 h-3 text-muted-foreground" />
+            {itemCount} · {fmt(cartTotal)}
+          </div>
+        </>
+      )}
+
+      <div className="flex-1" />
+
+      {/* Acciones rápidas */}
+      <div className="flex items-center gap-0.5">
+        <button
+          onClick={onHoldCart}
+          disabled={carrito.length === 0}
+          title={`Apartar carrito${holdSales.length > 0 ? ` (${holdSales.length} guardados)` : ''}`}
+          className="relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted border-none bg-transparent cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+        >
+          <Pause className="w-3.5 h-3.5 shrink-0" />
+          <span className="hidden md:inline">Apartar</span>
+          {holdSales.length > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-primary rounded-full text-[8px] font-bold text-primary-foreground flex items-center justify-center">
+              {holdSales.length}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => onOpenPanel('ventas')}
+          title="Ventas del día"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted border-none bg-transparent cursor-pointer transition-colors"
+        >
+          <TrendingUp className="w-3.5 h-3.5 shrink-0" />
+          <span className="hidden md:inline">Ventas</span>
+        </button>
+        <button
+          onClick={() => onOpenPanel('ingreso')}
+          title="Ingreso de efectivo"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 border-none bg-transparent cursor-pointer transition-colors"
+        >
+          <ArrowUpCircle className="w-3.5 h-3.5 shrink-0" />
+          <span className="hidden md:inline">Ingreso</span>
+        </button>
+        <button
+          onClick={() => onOpenPanel('egreso')}
+          title="Egreso / retiro de efectivo"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-950/30 border-none bg-transparent cursor-pointer transition-colors"
+        >
+          <ArrowDownCircle className="w-3.5 h-3.5 shrink-0" />
+          <span className="hidden md:inline">Egreso</span>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Cash gate overlay ───────────────────────────────────────────────────────
+
+function CashGate({ onOpened }: { onOpened: (session: ApiCashSession) => void }) {
+  const [form, setForm] = useState({ exchangeRateUsdMxn: '', openingAmount: '', openingAmountUsd: '', notes: '' })
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleOpen = async () => {
+    const rate = parseFloat(form.exchangeRateUsdMxn)
+    if (!rate || rate <= 0) { setError('El tipo de cambio es requerido'); return }
+    setSubmitting(true); setError(null)
+    try {
+      const session = await openCashSession({
+        exchangeRateUsdMxn: rate,
+        openingAmount: parseFloat(form.openingAmount) || 0,
+        openingAmountUsd: parseFloat(form.openingAmountUsd) || undefined,
+        notes: form.notes.trim() || undefined,
+      })
+      onOpened(session)
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+      setError(msg ?? 'Error al abrir caja. Verifica que tengas el permiso necesario.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-300 bg-background flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        {/* Header */}
+        <div className="flex flex-col items-center mb-8">
+          <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center mb-4">
+            <Wallet className="w-7 h-7 text-primary" />
+          </div>
+          <h1 className="text-xl font-extrabold text-foreground">Punto de Venta</h1>
+          <p className="text-sm text-muted-foreground mt-1">Abre la caja para comenzar a vender</p>
+        </div>
+
+        {/* Card */}
+        <div className="bg-card border border-border rounded-2xl p-6 space-y-4">
+          <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-200">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span className="text-[12px] text-amber-700 font-medium">No hay sesión de caja activa</span>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-semibold text-muted-foreground">Tipo de cambio USD/MXN *</label>
+            <input
+              type="number" min={0.01} step="0.01"
+              value={form.exchangeRateUsdMxn}
+              onChange={e => setForm(p => ({ ...p, exchangeRateUsdMxn: e.target.value }))}
+              placeholder="17.50"
+              autoFocus
+              className="w-full mt-1 px-3 py-2.5 border border-border rounded-xl text-[13px] text-foreground bg-muted outline-none focus:border-primary focus:bg-card"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-semibold text-muted-foreground">Fondo inicial MXN</label>
+              <input
+                type="number" min={0} step="0.01"
+                value={form.openingAmount}
+                onChange={e => setForm(p => ({ ...p, openingAmount: e.target.value }))}
+                placeholder="0.00"
+                className="w-full mt-1 px-3 py-2.5 border border-border rounded-xl text-[13px] text-foreground bg-muted outline-none focus:border-primary focus:bg-card"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold text-amber-600">Fondo inicial USD</label>
+              <input
+                type="number" min={0} step="0.01"
+                value={form.openingAmountUsd}
+                onChange={e => setForm(p => ({ ...p, openingAmountUsd: e.target.value }))}
+                placeholder="0.00"
+                className="w-full mt-1 px-3 py-2.5 border border-amber-300 rounded-xl text-[13px] text-foreground bg-muted outline-none focus:border-amber-500 focus:bg-card"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-semibold text-muted-foreground">Notas (opcional)</label>
+            <input
+              value={form.notes}
+              onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
+              placeholder="Turno matutino…"
+              className="w-full mt-1 px-3 py-2.5 border border-border rounded-xl text-[13px] text-foreground bg-muted outline-none focus:border-primary focus:bg-card"
+            />
+          </div>
+
+          {error && (
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-red-50 border border-red-200 text-[12px] text-red-700">
+              <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />{error}
+            </div>
+          )}
+
+          <button
+            onClick={handleOpen}
+            disabled={submitting}
+            className="w-full py-3 bg-primary text-primary-foreground rounded-xl text-[13px] font-extrabold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+          >
+            {submitting
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> Abriendo caja…</>
+              : <><Check className="w-4 h-4" /> Abrir caja</>
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main POS ────────────────────────────────────────────────────────────────
 
 export function POS() {
   const {
     setPosOpen,
+    activeCashSession, sessionChecked, refreshSession,
     catalogLoading,
     search, setSearch, searchRef,
     productosFiltrados,
@@ -575,7 +826,11 @@ export function POS() {
     clienteQuotes, clienteQuotesLoading, quotePanelOpen, setQuotePanelOpen,
     loadQuoteIntoCart,
     saveAsQuote, savingQuote, savedQuoteNumber, setSavedQuoteNumber,
+    holdSales, holdCurrentCart, resumeHoldSale, discardHoldSale,
   } = usePOS()
+
+  const [activeSidebarPanel, setActiveSidebarPanel] = useState<PanelId | null>(null)
+  const openSidebarPanel = useCallback((id: PanelId) => setActiveSidebarPanel(id), [])
 
   // focus search on mount
   const navigate = useNavigate()
@@ -592,6 +847,19 @@ export function POS() {
   const now = new Date()
   const dateStr = now.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })
   const timeStr = now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+
+  // Cash gate: block POS until a session is open
+  if (!sessionChecked) {
+    return (
+      <div className="fixed inset-0 z-200 bg-background flex items-center justify-center">
+        <Loader2 className="w-7 h-7 text-muted-foreground animate-spin" />
+      </div>
+    )
+  }
+
+  if (!activeCashSession) {
+    return <CashGate onOpened={(session) => { refreshSession(); void session }} />
+  }
 
   return (
     <div className="fixed inset-0 z-200 bg-background flex flex-col">
@@ -628,10 +896,25 @@ export function POS() {
       </div>
 
       {/* ── Main ── */}
-      <div className="flex-1 grid grid-cols-[1fr_340px] overflow-hidden">
+      <div className="flex-1 flex overflow-hidden">
+
+        {/* SIDEBAR — Operational tools */}
+        <PosSidebar
+          carrito={carrito}
+          cliente={cliente}
+          cartTotal={totals.total}
+          holdSales={holdSales}
+          onHoldCart={holdCurrentCart}
+          onResumeHoldSale={resumeHoldSale}
+          onDiscardHoldSale={discardHoldSale}
+          onSelectCliente={selectCliente}
+          onSessionChange={refreshSession}
+          controlledPanel={activeSidebarPanel}
+          onPanelChange={setActiveSidebarPanel}
+        />
 
         {/* LEFT — Products / Services */}
-        <div className="flex flex-col overflow-hidden border-r border-border">
+        <div className="flex-1 flex flex-col overflow-hidden border-r border-border">
           {/* Catalog tabs */}
           <div className="flex items-center gap-1 px-4 pt-3 pb-0 shrink-0 border-b border-border">
             <button
@@ -746,7 +1029,7 @@ export function POS() {
         </div>
 
         {/* RIGHT — Cart / Checkout / Pending */}
-        <div className="flex flex-col bg-card overflow-hidden">
+        <div className="w-[340px] shrink-0 flex flex-col bg-card overflow-hidden">
 
           {stage === 'pending_card' ? (
             <PendingCardScreen
@@ -909,6 +1192,17 @@ export function POS() {
           )}
         </div>
       </div>
+
+      {/* ── Bottom bar ── */}
+      <PosBottomBar
+        activeCashSession={activeCashSession}
+        cliente={cliente}
+        carrito={carrito}
+        cartTotal={totals.total}
+        holdSales={holdSales}
+        onHoldCart={holdCurrentCart}
+        onOpenPanel={openSidebarPanel}
+      />
 
       {/* success toast */}
       {stage === 'success' && <SuccessToast orderNumber={successNumber} />}

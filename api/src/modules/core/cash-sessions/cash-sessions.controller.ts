@@ -3,8 +3,11 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CashSessionsService } from './cash-sessions.service';
 import { OpenCashSessionDto } from './dto/open-session.dto';
 import { CloseCashSessionDto } from './dto/close-session.dto';
+import { CloseWithAuthDto } from './dto/close-with-auth.dto';
 import { QueryCashSessionsDto } from './dto/query-sessions.dto';
+import { CreateManualMovementDto } from './dto/create-movement.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
+import { VerifyAuthDto } from './dto/verify-auth.dto';
 
 @ApiTags('Cash Sessions')
 @ApiBearerAuth()
@@ -17,6 +20,13 @@ export class CashSessionsController {
   @ApiOperation({ summary: 'Sesión activa actual' })
   getActive(@Query('branchId') branchId?: string) {
     return this.cashSessionsService.getActive(branchId);
+  }
+
+  @Post('active/movement')
+  @RequirePermissions('cash:manage')
+  @ApiOperation({ summary: 'Registrar movimiento manual de efectivo (ingreso/egreso)' })
+  createManualMovement(@Body() dto: CreateManualMovementDto) {
+    return this.cashSessionsService.createManualMovement(dto);
   }
 
   @Get()
@@ -34,16 +44,28 @@ export class CashSessionsController {
   }
 
   @Post()
-  @RequirePermissions('cash:manage')
+  @RequirePermissions('pos.cash:open')
   @ApiOperation({ summary: 'Abrir sesión de caja' })
   open(@Body() dto: OpenCashSessionDto) {
     return this.cashSessionsService.open(dto);
   }
 
   @Patch(':id/close')
-  @RequirePermissions('cash:manage')
+  @RequirePermissions('pos.cash:close')
   @ApiOperation({ summary: 'Cerrar sesión de caja (corte)' })
   close(@Param('id') id: string, @Body() dto: CloseCashSessionDto) {
     return this.cashSessionsService.close(id, dto);
+  }
+
+  @Post('verify-auth')
+  @ApiOperation({ summary: 'Verificar credenciales de autorizador para cierre de caja' })
+  verifyCloseAuth(@Body() dto: VerifyAuthDto) {
+    return this.cashSessionsService.verifyCloseAuth(dto);
+  }
+
+  @Patch(':id/close-authorized')
+  @ApiOperation({ summary: 'Cerrar sesión con autorización de administrador' })
+  closeWithAuth(@Param('id') id: string, @Body() dto: CloseWithAuthDto) {
+    return this.cashSessionsService.closeWithAuth(id, dto);
   }
 }

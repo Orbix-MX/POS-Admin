@@ -242,6 +242,7 @@ export class UsersService {
       where: { id, tenantMemberships: { some: { tenantId } } },
       include: {
         roleAssignments: {
+          where: { tenantId },
           include: {
             role: {
               include: {
@@ -250,7 +251,7 @@ export class UsersService {
             },
           },
         },
-        permissionGrants: { include: { permission: true } },
+        permissionGrants: { where: { tenantId }, include: { permission: true } },
       },
     });
 
@@ -267,7 +268,7 @@ export class UsersService {
     if (!user) throw new NotFoundException('User not found');
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.userRoleAssignment.deleteMany({ where: { userId } });
+      await tx.userRoleAssignment.deleteMany({ where: { userId, tenantId } });
       if (roleIds.length > 0) {
         await tx.userRoleAssignment.createMany({
           data: roleIds.map((roleId) => ({ userId, roleId, tenantId })),
@@ -285,7 +286,7 @@ export class UsersService {
     if (!user) throw new NotFoundException('User not found');
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.userPermissionGrant.deleteMany({ where: { userId } });
+      await tx.userPermissionGrant.deleteMany({ where: { userId, tenantId } });
       if (grants.length > 0) {
         await tx.userPermissionGrant.createMany({
           data: grants.map(({ permissionId, granted }) => ({ userId, permissionId, granted, tenantId })),
@@ -296,6 +297,7 @@ export class UsersService {
   }
 
   async getEffectivePermissions(userId: string): Promise<string[]> {
+    const tenantId = this.tenantContext.requireTenantId();
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
@@ -305,7 +307,7 @@ export class UsersService {
     }
 
     const roleAssignments = await this.prisma.userRoleAssignment.findMany({
-      where: { userId },
+      where: { userId, tenantId },
       include: {
         role: { include: { permissions: { include: { permission: true } } } },
       },
@@ -319,7 +321,7 @@ export class UsersService {
     }
 
     const individualGrants = await this.prisma.userPermissionGrant.findMany({
-      where: { userId },
+      where: { userId, tenantId },
       include: { permission: true },
     });
 

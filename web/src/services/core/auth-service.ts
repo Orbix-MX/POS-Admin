@@ -60,6 +60,8 @@ export interface CapabilitiesResponse {
 
 export interface ProfileResponse {
   user: AuthUser
+  permissions?: string[]
+  roles?: { id: string; name: string; permissions: string[] }[]
 }
 
 export async function fetchMe(): Promise<ProfileResponse> {

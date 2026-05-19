@@ -528,15 +528,17 @@ async function main() {
   // Gerente role — management subset
   const gerentePermKeys = [
     'dashboard:view',
-    'pos:access',
+    'pos:access', 'pos.cash:open', 'pos.cash:close',
     'products:view', 'products:create', 'products:edit',
     'categories:view', 'categories:create', 'categories:edit',
     'orders:view', 'orders:create', 'orders:edit',
     'customers:view', 'customers:create', 'customers:edit',
     'coupons:view', 'coupons:create', 'coupons:edit',
+    'cash:view', 'cash:manage',
     'users:view',
     'roles:view',
     'reports:view',
+    'settings:view',
   ];
   const gerentePermIds = getPermIds(...gerentePermKeys);
 
@@ -563,10 +565,11 @@ async function main() {
 
   // Vendedor role — small subset for POS/sales staff
   const vendedorPermKeys = [
-    'pos:access',
+    'pos:access', 'pos.cash:open',
     'products:view',
     'orders:view', 'orders:create',
-    'customers:view',
+    'customers:view', 'customers:create',
+    'cash:view',
   ];
   const vendedorPermIds = getPermIds(...vendedorPermKeys);
 

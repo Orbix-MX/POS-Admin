@@ -59,12 +59,14 @@ export class TenantsController {
   // ── Current-tenant settings ────────────────────────────────────────────────
 
   @Get('current/settings')
+  @RequirePermissions('settings:view')
   @ApiOperation({ summary: 'Get settings for the current tenant' })
   getMySettings() {
     return this.tenantsService.getSettings();
   }
 
   @Patch('current/settings')
+  @RequirePermissions('settings:manage')
   @ApiOperation({ summary: 'Merge-patch settings for the current tenant' })
   updateMySettings(@Body() patch: Record<string, unknown>) {
     return this.tenantsService.updateSettings(patch);
@@ -73,12 +75,14 @@ export class TenantsController {
   // ── Current-tenant member management ──────────────────────────────────────
 
   @Get('current/members')
+  @RequirePermissions('users:view')
   @ApiOperation({ summary: 'List members of the current tenant' })
   listMembers() {
     return this.tenantsService.listMembers();
   }
 
   @Post('current/members/:userId')
+  @RequirePermissions('users:create')
   @ApiOperation({ summary: 'Add a user to the current tenant' })
   addMember(@Param('userId') userId: string, @Body('role') role?: string) {
     return this.tenantsService.addMember(userId, role as any);
@@ -86,6 +90,7 @@ export class TenantsController {
 
   @Delete('current/members/:userId')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermissions('users:delete')
   @ApiOperation({ summary: 'Remove a user from the current tenant' })
   removeMember(@Param('userId') userId: string) {
     return this.tenantsService.removeMember(userId);

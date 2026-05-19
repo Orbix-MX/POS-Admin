@@ -12,40 +12,45 @@ import { AvatarInitials } from './avatar-initials'
 const ALL_NAV = [
   {
     group: 'Negocio', key: 'business', items: [
-      { module: 'dashboard', label: 'Dashboard',    icon: LayoutDashboard, path: '/dashboard' },
-      { module: 'ventas',    label: 'Ventas',       icon: ShoppingBag,     path: '/ventas'    },
-      { module: 'compras',   label: 'Compras',      icon: ShoppingCart,    path: '/compras'   },
-      { module: 'inventario',label: 'Inventario',   icon: Package,         path: '/inventario'},
-      { module: 'clientes',  label: 'Clientes',     icon: Users,           path: '/clientes'  },
-      { module: 'proveedores',label: 'Proveedores', icon: Truck,           path: '/proveedores'},
-      { module: 'servicios', label: 'Servicios',    icon: Wrench,          path: '/servicios' },
-      { module: 'cotizaciones',label: 'Cotizaciones',icon: FileText,       path: '/cotizaciones'},
+      { module: 'dashboard',    label: 'Dashboard',      icon: LayoutDashboard, path: '/dashboard',    permission: 'dashboard:view'  },
+      { module: 'ventas',       label: 'Ventas',         icon: ShoppingBag,     path: '/ventas',       permission: 'orders:view'     },
+      { module: 'compras',      label: 'Compras',        icon: ShoppingCart,    path: '/compras',      permission: 'purchases:view'  },
+      { module: 'inventario',   label: 'Inventario',     icon: Package,         path: '/inventario',   permission: 'products:view'   },
+      { module: 'clientes',     label: 'Clientes',       icon: Users,           path: '/clientes',     permission: 'customers:view'  },
+      { module: 'proveedores',  label: 'Proveedores',    icon: Truck,           path: '/proveedores',  permission: 'suppliers:view'  },
+      { module: 'servicios',    label: 'Servicios',      icon: Wrench,          path: '/servicios',    permission: 'products:view'   },
+      { module: 'cotizaciones', label: 'Cotizaciones',   icon: FileText,        path: '/cotizaciones', permission: 'orders:view'     },
     ],
   },
   {
     group: 'Administración', key: 'management', items: [
-      { module: 'cxc',          label: 'Cuentas por Cobrar', icon: TrendingUp, path: '/cxc'          },
-      { module: 'cxp',          label: 'Cuentas por Pagar',  icon: Receipt,    path: '/cxp'          },
-      { module: 'caja',         label: 'Corte de Caja',      icon: Landmark,   path: '/caja'         },
-      { module: 'reportes',     label: 'Reportes',           icon: FileText,   path: '/reportes'     },
-      { module: 'usuarios',     label: 'Usuarios',           icon: Users,      path: '/usuarios'     },
-      { module: 'roles',        label: 'Roles y Permisos',   icon: Shield,     path: '/roles'        },
-      { module: 'configuracion',label: 'Configuración',      icon: Settings,   path: '/configuracion'},
+      { module: 'cxc',          label: 'Cuentas por Cobrar', icon: TrendingUp, path: '/cxc',          permission: 'receivables:view' },
+      { module: 'cxp',          label: 'Cuentas por Pagar',  icon: Receipt,    path: '/cxp',          permission: 'payables:view'    },
+      { module: 'caja',         label: 'Corte de Caja',      icon: Landmark,   path: '/caja',         permission: 'cash:view'        },
+      { module: 'reportes',     label: 'Reportes',           icon: FileText,   path: '/reportes',     permission: 'reports:view'     },
+      { module: 'usuarios',     label: 'Usuarios',           icon: Users,      path: '/usuarios',     permission: 'users:view'       },
+      { module: 'roles',        label: 'Roles y Permisos',   icon: Shield,     path: '/roles',        permission: 'roles:view'       },
+      { module: 'configuracion',label: 'Configuración',      icon: Settings,   path: '/configuracion',permission: 'settings:view'    },
     ],
   },
 ]
 
 export function Sidebar() {
   const { empresa } = useERPStore()
-  const { user, logout, enabledModules } = useAuthStore()
+  const { user, logout, enabledModules, permissions } = useAuthStore()
   const [expanded, setExpanded] = useState<Record<string, boolean>>({ business: true, management: true })
 
   const displayName = user ? `${user.firstName} ${user.lastName}` : empresa.usuario
   const displayEmail = user?.email ?? empresa.email
 
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN'
+
   const visibleGroups = ALL_NAV.map(group => ({
     ...group,
-    items: group.items.filter(item => enabledModules.includes(item.module)),
+    items: group.items.filter(item =>
+      enabledModules.includes(item.module) &&
+      (isSuperAdmin || !item.permission || permissions.includes(item.permission))
+    ),
   })).filter(group => group.items.length > 0)
 
   return (

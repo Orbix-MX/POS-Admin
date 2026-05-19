@@ -5,12 +5,21 @@ import { fetchCliente, fetchClientes, type Cliente } from '@/services/core/clien
 import { fetchServices, type Service } from '@/services/retail/services-service'
 import { createOrder, updateOrderStatus } from '@/services/retail/ventas-service'
 import { fetchQuote, fetchQuotesByCustomer, createQuote, type ServiceQuote } from '@/services/retail/cotizaciones-service'
-import { fetchActiveCashSession } from '@/services/core/caja-service'
+import { fetchActiveCashSession, type ApiCashSession } from '@/services/core/caja-service'
 import { fetchSettings } from '@/services/core/configuracion-service'
 
 export type { Product, Cliente, Service }
 
 export type POSStage = 'cart' | 'checkout' | 'pending_card' | 'success'
+
+export interface HoldSale {
+  id: string
+  label: string
+  createdAt: string
+  carrito: CartItem[]
+  cliente: Cliente | null
+  total: number
+}
 
 export type CartItemType = 'PRODUCT' | 'SERVICE'
 
@@ -95,6 +104,16 @@ export function usePOS() {
   // ---- save as quote ----
   const [savingQuote, setSavingQuote] = useState(false)
   const [savedQuoteNumber, setSavedQuoteNumber] = useState<string | null>(null)
+
+  // ---- active cash session (gate) ----
+  const [activeCashSession, setActiveCashSession] = useState<ApiCashSession | null>(null)
+  const [sessionChecked, setSessionChecked] = useState(false)
+
+  // ---- hold sales ----
+  const [holdSales, setHoldSales] = useState<HoldSale[]>(() => {
+    try { return JSON.parse(localStorage.getItem('pos_hold_sales') ?? '[]') }
+    catch { return [] }
+  })
 
   // ---- load quote into cart ----
   const loadQuoteIntoCart = useCallback(async (quoteId: string) => {
@@ -196,9 +215,11 @@ export function usePOS() {
   useEffect(() => {
     fetchActiveCashSession()
       .then(session => {
+        setActiveCashSession(session)
+        setSessionChecked(true)
         if (session) setExchangeRate(Number(session.exchangeRateUsdMxn) || 1)
       })
-      .catch(() => {})
+      .catch(() => { setActiveCashSession(null); setSessionChecked(true) })
     fetchSettings()
       .then(s => {
         if (s.cashChangeCurrency === 'MXN' || s.cashChangeCurrency === 'USD') {
@@ -206,6 +227,16 @@ export function usePOS() {
         }
       })
       .catch(() => {})
+  }, [])
+
+  const refreshSession = useCallback(async () => {
+    try {
+      const session = await fetchActiveCashSession()
+      setActiveCashSession(session)
+      if (session) setExchangeRate(Number(session.exchangeRateUsdMxn) || 1)
+    } catch {
+      setActiveCashSession(null)
+    }
   }, [])
 
   // ---- load catalog ----
@@ -523,9 +554,43 @@ export function usePOS() {
     setStage('cart')
   }, [clearCart])
 
+  const holdCurrentCart = useCallback((label?: string) => {
+    if (carrito.length === 0) return
+    const sale: HoldSale = {
+      id: `hold-${Date.now()}`,
+      label: label ?? `Mesa ${new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`,
+      createdAt: new Date().toISOString(),
+      carrito: [...carrito],
+      cliente: cliente ? { ...cliente } : null,
+      total: totals.total,
+    }
+    const updated = [...holdSales, sale]
+    setHoldSales(updated)
+    localStorage.setItem('pos_hold_sales', JSON.stringify(updated))
+    clearCart()
+  }, [carrito, cliente, totals.total, holdSales, clearCart])
+
+  const resumeHoldSale = useCallback((id: string) => {
+    const hold = holdSales.find(h => h.id === id)
+    if (!hold) return
+    setCarrito(hold.carrito)
+    if (hold.cliente) setCliente(hold.cliente)
+    const updated = holdSales.filter(h => h.id !== id)
+    setHoldSales(updated)
+    localStorage.setItem('pos_hold_sales', JSON.stringify(updated))
+  }, [holdSales])
+
+  const discardHoldSale = useCallback((id: string) => {
+    const updated = holdSales.filter(h => h.id !== id)
+    setHoldSales(updated)
+    localStorage.setItem('pos_hold_sales', JSON.stringify(updated))
+  }, [holdSales])
+
   return {
     // store
     setPosOpen,
+    // cash session gate
+    activeCashSession, sessionChecked, refreshSession,
     // catalog
     catalogLoading,
     products,
@@ -570,5 +635,7 @@ export function usePOS() {
     loadQuoteIntoCart,
     // save as quote
     saveAsQuote, savingQuote, savedQuoteNumber, setSavedQuoteNumber,
+    // hold sales
+    holdSales, holdCurrentCart, resumeHoldSale, discardHoldSale,
   }
 }
