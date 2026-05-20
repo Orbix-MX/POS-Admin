@@ -24,7 +24,7 @@ export class RequireModuleGuard implements CanActivate {
     if (!user?.tenantId) return true; // SUPER_ADMIN bypass
 
     const plan = user.plan ?? 'FREE';
-    const planModules = getModulesForPlan(plan as any) as unknown as string[];
+    const planModules = getModulesForPlan(plan) as unknown as string[];
     const extra: string[] = user.enabledModules ?? [];
     const effective = new Set([...planModules, ...extra]);
 

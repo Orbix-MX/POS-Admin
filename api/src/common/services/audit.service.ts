@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { AuditContextService } from '../context/audit-context.service';
 import { TenantContextService } from '../context/tenant-context.service';
@@ -43,7 +44,7 @@ export class AuditService {
     try {
       const tenantId = this.tenantContext.requireTenantId();
       const userId = this.auditContext.getUserId() ?? null;
-      const client = tx ?? (this.prisma as unknown as AuditClient);
+      const client = tx ?? (this.prisma);
       await client.auditLog.create({
         data: {
           tenantId,
@@ -51,8 +52,8 @@ export class AuditService {
           action: entry.action,
           entityType: entry.entityType,
           entityId: entry.entityId,
-          before: (entry.before ?? null) as never,
-          after: (entry.after ?? null) as never,
+          before: entry.before ?? Prisma.JsonNull,
+          after: entry.after ?? Prisma.JsonNull,
           reason: entry.reason ?? null,
         },
       });

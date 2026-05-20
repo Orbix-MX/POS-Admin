@@ -84,7 +84,7 @@ export class QuotePdfService {
       customer.phone,
     ]
       .filter(Boolean)
-      .map((l) => `<div>${this.escape(l!)}</div>`)
+      .map((l) => `<div>${this.escape(l)}</div>`)
       .join('');
 
     const companyLines = [

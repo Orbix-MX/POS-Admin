@@ -112,7 +112,7 @@ describe('OrdersService', () => {
       mockPrismaService.order.findUnique.mockResolvedValue(mockOrder);
       mockPrismaService.order.update.mockResolvedValue(updatedOrder);
 
-      const result = await service.updateStatus(orderId, newStatus as any);
+      const result = await service.updateStatus(orderId, newStatus);
 
       expect(result.status).toBe(newStatus);
     });

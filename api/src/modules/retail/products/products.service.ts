@@ -1,19 +1,23 @@
-﻿import {
+import { randomUUID } from 'crypto';
+import {
   Injectable,
   NotFoundException,
   ConflictException,
   BadRequestException,
 } from '@nestjs/common';
+import sharp from 'sharp';
 import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { AuditService } from '../../../common/services/audit.service';
+import { R2Service } from '../../../storage/r2.service';
 import { SlugUtil } from '../../../common/utils/slug.util';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { QueryProductDto } from './dto/query-product.dto';
-import { AddImageDto } from './dto/add-image.dto';
 import { PaginatedResponse } from '../../../common/dto/pagination.dto';
 import { Product, Prisma } from '@prisma/client';
+
+const MAX_IMAGE_WIDTH = 1200;
 
 @Injectable()
 export class ProductsService {
@@ -21,7 +25,8 @@ export class ProductsService {
     private prisma: PrismaService,
     private tenantContext: TenantContextService,
     private audit: AuditService,
-  ) { }
+    private r2: R2Service,
+  ) {}
 
   async create(createProductDto: CreateProductDto): Promise<Product> {
     const tenantId = this.tenantContext.requireTenantId();
@@ -67,9 +72,7 @@ export class ProductsService {
     });
   }
 
-  async findAll(
-    queryDto: QueryProductDto,
-  ): Promise<PaginatedResponse<Product>> {
+  async findAll(queryDto: QueryProductDto): Promise<PaginatedResponse<Product>> {
     const { skip, limit, page, search, categoryId, status } = queryDto;
     const tenantId = this.tenantContext.requireTenantId();
     const where: Prisma.ProductWhereInput = { tenantId };
@@ -82,13 +85,8 @@ export class ProductsService {
       ];
     }
 
-    if (categoryId) {
-      where.categoryId = categoryId;
-    }
-
-    if (status) {
-      where.status = status;
-    }
+    if (categoryId) where.categoryId = categoryId;
+    if (status) where.status = status;
 
     const [products, total] = await Promise.all([
       this.prisma.product.findMany({
@@ -98,12 +96,8 @@ export class ProductsService {
         orderBy: { createdAt: 'desc' },
         include: {
           category: true,
-          images: {
-            orderBy: { sortOrder: 'asc' },
-          },
-          _count: {
-            select: { orderItems: true },
-          },
+          images: { orderBy: { sortOrder: 'asc' } },
+          _count: { select: { orderItems: true } },
         },
       }),
       this.prisma.product.count({ where }),
@@ -112,8 +106,8 @@ export class ProductsService {
     return {
       data: products,
       meta: {
-        page: page,
-        limit: limit,
+        page,
+        limit,
         total,
         totalPages: Math.ceil(total / limit),
       },
@@ -135,26 +129,17 @@ export class ProductsService {
     return product;
   }
 
-  async update(
-    id: string,
-    updateProductDto: UpdateProductDto,
-  ): Promise<Product> {
-    const product = await this.prisma.product.findUnique({
-      where: { id },
-    });
+  async update(id: string, updateProductDto: UpdateProductDto): Promise<Product> {
+    const product = await this.prisma.product.findUnique({ where: { id } });
 
-    if (!product) {
-      throw new NotFoundException('Product not found');
-    }
+    if (!product) throw new NotFoundException('Product not found');
 
     if (updateProductDto.categoryId) {
       const category = await this.prisma.category.findUnique({
         where: { id: updateProductDto.categoryId },
       });
 
-      if (!category) {
-        throw new NotFoundException('Category not found');
-      }
+      if (!category) throw new NotFoundException('Category not found');
     }
 
     let slug = product.slug;
@@ -172,17 +157,10 @@ export class ProductsService {
 
     const updated = await this.prisma.product.update({
       where: { id },
-      data: {
-        ...updateProductDto,
-        slug,
-      },
-      include: {
-        category: true,
-        images: true,
-      },
+      data: { ...updateProductDto, slug },
+      include: { category: true, images: true },
     });
 
-    // Audit price changes (sensitive — affects revenue)
     if (
       updateProductDto.price != null &&
       Number(updateProductDto.price) !== Number(product.price)
@@ -200,74 +178,95 @@ export class ProductsService {
   }
 
   async remove(id: string): Promise<void> {
-    const product = await this.prisma.product.findUnique({
-      where: { id },
-      include: {
-        orderItems: true,
-      },
+    const tenantId = this.tenantContext.requireTenantId();
+    const product = await this.prisma.product.findFirst({
+      where: { id, tenantId },
+      include: { orderItems: true, images: true },
     });
 
-    if (!product) {
-      throw new NotFoundException('Product not found');
-    }
+    if (!product) throw new NotFoundException('Product not found');
 
     if (product.orderItems.length > 0) {
-      throw new BadRequestException(
-        'Cannot delete product with existing orders',
-      );
+      throw new BadRequestException('Cannot delete product with existing orders');
     }
 
-    await this.prisma.product.delete({
-      where: { id },
-    });
+    await Promise.all(
+      product.images.flatMap((img) =>
+        img.key ? [this.r2.delete(img.key)] : [],
+      ),
+    );
+
+    await this.prisma.product.delete({ where: { id } });
   }
 
-  async addImage(productId: string, addImageDto: AddImageDto) {
-    const product = await this.prisma.product.findUnique({
-      where: { id: productId },
+  async uploadImage(productId: string, file: Express.Multer.File) {
+    const tenantId = this.tenantContext.requireTenantId();
+    
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, tenantId },
+      include: { images: { where: { isPrimary: true } } },
     });
+    
+    if (!product) throw new NotFoundException('Product not found');
+    console.log('file', file);
 
-    if (!product) {
-      throw new NotFoundException('Product not found');
-    }
+    const webpBuffer = await sharp(file.buffer)
+      .resize({ width: MAX_IMAGE_WIDTH, withoutEnlargement: true })
+      .webp({ quality: 85 })
+      .toBuffer();
 
-    if (addImageDto.isPrimary) {
-      await this.prisma.productImage.updateMany({
-        where: { productId },
-        data: { isPrimary: false },
+    const imageId = randomUUID();
+    const key = this.r2.buildKey(tenantId, productId, imageId);
+    const url = await this.r2.upload(key, webpBuffer, 'image/webp');
+
+    const oldPrimary = product.images?.[0];
+
+    return this.prisma.$transaction(async (tx) => {
+      if (oldPrimary) {
+        await tx.productImage.delete({ where: { id: oldPrimary.id } });
+      }
+
+      const image = await tx.productImage.create({
+        data: {
+          id: imageId,
+          productId,
+          url,
+          key,
+          mimeType: 'image/webp',
+          size: webpBuffer.length,
+          isPrimary: true,
+          sortOrder: 0,
+        },
       });
-    }
 
-    return this.prisma.productImage.create({
-      data: {
-        productId,
-        ...addImageDto,
-      },
+      if (oldPrimary?.key) {
+        await this.r2.delete(oldPrimary.key);
+      }
+
+      return image;
     });
   }
 
   async removeImage(productId: string, imageId: string) {
+    const tenantId = this.tenantContext.requireTenantId();
+
     const image = await this.prisma.productImage.findFirst({
-      where: { id: imageId, productId },
+      where: { id: imageId, productId, product: { tenantId } },
     });
 
-    if (!image) {
-      throw new NotFoundException('Image not found');
+    if (!image) throw new NotFoundException('Image not found');
+
+    await this.prisma.productImage.delete({ where: { id: imageId } });
+
+    if (image.key) {
+      await this.r2.delete(image.key);
     }
-
-    await this.prisma.productImage.delete({
-      where: { id: imageId },
-    });
   }
 
   async updateStock(id: string, quantity: number): Promise<Product> {
-    const product = await this.prisma.product.findUnique({
-      where: { id },
-    });
+    const product = await this.prisma.product.findUnique({ where: { id } });
 
-    if (!product) {
-      throw new NotFoundException('Product not found');
-    }
+    if (!product) throw new NotFoundException('Product not found');
 
     if (!product.trackInventory) {
       throw new BadRequestException('Product does not track inventory');
@@ -275,9 +274,7 @@ export class ProductsService {
 
     const newStock = product.stock + quantity;
 
-    if (newStock < 0) {
-      throw new BadRequestException('Insufficient stock');
-    }
+    if (newStock < 0) throw new BadRequestException('Insufficient stock');
 
     const updated = await this.prisma.product.update({
       where: { id },
@@ -306,9 +303,7 @@ export class ProductsService {
         status: 'ACTIVE',
       },
       take: limit,
-      include: {
-        category: true,
-      },
+      include: { category: true },
       orderBy: { stock: 'asc' },
     });
   }

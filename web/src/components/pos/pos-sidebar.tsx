@@ -894,7 +894,7 @@ interface SidebarIconProps {
   onClick: () => void
 }
 
-function SidebarIcon({ id: _id, icon: Icon, label, active, expanded, badge, dot, onClick }: SidebarIconProps) {
+function SidebarIcon({ icon: Icon, label, active, expanded, badge, dot, onClick }: SidebarIconProps) {
   if (expanded) {
     return (
       <button

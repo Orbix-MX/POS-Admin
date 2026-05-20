@@ -553,6 +553,9 @@ model ProductImage {
   id        String   @id @default(uuid())
   productId String
   url       String
+  key       String?
+  mimeType  String?  @map("mime_type")
+  size      Int?
   altText   String?
   sortOrder Int      @default(0)
   isPrimary Boolean  @default(false)

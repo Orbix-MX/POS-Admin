@@ -1,8 +1,9 @@
-﻿import type { Dispatch, SetStateAction } from 'react'
+import { useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { FormModal, FormField } from '@/components/shared/form-modal'
 import { STATUS_OPTIONS, TAX_CODES } from '@/hooks/retail/use-products'
 import type { Product } from '@/services/retail/product-service'
 import type { Category } from '@/services/retail/categories-service'
+import { uploadProductImage, deleteProductImage } from '@/services/retail/product-service'
 
 export interface ProductFormModalProps {
   open: boolean
@@ -14,6 +15,9 @@ export interface ProductFormModalProps {
   categories: Category[]
 }
 
+const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+const MAX_SIZE = 5 * 1024 * 1024
+
 export function ProductFormModal({
   open,
   onClose,
@@ -23,8 +27,127 @@ export function ProductFormModal({
   onSave,
   categories,
 }: ProductFormModalProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+
+  const primaryImage = form.images?.find(img => img.isPrimary) ?? form.images?.[0]
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !editingId) return
+
+    setUploadError(null)
+
+    if (!ACCEPTED_TYPES.includes(file.type)) {
+      setUploadError('Formato no permitido. Usa PNG, JPG o WebP.')
+      return
+    }
+    if (file.size > MAX_SIZE) {
+      setUploadError('La imagen supera 5 MB.')
+      return
+    }
+
+    setUploading(true)
+    try {
+      const newImage = await uploadProductImage(editingId, file)
+      setForm(p => ({
+        ...p,
+        images: [newImage],
+      }))
+    } catch {
+      setUploadError('Error al subir la imagen. Intenta de nuevo.')
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  async function handleRemoveImage() {
+    if (!editingId || !primaryImage) return
+    setUploadError(null)
+    setUploading(true)
+    try {
+      await deleteProductImage(editingId, primaryImage.id)
+      setForm(p => ({
+        ...p,
+        images: p.images?.filter(img => img.id !== primaryImage.id) ?? [],
+      }))
+    } catch {
+      setUploadError('Error al eliminar la imagen.')
+    } finally {
+      setUploading(false)
+    }
+  }
+
   return (
     <FormModal open={open} onClose={onClose} title={editingId ? 'Editar Producto' : 'Nuevo Producto'}>
+      {/* Image section */}
+      <div className="mb-4">
+        <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Imagen</label>
+        {editingId ? (
+          <div className="flex items-center gap-3">
+            {primaryImage ? (
+              <div className="relative flex-shrink-0">
+                <img
+                  src={primaryImage.url}
+                  alt={primaryImage.altText ?? form.name}
+                  className="w-16 h-16 object-cover rounded-lg border border-border"
+                />
+                {uploading && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg">
+                    <span className="text-white text-xs">...</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="w-16 h-16 rounded-lg border border-dashed border-border flex items-center justify-center bg-muted/30 flex-shrink-0">
+                {uploading ? (
+                  <span className="text-xs text-muted-foreground">...</span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Sin imagen</span>
+                )}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-1.5">
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={() => fileInputRef.current?.click()}
+                className="px-3 py-1.5 text-xs border border-border rounded-lg bg-card text-foreground cursor-pointer disabled:opacity-50"
+              >
+                {primaryImage ? 'Reemplazar' : 'Subir imagen'}
+              </button>
+              {primaryImage && (
+                <button
+                  type="button"
+                  disabled={uploading}
+                  onClick={handleRemoveImage}
+                  className="px-3 py-1.5 text-xs border border-destructive/50 rounded-lg text-destructive cursor-pointer disabled:opacity-50"
+                >
+                  Eliminar
+                </button>
+              )}
+              <span className="text-[11px] text-muted-foreground">PNG, JPG, WebP · máx 5 MB</span>
+            </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">Guarda el producto primero para subir imagen.</p>
+        )}
+        {uploadError && (
+          <p className="text-xs text-destructive mt-1">{uploadError}</p>
+        )}
+      </div>
+
       <div className="grid grid-cols-2 gap-x-4">
         {!editingId && (
           <FormField label="SKU" value={form.sku} onChange={v => setForm(p => ({ ...p, sku: v }))} />

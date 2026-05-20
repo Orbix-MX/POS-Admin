@@ -149,7 +149,7 @@ export class PlatformBranchesService {
       where: { tenantId, status: 'ACTIVE' },
     });
 
-    const newMax = getMaxBranchesForPlan(tenant.plan as TenantPlan, dto.extraBranchLimit);
+    const newMax = getMaxBranchesForPlan(tenant.plan, dto.extraBranchLimit);
     if (newMax !== null && activeBranches > newMax) {
       throw new BadRequestException(
         `No se puede reducir el límite a ${newMax}: hay ${activeBranches} sucursales activas`,

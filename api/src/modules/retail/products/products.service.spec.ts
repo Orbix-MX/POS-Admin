@@ -2,6 +2,9 @@
 import { NotFoundException, ConflictException } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { PrismaService } from '../../../database/prisma.service';
+import { TenantContextService } from '../../../common/context/tenant-context.service';
+import { AuditService } from '../../../common/services/audit.service';
+import { R2Service } from '../../../storage/r2.service';
 import { SlugUtil } from '../../../common/utils/slug.util';
 
 describe('ProductsService', () => {
@@ -11,6 +14,7 @@ describe('ProductsService', () => {
   const mockPrismaService = {
     product: {
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
@@ -22,6 +26,7 @@ describe('ProductsService', () => {
     },
     category: {
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
     },
     productImage: {
       create: jest.fn(),
@@ -31,11 +36,18 @@ describe('ProductsService', () => {
     },
   };
 
+  const mockTenantContext = { requireTenantId: jest.fn().mockReturnValue('tenant-1') };
+  const mockAuditService = { log: jest.fn() };
+  const mockR2Service = { upload: jest.fn(), delete: jest.fn(), buildKey: jest.fn().mockReturnValue('key') };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProductsService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: TenantContextService, useValue: mockTenantContext },
+        { provide: AuditService, useValue: mockAuditService },
+        { provide: R2Service, useValue: mockR2Service },
       ],
     }).compile();
 
@@ -78,7 +90,7 @@ describe('ProductsService', () => {
       };
 
       mockPrismaService.product.findUnique.mockResolvedValue(null);
-      mockPrismaService.category.findUnique.mockResolvedValue({ id: 'cat-1' });
+      mockPrismaService.category.findFirst.mockResolvedValue({ id: 'cat-1' });
       mockPrismaService.product.findMany.mockResolvedValue([]);
       mockPrismaService.product.create.mockResolvedValue(mockProduct);
       jest.spyOn(SlugUtil, 'generateUnique').mockReturnValue('test-product');
@@ -113,7 +125,7 @@ describe('ProductsService', () => {
       };
 
       mockPrismaService.product.findUnique.mockResolvedValue(null);
-      mockPrismaService.category.findUnique.mockResolvedValue(null);
+      mockPrismaService.category.findFirst.mockResolvedValue(null);
 
       await expect(service.create(createProductDto as any)).rejects.toThrow(
         NotFoundException,
@@ -176,7 +188,7 @@ describe('ProductsService', () => {
         _count: { orderItems: 0 },
       };
 
-      mockPrismaService.product.findUnique.mockResolvedValue(mockProduct);
+      mockPrismaService.product.findFirst.mockResolvedValue(mockProduct);
 
       const result = await service.findOne(productId);
 
@@ -184,7 +196,7 @@ describe('ProductsService', () => {
     });
 
     it('should throw NotFoundException if product not found', async () => {
-      mockPrismaService.product.findUnique.mockResolvedValue(null);
+      mockPrismaService.product.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne('invalid-id')).rejects.toThrow(
         NotFoundException,
@@ -222,54 +234,13 @@ describe('ProductsService', () => {
     });
   });
 
-  describe('addImage', () => {
-    it('should add image to product', async () => {
-      const productId = '1';
-      const addImageDto = {
-        url: 'https://example.com/image.jpg',
-        altText: 'Test image',
-        isPrimary: false,
-      };
+  describe('uploadImage', () => {
+    it('should throw NotFoundException when product not found', async () => {
+      mockPrismaService.product.findFirst.mockResolvedValue(null);
 
-      const mockProduct = { id: productId };
-      const mockImage = {
-        id: '1',
-        productId,
-        ...addImageDto,
-        sortOrder: 0,
-        createdAt: new Date(),
-      };
-
-      mockPrismaService.product.findUnique.mockResolvedValue(mockProduct);
-      mockPrismaService.productImage.create.mockResolvedValue(mockImage);
-
-      const result = await service.addImage(productId, addImageDto);
-
-      expect(result.url).toBe(addImageDto.url);
-      expect(mockPrismaService.productImage.create).toHaveBeenCalled();
-    });
-
-    it('should update other images when setting primary', async () => {
-      const productId = '1';
-      const addImageDto = {
-        url: 'https://example.com/image.jpg',
-        isPrimary: true,
-      };
-
-      mockPrismaService.product.findUnique.mockResolvedValue({ id: productId });
-      mockPrismaService.productImage.updateMany.mockResolvedValue({ count: 1 });
-      mockPrismaService.productImage.create.mockResolvedValue({
-        id: '1',
-        productId,
-        ...addImageDto,
-      });
-
-      await service.addImage(productId, addImageDto);
-
-      expect(mockPrismaService.productImage.updateMany).toHaveBeenCalledWith({
-        where: { productId },
-        data: { isPrimary: false },
-      });
+      await expect(
+        service.uploadImage('non-existent', { buffer: Buffer.from('') } as Express.Multer.File),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
