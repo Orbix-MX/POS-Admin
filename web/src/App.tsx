@@ -56,6 +56,7 @@ const PATH_TO_MODULE: Record<string, ModuleId> = {
   '/cotizaciones': 'cotizaciones',
   '/ordenes-trabajo': 'ordenes-trabajo',
   '/empleados': 'empleados',
+  '/pos': 'pos',
 }
 
 function ModuleRoute({ module, children }: { module: string; children: ReactNode }) {
@@ -66,6 +67,18 @@ function ModuleRoute({ module, children }: { module: string; children: ReactNode
   return <>{children}</>
 }
 
+const APP_SUFFIX = 'Orbix ERP'
+
+const PLATFORM_TITLES: Record<string, string> = {
+  '/platform/dashboard': 'Platform Dashboard',
+  '/platform/empresas': 'Empresas',
+  '/platform/auditoria': 'Auditoría',
+}
+
+function useDocumentTitle(title: string) {
+  useEffect(() => { document.title = title ? `${title} | ${APP_SUFFIX}` : APP_SUFFIX }, [title])
+}
+
 function AppLayout() {
   const { posOpen, loadTenantBranding } = useERPStore()
 
@@ -73,6 +86,8 @@ function AppLayout() {
   const location = useLocation()
   const activeModule = PATH_TO_MODULE[location.pathname] || 'dashboard'
   const meta = MODULE_META[activeModule]
+
+  useDocumentTitle(meta?.label ?? '')
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -128,24 +143,30 @@ function TenantAuthGate() {
 
   useEffect(() => { init() }, [init])
 
-  if (!isAuthenticated && !availableTenants) return <Login />
-  if (!isAuthenticated && availableTenants) return <SelectTenant />
+  if (!isAuthenticated && !availableTenants) { document.title = `Iniciar sesión | ${APP_SUFFIX}`; return <Login /> }
+  if (!isAuthenticated && availableTenants) { document.title = APP_SUFFIX; return <SelectTenant /> }
   if (!capabilitiesLoaded || availableBranches === null) return (
     <div className="flex h-screen items-center justify-center bg-background">
       <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
     </div>
   )
-  if (needsBranchSelection) return <SelectBranch />
+  if (needsBranchSelection) { document.title = APP_SUFFIX; return <SelectBranch /> }
 
   return <AppLayout />
 }
 
 function PlatformGate() {
   const { isAuthenticated, init } = usePlatformAuthStore()
+  const location = useLocation()
 
   useEffect(() => { init() }, [init])
 
-  if (!isAuthenticated) return <PlatformLogin />
+  useEffect(() => {
+    const label = PLATFORM_TITLES[location.pathname]
+    document.title = label ? `${label} | ${APP_SUFFIX}` : APP_SUFFIX
+  }, [location.pathname])
+
+  if (!isAuthenticated) { document.title = `Platform | ${APP_SUFFIX}`; return <PlatformLogin /> }
 
   return (
     <PlatformLayout>

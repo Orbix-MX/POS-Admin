@@ -199,6 +199,26 @@ export function Sidebar() {
           <LogOut className="w-4 h-4" />
         </button>
       </div>
+
+      {/* Platform branding footer — white-label: hide via VITE_WHITE_LABEL=true */}
+      {import.meta.env.VITE_WHITE_LABEL !== 'true' && (
+        <div className="px-4 py-2 border-t border-border/50 flex items-center gap-1.5">
+          <div className="w-4 h-4 bg-primary/15 rounded flex items-center justify-center shrink-0">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="0.5" y="0.5" width="3.5" height="3.5" rx="0.75" fill="currentColor" className="text-primary" />
+              <rect x="6" y="0.5" width="3.5" height="3.5" rx="0.75" fill="currentColor" className="text-primary" opacity="0.5" />
+              <rect x="0.5" y="6" width="3.5" height="3.5" rx="0.75" fill="currentColor" className="text-primary" opacity="0.5" />
+              <rect x="6" y="6" width="3.5" height="3.5" rx="0.75" fill="currentColor" className="text-primary" />
+            </svg>
+          </div>
+          <div className="min-w-0">
+            <div className="text-[9px] font-medium text-muted-foreground/50 leading-none">Powered by</div>
+            <div className="text-[10px] font-bold text-muted-foreground/60 leading-tight truncate">
+              Orbix ERP <span className="font-normal opacity-70">v{__APP_VERSION__}</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

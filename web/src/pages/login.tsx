@@ -1,6 +1,9 @@
 import { useState } from 'react'
-import { Monitor, Loader2, Eye, EyeOff } from 'lucide-react'
+import { Loader2, Eye, EyeOff } from 'lucide-react'
 import { useAuthStore } from '@/store/auth-store'
+
+// White-label hook: future ENTERPRISE plans can set VITE_WHITE_LABEL=true to hide Orbix branding
+const SHOW_PLATFORM_BRAND = import.meta.env.VITE_WHITE_LABEL !== 'true'
 
 export function Login() {
   const { login, loading, error } = useAuthStore()
@@ -14,22 +17,32 @@ export function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-[380px]">
-        {/* Logo */}
-        <div className="flex items-center justify-center gap-3 mb-8">
-          <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-md">
-            <Monitor className="w-5 h-5 text-primary-foreground" />
-          </div>
-          <div>
-            <div className="text-[20px] font-extrabold text-foreground leading-tight">TiendaPro</div>
-            <div className="text-[11px] text-muted-foreground">Sistema de Gestión ERP</div>
-          </div>
-        </div>
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+      <div className="w-full max-w-[380px] flex flex-col gap-6">
 
+        {/* Platform brand */}
+        {SHOW_PLATFORM_BRAND && (
+          <div className="flex flex-col items-center gap-3">
+            {/* Logo mark */}
+            <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center shadow-lg shadow-primary/25">
+              <svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="2" y="2" width="9" height="9" rx="2" fill="currentColor" className="text-primary-foreground" />
+                <rect x="15" y="2" width="9" height="9" rx="2" fill="currentColor" className="text-primary-foreground" opacity="0.6" />
+                <rect x="2" y="15" width="9" height="9" rx="2" fill="currentColor" className="text-primary-foreground" opacity="0.6" />
+                <rect x="15" y="15" width="9" height="9" rx="2" fill="currentColor" className="text-primary-foreground" />
+              </svg>
+            </div>
+            <div className="text-center">
+              <div className="text-[22px] font-extrabold text-foreground tracking-tight leading-none">Orbix ERP</div>
+              <div className="text-[12px] text-muted-foreground mt-1">Business Management Platform</div>
+            </div>
+          </div>
+        )}
+
+        {/* Login card */}
         <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
-          <h1 className="text-[22px] font-extrabold text-foreground mb-1">Iniciar sesión</h1>
-          <p className="text-[13px] text-muted-foreground mb-6">Ingresa tus credenciales para acceder al sistema</p>
+          <h1 className="text-[18px] font-bold text-foreground mb-0.5">Iniciar sesión</h1>
+          <p className="text-[13px] text-muted-foreground mb-6">Ingresa tus credenciales para continuar</p>
 
           {error && (
             <div className="mb-5 px-3.5 py-2.5 bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-900 rounded-lg text-[13px] text-red-700 dark:text-red-400">
@@ -71,10 +84,7 @@ export function Login() {
                   onClick={() => setShowPassword(v => !v)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground bg-transparent border-none cursor-pointer p-0"
                 >
-                  {showPassword
-                    ? <EyeOff className="w-4 h-4" />
-                    : <Eye className="w-4 h-4" />
-                  }
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
@@ -86,15 +96,18 @@ export function Login() {
             >
               {loading
                 ? <><Loader2 className="w-4 h-4 animate-spin" /> Verificando...</>
-                : 'Ingresar al sistema'
+                : 'Ingresar'
               }
             </button>
           </form>
         </div>
 
-        <p className="text-center text-[11px] text-muted-foreground mt-5">
-          TiendaPro ERP · v2.0.1 · © 2026
-        </p>
+        {/* Footer */}
+        {SHOW_PLATFORM_BRAND && (
+          <p className="text-center text-[11px] text-muted-foreground/60">
+            Orbix ERP · v{__APP_VERSION__} · © {new Date().getFullYear()}
+          </p>
+        )}
       </div>
     </div>
   )
