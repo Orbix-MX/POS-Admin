@@ -371,6 +371,7 @@ model PurchaseOrder {
   tenantId    String
   orderNumber String
   supplierId  String
+  branchId    String?
   status      PurchaseOrderStatus @default(BORRADOR)
   orderDate   DateTime            @default(now())
   expectedDate DateTime?
@@ -386,6 +387,7 @@ model PurchaseOrder {
 
   tenant         Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   supplier       Supplier             @relation(fields: [supplierId], references: [id])
+  branch         Branch?              @relation(fields: [branchId], references: [id], onDelete: SetNull)
   items          PurchaseOrderItem[]
   receipts       PurchaseReceipt[]
   accountPayable AccountPayable?
@@ -858,6 +860,7 @@ model Branch {
   orders             Order[]
   inventoryMovements InventoryMovement[]
   cashSessions       CashSession[]
+  purchaseOrders     PurchaseOrder[]
 
   usersLastSelected  User[] @relation("UserLastBranch")
 

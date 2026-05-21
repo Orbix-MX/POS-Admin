@@ -1,25 +1,491 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { fetchSettings, updateSettings, type TenantSettings } from '@/services/core/configuracion-service'
+import { fetchUsuarios, type Usuario } from '@/services/core/users-service'
 import {
   fetchTenantInfo, updateTenantInfo, uploadTenantLogo, uploadTenantBanner,
   deleteTenantLogo, deleteTenantBanner, type TenantInfo,
 } from '@/services/core/tenant-service'
+import {
+  fetchBranches, createBranch, updateBranch, deleteBranch, setMainBranch,
+  addBranchMember, removeBranchMember, type Branch, type CreateBranchInput,
+} from '@/services/core/branches-service'
 import { useERPStore } from '@/store/erp-store'
 import { useAuthStore } from '@/store/auth-store'
-import { Loader2, Upload, Trash2, Building2 } from 'lucide-react'
+const PLAN_BRANCH_LIMITS: Record<string, number | null> = {
+  FREE: 1, STARTER: 1, PRO: 3, PLUS: 10, ENTERPRISE: null,
+}
+function getMaxBranchesForPlan(plan: string): number | null {
+  return PLAN_BRANCH_LIMITS[plan] ?? null
+}
+import {
+  Loader2, Upload, Trash2, Building2, MapPin, Plus, Pencil,
+  CheckCircle, XCircle, Star, UserPlus, UserMinus, Users, X,
+} from 'lucide-react'
+
+// ─── BRANCH STATUS ────────────────────────────────────────────────────────────
+
+const STATUS_LABELS: Record<string, string> = {
+  ACTIVE: 'Activa', INACTIVE: 'Inactiva', SUSPENDED: 'Suspendida', CLOSED: 'Cerrada',
+}
+const STATUS_COLORS: Record<string, string> = {
+  ACTIVE: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+  INACTIVE: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  SUSPENDED: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
+  CLOSED: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
+}
+
+// ─── BRANCH FORM MODAL ────────────────────────────────────────────────────────
+
+function BranchModal({
+  branch,
+  onClose,
+  onSave,
+}: {
+  branch: Branch | null
+  onClose: () => void
+  onSave: (input: CreateBranchInput) => Promise<void>
+}) {
+  const isEdit = !!branch
+  const [form, setForm] = useState<CreateBranchInput>({
+    name: branch?.name ?? '',
+    code: branch?.code ?? '',
+    address: branch?.address ?? '',
+    city: branch?.city ?? '',
+    state: branch?.state ?? '',
+    zipCode: branch?.zipCode ?? '',
+    phone: branch?.phone ?? '',
+    email: branch?.email ?? '',
+    isMain: branch?.isMain ?? false,
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function setF<K extends keyof CreateBranchInput>(k: K, v: CreateBranchInput[K]) {
+    setForm(p => ({ ...p, [k]: v }))
+  }
+
+  async function handleSave() {
+    if (!form.name.trim() || !form.code.trim()) { setError('Nombre y código son requeridos'); return }
+    setSaving(true)
+    setError(null)
+    try {
+      await onSave(form)
+      onClose()
+    } catch (e: any) {
+      setError(e?.response?.data?.message ?? 'Error al guardar sucursal')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-lg">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <h2 className="text-[15px] font-semibold text-foreground flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-primary" />
+            {isEdit ? 'Editar sucursal' : 'Nueva sucursal'}
+          </h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted"><X className="w-4 h-4 text-muted-foreground" /></button>
+        </div>
+
+        <div className="px-5 py-4 space-y-3.5">
+          <div className="grid grid-cols-2 gap-3">
+            <BF label="Nombre *" value={form.name} onChange={v => setF('name', v)} />
+            <BF label="Código *" value={form.code} onChange={v => setF('code', v.toUpperCase())} placeholder="CENTRO" />
+          </div>
+          <BF label="Dirección" value={form.address ?? ''} onChange={v => setF('address', v)} />
+          <div className="grid grid-cols-3 gap-3">
+            <BF label="Ciudad" value={form.city ?? ''} onChange={v => setF('city', v)} />
+            <BF label="Estado" value={form.state ?? ''} onChange={v => setF('state', v)} />
+            <BF label="C.P." value={form.zipCode ?? ''} onChange={v => setF('zipCode', v)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <BF label="Teléfono" value={form.phone ?? ''} onChange={v => setF('phone', v)} type="tel" />
+            <BF label="Email" value={form.email ?? ''} onChange={v => setF('email', v)} type="email" />
+          </div>
+        </div>
+
+        <div className="border-t border-border px-5 py-3">
+          {error && (
+            <div className="flex items-center gap-2 text-red-500 text-[12px] mb-3 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">
+              <XCircle className="w-3.5 h-3.5 shrink-0" /> {error}
+            </div>
+          )}
+          <div className="flex justify-end gap-2.5">
+            <button onClick={onClose} className="px-4 py-2 border border-border rounded-lg text-[13px] text-muted-foreground hover:bg-muted/50">Cancelar</button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-[13px] font-semibold hover:opacity-90 disabled:opacity-60"
+            >
+              {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              {isEdit ? 'Guardar cambios' : 'Crear sucursal'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function BF({ label, value, onChange, type = 'text', placeholder }: {
+  label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string
+}) {
+  return (
+    <div>
+      <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">{label}</label>
+      <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+        className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary" />
+    </div>
+  )
+}
+
+// ─── MEMBERS PANEL ────────────────────────────────────────────────────────────
+
+function MembersPanel({ branch, allUsers, onAdd, onRemove }: {
+  branch: Branch
+  allUsers: { id: string; firstName: string; lastName: string; email: string }[]
+  onAdd: (userId: string) => Promise<void>
+  onRemove: (userId: string) => Promise<void>
+}) {
+  const memberIds = new Set((branch.memberships ?? []).map(m => m.userId))
+  const [adding, setAdding] = useState<string | null>(null)
+  const [removing, setRemoving] = useState<string | null>(null)
+  const [selectedUserId, setSelectedUserId] = useState('')
+
+  const nonMembers = allUsers.filter(u => !memberIds.has(u.id))
+
+  return (
+    <div className="space-y-3">
+      {/* Add member */}
+      <div className="flex gap-2">
+        <select
+          value={selectedUserId}
+          onChange={e => setSelectedUserId(e.target.value)}
+          className="flex-1 px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
+        >
+          <option value="">Seleccionar usuario…</option>
+          {nonMembers.map(u => (
+            <option key={u.id} value={u.id}>{u.firstName} {u.lastName} ({u.email})</option>
+          ))}
+        </select>
+        <button
+          onClick={async () => {
+            if (!selectedUserId) return
+            setAdding(selectedUserId)
+            try { await onAdd(selectedUserId); setSelectedUserId('') }
+            finally { setAdding(null) }
+          }}
+          disabled={!selectedUserId || !!adding}
+          className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-[13px] font-semibold disabled:opacity-60"
+        >
+          {adding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
+          Asignar
+        </button>
+      </div>
+
+      {/* Member list */}
+      {(branch.memberships ?? []).length === 0 ? (
+        <p className="text-[12px] text-muted-foreground py-2">Sin usuarios asignados. Todos los usuarios del tenant tienen acceso por defecto.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {(branch.memberships ?? []).map(m => (
+            <div key={m.userId} className="flex items-center justify-between px-3 py-2 border border-border rounded-lg">
+              <div>
+                <span className="text-[13px] font-medium text-foreground">
+                  {m.user ? `${m.user.firstName} ${m.user.lastName}` : m.userId}
+                </span>
+                {m.user && <span className="text-[11px] text-muted-foreground ml-2">{m.user.email}</span>}
+                {m.isPrimary && <span className="ml-2 text-[10px] font-bold text-primary">Principal</span>}
+              </div>
+              <button
+                onClick={async () => {
+                  setRemoving(m.userId)
+                  try { await onRemove(m.userId) }
+                  finally { setRemoving(null) }
+                }}
+                disabled={removing === m.userId}
+                className="p-1.5 rounded-lg hover:bg-red-50 text-muted-foreground hover:text-red-500 disabled:opacity-60"
+              >
+                {removing === m.userId ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserMinus className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── BRANCHES SECTION ─────────────────────────────────────────────────────────
+
+function SucursalesSection({ plan }: { plan: string }) {
+  const [branches, setBranches] = useState<Branch[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [modalBranch, setModalBranch] = useState<Branch | 'new' | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [tenantUsers, setTenantUsers] = useState<Usuario[]>([])
+
+  const maxBranches = getMaxBranchesForPlan(plan as any)
+  const activeBranches = branches.filter(b => b.status === 'ACTIVE').length
+  const atLimit = maxBranches !== null && activeBranches >= maxBranches
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const list = await fetchBranches()
+      // Reload expanded branch with members
+      const expanded = list.map(async (b) => {
+        if (b.id === expandedId) {
+          try {
+            const { fetchBranch } = await import('@/services/core/branches-service')
+            return await fetchBranch(b.id)
+          } catch { return b }
+        }
+        return b
+      })
+      setBranches(await Promise.all(expanded))
+    } catch {
+      setError('Error al cargar sucursales')
+    } finally {
+      setLoading(false)
+    }
+  }, [expandedId])
+
+  useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    fetchUsuarios().then(setTenantUsers).catch(() => {})
+  }, [])
+
+  async function handleExpand(id: string) {
+    if (expandedId === id) { setExpandedId(null); return }
+    setExpandedId(id)
+    // Reload with member details
+    try {
+      const { fetchBranch } = await import('@/services/core/branches-service')
+      const full = await fetchBranch(id)
+      setBranches(prev => prev.map(b => b.id === id ? full : b))
+    } catch { /* show what we have */ }
+  }
+
+  async function handleSave(input: CreateBranchInput) {
+    if (modalBranch && modalBranch !== 'new') {
+      await updateBranch(modalBranch.id, input)
+    } else {
+      await createBranch(input)
+    }
+    await load()
+  }
+
+  async function handleToggleStatus(branch: Branch) {
+    setActionLoading(branch.id)
+    try {
+      const newStatus = branch.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'
+      await updateBranch(branch.id, { status: newStatus })
+      await load()
+    } finally { setActionLoading(null) }
+  }
+
+  async function handleSetMain(branch: Branch) {
+    setActionLoading(branch.id)
+    try { await setMainBranch(branch.id); await load() }
+    finally { setActionLoading(null) }
+  }
+
+  async function handleDelete(branch: Branch) {
+    if (!confirm(`¿Eliminar sucursal "${branch.name}"? Esta acción no se puede deshacer.`)) return
+    setActionLoading(branch.id)
+    try { await deleteBranch(branch.id); await load() }
+    catch (e: any) { alert(e?.response?.data?.message ?? 'Error al eliminar') }
+    finally { setActionLoading(null) }
+  }
+
+  const allTenantUsers = tenantUsers.map(u => ({
+    id: u.id, firstName: u.firstName, lastName: u.lastName, email: u.email,
+  }))
+
+  return (
+    <div>
+      <div className="flex items-start justify-between mb-1">
+        <div>
+          <div className="text-base font-bold text-foreground">Sucursales</div>
+          <div className="text-xs text-muted-foreground mt-0.5">
+            Administra las sucursales de tu empresa.
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          {/* Capacity indicator */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-muted/50 rounded-lg">
+            <MapPin className="w-3.5 h-3.5 text-primary" />
+            <span className="text-[12px] font-semibold text-foreground">
+              {activeBranches} / {maxBranches ?? '∞'}
+            </span>
+            <span className="text-[11px] text-muted-foreground">activas</span>
+          </div>
+          <button
+            onClick={() => setModalBranch('new')}
+            disabled={atLimit}
+            title={atLimit ? `Tu plan permite máximo ${maxBranches} sucursal(es) activa(s).` : undefined}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-primary text-primary-foreground rounded-lg text-[13px] font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Plus className="w-3.5 h-3.5" /> Nueva sucursal
+          </button>
+        </div>
+      </div>
+
+      {atLimit && (
+        <div className="mt-3 mb-4 px-3.5 py-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-[12px] text-amber-700 dark:text-amber-300">
+          Tu plan <strong>{plan}</strong> permite máximo <strong>{maxBranches}</strong> sucursal(es) activa(s). Desactiva una sucursal o mejora tu plan para agregar más.
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-3 text-[12px] text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>
+      )}
+
+      <div className="mt-5 space-y-2.5">
+        {loading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+            <Loader2 className="w-4 h-4 animate-spin" /> Cargando sucursales…
+          </div>
+        ) : branches.length === 0 ? (
+          <div className="flex flex-col items-center py-10 text-muted-foreground">
+            <MapPin className="w-8 h-8 mb-2 opacity-30" />
+            <span className="text-[13px]">Sin sucursales registradas</span>
+          </div>
+        ) : branches.map(branch => (
+          <div key={branch.id} className="border border-border rounded-xl overflow-hidden">
+            {/* Branch header */}
+            <div className="flex items-center gap-3 px-4 py-3.5">
+              <div className="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
+                <MapPin className="w-4 h-4 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[14px] font-bold text-foreground">{branch.name}</span>
+                  {branch.isMain && (
+                    <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" title="Sucursal principal" />
+                  )}
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${STATUS_COLORS[branch.status]}`}>
+                    {STATUS_LABELS[branch.status]}
+                  </span>
+                </div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">
+                  {branch.code}
+                  {branch.city && ` · ${branch.city}`}
+                  {branch.address && ` · ${branch.address}`}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {/* Toggle status */}
+                <button
+                  onClick={() => handleToggleStatus(branch)}
+                  disabled={!!actionLoading || branch.isMain}
+                  title={branch.isMain ? 'La sucursal principal no se puede desactivar' : branch.status === 'ACTIVE' ? 'Desactivar' : 'Activar'}
+                  className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
+                >
+                  {actionLoading === branch.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> :
+                    branch.status === 'ACTIVE' ? <XCircle className="w-3.5 h-3.5" /> : <CheckCircle className="w-3.5 h-3.5" />}
+                </button>
+                {/* Set main */}
+                {!branch.isMain && branch.status === 'ACTIVE' && (
+                  <button
+                    onClick={() => handleSetMain(branch)}
+                    disabled={!!actionLoading}
+                    title="Marcar como principal"
+                    className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-amber-500 disabled:opacity-40 transition-colors"
+                  >
+                    <Star className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                {/* Edit */}
+                <button
+                  onClick={() => setModalBranch(branch)}
+                  className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+                {/* Users toggle */}
+                <button
+                  onClick={() => handleExpand(branch.id)}
+                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground text-[11px] transition-colors"
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>{branch._count?.memberships ?? (branch.memberships?.length ?? 0)}</span>
+                </button>
+                {/* Delete */}
+                {!branch.isMain && (
+                  <button
+                    onClick={() => handleDelete(branch)}
+                    disabled={!!actionLoading}
+                    className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-500 disabled:opacity-40 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Expanded members panel */}
+            {expandedId === branch.id && (
+              <div className="border-t border-border px-4 py-4 bg-muted/20">
+                <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-3">
+                  Usuarios asignados a esta sucursal
+                </div>
+                <MembersPanel
+                  branch={branch}
+                  allUsers={allTenantUsers}
+                  onAdd={async (userId) => {
+                    await addBranchMember(branch.id, userId)
+                    await handleExpand(branch.id)
+                  }}
+                  onRemove={async (userId) => {
+                    await removeBranchMember(branch.id, userId)
+                    await handleExpand(branch.id)
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Branch modal */}
+      {modalBranch !== null && (
+        <BranchModal
+          branch={modalBranch === 'new' ? null : modalBranch}
+          onClose={() => setModalBranch(null)}
+          onSave={handleSave}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 
 export function Configuracion() {
+  const { enabledModules } = useAuthStore()
+  const showBranches = enabledModules.includes('branches')
+
   const [activeSection, setActiveSection] = useState("empresa")
   const sections = [
     { id: "empresa",         label: "Empresa" },
     { id: "pos",             label: "POS / Caja" },
+    ...(showBranches ? [{ id: "sucursales", label: "Sucursales" }] : []),
     { id: "facturacion",     label: "Facturación" },
     { id: "notificaciones",  label: "Notificaciones" },
   ]
 
   // ─── Empresa / Branding ───────────────────────────────────────────────────
   const { setTenantBranding, loadTenantBranding } = useERPStore()
-  const { permissions, user } = useAuthStore()
+  const { permissions, user, plan } = useAuthStore()
   const isSuperAdmin = user?.role === 'SUPER_ADMIN'
   const canEdit     = isSuperAdmin || permissions.includes('tenant:edit')
   const canBranding = isSuperAdmin || permissions.includes('tenant:branding')
@@ -52,84 +518,45 @@ export function Configuracion() {
 
   async function handleSaveInfo() {
     if (!info) return
-    setInfoSaving(true)
-    setInfoError(null)
-    setInfoSaved(false)
+    setInfoSaving(true); setInfoError(null); setInfoSaved(false)
     try {
       const updated = await updateTenantInfo(info)
-      setInfo(updated)
-      setTenantBranding(updated)
-      setInfoSaved(true)
-      setTimeout(() => setInfoSaved(false), 2500)
-    } catch {
-      setInfoError('Error al guardar información')
-    } finally {
-      setInfoSaving(false)
-    }
+      setInfo(updated); setTenantBranding(updated)
+      setInfoSaved(true); setTimeout(() => setInfoSaved(false), 2500)
+    } catch { setInfoError('Error al guardar información') }
+    finally { setInfoSaving(false) }
   }
 
   async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setImageError(null)
-    setLogoUploading(true)
-    try {
-      const { logoUrl } = await uploadTenantLogo(file)
-      setInfo(p => p ? { ...p, logoUrl } : p)
-      await loadTenantBranding()
-    } catch {
-      setImageError('Error al subir logo')
-    } finally {
-      setLogoUploading(false)
-      if (logoRef.current) logoRef.current.value = ''
-    }
+    const file = e.target.files?.[0]; if (!file) return
+    setImageError(null); setLogoUploading(true)
+    try { const { logoUrl } = await uploadTenantLogo(file); setInfo(p => p ? { ...p, logoUrl } : p); await loadTenantBranding() }
+    catch { setImageError('Error al subir logo') }
+    finally { setLogoUploading(false); if (logoRef.current) logoRef.current.value = '' }
   }
 
   async function handleBannerUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setImageError(null)
-    setBannerUploading(true)
-    try {
-      const { bannerUrl } = await uploadTenantBanner(file)
-      setInfo(p => p ? { ...p, bannerUrl } : p)
-      await loadTenantBranding()
-    } catch {
-      setImageError('Error al subir banner')
-    } finally {
-      setBannerUploading(false)
-      if (bannerRef.current) bannerRef.current.value = ''
-    }
+    const file = e.target.files?.[0]; if (!file) return
+    setImageError(null); setBannerUploading(true)
+    try { const { bannerUrl } = await uploadTenantBanner(file); setInfo(p => p ? { ...p, bannerUrl } : p); await loadTenantBranding() }
+    catch { setImageError('Error al subir banner') }
+    finally { setBannerUploading(false); if (bannerRef.current) bannerRef.current.value = '' }
   }
 
   async function handleDeleteLogo() {
     if (!confirm('¿Eliminar logo?')) return
-    setImageError(null)
-    setLogoUploading(true)
-    try {
-      await deleteTenantLogo()
-      setInfo(p => p ? { ...p, logoUrl: undefined } : p)
-      await loadTenantBranding()
-    } catch {
-      setImageError('Error al eliminar logo')
-    } finally {
-      setLogoUploading(false)
-    }
+    setImageError(null); setLogoUploading(true)
+    try { await deleteTenantLogo(); setInfo(p => p ? { ...p, logoUrl: undefined } : p); await loadTenantBranding() }
+    catch { setImageError('Error al eliminar logo') }
+    finally { setLogoUploading(false) }
   }
 
   async function handleDeleteBanner() {
     if (!confirm('¿Eliminar banner?')) return
-    setImageError(null)
-    setBannerUploading(true)
-    try {
-      await deleteTenantBanner()
-      setInfo(p => p ? { ...p, bannerUrl: undefined } : p)
-      await loadTenantBranding()
-    } catch {
-      setImageError('Error al eliminar banner')
-    } finally {
-      setBannerUploading(false)
-    }
+    setImageError(null); setBannerUploading(true)
+    try { await deleteTenantBanner(); setInfo(p => p ? { ...p, bannerUrl: undefined } : p); await loadTenantBranding() }
+    catch { setImageError('Error al eliminar banner') }
+    finally { setBannerUploading(false) }
   }
 
   // ─── POS settings ────────────────────────────────────────────────────────
@@ -149,19 +576,10 @@ export function Configuracion() {
   }, [activeSection])
 
   async function handleSavePosSettings() {
-    setPosSaving(true)
-    setPosError(null)
-    setPosSaved(false)
-    try {
-      const updated = await updateSettings(posSettings)
-      setPosSettings(updated)
-      setPosSaved(true)
-      setTimeout(() => setPosSaved(false), 2500)
-    } catch {
-      setPosError('Error al guardar configuración')
-    } finally {
-      setPosSaving(false)
-    }
+    setPosSaving(true); setPosError(null); setPosSaved(false)
+    try { const updated = await updateSettings(posSettings); setPosSettings(updated); setPosSaved(true); setTimeout(() => setPosSaved(false), 2500) }
+    catch { setPosError('Error al guardar configuración') }
+    finally { setPosSaving(false) }
   }
 
   return (
@@ -185,188 +603,94 @@ export function Configuracion() {
         {activeSection === "empresa" && (
           <div>
             <div className="text-base font-bold text-foreground mb-1">Información de la Empresa</div>
-            <div className="text-xs text-muted-foreground mb-6">
-              Branding, datos de contacto y configuración general.
-            </div>
+            <div className="text-xs text-muted-foreground mb-6">Branding, datos de contacto y configuración general.</div>
 
             {infoLoading ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="w-4 h-4 animate-spin" /> Cargando…
-              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Cargando…</div>
             ) : (
               <div className="flex flex-col gap-7 max-w-2xl">
-
-                {/* ── BRANDING IMAGES ────────────────────────────────────── */}
                 {canBranding && (
                   <div>
-                    <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-3">
-                      Branding Visual
-                    </div>
+                    <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-3">Branding Visual</div>
                     <div className="grid grid-cols-2 gap-4">
-
                       {/* Logo */}
                       <div>
                         <div className="text-xs font-semibold text-foreground mb-2">Logo</div>
-                        <div className="relative rounded-xl border border-border bg-muted/20 overflow-hidden flex items-center justify-center"
-                          style={{ height: 120 }}>
+                        <div className="relative rounded-xl border border-border bg-muted/20 overflow-hidden flex items-center justify-center" style={{ height: 120 }}>
                           {info?.logoUrl ? (
                             <>
                               <img src={info.logoUrl} alt="Logo" className="max-h-full max-w-full object-contain p-3" />
                               {!logoUploading && (
                                 <div className="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                  <button
-                                    onClick={() => logoRef.current?.click()}
-                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs border border-white/20"
-                                  >
-                                    <Upload className="w-3 h-3" /> Reemplazar
-                                  </button>
-                                  <button
-                                    onClick={handleDeleteLogo}
-                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-destructive/70 hover:bg-destructive/90 text-white text-xs border border-destructive/40"
-                                  >
-                                    <Trash2 className="w-3 h-3" />
-                                  </button>
+                                  <button onClick={() => logoRef.current?.click()} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs border border-white/20"><Upload className="w-3 h-3" /> Reemplazar</button>
+                                  <button onClick={handleDeleteLogo} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-destructive/70 hover:bg-destructive/90 text-white text-xs border border-destructive/40"><Trash2 className="w-3 h-3" /></button>
                                 </div>
                               )}
                             </>
                           ) : (
-                            <button
-                              onClick={() => logoRef.current?.click()}
-                              disabled={logoUploading}
-                              className="flex flex-col items-center gap-2 p-4 text-center cursor-pointer disabled:cursor-not-allowed w-full h-full"
-                            >
+                            <button onClick={() => logoRef.current?.click()} disabled={logoUploading} className="flex flex-col items-center gap-2 p-4 text-center cursor-pointer disabled:cursor-not-allowed w-full h-full">
                               <Building2 className="w-8 h-8 text-muted-foreground/30" />
                               <span className="text-xs text-muted-foreground">Subir logo</span>
                               <span className="text-[10px] text-muted-foreground/60">PNG, JPG, WebP · 400×400</span>
                             </button>
                           )}
-                          {logoUploading && (
-                            <div className="absolute inset-0 bg-background/70 flex items-center justify-center">
-                              <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                            </div>
-                          )}
+                          {logoUploading && <div className="absolute inset-0 bg-background/70 flex items-center justify-center"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>}
                         </div>
-                        <input ref={logoRef} type="file" accept="image/jpeg,image/png,image/webp"
-                          className="hidden" onChange={handleLogoUpload} />
-                        {!info?.logoUrl && (
-                          <button
-                            onClick={() => logoRef.current?.click()}
-                            className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg bg-card text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors cursor-pointer"
-                          >
-                            <Upload className="w-3 h-3" /> Subir logo
-                          </button>
-                        )}
+                        <input ref={logoRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleLogoUpload} />
+                        {!info?.logoUrl && <button onClick={() => logoRef.current?.click()} className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg bg-card text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors cursor-pointer"><Upload className="w-3 h-3" /> Subir logo</button>}
                       </div>
-
                       {/* Banner */}
                       <div>
                         <div className="text-xs font-semibold text-foreground mb-2">Banner / Imagen representativa</div>
-                        <div className="relative rounded-xl border border-border bg-muted/20 overflow-hidden flex items-center justify-center"
-                          style={{ height: 120 }}>
+                        <div className="relative rounded-xl border border-border bg-muted/20 overflow-hidden flex items-center justify-center" style={{ height: 120 }}>
                           {info?.bannerUrl ? (
                             <>
                               <img src={info.bannerUrl} alt="Banner" className="w-full h-full object-cover" />
                               {!bannerUploading && (
                                 <div className="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                  <button
-                                    onClick={() => bannerRef.current?.click()}
-                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs border border-white/20"
-                                  >
-                                    <Upload className="w-3 h-3" /> Reemplazar
-                                  </button>
-                                  <button
-                                    onClick={handleDeleteBanner}
-                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-destructive/70 hover:bg-destructive/90 text-white text-xs border border-destructive/40"
-                                  >
-                                    <Trash2 className="w-3 h-3" />
-                                  </button>
+                                  <button onClick={() => bannerRef.current?.click()} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs border border-white/20"><Upload className="w-3 h-3" /> Reemplazar</button>
+                                  <button onClick={handleDeleteBanner} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-destructive/70 hover:bg-destructive/90 text-white text-xs border border-destructive/40"><Trash2 className="w-3 h-3" /></button>
                                 </div>
                               )}
                             </>
                           ) : (
-                            <button
-                              onClick={() => bannerRef.current?.click()}
-                              disabled={bannerUploading}
-                              className="flex flex-col items-center gap-2 p-4 text-center cursor-pointer disabled:cursor-not-allowed w-full h-full"
-                            >
+                            <button onClick={() => bannerRef.current?.click()} disabled={bannerUploading} className="flex flex-col items-center gap-2 p-4 text-center cursor-pointer disabled:cursor-not-allowed w-full h-full">
                               <Building2 className="w-8 h-8 text-muted-foreground/30" />
                               <span className="text-xs text-muted-foreground">Subir banner</span>
                               <span className="text-[10px] text-muted-foreground/60">PNG, JPG, WebP · 1200px</span>
                             </button>
                           )}
-                          {bannerUploading && (
-                            <div className="absolute inset-0 bg-background/70 flex items-center justify-center">
-                              <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                            </div>
-                          )}
+                          {bannerUploading && <div className="absolute inset-0 bg-background/70 flex items-center justify-center"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>}
                         </div>
-                        <input ref={bannerRef} type="file" accept="image/jpeg,image/png,image/webp"
-                          className="hidden" onChange={handleBannerUpload} />
-                        {!info?.bannerUrl && (
-                          <button
-                            onClick={() => bannerRef.current?.click()}
-                            className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg bg-card text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors cursor-pointer"
-                          >
-                            <Upload className="w-3 h-3" /> Subir banner
-                          </button>
-                        )}
+                        <input ref={bannerRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleBannerUpload} />
+                        {!info?.bannerUrl && <button onClick={() => bannerRef.current?.click()} className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg bg-card text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors cursor-pointer"><Upload className="w-3 h-3" /> Subir banner</button>}
                       </div>
                     </div>
-
-                    {imageError && (
-                      <p className="text-xs text-destructive mt-2">{imageError}</p>
-                    )}
+                    {imageError && <p className="text-xs text-destructive mt-2">{imageError}</p>}
                   </div>
                 )}
 
-                {/* ── DATOS GENERALES ─────────────────────────────────────── */}
                 <div>
-                  <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-3">
-                    Datos Generales
-                  </div>
+                  <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-3">Datos Generales</div>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-3.5">
-                    <Field label="Nombre empresa" value={info?.name ?? ''} disabled={!canEdit}
-                      onChange={v => setField('name', v)} />
-                    <Field label="Nombre a mostrar" value={info?.displayName ?? ''} disabled={!canEdit}
-                      onChange={v => setField('displayName', v)} placeholder="Alias o nombre corto" />
-                    <Field label="RFC" value={info?.rfc ?? ''} disabled={!canEdit}
-                      onChange={v => setField('rfc', v)} />
-                    <Field label="Teléfono" value={info?.phone ?? ''} disabled={!canEdit}
-                      onChange={v => setField('phone', v)} />
-                    <Field label="Email" type="email" value={info?.email ?? ''} disabled={!canEdit}
-                      onChange={v => setField('email', v)} />
-                    <Field label="Moneda base" value={info?.currency ?? ''} disabled={!canEdit}
-                      onChange={v => setField('currency', v)} placeholder="MXN" />
-                    <div className="col-span-2">
-                      <Field label="Dirección" value={info?.address ?? ''} disabled={!canEdit}
-                        onChange={v => setField('address', v)} />
-                    </div>
-                    <div className="col-span-2">
-                      <Field label="Zona horaria" value={info?.timezone ?? ''} disabled={!canEdit}
-                        onChange={v => setField('timezone', v)} placeholder="America/Mexico_City" />
-                    </div>
+                    <Field label="Nombre empresa" value={info?.name ?? ''} disabled={!canEdit} onChange={v => setField('name', v)} />
+                    <Field label="Nombre a mostrar" value={info?.displayName ?? ''} disabled={!canEdit} onChange={v => setField('displayName', v)} placeholder="Alias o nombre corto" />
+                    <Field label="RFC" value={info?.rfc ?? ''} disabled={!canEdit} onChange={v => setField('rfc', v)} />
+                    <Field label="Teléfono" value={info?.phone ?? ''} disabled={!canEdit} onChange={v => setField('phone', v)} />
+                    <Field label="Email" type="email" value={info?.email ?? ''} disabled={!canEdit} onChange={v => setField('email', v)} />
+                    <Field label="Moneda base" value={info?.currency ?? ''} disabled={!canEdit} onChange={v => setField('currency', v)} placeholder="MXN" />
+                    <div className="col-span-2"><Field label="Dirección" value={info?.address ?? ''} disabled={!canEdit} onChange={v => setField('address', v)} /></div>
+                    <div className="col-span-2"><Field label="Zona horaria" value={info?.timezone ?? ''} disabled={!canEdit} onChange={v => setField('timezone', v)} placeholder="America/Mexico_City" /></div>
                   </div>
                 </div>
 
-                {infoError && (
-                  <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                    {infoError}
-                  </div>
-                )}
-
+                {infoError && <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{infoError}</div>}
                 {canEdit && (
-                  <button
-                    onClick={handleSaveInfo}
-                    disabled={infoSaving}
-                    className="self-start px-5 py-2 bg-primary text-primary-foreground border-none rounded-lg text-[13px] font-semibold cursor-pointer disabled:opacity-60 flex items-center gap-2"
-                  >
+                  <button onClick={handleSaveInfo} disabled={infoSaving} className="self-start px-5 py-2 bg-primary text-primary-foreground border-none rounded-lg text-[13px] font-semibold cursor-pointer disabled:opacity-60 flex items-center gap-2">
                     {infoSaving ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Guardando…</> : infoSaved ? '✓ Guardado' : 'Guardar cambios'}
                   </button>
                 )}
-
-                {!canEdit && (
-                  <p className="text-xs text-muted-foreground">Sin permiso para editar información de empresa.</p>
-                )}
+                {!canEdit && <p className="text-xs text-muted-foreground">Sin permiso para editar información de empresa.</p>}
               </div>
             )}
           </div>
@@ -377,63 +701,38 @@ export function Configuracion() {
           <div>
             <div className="text-base font-bold text-foreground mb-1">POS / Caja</div>
             <div className="text-xs text-muted-foreground mb-5">Configuración del punto de venta y sesiones de caja.</div>
-
             {posLoading ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="w-4 h-4 animate-spin" /> Cargando…
-              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Cargando…</div>
             ) : (
               <div className="max-w-sm flex flex-col gap-5">
                 <div>
-                  <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
-                    Moneda de cambio en efectivo
-                  </label>
-                  <select
-                    value={posSettings.cashChangeCurrency ?? 'MXN'}
-                    onChange={e => setPosSettings(p => ({ ...p, cashChangeCurrency: e.target.value as 'MXN' | 'USD' }))}
-                    className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
-                  >
+                  <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Moneda de cambio en efectivo</label>
+                  <select value={posSettings.cashChangeCurrency ?? 'MXN'} onChange={e => setPosSettings(p => ({ ...p, cashChangeCurrency: e.target.value as 'MXN' | 'USD' }))}
+                    className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary">
                     <option value="MXN">MXN — Pesos mexicanos</option>
                     <option value="USD">USD — Dólares</option>
                   </select>
-                  <p className="text-[11px] text-muted-foreground mt-1.5">
-                    Define en qué moneda se entrega el cambio en efectivo.
-                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-1.5">Define en qué moneda se entrega el cambio en efectivo.</p>
                 </div>
-
                 <div>
-                  <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
-                    Plazo de reembolso de apartados (horas)
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={posSettings.layawayRefundWindowHours ?? 24}
+                  <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Plazo de reembolso de apartados (horas)</label>
+                  <input type="number" min={0} step={1} value={posSettings.layawayRefundWindowHours ?? 24}
                     onChange={e => setPosSettings(p => ({ ...p, layawayRefundWindowHours: Number(e.target.value) }))}
-                    className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
-                  />
-                  <p className="text-[11px] text-muted-foreground mt-1.5">
-                    Horas desde la creación del apartado en que se puede reembolsar sin autorización adicional. Usa 0 para sin límite.
-                  </p>
+                    className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary" />
+                  <p className="text-[11px] text-muted-foreground mt-1.5">Horas desde la creación del apartado en que se puede reembolsar sin autorización adicional. Usa 0 para sin límite.</p>
                 </div>
-
-                {posError && (
-                  <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                    {posError}
-                  </div>
-                )}
-
-                <button
-                  onClick={handleSavePosSettings}
-                  disabled={posSaving}
-                  className="self-start px-5 py-2 bg-primary text-primary-foreground border-none rounded-lg text-[13px] font-semibold cursor-pointer disabled:opacity-60 flex items-center gap-2"
-                >
+                {posError && <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{posError}</div>}
+                <button onClick={handleSavePosSettings} disabled={posSaving} className="self-start px-5 py-2 bg-primary text-primary-foreground border-none rounded-lg text-[13px] font-semibold cursor-pointer disabled:opacity-60 flex items-center gap-2">
                   {posSaving ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Guardando…</> : posSaved ? '✓ Guardado' : 'Guardar cambios'}
                 </button>
               </div>
             )}
           </div>
+        )}
+
+        {/* ── SUCURSALES ───────────────────────────────────────────────────── */}
+        {activeSection === "sucursales" && showBranches && (
+          <SucursalesSection plan={plan ?? 'PRO'} />
         )}
 
         {(activeSection === "facturacion" || activeSection === "notificaciones") && (
@@ -448,29 +747,14 @@ export function Configuracion() {
   )
 }
 
-function Field({
-  label, value, onChange, disabled = false, type = 'text', placeholder,
-}: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  disabled?: boolean
-  type?: string
-  placeholder?: string
+function Field({ label, value, onChange, disabled = false, type = 'text', placeholder }: {
+  label: string; value: string; onChange: (v: string) => void; disabled?: boolean; type?: string; placeholder?: string
 }) {
   return (
     <div>
-      <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
-        {label}
-      </label>
-      <input
-        type={type}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        disabled={disabled}
-        placeholder={placeholder}
-        className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary disabled:opacity-50 disabled:cursor-not-allowed"
-      />
+      <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">{label}</label>
+      <input type={type} value={value} onChange={e => onChange(e.target.value)} disabled={disabled} placeholder={placeholder}
+        className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary disabled:opacity-50 disabled:cursor-not-allowed" />
     </div>
   )
 }

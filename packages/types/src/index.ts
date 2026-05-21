@@ -94,6 +94,7 @@ const MODULES_BY_TIER: Array<{ plan: TenantPlan; modules: SystemModule[] }> = [
       SystemModule.ORDENES_TRABAJO,
       SystemModule.EMPLEADOS,
       SystemModule.REPORTES,
+      SystemModule.BRANCHES,
     ],
   },
   {
@@ -102,7 +103,7 @@ const MODULES_BY_TIER: Array<{ plan: TenantPlan; modules: SystemModule[] }> = [
   },
   {
     plan: 'ENTERPRISE',
-    modules: [SystemModule.BRANCHES],
+    modules: [],
   },
 ]
 

@@ -4,6 +4,7 @@
 import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { AuditService } from '../../../common/services/audit.service';
+import { PlanLimitsService } from '../../../common/services/plan-limits.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { BulkUpdateInventoryDto, TransferStockDto } from './dto/update-inventory.dto';
@@ -15,10 +16,14 @@ export class BranchesService {
     private prisma: PrismaService,
     private tenantContext: TenantContextService,
     private audit: AuditService,
+    private planLimits: PlanLimitsService,
   ) {}
 
   async create(dto: CreateBranchDto): Promise<Branch> {
     const tenantId = this.tenantContext.requireTenantId();
+
+    await this.planLimits.assertCanAddBranch(tenantId);
+
     const exists = await this.prisma.branch.findUnique({
       where: { tenantId_code: { tenantId, code: dto.code } },
     });

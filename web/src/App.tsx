@@ -8,6 +8,7 @@ import { Topbar, MODULE_META } from '@/components/shared/topbar'
 import { PlatformLayout } from '@/components/platform/platform-layout'
 import { Login } from '@/pages/login'
 import { SelectTenant } from '@/pages/select-tenant'
+import { SelectBranch } from '@/pages/select-branch'
 import { Dashboard } from '@/pages/dashboard'
 import { Ventas } from '@/pages/ventas'
 import { Compras } from '@/pages/compras'
@@ -123,17 +124,18 @@ function AppLayout() {
 }
 
 function TenantAuthGate() {
-  const { isAuthenticated, availableTenants, capabilitiesLoaded, init } = useAuthStore()
+  const { isAuthenticated, availableTenants, capabilitiesLoaded, needsBranchSelection, availableBranches, init } = useAuthStore()
 
   useEffect(() => { init() }, [init])
 
   if (!isAuthenticated && !availableTenants) return <Login />
   if (!isAuthenticated && availableTenants) return <SelectTenant />
-  if (!capabilitiesLoaded) return (
+  if (!capabilitiesLoaded || availableBranches === null) return (
     <div className="flex h-screen items-center justify-center bg-background">
       <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
     </div>
   )
+  if (needsBranchSelection) return <SelectBranch />
 
   return <AppLayout />
 }
