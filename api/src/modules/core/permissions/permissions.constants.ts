@@ -90,6 +90,10 @@ export const ALL_PERMISSIONS: PermissionDef[] = [
   // settings
   { key: 'settings:view', name: 'Ver configuración', description: 'Ver ajustes del tenant', module: 'settings', action: 'view' },
   { key: 'settings:manage', name: 'Gestionar configuración', description: 'Editar ajustes del tenant', module: 'settings', action: 'manage' },
+  // tenant info & branding
+  { key: 'tenant:view', name: 'Ver información empresa', description: 'Ver datos generales y branding de la empresa', module: 'tenant', action: 'view' },
+  { key: 'tenant:edit', name: 'Editar información empresa', description: 'Editar datos generales de la empresa', module: 'tenant', action: 'edit' },
+  { key: 'tenant:branding', name: 'Gestionar branding', description: 'Subir y cambiar logo y banner de la empresa', module: 'tenant', action: 'branding' },
 ];
 
 export const MODULES_ORDER = [

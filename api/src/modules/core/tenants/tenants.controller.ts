@@ -1,4 +1,4 @@
-﻿import {
+import {
   Controller,
   Get,
   Post,
@@ -8,12 +8,22 @@
   Param,
   HttpCode,
   HttpStatus,
+  UseInterceptors,
+  UploadedFile,
+  ParseFilePipe,
+  MaxFileSizeValidator,
+  FileTypeValidator,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { TenantsService } from './tenants.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
+import type { TenantInfo } from './tenants.service';
+
+const MAX_BRANDING_SIZE = 5 * 1024 * 1024;
 
 @ApiTags('Tenants')
 @ApiBearerAuth()
@@ -54,6 +64,78 @@ export class TenantsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string) {
     return this.tenantsService.remove(id);
+  }
+
+  // ── Current-tenant info & branding ────────────────────────────────────────
+
+  @Get('current/info')
+  @RequirePermissions('tenant:view')
+  @ApiOperation({ summary: 'Get current tenant info and branding' })
+  getInfo() {
+    return this.tenantsService.getInfo();
+  }
+
+  @Patch('current/info')
+  @RequirePermissions('tenant:edit')
+  @ApiOperation({ summary: 'Update current tenant info (name, contact, etc.)' })
+  updateInfo(@Body() dto: Partial<TenantInfo>) {
+    return this.tenantsService.updateInfo(dto);
+  }
+
+  @Post('current/logo')
+  @RequirePermissions('tenant:branding')
+  @ApiOperation({ summary: 'Upload tenant logo' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  uploadLogo(
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: MAX_BRANDING_SIZE }),
+          new FileTypeValidator({ fileType: /^image\/(jpeg|png|webp)$/ }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    return this.tenantsService.uploadLogo(file);
+  }
+
+  @Post('current/banner')
+  @RequirePermissions('tenant:branding')
+  @ApiOperation({ summary: 'Upload tenant banner' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  uploadBanner(
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: MAX_BRANDING_SIZE }),
+          new FileTypeValidator({ fileType: /^image\/(jpeg|png|webp)$/ }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    return this.tenantsService.uploadBanner(file);
+  }
+
+  @Delete('current/logo')
+  @RequirePermissions('tenant:branding')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete tenant logo' })
+  deleteLogo() {
+    return this.tenantsService.deleteLogo();
+  }
+
+  @Delete('current/banner')
+  @RequirePermissions('tenant:branding')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete tenant banner' })
+  deleteBanner() {
+    return this.tenantsService.deleteBanner();
   }
 
   // ── Current-tenant settings ────────────────────────────────────────────────

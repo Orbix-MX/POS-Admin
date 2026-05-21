@@ -91,6 +91,23 @@ export class PlatformTenantsService {
 
     const status = dto.trialDays ? 'TRIAL' : (dto.tenant.status ?? 'ACTIVE');
 
+    // Seed permissions outside the transaction — they are global data and
+    // sequential upserts inside a transaction exceed the 5 s interactive timeout.
+    for (const perm of ALL_PERMISSIONS) {
+      await this.prisma.permission.upsert({
+        where: { key: perm.key },
+        update: {},
+        create: {
+          key: perm.key,
+          name: perm.name,
+          description: perm.description ?? null,
+          module: perm.module,
+          action: perm.action,
+        },
+      });
+    }
+    const permissions = await this.prisma.permission.findMany();
+
     const result = await this.prisma.$transaction(async (tx) => {
       // 1. Create tenant
       const tenant = await tx.tenant.create({
@@ -148,28 +165,7 @@ export class PlatformTenantsService {
         data: { ownerUserId: adminUser.id },
       });
 
-      // 6. Seed permissions and create Super Admin role for tenant
-      const allPermissions = await tx.permission.findMany();
-
-      // Upsert any missing permissions
-      for (const perm of ALL_PERMISSIONS) {
-        await tx.permission.upsert({
-          where: { key: perm.key },
-          update: {},
-          create: {
-            key: perm.key,
-            name: perm.name,
-            description: perm.description ?? null,
-            module: perm.module,
-            action: perm.action,
-          },
-        });
-      }
-
-      const permissions = allPermissions.length
-        ? allPermissions
-        : await tx.permission.findMany();
-
+      // 6. Create Super Admin role with all permissions for this tenant
       const superAdminRole = await tx.role.create({
         data: {
           tenantId: tenant.id,

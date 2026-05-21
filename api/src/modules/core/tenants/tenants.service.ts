@@ -3,20 +3,42 @@
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
+import sharp from 'sharp';
 import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
+import { AuditContextService } from '../../../common/context/audit-context.service';
 import { PlanLimitsService } from '../../../common/services/plan-limits.service';
 import { PasswordUtil } from '../../../common/utils/password.util';
+import { R2Service } from '../../../storage/r2.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { Prisma, Tenant } from '@prisma/client';
+
+export interface TenantInfo {
+  name: string;
+  displayName?: string;
+  logoUrl?: string;
+  bannerUrl?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  rfc?: string;
+  timezone?: string;
+  currency?: string;
+}
+
+const MAX_BRANDING_SIZE = 5 * 1024 * 1024;
+const MAX_LOGO_WIDTH = 400;
+const MAX_BANNER_WIDTH = 1200;
 
 @Injectable()
 export class TenantsService {
   constructor(
     private prisma: PrismaService,
     private tenantContext: TenantContextService,
+    private auditContext: AuditContextService,
     private planLimits: PlanLimitsService,
+    private r2: R2Service,
   ) {}
 
   async create(dto: CreateTenantDto): Promise<Tenant> {
@@ -193,6 +215,111 @@ export class TenantsService {
       where: { tenantId },
       include: { user: { select: { id: true, email: true, firstName: true, lastName: true, status: true } } },
       orderBy: { assignedAt: 'desc' },
+    });
+  }
+
+  /** Get current tenant public info + branding */
+  async getInfo(): Promise<TenantInfo> {
+    const tenantId = this.tenantContext.requireTenantId();
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { name: true, settings: true },
+    });
+    if (!tenant) throw new NotFoundException('Tenant not found');
+    const s = (tenant.settings as Record<string, unknown>) ?? {};
+    return {
+      name: tenant.name,
+      displayName: s['displayName'] as string | undefined,
+      logoUrl:     s['logoUrl']     as string | undefined,
+      bannerUrl:   s['bannerUrl']   as string | undefined,
+      phone:       s['phone']       as string | undefined,
+      email:       s['email']       as string | undefined,
+      address:     s['address']     as string | undefined,
+      rfc:         s['rfc']         as string | undefined,
+      timezone:    s['timezone']    as string | undefined,
+      currency:    s['currency']    as string | undefined,
+    };
+  }
+
+  /** Update current tenant info (scalar fields + name) */
+  async updateInfo(dto: Partial<TenantInfo>): Promise<TenantInfo> {
+    const tenantId = this.tenantContext.requireTenantId();
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { settings: true },
+    });
+    if (!tenant) throw new NotFoundException('Tenant not found');
+
+    const current = (tenant.settings as Record<string, unknown>) ?? {};
+    const { name, ...scalars } = dto;
+    const merged: Record<string, unknown> = { ...current };
+    for (const [k, v] of Object.entries(scalars)) {
+      if (v !== undefined) merged[k] = v;
+    }
+
+    await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: {
+        ...(name ? { name } : {}),
+        settings: merged as Prisma.InputJsonValue,
+      },
+    });
+
+    return this.getInfo();
+  }
+
+  /** Upload logo for current tenant to R2 */
+  async uploadLogo(file: Express.Multer.File): Promise<{ logoUrl: string }> {
+    const tenantId = this.tenantContext.requireTenantId();
+    const webp = await sharp(file.buffer)
+      .resize({ width: MAX_LOGO_WIDTH, withoutEnlargement: true })
+      .webp({ quality: 90 })
+      .toBuffer();
+    const key = this.r2.buildBrandingKey(tenantId, 'logo');
+    const logoUrl = await this.r2.upload(key, webp, 'image/webp');
+    await this.updateBrandingField(tenantId, 'logoUrl', logoUrl);
+    return { logoUrl };
+  }
+
+  /** Upload banner for current tenant to R2 */
+  async uploadBanner(file: Express.Multer.File): Promise<{ bannerUrl: string }> {
+    const tenantId = this.tenantContext.requireTenantId();
+    const webp = await sharp(file.buffer)
+      .resize({ width: MAX_BANNER_WIDTH, withoutEnlargement: true })
+      .webp({ quality: 85 })
+      .toBuffer();
+    const key = this.r2.buildBrandingKey(tenantId, 'banner');
+    const bannerUrl = await this.r2.upload(key, webp, 'image/webp');
+    await this.updateBrandingField(tenantId, 'bannerUrl', bannerUrl);
+    return { bannerUrl };
+  }
+
+  /** Delete logo for current tenant */
+  async deleteLogo(): Promise<void> {
+    const tenantId = this.tenantContext.requireTenantId();
+    const key = this.r2.buildBrandingKey(tenantId, 'logo');
+    await this.r2.delete(key);
+    await this.updateBrandingField(tenantId, 'logoUrl', null);
+  }
+
+  /** Delete banner for current tenant */
+  async deleteBanner(): Promise<void> {
+    const tenantId = this.tenantContext.requireTenantId();
+    const key = this.r2.buildBrandingKey(tenantId, 'banner');
+    await this.r2.delete(key);
+    await this.updateBrandingField(tenantId, 'bannerUrl', null);
+  }
+
+  private async updateBrandingField(tenantId: string, field: string, value: string | null) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { settings: true },
+    });
+    const current = (tenant?.settings as Record<string, unknown>) ?? {};
+    const updated = { ...current, [field]: value };
+    await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { settings: updated as Prisma.InputJsonValue },
     });
   }
 }

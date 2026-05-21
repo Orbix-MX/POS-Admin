@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import { fetchTenantInfo } from '@/services/core/tenant-service'
+import type { TenantInfo } from '@/services/core/tenant-service'
 import type {
   Empresa, DashboardData, Venta, Compra, ProductoInventario,
   Cliente, Proveedor, ContabilidadData, POSProducto, POSCliente, ModuleId
@@ -18,6 +20,11 @@ interface ERPState {
   setPosOpen: (open: boolean) => void
   pendingQuoteId: string | null
   setPendingQuoteId: (id: string | null) => void
+
+  // Tenant branding (logo, name, etc.)
+  tenantBranding: TenantInfo | null
+  setTenantBranding: (branding: TenantInfo) => void
+  loadTenantBranding: () => Promise<void>
 
   // Data
   empresa: Empresa
@@ -51,6 +58,17 @@ export const useERPStore = create<ERPState>((set) => ({
   setPosOpen: (open) => set({ posOpen: open }),
   pendingQuoteId: null,
   setPendingQuoteId: (id) => set({ pendingQuoteId: id }),
+
+  tenantBranding: null,
+  setTenantBranding: (branding) => set({ tenantBranding: branding }),
+  loadTenantBranding: async () => {
+    try {
+      const info = await fetchTenantInfo()
+      set({ tenantBranding: info })
+    } catch {
+      // silently ignore — sidebar shows fallback
+    }
+  },
 
   empresa: {
     nombre: "TiendaPro ERP",

@@ -297,6 +297,7 @@ export function Inventario() {
         form={form}
         setForm={setForm}
         onSave={handleSave}
+        onImageChange={loadProducts}
         categories={categories}
       />
 

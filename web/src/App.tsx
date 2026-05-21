@@ -66,7 +66,9 @@ function ModuleRoute({ module, children }: { module: string; children: ReactNode
 }
 
 function AppLayout() {
-  const { posOpen } = useERPStore()
+  const { posOpen, loadTenantBranding } = useERPStore()
+
+  useEffect(() => { loadTenantBranding() }, [loadTenantBranding])
   const location = useLocation()
   const activeModule = PATH_TO_MODULE[location.pathname] || 'dashboard'
   const meta = MODULE_META[activeModule]

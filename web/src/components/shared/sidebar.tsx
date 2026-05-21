@@ -4,7 +4,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   LayoutDashboard, ShoppingBag, ShoppingCart, Package,
   Users, Truck, FileText, Settings, Shield,
-  ChevronDown, LogOut, Monitor, Landmark, Receipt, TrendingUp, Wrench, UserCheck,
+  ChevronDown, LogOut, Landmark, Receipt, TrendingUp, Wrench, UserCheck,
 } from 'lucide-react'
 
 type NavItem = {
@@ -23,6 +23,33 @@ type NavGroup = {
 import { useERPStore } from '@/store/erp-store'
 import { useAuthStore } from '@/store/auth-store'
 import { AvatarInitials } from './avatar-initials'
+
+function TenantLogo({ logoUrl, name, size = 30 }: { logoUrl?: string; name: string; size?: number }) {
+  if (logoUrl) {
+    return (
+      <img
+        src={logoUrl}
+        alt={name}
+        className="rounded-lg object-cover shrink-0"
+        style={{ width: size, height: size }}
+        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+      />
+    )
+  }
+  const initials = name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map(w => w[0]?.toUpperCase() ?? '')
+    .join('')
+  return (
+    <div
+      className="rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold shrink-0"
+      style={{ width: size, height: size, fontSize: size * 0.38 }}
+    >
+      {initials}
+    </div>
+  )
+}
 
 const ALL_NAV: NavGroup[] = [
   {
@@ -53,7 +80,7 @@ const ALL_NAV: NavGroup[] = [
 ]
 
 export function Sidebar() {
-  const { empresa } = useERPStore()
+  const { empresa, tenantBranding } = useERPStore()
   const { user, logout, enabledModules, permissions } = useAuthStore()
   const [expanded, setExpanded] = useState<Record<string, boolean>>({ business: true, management: true })
 
@@ -72,18 +99,22 @@ export function Sidebar() {
 
   return (
     <div className="w-[210px] shrink-0 border-r border-border bg-card flex flex-col h-full overflow-hidden">
-      {/* Logo */}
-      <div className="px-4 h-[52px] flex items-center justify-between border-b border-border">
-        <div className="flex items-center gap-2.5">
-          <div className="w-[30px] h-[30px] bg-primary rounded-lg flex items-center justify-center">
-            <Monitor className="w-4 h-4 text-primary-foreground" />
-          </div>
-          <div>
-            <div className="text-[13px] font-bold text-foreground leading-tight">TiendaPro</div>
+      {/* Logo / Tenant branding */}
+      <div className="px-4 h-[58px] flex items-center justify-between border-b border-border">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <TenantLogo
+            logoUrl={tenantBranding?.logoUrl}
+            name={tenantBranding?.displayName ?? tenantBranding?.name ?? 'T'}
+            size={32}
+          />
+          <div className="min-w-0">
+            <div className="text-[13px] font-bold text-foreground leading-tight truncate">
+              {tenantBranding?.displayName ?? tenantBranding?.name ?? empresa.nombre}
+            </div>
             <div className="text-[10px] text-muted-foreground">{empresa.version}</div>
           </div>
         </div>
-        <button className="text-muted-foreground bg-transparent border-none cursor-pointer">
+        <button className="text-muted-foreground bg-transparent border-none cursor-pointer shrink-0">
           <ChevronDown className="w-3 h-3" />
         </button>
       </div>
