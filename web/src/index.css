@@ -141,3 +141,20 @@
     background: var(--muted-foreground);
   }
 }
+
+/* react-grid-layout overrides */
+.react-grid-item.react-grid-placeholder {
+  background: var(--primary);
+  opacity: 0.1;
+  border-radius: 12px;
+}
+.react-resizable-handle {
+  opacity: 0.4;
+  transition: opacity 0.15s;
+}
+.react-resizable-handle:hover {
+  opacity: 1;
+}
+.react-grid-item > .react-resizable-handle::after {
+  border-color: var(--muted-foreground);
+}

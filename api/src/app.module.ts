@@ -22,6 +22,8 @@ import { PayablesModule } from './modules/core/payables/payables.module';
 import { EmailModule } from './modules/core/email/email.module';
 import { DashboardModule } from './modules/core/dashboard/dashboard.module';
 import { EmployeesModule } from './modules/core/employees/employees.module';
+import { DashboardsModule } from './modules/core/dashboards/dashboards.module';
+import { ReportsModule } from './modules/core/reports/reports.module';
 
 // Retail modules — retail/POS vertical
 import { CategoriesModule } from './modules/retail/categories/categories.module';
@@ -57,6 +59,8 @@ import { PlatformModule } from './modules/platform/platform.module';
     EmailModule,
     DashboardModule,
     EmployeesModule,
+    DashboardsModule,
+    ReportsModule,
 
     // Retail
     CategoriesModule,

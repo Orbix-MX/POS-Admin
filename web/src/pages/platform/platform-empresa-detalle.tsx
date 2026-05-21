@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Loader2, Building2, GitBranch, Users, Package, Activity,
-  AlertTriangle, Plus, X, Check,
+  AlertTriangle, Plus, X, Check, LayoutDashboard,
 } from 'lucide-react'
+import { DashboardsTab } from './platform-dashboards-tab'
 import {
   fetchTenant, fetchTenantAudit, updateTenantPlan, updateTenantModules, updateTenantLimits,
   fetchTenantBranches, createTenantBranch, updateTenantBranchStatus, updateTenantBranchLimits,
@@ -135,7 +136,7 @@ export function PlatformEmpresaDetalle() {
   const [branches, setBranches] = useState<PlatformBranch[]>([])
   const [capacity, setCapacity] = useState<BranchCapacity | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'info' | 'sucursales' | 'modulos' | 'limites' | 'auditoria'>('info')
+  const [activeTab, setActiveTab] = useState<'info' | 'sucursales' | 'modulos' | 'limites' | 'dashboards' | 'auditoria'>('info')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveOk, setSaveOk] = useState(false)
@@ -249,11 +250,12 @@ export function PlatformEmpresaDetalle() {
   if (!tenant) return null
 
   const TABS = [
-    { key: 'info',       label: 'Información' },
-    { key: 'sucursales', label: 'Sucursales'  },
-    { key: 'modulos',    label: 'Módulos'     },
-    { key: 'limites',    label: 'Límites'     },
-    { key: 'auditoria',  label: 'Auditoría'   },
+    { key: 'info',        label: 'Información',  icon: null },
+    { key: 'sucursales',  label: 'Sucursales',   icon: null },
+    { key: 'modulos',     label: 'Módulos',      icon: null },
+    { key: 'limites',     label: 'Límites',      icon: null },
+    { key: 'dashboards',  label: 'Dashboards',   icon: LayoutDashboard },
+    { key: 'auditoria',   label: 'Auditoría',    icon: null },
   ] as const
 
   const activeBranchCount = capacity?.activeBranches ?? tenant.branches.filter(b => b.status === 'ACTIVE').length
@@ -304,12 +306,13 @@ export function PlatformEmpresaDetalle() {
           <button
             key={t.key}
             onClick={() => setActiveTab(t.key)}
-            className={`px-4 py-2.5 text-[13px] font-medium border-b-2 -mb-px transition-colors bg-transparent cursor-pointer
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium border-b-2 -mb-px transition-colors bg-transparent cursor-pointer
               ${activeTab === t.key
                 ? 'border-indigo-500 text-indigo-400'
                 : 'border-transparent text-zinc-500 hover:text-zinc-300'
               }`}
           >
+            {t.icon && <t.icon className="w-3.5 h-3.5" />}
             {t.label}
           </button>
         ))}
@@ -611,6 +614,11 @@ export function PlatformEmpresaDetalle() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Tab: Dashboards */}
+      {activeTab === 'dashboards' && id && (
+        <DashboardsTab tenantId={id} />
       )}
 
       {/* Tab: Auditoría */}

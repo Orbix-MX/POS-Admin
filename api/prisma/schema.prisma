@@ -138,6 +138,7 @@ model Tenant {
 
   usersLastSelected  User[] @relation("UserLastTenant")
   employees          Employee[]
+  dashboards         Dashboard[]
 
   owner User? @relation("TenantOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
 
@@ -220,6 +221,10 @@ model User {
   workOrderAssignments      WorkOrderAssignment[] @relation("WorkOrderAssignments")
   employeesCreated          Employee[]         @relation("EmployeeCreatedBy")
   employeesUpdated          Employee[]         @relation("EmployeeUpdatedBy")
+  dashboardsCreated         Dashboard[]        @relation("DashboardCreatedBy")
+  dashboardsUpdated         Dashboard[]        @relation("DashboardUpdatedBy")
+  widgetsCreated            Widget[]           @relation("WidgetCreatedBy")
+  widgetsUpdated            Widget[]           @relation("WidgetUpdatedBy")
 
   roleAssignments  UserRoleAssignment[]
   permissionGrants UserPermissionGrant[]
@@ -1160,6 +1165,8 @@ model Role {
   tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   permissions     RolePermission[]
   userAssignments UserRoleAssignment[]
+  dashboardRoles  DashboardRole[]
+  widgetRoles     WidgetRole[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1203,6 +1210,24 @@ model UserPermissionGrant {
 
   @@id([userId, permissionId])
   @@map("user_permission_grants")
+}
+
+// ============= Dynamic Dashboards — Enums =============
+
+enum WidgetType {
+  COUNTER
+  BAR_CHART
+  LINE_CHART
+  AREA_CHART
+  PIE_CHART
+  DONUT_CHART
+  TABLE
+  RANKING
+  TIMELINE
+  HEATMAP
+  FUNNEL
+  GAUGE
+  TEXT_CARD
 }
 
 // ============= Capital Humano - Employees =============
@@ -1314,4 +1339,100 @@ model WorkOrderQuote {
 
   @@id([workOrderId, serviceQuoteId])
   @@map("work_order_quotes")
+}
+
+// ============= Dynamic Dashboards =============
+
+model Dashboard {
+  id          String  @id @default(uuid())
+  tenantId    String
+  name        String
+  slug        String
+  description String?
+  isDefault   Boolean @default(false)
+  isActive    Boolean @default(true)
+  icon        String?
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  widgets   Widget[]
+  layouts   DashboardLayout[]
+  roles     DashboardRole[]
+  createdBy User?             @relation("DashboardCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User?             @relation("DashboardUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, isActive])
+  @@map("dashboards")
+}
+
+model DashboardLayout {
+  id          String @id @default(uuid())
+  dashboardId String
+  breakpoint  String // "lg" | "md" | "sm" | "xs"
+  layout      Json   // GridItem[] — { i, x, y, w, h, minW?, minH?, static? }
+
+  dashboard Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+
+  @@unique([dashboardId, breakpoint])
+  @@map("dashboard_layouts")
+}
+
+model Widget {
+  id             String     @id @default(uuid())
+  dashboardId    String
+  tenantId       String
+  widgetType     WidgetType
+  title          String
+  subtitle       String?
+  endpoint       String
+  httpMethod     String     @default("GET")
+  defaultParams  Json?
+  config         Json       @default("{}")
+  refreshSeconds Int?
+  isActive       Boolean    @default(true)
+  sortOrder      Int        @default(0)
+  colSpan        Int        @default(6)
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  dashboard Dashboard    @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  roles     WidgetRole[]
+  createdBy User?        @relation("WidgetCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User?        @relation("WidgetUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([dashboardId, isActive])
+  @@index([tenantId])
+  @@map("widgets")
+}
+
+model DashboardRole {
+  dashboardId String
+  roleId      String
+  canView     Boolean @default(true)
+  canEdit     Boolean @default(false)
+
+  dashboard Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  role      Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([dashboardId, roleId])
+  @@map("dashboard_roles")
+}
+
+model WidgetRole {
+  widgetId String
+  roleId   String
+
+  widget Widget @relation(fields: [widgetId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([widgetId, roleId])
+  @@map("widget_roles")
 }
