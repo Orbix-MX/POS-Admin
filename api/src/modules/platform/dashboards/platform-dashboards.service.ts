@@ -7,6 +7,8 @@ import { PrismaService } from '../../../database/prisma.service';
 import { Prisma } from '@prisma/client';
 import type { WidgetType } from '@prisma/client';
 
+// ─── Dashboard DTOs ──────────────────────────────────────────────────────────
+
 type CreateDashboardDto = {
   name: string;
   slug: string;
@@ -24,7 +26,9 @@ type UpdateDashboardDto = Partial<{
   isActive: boolean;
 }>;
 
-type AddWidgetDto = {
+// ─── Widget library DTOs ─────────────────────────────────────────────────────
+
+type CreateWidgetDto = {
   widgetType: WidgetType;
   title: string;
   subtitle?: string;
@@ -33,22 +37,35 @@ type AddWidgetDto = {
   defaultParams?: Record<string, unknown>;
   config?: Record<string, unknown>;
   refreshSeconds?: number;
+};
+
+type UpdateWidgetDto = Partial<CreateWidgetDto>;
+
+// ─── DashboardWidget link DTOs ───────────────────────────────────────────────
+
+type AddWidgetToDashboardDto = {
   sortOrder?: number;
   colSpan?: number;
 };
 
-type UpdateWidgetDto = Partial<AddWidgetDto>;
+type UpdateDashboardWidgetDto = Partial<{
+  sortOrder: number;
+  colSpan: number;
+  isActive: boolean;
+}>;
 
 @Injectable()
 export class PlatformDashboardsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  // ─── Dashboard CRUD ────────────────────────────────────────────────────────
 
   async listDashboards(tenantId: string) {
     return this.prisma.dashboard.findMany({
       where: { tenantId },
       orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
       include: {
-        _count: { select: { widgets: true } },
+        _count: { select: { dashboardWidgets: true } },
         roles: {
           include: {
             role: { select: { id: true, name: true, color: true } },
@@ -62,7 +79,10 @@ export class PlatformDashboardsService {
     const dashboard = await this.prisma.dashboard.findFirst({
       where: { id: dashboardId, tenantId },
       include: {
-        widgets: { orderBy: { sortOrder: 'asc' } },
+        dashboardWidgets: {
+          orderBy: { sortOrder: 'asc' },
+          include: { widget: true },
+        },
         roles: {
           include: {
             role: { select: { id: true, name: true, color: true } },
@@ -79,7 +99,8 @@ export class PlatformDashboardsService {
     const slugTaken = await this.prisma.dashboard.findUnique({
       where: { tenantId_slug: { tenantId, slug: dto.slug } },
     });
-    if (slugTaken) throw new ConflictException(`Slug '${dto.slug}' is already in use for this tenant`);
+    if (slugTaken)
+      throw new ConflictException(`Slug '${dto.slug}' is already in use for this tenant`);
 
     if (dto.isDefault) {
       return this.prisma.$transaction(async (tx) => {
@@ -112,7 +133,11 @@ export class PlatformDashboardsService {
     });
   }
 
-  async updateDashboard(tenantId: string, dashboardId: string, dto: UpdateDashboardDto) {
+  async updateDashboard(
+    tenantId: string,
+    dashboardId: string,
+    dto: UpdateDashboardDto,
+  ) {
     const existing = await this.prisma.dashboard.findFirst({
       where: { id: dashboardId, tenantId },
     });
@@ -122,7 +147,8 @@ export class PlatformDashboardsService {
       const slugTaken = await this.prisma.dashboard.findUnique({
         where: { tenantId_slug: { tenantId, slug: dto.slug } },
       });
-      if (slugTaken) throw new ConflictException(`Slug '${dto.slug}' is already in use for this tenant`);
+      if (slugTaken)
+        throw new ConflictException(`Slug '${dto.slug}' is already in use for this tenant`);
     }
 
     if (dto.isDefault) {
@@ -154,37 +180,44 @@ export class PlatformDashboardsService {
     return { deleted: true };
   }
 
-  async addWidget(tenantId: string, dashboardId: string, dto: AddWidgetDto) {
-    const dashboard = await this.prisma.dashboard.findFirst({
-      where: { id: dashboardId, tenantId },
-    });
-    if (!dashboard) throw new NotFoundException('Dashboard not found');
+  // ─── Widget library (tenant-scoped) ───────────────────────────────────────
 
+  async listWidgets(tenantId: string) {
+    return this.prisma.widget.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async createWidget(tenantId: string, dto: CreateWidgetDto) {
     return this.prisma.widget.create({
       data: {
-        dashboardId,
         tenantId,
         widgetType: dto.widgetType,
         title: dto.title,
         subtitle: dto.subtitle,
         endpoint: dto.endpoint,
         httpMethod: dto.httpMethod ?? 'GET',
-        defaultParams: dto.defaultParams !== undefined
-          ? (dto.defaultParams as Prisma.InputJsonValue)
-          : undefined,
+        defaultParams:
+          dto.defaultParams !== undefined
+            ? (dto.defaultParams as Prisma.InputJsonValue)
+            : undefined,
         config: (dto.config ?? {}) as Prisma.InputJsonValue,
         refreshSeconds: dto.refreshSeconds,
-        sortOrder: dto.sortOrder ?? 0,
-        colSpan: dto.colSpan ?? 6,
       },
     });
   }
 
-  async updateWidget(tenantId: string, widgetId: string, dto: UpdateWidgetDto) {
+  async updateWidget(
+    tenantId: string,
+    widgetId: string,
+    dto: UpdateWidgetDto,
+  ) {
     const widget = await this.prisma.widget.findFirst({
-      where: { id: widgetId, tenantId },
+      where: { id: widgetId },
     });
-    if (!widget) throw new NotFoundException('Widget not found');
+    if (!widget || widget.tenantId !== tenantId)
+      throw new NotFoundException('Widget not found');
 
     return this.prisma.widget.update({
       where: { id: widgetId },
@@ -200,22 +233,149 @@ export class PlatformDashboardsService {
         ...(dto.config !== undefined && {
           config: dto.config as Prisma.InputJsonValue,
         }),
-        ...(dto.refreshSeconds !== undefined && { refreshSeconds: dto.refreshSeconds }),
-        ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
-        ...(dto.colSpan !== undefined && { colSpan: dto.colSpan }),
+        ...(dto.refreshSeconds !== undefined && {
+          refreshSeconds: dto.refreshSeconds,
+        }),
       },
     });
   }
 
   async deleteWidget(tenantId: string, widgetId: string) {
     const widget = await this.prisma.widget.findFirst({
-      where: { id: widgetId, tenantId },
+      where: { id: widgetId },
     });
-    if (!widget) throw new NotFoundException('Widget not found');
+    if (!widget || widget.tenantId !== tenantId)
+      throw new NotFoundException('Widget not found');
 
     await this.prisma.widget.delete({ where: { id: widgetId } });
     return { deleted: true };
   }
+
+  // ─── Dashboard↔Widget links (DashboardWidget) ─────────────────────────────
+
+  async listDashboardWidgets(tenantId: string, dashboardId: string) {
+    const dashboard = await this.prisma.dashboard.findFirst({
+      where: { id: dashboardId, tenantId },
+    });
+    if (!dashboard) throw new NotFoundException('Dashboard not found');
+
+    return this.prisma.dashboardWidget.findMany({
+      where: { dashboardId },
+      orderBy: { sortOrder: 'asc' },
+      include: { widget: true },
+    });
+  }
+
+  async addWidgetToDashboard(
+    tenantId: string,
+    dashboardId: string,
+    widgetId: string,
+    dto: AddWidgetToDashboardDto,
+  ) {
+    const [dashboard, widget] = await Promise.all([
+      this.prisma.dashboard.findFirst({ where: { id: dashboardId, tenantId } }),
+      this.prisma.widget.findFirst({ where: { id: widgetId } }),
+    ]);
+
+    if (!dashboard) throw new NotFoundException('Dashboard not found');
+    if (!widget || widget.tenantId !== tenantId)
+      throw new NotFoundException('Widget not found');
+
+    return this.prisma.dashboardWidget.upsert({
+      where: { dashboardId_widgetId: { dashboardId, widgetId } },
+      create: {
+        dashboardId,
+        widgetId,
+        isActive: true,
+        sortOrder: dto.sortOrder ?? 0,
+        colSpan: dto.colSpan ?? 6,
+      },
+      update: {
+        isActive: true,
+        ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
+        ...(dto.colSpan !== undefined && { colSpan: dto.colSpan }),
+      },
+    });
+  }
+
+  async updateDashboardWidget(
+    tenantId: string,
+    dashboardId: string,
+    widgetId: string,
+    dto: UpdateDashboardWidgetDto,
+  ) {
+    const [dashboard, widget] = await Promise.all([
+      this.prisma.dashboard.findFirst({ where: { id: dashboardId, tenantId } }),
+      this.prisma.widget.findFirst({ where: { id: widgetId } }),
+    ]);
+
+    if (!dashboard) throw new NotFoundException('Dashboard not found');
+    if (!widget || widget.tenantId !== tenantId)
+      throw new NotFoundException('Widget not found');
+
+    const link = await this.prisma.dashboardWidget.findUnique({
+      where: { dashboardId_widgetId: { dashboardId, widgetId } },
+    });
+    if (!link) throw new NotFoundException('Widget is not assigned to this dashboard');
+
+    return this.prisma.dashboardWidget.update({
+      where: { dashboardId_widgetId: { dashboardId, widgetId } },
+      data: {
+        ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
+        ...(dto.colSpan !== undefined && { colSpan: dto.colSpan }),
+        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+      },
+    });
+  }
+
+  async removeWidgetFromDashboard(
+    tenantId: string,
+    dashboardId: string,
+    widgetId: string,
+  ) {
+    const dashboard = await this.prisma.dashboard.findFirst({
+      where: { id: dashboardId, tenantId },
+    });
+    if (!dashboard) throw new NotFoundException('Dashboard not found');
+
+    const link = await this.prisma.dashboardWidget.findUnique({
+      where: { dashboardId_widgetId: { dashboardId, widgetId } },
+    });
+    if (!link) throw new NotFoundException('Widget is not assigned to this dashboard');
+
+    await this.prisma.dashboardWidget.delete({
+      where: { dashboardId_widgetId: { dashboardId, widgetId } },
+    });
+    return { deleted: true };
+  }
+
+  async reorderDashboardWidgets(
+    tenantId: string,
+    dashboardId: string,
+    orderedWidgetIds: string[],
+  ) {
+    const dashboard = await this.prisma.dashboard.findFirst({
+      where: { id: dashboardId, tenantId },
+    });
+    if (!dashboard) throw new NotFoundException('Dashboard not found');
+
+    await this.prisma.$transaction(
+      orderedWidgetIds.map((widgetId, index) =>
+        this.prisma.dashboardWidget.updateMany({
+          where: { dashboardId, widgetId },
+          data: { sortOrder: index },
+        }),
+      ),
+    );
+
+    return this.prisma.dashboardWidget.findMany({
+      where: { dashboardId },
+      orderBy: { sortOrder: 'asc' },
+      include: { widget: true },
+    });
+  }
+
+  // ─── Roles ─────────────────────────────────────────────────────────────────
 
   async listTenantRoles(tenantId: string) {
     return this.prisma.role.findMany({

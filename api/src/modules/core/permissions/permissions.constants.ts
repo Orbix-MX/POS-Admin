@@ -8,7 +8,9 @@
 
 export const ALL_PERMISSIONS: PermissionDef[] = [
   // dashboard
-  { key: 'dashboard:view', name: 'Ver dashboard', module: 'dashboard', action: 'view' },
+  { key: 'dashboard:view',   name: 'Ver dashboards',          module: 'dashboard', action: 'view'   },
+  { key: 'dashboard:edit',   name: 'Editar layout',           description: 'Mover y redimensionar widgets en el dashboard', module: 'dashboard', action: 'edit'   },
+  { key: 'dashboard:manage', name: 'Administrar dashboards',  description: 'Crear, editar y eliminar dashboards y widgets',  module: 'dashboard', action: 'manage' },
   // pos
   { key: 'pos:access', name: 'Acceder al POS', module: 'pos', action: 'access' },
   { key: 'pos.cash:open', name: 'Abrir caja desde POS', description: 'Permite abrir sesión de caja desde el punto de venta', module: 'pos', action: 'cash:open' },

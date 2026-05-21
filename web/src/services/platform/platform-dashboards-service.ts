@@ -5,9 +5,10 @@ export type WidgetType =
   | 'PIE_CHART' | 'DONUT_CHART' | 'TABLE' | 'RANKING'
   | 'TIMELINE' | 'HEATMAP' | 'FUNNEL' | 'GAUGE' | 'TEXT_CARD'
 
+// ── Tenant-level widget (library item) ────────────────────────────────────────
+
 export interface PlatformWidget {
   id: string
-  dashboardId: string
   tenantId: string
   widgetType: WidgetType
   title: string
@@ -18,10 +19,22 @@ export interface PlatformWidget {
   config: Record<string, unknown>
   refreshSeconds: number | null
   isActive: boolean
-  sortOrder: number
-  colSpan: number
   createdAt: string
 }
+
+// ── Dashboard↔Widget join record ──────────────────────────────────────────────
+
+export interface DashboardWidgetLink {
+  id: string
+  dashboardId: string
+  widgetId: string
+  isActive: boolean
+  sortOrder: number
+  colSpan: number
+  widget: PlatformWidget
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
 
 export interface DashboardRole {
   dashboardId: string
@@ -41,9 +54,9 @@ export interface PlatformDashboard {
   isActive: boolean
   icon: string | null
   createdAt: string
-  _count?: { widgets: number }
+  _count?: { dashboardWidgets: number }
   roles: DashboardRole[]
-  widgets?: PlatformWidget[]
+  dashboardWidgets?: DashboardWidgetLink[]
 }
 
 export interface TenantRole {
@@ -52,6 +65,8 @@ export interface TenantRole {
   color: string | null
   isSystem: boolean
 }
+
+// ── Dashboard CRUD ────────────────────────────────────────────────────────────
 
 export async function listDashboards(tenantId: string): Promise<PlatformDashboard[]> {
   const { data } = await platformApi.get<PlatformDashboard[]>(`/platform/tenants/${tenantId}/dashboards`)
@@ -84,9 +99,15 @@ export async function deleteDashboard(tenantId: string, dashboardId: string): Pr
   await platformApi.delete(`/platform/tenants/${tenantId}/dashboards/${dashboardId}`)
 }
 
-export async function addWidget(
+// ── Widget library (tenant-scoped) ────────────────────────────────────────────
+
+export async function listWidgets(tenantId: string): Promise<PlatformWidget[]> {
+  const { data } = await platformApi.get<PlatformWidget[]>(`/platform/tenants/${tenantId}/widgets`)
+  return data
+}
+
+export async function createWidget(
   tenantId: string,
-  dashboardId: string,
   dto: {
     widgetType: WidgetType
     title: string
@@ -94,18 +115,15 @@ export async function addWidget(
     endpoint: string
     httpMethod?: string
     refreshSeconds?: number
-    sortOrder?: number
-    colSpan?: number
     config?: Record<string, unknown>
   },
 ): Promise<PlatformWidget> {
-  const { data } = await platformApi.post<PlatformWidget>(`/platform/tenants/${tenantId}/dashboards/${dashboardId}/widgets`, dto)
+  const { data } = await platformApi.post<PlatformWidget>(`/platform/tenants/${tenantId}/widgets`, dto)
   return data
 }
 
 export async function updateWidget(
   tenantId: string,
-  dashboardId: string,
   widgetId: string,
   dto: Partial<{
     widgetType: WidgetType
@@ -114,18 +132,71 @@ export async function updateWidget(
     endpoint: string
     httpMethod: string
     refreshSeconds: number
-    sortOrder: number
-    colSpan: number
     config: Record<string, unknown>
   }>,
 ): Promise<PlatformWidget> {
-  const { data } = await platformApi.patch<PlatformWidget>(`/platform/tenants/${tenantId}/dashboards/${dashboardId}/widgets/${widgetId}`, dto)
+  const { data } = await platformApi.patch<PlatformWidget>(`/platform/tenants/${tenantId}/widgets/${widgetId}`, dto)
   return data
 }
 
-export async function deleteWidget(tenantId: string, dashboardId: string, widgetId: string): Promise<void> {
+export async function deleteWidget(tenantId: string, widgetId: string): Promise<void> {
+  await platformApi.delete(`/platform/tenants/${tenantId}/widgets/${widgetId}`)
+}
+
+// ── Dashboard↔Widget links ────────────────────────────────────────────────────
+
+export async function listDashboardWidgets(tenantId: string, dashboardId: string): Promise<DashboardWidgetLink[]> {
+  const { data } = await platformApi.get<DashboardWidgetLink[]>(`/platform/tenants/${tenantId}/dashboards/${dashboardId}/widgets`)
+  return data
+}
+
+export async function addWidgetToDashboard(
+  tenantId: string,
+  dashboardId: string,
+  widgetId: string,
+  dto: { sortOrder?: number; colSpan?: number },
+): Promise<DashboardWidgetLink> {
+  const { data } = await platformApi.post<DashboardWidgetLink>(
+    `/platform/tenants/${tenantId}/dashboards/${dashboardId}/widgets/${widgetId}`,
+    dto,
+  )
+  return data
+}
+
+export async function updateDashboardWidget(
+  tenantId: string,
+  dashboardId: string,
+  widgetId: string,
+  dto: Partial<{ sortOrder: number; colSpan: number; isActive: boolean }>,
+): Promise<DashboardWidgetLink> {
+  const { data } = await platformApi.patch<DashboardWidgetLink>(
+    `/platform/tenants/${tenantId}/dashboards/${dashboardId}/widgets/${widgetId}`,
+    dto,
+  )
+  return data
+}
+
+export async function removeWidgetFromDashboard(
+  tenantId: string,
+  dashboardId: string,
+  widgetId: string,
+): Promise<void> {
   await platformApi.delete(`/platform/tenants/${tenantId}/dashboards/${dashboardId}/widgets/${widgetId}`)
 }
+
+export async function reorderDashboardWidgets(
+  tenantId: string,
+  dashboardId: string,
+  widgetIds: string[],
+): Promise<DashboardWidgetLink[]> {
+  const { data } = await platformApi.put<DashboardWidgetLink[]>(
+    `/platform/tenants/${tenantId}/dashboards/${dashboardId}/widgets/reorder`,
+    { widgetIds },
+  )
+  return data
+}
+
+// ── Roles ─────────────────────────────────────────────────────────────────────
 
 export async function listTenantRoles(tenantId: string): Promise<TenantRole[]> {
   const { data } = await platformApi.get<TenantRole[]>(`/platform/tenants/${tenantId}/roles`)

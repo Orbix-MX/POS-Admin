@@ -139,6 +139,7 @@ model Tenant {
   usersLastSelected  User[] @relation("UserLastTenant")
   employees          Employee[]
   dashboards         Dashboard[]
+  widgets            Widget[]
 
   owner User? @relation("TenantOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
 
@@ -1361,10 +1362,10 @@ model Dashboard {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  widgets   Widget[]
-  layouts   DashboardLayout[]
-  roles     DashboardRole[]
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  dashboardWidgets DashboardWidget[]
+  layouts          DashboardLayout[]
+  roles            DashboardRole[]
   createdBy User?             @relation("DashboardCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy User?             @relation("DashboardUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
@@ -1387,7 +1388,6 @@ model DashboardLayout {
 
 model Widget {
   id             String     @id @default(uuid())
-  dashboardId    String
   tenantId       String
   widgetType     WidgetType
   title          String
@@ -1398,22 +1398,36 @@ model Widget {
   config         Json       @default("{}")
   refreshSeconds Int?
   isActive       Boolean    @default(true)
-  sortOrder      Int        @default(0)
-  colSpan        Int        @default(6)
 
   createdById String?
   updatedById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  dashboard Dashboard    @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
-  roles     WidgetRole[]
-  createdBy User?        @relation("WidgetCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  updatedBy User?        @relation("WidgetUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  dashboards DashboardWidget[]
+  roles      WidgetRole[]
+  createdBy  User?            @relation("WidgetCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy  User?            @relation("WidgetUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
-  @@index([dashboardId, isActive])
   @@index([tenantId])
   @@map("widgets")
+}
+
+model DashboardWidget {
+  id          String  @id @default(uuid())
+  dashboardId String
+  widgetId    String
+  isActive    Boolean @default(true)
+  sortOrder   Int     @default(0)
+  colSpan     Int     @default(6)
+
+  dashboard Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  widget    Widget    @relation(fields: [widgetId], references: [id], onDelete: Cascade)
+
+  @@unique([dashboardId, widgetId])
+  @@index([dashboardId, isActive])
+  @@map("dashboard_widgets")
 }
 
 model DashboardRole {
