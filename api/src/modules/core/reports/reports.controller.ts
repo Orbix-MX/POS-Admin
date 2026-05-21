@@ -83,6 +83,22 @@ class MonthlySalesQueryDto {
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
+  @Get('expenses/monthly')
+  @RequirePermissions('reports:view')
+  @ApiOperation({
+    summary: 'Gastos del mes',
+    description:
+      'Returns a COUNTER-format WidgetResponse with total purchase expenses for the requested month (excludes BORRADOR and CANCELADA orders), including month-over-month comparison.',
+  })
+  @ApiQuery({ name: 'year',  required: false, description: 'Year (default: current)' })
+  @ApiQuery({ name: 'month', required: false, description: 'Month 1-12 (default: current)' })
+  monthlyExpenses(@Query() query: MonthlyQuotesQueryDto) {
+    return this.reportsService.monthlyExpenses({
+      year:  query.year,
+      month: query.month,
+    });
+  }
+
   @Get('products/top')
   @RequirePermissions('reports:view')
   @ApiOperation({
