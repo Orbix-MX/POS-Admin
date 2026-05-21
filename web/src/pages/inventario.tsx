@@ -5,6 +5,7 @@ import { ProductFormModal } from '@/components/inventario/product-form-modal'
 import { Search, Plus, Pencil, Trash2, Loader2, Package, Tag } from 'lucide-react'
 import { useProducts } from '@/hooks/retail/use-products'
 import { useCategories } from '@/hooks/retail/use-categories'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { Product } from '@/services/retail/product-service'
 import type { Category } from '@/hooks/retail/use-categories'
 
@@ -48,7 +49,7 @@ export function Inventario() {
   const {
     loading: prodLoading, error: prodError, search, setSearch,
     catFilter, setCatFilter, page, setPage, modalOpen, editingId,
-    form, setForm, filtered, pageData, stats, categorias,
+    form, setForm, filtered, pageData, stats,
     handleSave, handleEdit, handleDelete, handleOpenNew, handleCloseModal, loadProducts,
   } = useProducts()
 
@@ -98,10 +99,9 @@ export function Inventario() {
     },
     {
       label: "Estado", render: r => (
-        <span className={`text-[10px] px-2 py-1 rounded-full font-medium ${
-          r.status === 'ACTIVE' ? 'bg-green-100 text-green-700' :
-          r.status === 'DRAFT' ? 'bg-gray-100 text-gray-700' : 'bg-red-100 text-red-700'
-        }`}>
+        <span className={`text-[10px] px-2 py-1 rounded-full font-medium ${r.status === 'ACTIVE' ? 'bg-green-100 text-green-700' :
+            r.status === 'DRAFT' ? 'bg-gray-100 text-gray-700' : 'bg-red-100 text-red-700'
+          }`}>
           {r.status === 'ACTIVE' ? 'Activo' : r.status === 'DRAFT' ? 'Borrador' : 'Archivado'}
         </span>
       )
@@ -186,99 +186,108 @@ export function Inventario() {
       {/* ── PRODUCTOS TAB ───────────────────────────────────────────────── */}
       {activeTab === 'productos' && (
         prodLoading ? <LoadingState label="Cargando productos..." /> :
-        prodError   ? <ErrorState message={prodError} onRetry={loadProducts} /> :
-        <>
-          <div className="flex gap-3.5">
-            {[
-              { label: "Total Productos", value: stats.total,  color: "text-primary"    },
-              { label: "Stock OK",        value: stats.ok,     color: "text-green-600"  },
-              { label: "Stock Bajo",      value: stats.bajo,   color: "text-amber-600"  },
-              { label: "Agotados",        value: stats.agotado,color: "text-red-600"    },
-            ].map((s, i) => (
-              <div key={i} className="flex-1 bg-card border border-border rounded-[10px] px-4.5 py-3.5">
-                <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">{s.label}</div>
-                <div className={`text-[28px] font-extrabold ${s.color}`}>{s.value}</div>
-              </div>
-            ))}
-          </div>
-
-          <div className="bg-card border border-border rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3.5 border-b border-border gap-3 flex-wrap">
-              <div className="flex gap-1.5 flex-wrap">
-                {categorias.map(c => (
-                  <button key={c} onClick={() => { setCatFilter(c); setPage(1) }}
-                    className={`px-2.5 py-1.5 border rounded-md text-[11px] cursor-pointer font-medium
-                      ${catFilter === c ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-muted-foreground'}`}>
-                    {c}
-                  </button>
+          prodError ? <ErrorState message={prodError} onRetry={loadProducts} /> :
+            <>
+              <div className="flex gap-3.5">
+                {[
+                  { label: "Total Productos", value: stats.total, color: "text-primary" },
+                  { label: "Stock OK", value: stats.ok, color: "text-green-600" },
+                  { label: "Stock Bajo", value: stats.bajo, color: "text-amber-600" },
+                  { label: "Agotados", value: stats.agotado, color: "text-red-600" },
+                ].map((s, i) => (
+                  <div key={i} className="flex-1 bg-card border border-border rounded-[10px] px-4.5 py-3.5">
+                    <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">{s.label}</div>
+                    <div className={`text-[28px] font-extrabold ${s.color}`}>{s.value}</div>
+                  </div>
                 ))}
               </div>
-              <div className="flex gap-2.5 items-center">
-                <div className="flex items-center gap-2 bg-muted rounded-lg px-3 py-1.5">
-                  <Search className="w-3.5 h-3.5 text-muted-foreground" />
-                  <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} placeholder="Buscar producto…"
-                    className="border-none bg-transparent outline-none text-xs text-foreground w-40" />
+
+              <div className="bg-card border border-border rounded-xl overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3.5 border-b border-border gap-3">
+                  <label className="flex items-center gap-2">
+                    <span className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">Categoría</span>
+                    <Select value={catFilter} onValueChange={v => { setCatFilter(v); setPage(1) }}>
+                      <SelectTrigger size="sm" className="min-w-[160px]">
+                        <SelectValue>
+                          {catFilter === "Todas"
+                            ? "Todas las categorías"
+                            : (categories.find(c => c.id === catFilter)?.name ?? catFilter)}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent align="start">
+                        <SelectItem value="Todas">Todas las categorías</SelectItem>
+                        {categories.filter(c => c.status === 'ACTIVE').map(c => (
+                          <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </label>
+                  <div className="flex gap-2.5 items-center">
+                    <div className="flex items-center gap-2 bg-muted rounded-lg px-3 py-1.5">
+                      <Search className="w-3.5 h-3.5 text-muted-foreground" />
+                      <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} placeholder="Buscar producto…"
+                        className="border-none bg-transparent outline-none text-xs text-foreground w-40" />
+                    </div>
+                    <button onClick={handleOpenNew} className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground border-none rounded-lg text-xs font-semibold cursor-pointer">
+                      <Plus className="w-3.5 h-3.5" /> Nuevo Producto
+                    </button>
+                  </div>
                 </div>
-                <button onClick={handleOpenNew} className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground border-none rounded-lg text-xs font-semibold cursor-pointer">
-                  <Plus className="w-3.5 h-3.5" /> Nuevo Producto
-                </button>
+                {filtered.length === 0 ? (
+                  <div className="p-12 text-center">
+                    <p className="text-muted-foreground text-sm">No se encontraron productos</p>
+                  </div>
+                ) : (
+                  <>
+                    <DataTable columns={prodColumns} rows={pageData} />
+                    <Pagination page={page} total={filtered.length} perPage={PER_PAGE} onChange={setPage} />
+                  </>
+                )}
               </div>
-            </div>
-            {filtered.length === 0 ? (
-              <div className="p-12 text-center">
-                <p className="text-muted-foreground text-sm">No se encontraron productos</p>
-              </div>
-            ) : (
-              <>
-                <DataTable columns={prodColumns} rows={pageData} />
-                <Pagination page={page} total={filtered.length} perPage={PER_PAGE} onChange={setPage} />
-              </>
-            )}
-          </div>
-        </>
+            </>
       )}
 
       {/* ── CATEGORÍAS TAB ─────────────────────────────────────────────── */}
       {activeTab === 'categorias' && (
         catLoading ? <LoadingState label="Cargando categorías..." /> :
-        catError   ? <ErrorState message={catError} onRetry={loadCategories} /> :
-        <>
-          <div className="flex gap-3.5">
-            {[
-              { label: "Total Categorías", value: catStats.total,    color: "text-primary"   },
-              { label: "Activas",          value: catStats.active,   color: "text-green-600" },
-              { label: "Inactivas",        value: catStats.inactive, color: "text-gray-500"  },
-            ].map((s, i) => (
-              <div key={i} className="flex-1 bg-card border border-border rounded-[10px] px-4.5 py-3.5">
-                <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">{s.label}</div>
-                <div className={`text-[28px] font-extrabold ${s.color}`}>{s.value}</div>
+          catError ? <ErrorState message={catError} onRetry={loadCategories} /> :
+            <>
+              <div className="flex gap-3.5">
+                {[
+                  { label: "Total Categorías", value: catStats.total, color: "text-primary" },
+                  { label: "Activas", value: catStats.active, color: "text-green-600" },
+                  { label: "Inactivas", value: catStats.inactive, color: "text-gray-500" },
+                ].map((s, i) => (
+                  <div key={i} className="flex-1 bg-card border border-border rounded-[10px] px-4.5 py-3.5">
+                    <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">{s.label}</div>
+                    <div className={`text-[28px] font-extrabold ${s.color}`}>{s.value}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
 
-          <div className="bg-card border border-border rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3.5 border-b border-border gap-3">
-              <div className="flex items-center gap-2 bg-muted rounded-lg px-3 py-1.5">
-                <Search className="w-3.5 h-3.5 text-muted-foreground" />
-                <input value={catSearch} onChange={e => { setCatSearch(e.target.value); setCatPage(1) }} placeholder="Buscar categoría…"
-                  className="border-none bg-transparent outline-none text-xs text-foreground w-44" />
+              <div className="bg-card border border-border rounded-xl overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3.5 border-b border-border gap-3">
+                  <div className="flex items-center gap-2 bg-muted rounded-lg px-3 py-1.5">
+                    <Search className="w-3.5 h-3.5 text-muted-foreground" />
+                    <input value={catSearch} onChange={e => { setCatSearch(e.target.value); setCatPage(1) }} placeholder="Buscar categoría…"
+                      className="border-none bg-transparent outline-none text-xs text-foreground w-44" />
+                  </div>
+                  <button onClick={handleCatOpenNew} className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground border-none rounded-lg text-xs font-semibold cursor-pointer">
+                    <Plus className="w-3.5 h-3.5" /> Nueva Categoría
+                  </button>
+                </div>
+                {catFiltered.length === 0 ? (
+                  <div className="p-12 text-center">
+                    <p className="text-muted-foreground text-sm">No se encontraron categorías</p>
+                  </div>
+                ) : (
+                  <>
+                    <DataTable columns={catColumns} rows={catPageData} />
+                    <Pagination page={catPage} total={catFiltered.length} perPage={catPerPage} onChange={setCatPage} />
+                  </>
+                )}
               </div>
-              <button onClick={handleCatOpenNew} className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground border-none rounded-lg text-xs font-semibold cursor-pointer">
-                <Plus className="w-3.5 h-3.5" /> Nueva Categoría
-              </button>
-            </div>
-            {catFiltered.length === 0 ? (
-              <div className="p-12 text-center">
-                <p className="text-muted-foreground text-sm">No se encontraron categorías</p>
-              </div>
-            ) : (
-              <>
-                <DataTable columns={catColumns} rows={catPageData} />
-                <Pagination page={catPage} total={catFiltered.length} perPage={catPerPage} onChange={setCatPage} />
-              </>
-            )}
-          </div>
-        </>
+            </>
       )}
 
       <ProductFormModal
