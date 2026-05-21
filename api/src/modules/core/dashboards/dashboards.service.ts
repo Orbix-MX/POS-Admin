@@ -66,7 +66,7 @@ export class DashboardsService {
 
     return this.prisma.dashboard.findMany({
       where: { tenantId, isActive: true, ...roleFilter },
-      include: { _count: { select: { widgets: true } } },
+      include: { _count: { select: { dashboardWidgets: true } } },
       orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
     });
   }
@@ -84,23 +84,34 @@ export class DashboardsService {
       ...(bypass ? {} : this.dashboardRoleFilter(roleIds)),
     });
 
-    const widgetWhere: Prisma.WidgetWhereInput = {
+    const widgetWhere: Prisma.DashboardWidgetWhereInput = {
       isActive: true,
-      ...(bypass ? {} : this.widgetRoleFilter(roleIds)),
+      widget: {
+        isActive: true,
+        ...(bypass ? {} : this.widgetRoleFilter(roleIds)),
+      },
     };
 
     const dashboard =
       (await this.prisma.dashboard.findFirst({
         where: dashboardWhere({ isDefault: true }),
         include: {
-          widgets: { where: widgetWhere, orderBy: { sortOrder: 'asc' } },
+          dashboardWidgets: {
+            where: widgetWhere,
+            orderBy: { sortOrder: 'asc' },
+            include: { widget: true },
+          },
           layouts: true,
         },
       })) ??
       (await this.prisma.dashboard.findFirst({
         where: dashboardWhere({}),
         include: {
-          widgets: { where: widgetWhere, orderBy: { sortOrder: 'asc' } },
+          dashboardWidgets: {
+            where: widgetWhere,
+            orderBy: { sortOrder: 'asc' },
+            include: { widget: true },
+          },
           layouts: true,
         },
         orderBy: { createdAt: 'asc' },
@@ -119,7 +130,11 @@ export class DashboardsService {
     const dashboard = await this.prisma.dashboard.findFirst({
       where: { id, tenantId, ...roleFilter },
       include: {
-        widgets: { where: { isActive: true }, orderBy: { sortOrder: 'asc' } },
+        dashboardWidgets: {
+          where: { isActive: true, widget: { isActive: true } },
+          orderBy: { sortOrder: 'asc' },
+          include: { widget: true },
+        },
         layouts: true,
       },
     });
@@ -217,22 +232,32 @@ export class DashboardsService {
     const dashboard = await this.prisma.dashboard.findFirst({ where: { id: dashboardId, tenantId } });
     if (!dashboard) throw new NotFoundException('Dashboard not found');
 
-    return this.prisma.widget.create({
-      data: {
-        dashboardId,
-        tenantId,
-        widgetType: dto.widgetType,
-        title: dto.title,
-        subtitle: dto.subtitle ?? null,
-        endpoint: dto.endpoint,
-        httpMethod: dto.httpMethod ?? 'GET',
-        defaultParams: dto.defaultParams ? (dto.defaultParams as Prisma.InputJsonValue) : undefined,
-        config: (dto.config ?? {}) as Prisma.InputJsonValue,
-        refreshSeconds: dto.refreshSeconds ?? null,
-        sortOrder: dto.sortOrder ?? 0,
-        createdById: userId ?? null,
-        updatedById: userId ?? null,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const widget = await tx.widget.create({
+        data: {
+          tenantId,
+          widgetType: dto.widgetType,
+          title: dto.title,
+          subtitle: dto.subtitle ?? null,
+          endpoint: dto.endpoint,
+          httpMethod: dto.httpMethod ?? 'GET',
+          defaultParams: dto.defaultParams ? (dto.defaultParams as Prisma.InputJsonValue) : undefined,
+          config: (dto.config ?? {}) as Prisma.InputJsonValue,
+          refreshSeconds: dto.refreshSeconds ?? null,
+          createdById: userId ?? null,
+          updatedById: userId ?? null,
+        },
+      });
+
+      await tx.dashboardWidget.create({
+        data: {
+          dashboardId,
+          widgetId: widget.id,
+          sortOrder: dto.sortOrder ?? 0,
+        },
+      });
+
+      return widget;
     });
   }
 
@@ -285,11 +310,16 @@ export class DashboardsService {
   // ── Internal ────────────────────────────────────────────────────────────────
 
   private format(dashboard: any) {
-    const { layouts, ...rest } = dashboard;
+    const { layouts, dashboardWidgets, ...rest } = dashboard;
     const layoutMap: Record<string, unknown> = {};
     for (const l of layouts) {
       layoutMap[l.breakpoint] = l.layout;
     }
-    return { ...rest, layouts: layoutMap };
+    const widgets = (dashboardWidgets ?? []).map((dw: any) => ({
+      ...dw.widget,
+      sortOrder: dw.sortOrder,
+      colSpan:   dw.colSpan,
+    }));
+    return { ...rest, widgets, layouts: layoutMap };
   }
 }

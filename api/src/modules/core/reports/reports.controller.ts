@@ -83,6 +83,22 @@ class MonthlySalesQueryDto {
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
+  @Get('profit/monthly')
+  @RequirePermissions('reports:view')
+  @ApiOperation({
+    summary: 'Utilidad del mes',
+    description:
+      'Returns a COUNTER-format WidgetResponse with the monthly profit (sales minus purchase expenses), including the individual totals and month-over-month comparison.',
+  })
+  @ApiQuery({ name: 'year',  required: false, description: 'Year (default: current)' })
+  @ApiQuery({ name: 'month', required: false, description: 'Month 1-12 (default: current)' })
+  monthlyProfit(@Query() query: MonthlyQuotesQueryDto) {
+    return this.reportsService.monthlyProfit({
+      year:  query.year,
+      month: query.month,
+    });
+  }
+
   @Get('expenses/monthly')
   @RequirePermissions('reports:view')
   @ApiOperation({
