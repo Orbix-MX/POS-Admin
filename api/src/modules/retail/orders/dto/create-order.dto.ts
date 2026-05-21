@@ -159,16 +159,19 @@ export class CreateOrderDto {
   @IsString()
   couponCode?: string;
 
-  @ApiPropertyOptional({ enum: ['PENDING', 'PAID', 'FAILED', 'REFUNDED'], default: 'PENDING' })
+  @ApiPropertyOptional({ enum: ['PENDING', 'PARTIALLY_PAID', 'PAID', 'FAILED', 'REFUNDED'], default: 'PENDING' })
   @IsOptional()
-  @IsEnum(['PENDING', 'PAID', 'FAILED', 'REFUNDED'])
+  @IsEnum(['PENDING', 'PARTIALLY_PAID', 'PAID', 'FAILED', 'REFUNDED'])
   paymentStatus?: string;
 
-  
-  @ApiPropertyOptional({ enum: ['PENDING', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUNDED'], default: 'PENDING' })
+  @ApiPropertyOptional({ enum: ['PENDING', 'LAYAWAY', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUNDED'], default: 'PENDING' })
   @IsOptional()
-  @IsEnum(['PENDING', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUNDED'])
+  @IsEnum(['PENDING', 'LAYAWAY', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUNDED'])
   status?: string;
+
+  @ApiPropertyOptional({ description: 'Crear como apartado (LAYAWAY). Los pagos se tratan como depósito/anticipo.' })
+  @IsOptional()
+  isLayaway?: boolean;
 
   @ApiPropertyOptional({ description: 'Fecha de vencimiento para órdenes a crédito (ISO string). Default: 30 días.' })
   @IsOptional()

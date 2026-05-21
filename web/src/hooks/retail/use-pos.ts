@@ -3,7 +3,7 @@ import { useERPStore } from '@/store/erp-store'
 import { fetchProducts, type Product } from '@/services/retail/product-service'
 import { fetchCliente, fetchClientes, type Cliente } from '@/services/core/clientes-service'
 import { fetchServices, type Service } from '@/services/retail/services-service'
-import { createOrder, updateOrderStatus } from '@/services/retail/ventas-service'
+import { createOrder, updateOrderStatus, addOrderPayment } from '@/services/retail/ventas-service'
 import { fetchQuote, fetchQuotesByCustomer, createQuote, type ServiceQuote } from '@/services/retail/cotizaciones-service'
 import { fetchActiveCashSession, type ApiCashSession } from '@/services/core/caja-service'
 import { fetchSettings } from '@/services/core/configuracion-service'
@@ -19,6 +19,9 @@ export interface HoldSale {
   carrito: CartItem[]
   cliente: Cliente | null
   total: number
+  orderId?: string
+  orderNumber?: string
+  paidAmount?: number
 }
 
 export type CartItemType = 'PRODUCT' | 'SERVICE'
@@ -114,6 +117,11 @@ export function usePOS() {
     try { return JSON.parse(localStorage.getItem('pos_hold_sales') ?? '[]') }
     catch { return [] }
   })
+
+  // ---- layaway settlement ----
+  const [layawayOrderId, setLayawayOrderId] = useState<string | null>(null)
+  const [layawayOrderNumber, setLayawayOrderNumber] = useState<string | null>(null)
+  const [layawayPaidAmount, setLayawayPaidAmount] = useState(0)
 
   // ---- load quote into cart ----
   const loadQuoteIntoCart = useCallback(async (quoteId: string) => {
@@ -404,6 +412,9 @@ export function usePOS() {
     setLoadedQuoteId(null)
     setLoadedQuoteNumber(null)
     setSavedQuoteNumber(null)
+    setLayawayOrderId(null)
+    setLayawayOrderNumber(null)
+    setLayawayPaidAmount(0)
   }, [])
 
   // ---- customer ----
@@ -487,22 +498,32 @@ export function usePOS() {
     setSubmitting(true)
     setCheckoutError(null)
     try {
-      const order = await createOrder({
-        customerId:    cliente?.id,
-        items: carrito.map(i => {
-          if (i.type === 'SERVICE') {
-            return { itemType: 'SERVICE' as const, serviceId: i.serviceId, name: i.name, quantity: i.qty, price: i.price }
-          }
-          return { productId: i.id, quantity: i.qty, price: i.price }
-        }),
-        paymentMethod: primaryMethod,
-        payments:      payments.length > 1 || (payments.length === 1 && payments[0].amountReceived != null) ? payments : undefined,
-        paymentStatus,
-        status:        orderStatus,
-        dueDate,
-        ...(hasCash && cambio > 0 && { changeAmount: r(cambio), changeCurrency: cashChangeCurrency }),
-        ...(loadedQuoteId ? { sourceQuoteId: loadedQuoteId } : {}),
-      })
+      let order
+      if (layawayOrderId) {
+        // Settle existing layaway order
+        order = await addOrderPayment(layawayOrderId, {
+          payments,
+          ...(hasCash && cambio > 0 && { changeAmount: r(cambio), changeCurrency: cashChangeCurrency }),
+          paymentConcept: 'BALANCE_PAYMENT',
+        })
+      } else {
+        order = await createOrder({
+          customerId:    cliente?.id,
+          items: carrito.map(i => {
+            if (i.type === 'SERVICE') {
+              return { itemType: 'SERVICE' as const, serviceId: i.serviceId, name: i.name, quantity: i.qty, price: i.price }
+            }
+            return { productId: i.id, quantity: i.qty, price: i.price }
+          }),
+          paymentMethod: primaryMethod,
+          payments:      payments.length > 1 || (payments.length === 1 && payments[0].amountReceived != null) ? payments : undefined,
+          paymentStatus,
+          status:        orderStatus,
+          dueDate,
+          ...(hasCash && cambio > 0 && { changeAmount: r(cambio), changeCurrency: cashChangeCurrency }),
+          ...(loadedQuoteId ? { sourceQuoteId: loadedQuoteId } : {}),
+        })
+      }
 
       if (hasCard) {
         setPendingOrderId(order.id)
@@ -523,7 +544,7 @@ export function usePOS() {
     } finally {
       setSubmitting(false)
     }
-  }, [checkoutVals, carrito, cliente, clienteCanCredit, creditBlockReason, clearCart, loadedQuoteId])
+  }, [checkoutVals, carrito, cliente, clienteCanCredit, creditBlockReason, clearCart, loadedQuoteId, layawayOrderId])
 
   // ---- confirm card ----
   const handleConfirmarTarjeta = useCallback(async () => {
@@ -570,11 +591,51 @@ export function usePOS() {
     clearCart()
   }, [carrito, cliente, totals.total, holdSales, clearCart])
 
+  const holdCurrentCartWithDeposit = useCallback(async (
+    label: string | undefined,
+    depositAmount: number,
+    depositMethod: string,
+  ): Promise<void> => {
+    if (carrito.length === 0) return
+    const order = await createOrder({
+      customerId: cliente?.id,
+      items: carrito.map(i => {
+        if (i.type === 'SERVICE') {
+          return { itemType: 'SERVICE' as const, serviceId: i.serviceId, name: i.name, quantity: i.qty, price: i.price }
+        }
+        return { productId: i.id, quantity: i.qty, price: i.price }
+      }),
+      paymentMethod: depositMethod,
+      payments: [{ method: depositMethod, amount: depositAmount, currency: 'MXN' }],
+      isLayaway: true,
+    })
+    const sale: HoldSale = {
+      id: `hold-${Date.now()}`,
+      label: label ?? `Mesa ${new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      paidAmount: depositAmount,
+      createdAt: new Date().toISOString(),
+      carrito: [...carrito],
+      cliente: cliente ? { ...cliente } : null,
+      total: totals.total,
+    }
+    const updated = [...holdSales, sale]
+    setHoldSales(updated)
+    localStorage.setItem('pos_hold_sales', JSON.stringify(updated))
+    clearCart()
+  }, [carrito, cliente, totals.total, holdSales, clearCart])
+
   const resumeHoldSale = useCallback((id: string) => {
     const hold = holdSales.find(h => h.id === id)
     if (!hold) return
     setCarrito(hold.carrito)
     if (hold.cliente) setCliente(hold.cliente)
+    if (hold.orderId) {
+      setLayawayOrderId(hold.orderId)
+      setLayawayOrderNumber(hold.orderNumber ?? null)
+      setLayawayPaidAmount(hold.paidAmount ?? 0)
+    }
     const updated = holdSales.filter(h => h.id !== id)
     setHoldSales(updated)
     localStorage.setItem('pos_hold_sales', JSON.stringify(updated))
@@ -636,6 +697,8 @@ export function usePOS() {
     // save as quote
     saveAsQuote, savingQuote, savedQuoteNumber, setSavedQuoteNumber,
     // hold sales
-    holdSales, holdCurrentCart, resumeHoldSale, discardHoldSale,
+    holdSales, holdCurrentCart, holdCurrentCartWithDeposit, resumeHoldSale, discardHoldSale,
+    // layaway
+    layawayOrderId, layawayOrderNumber, layawayPaidAmount,
   }
 }

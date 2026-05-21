@@ -3,7 +3,7 @@ import {
   Wallet, TrendingUp, ArrowUpCircle, ArrowDownCircle, Users, Pause,
   X, Plus, Check, Loader2, RotateCcw, AlertCircle, Clock,
   ChevronDown, Trash2, PlayCircle, PanelLeftOpen, PanelLeftClose,
-  ShieldAlert, Eye, EyeOff,
+  ShieldAlert, Eye, EyeOff, Undo2,
 } from 'lucide-react'
 import {
   fetchActiveCashSession, openCashSession, closeCashSession, closeSessionWithAuth,
@@ -13,7 +13,7 @@ import {
 } from '@/services/core/caja-service'
 import {
   getOrders, ORDER_STATUS_COLORS, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_COLORS,
-  ORDER_STATUS_LABELS, customerName, fmtMoney as fmtOrderMoney, type ApiOrder,
+  ORDER_STATUS_LABELS, customerName, fmtMoney as fmtOrderMoney, refundOrder, type ApiOrder,
 } from '@/services/retail/ventas-service'
 import {
   fetchClientes, createCliente, type CreateClienteInput,
@@ -418,14 +418,26 @@ function CajaPanel({ onClose, onSessionChange }: { onClose: () => void; onSessio
 
 // ─── Mis Ventas Panel ─────────────────────────────────────────────────────────
 
+function isRefundable(order: ApiOrder): boolean {
+  if (order.status === 'CANCELLED' || order.status === 'REFUNDED') return false
+  if (order.paymentStatus === 'REFUNDED') return false
+  const totalPaid = order.payments.reduce((s, p) => s + Number(p.amount), 0)
+  const totalRefunded = (order.refunds ?? []).reduce((s, r) => s + Number(r.amount), 0)
+  return totalPaid - totalRefunded > 0.001
+}
+
 function MisVentasPanel({ onClose }: { onClose: () => void }) {
+  const permissions = useAuthStore(s => s.permissions)
+  const canRefund = permissions.includes('refunds:create')
+
   const [orders, setOrders] = useState<ApiOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [refundingOrder, setRefundingOrder] = useState<ApiOrder | null>(null)
 
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
 
-  useEffect(() => {
+  const loadOrders = useCallback(() => {
     setLoading(true)
     getOrders({ limit: 100, page: 1 })
       .then(res => {
@@ -437,12 +449,21 @@ function MisVentasPanel({ onClose }: { onClose: () => void }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => { loadOrders() }, [loadOrders])
+
   const todayTotal = orders.reduce((s, o) => s + Number(o.total), 0)
   const paidCount = orders.filter(o => o.paymentStatus === 'PAID').length
   const pendingCount = orders.filter(o => o.paymentStatus === 'PENDING').length
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
+      {refundingOrder && (
+        <SaleRefundModal
+          order={refundingOrder}
+          onDone={() => { setRefundingOrder(null); loadOrders() }}
+          onCancel={() => setRefundingOrder(null)}
+        />
+      )}
       <PanelHeader title="Ventas del día" onClose={onClose} />
       {loading ? (
         <div className="flex items-center justify-center h-20 gap-2 text-muted-foreground">
@@ -504,10 +525,18 @@ function MisVentasPanel({ onClose }: { onClose: () => void }) {
                         <div className="flex flex-wrap gap-1 mt-1.5">
                           {order.payments.map(p => (
                             <span key={p.id} className="text-[9px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded">
-                              {p.paymentMethod} {fmtOrderMoney(Number(p.amount))}
+                              {PAYMENT_METHOD_LABELS[p.paymentMethod] ?? p.paymentMethod} {fmtOrderMoney(Number(p.amount))}
                             </span>
                           ))}
                         </div>
+                      )}
+                      {canRefund && isRefundable(order) && (
+                        <button
+                          onClick={e => { e.stopPropagation(); setRefundingOrder(order) }}
+                          className="mt-1.5 flex items-center gap-1 px-2.5 py-1 bg-orange-100 text-orange-700 rounded text-[10px] font-semibold cursor-pointer hover:bg-orange-200 transition-colors border-none"
+                        >
+                          <Undo2 className="w-3 h-3" /> Devolver / Reembolsar
+                        </button>
                       )}
                     </div>
                   )}
@@ -791,28 +820,550 @@ function ClientesPanel({
   )
 }
 
+// ─── Deposit Modal ────────────────────────────────────────────────────────────
+
+interface DepositModalProps {
+  total: number
+  label: string
+  onDeposit: (amount: number, method: string) => Promise<void>
+  onSkip: () => void
+  onCancel: () => void
+}
+
+function DepositModal({ total, label, onDeposit, onSkip, onCancel }: DepositModalProps) {
+  const [amount, setAmount] = useState(() => String(Math.round(total * 0.5 * 100) / 100))
+  const [method, setMethod] = useState('CASH')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const fmt = (n: number) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n)
+
+  const handleDeposit = async () => {
+    const amt = parseFloat(amount)
+    if (!amt || amt <= 0) { setError('Ingresa un monto válido'); return }
+    if (amt > total) { setError(`El anticipo no puede ser mayor al total (${fmt(total)})`); return }
+    setSubmitting(true); setError(null)
+    try {
+      await onDeposit(amt, method)
+    } catch (e: unknown) {
+      setError((e as Error).message ?? 'Error al registrar anticipo')
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-400 bg-black/50 flex items-center justify-center p-4">
+      <div className="w-full max-w-sm bg-card border border-border rounded-2xl p-5 space-y-4 shadow-2xl">
+        <div className="flex items-center gap-2.5">
+          <Wallet className="w-5 h-5 text-amber-600 shrink-0" />
+          <div>
+            <div className="text-[13px] font-extrabold text-foreground">Anticipo para apartado</div>
+            <div className="text-[11px] text-muted-foreground truncate max-w-[220px]">{label || 'Sin etiqueta'} · Total: {fmt(total)}</div>
+          </div>
+        </div>
+        <div>
+          <label className="text-[11px] font-semibold text-muted-foreground">Monto del anticipo *</label>
+          <input
+            type="number" min={0.01} step="0.01" max={total}
+            value={amount}
+            onChange={e => setAmount(e.target.value)}
+            autoFocus
+            className="w-full mt-1 px-3 py-2 border border-border rounded-xl text-[13px] bg-muted outline-none focus:border-primary focus:bg-card"
+          />
+          <div className="flex gap-2 mt-1.5">
+            {[0.25, 0.5, 0.75].map(pct => (
+              <button key={pct} onClick={() => setAmount(String(Math.round(total * pct * 100) / 100))}
+                className="flex-1 py-1 text-[10px] font-semibold border border-border rounded-lg cursor-pointer hover:bg-muted text-muted-foreground">
+                {pct * 100}%
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label className="text-[11px] font-semibold text-muted-foreground">Método de pago</label>
+          <select value={method} onChange={e => setMethod(e.target.value)}
+            className="w-full mt-1 px-3 py-2 border border-border rounded-xl text-[12px] bg-muted outline-none focus:border-primary cursor-pointer">
+            <option value="CASH">Efectivo</option>
+            <option value="CARD">Tarjeta</option>
+            <option value="TRANSFER">Transferencia</option>
+          </select>
+        </div>
+        {error && (
+          <div className="flex items-start gap-1.5 text-[11px] text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />{error}
+          </div>
+        )}
+        <div className="flex flex-col gap-2 pt-1">
+          <button onClick={handleDeposit} disabled={submitting}
+            className="w-full py-2 bg-amber-500 text-white rounded-xl text-[12px] font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5">
+            {submitting ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Registrando…</> : <><Check className="w-3.5 h-3.5" />Registrar anticipo y apartar</>}
+          </button>
+          <button onClick={onSkip} disabled={submitting}
+            className="w-full py-2 border border-border rounded-xl text-[12px] font-semibold cursor-pointer text-muted-foreground hover:bg-muted disabled:opacity-50">
+            Apartar sin anticipo
+          </button>
+          <button onClick={onCancel} disabled={submitting}
+            className="w-full py-1.5 text-[11px] text-muted-foreground cursor-pointer bg-transparent border-none hover:text-foreground disabled:opacity-50">
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Refund Modal ─────────────────────────────────────────────────────────────
+
+interface RefundModalProps {
+  hold: HoldSale
+  onDone: () => void
+  onCancel: () => void
+}
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  CASH: 'Efectivo',
+  CARD: 'Tarjeta',
+  TRANSFER: 'Transferencia',
+  CHECK: 'Cheque',
+}
+
+function RefundModal({ hold, onDone, onCancel }: RefundModalProps) {
+  const { permissions } = useAuthStore()
+  const canOverride = permissions.includes('refunds:override_window')
+
+  const maxRefundable = hold.paidAmount ?? 0
+  const fmt = (n: number) =>
+    new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n)
+
+  const [amount, setAmount] = useState(() => String(maxRefundable))
+  const [method, setMethod] = useState('CASH')
+  const [reason, setReason] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [windowExpired, setWindowExpired] = useState(false)
+
+  const handleSubmit = async (forceOverride = false) => {
+    if (!reason.trim()) { setError('El motivo es obligatorio'); return }
+    const amt = parseFloat(amount)
+    if (isNaN(amt) || amt <= 0) { setError('Ingresa un monto válido'); return }
+    if (amt > maxRefundable + 0.001) { setError(`El monto no puede superar el anticipo (${fmt(maxRefundable)})`); return }
+    if (!hold.orderId) { setError('Este apartado no tiene orden registrada'); return }
+
+    setSubmitting(true)
+    setError(null)
+    try {
+      await refundOrder(hold.orderId, {
+        amount: amt,
+        refundMethod: method,
+        reason: reason.trim(),
+        restoreInventory: false,
+        windowOverride: forceOverride,
+      })
+      onDone()
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Error al procesar el reembolso'
+      if (msg.includes('plazo')) {
+        setWindowExpired(true)
+        setError(msg)
+      } else {
+        setError(msg)
+      }
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="absolute inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+        <span className="text-[13px] font-extrabold text-foreground">Reembolso de anticipo</span>
+        <button onClick={onCancel} className="p-1 rounded hover:bg-muted cursor-pointer">
+          <X className="w-3.5 h-3.5 text-muted-foreground" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
+        {/* Order info */}
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-[11px]">
+          <div className="font-bold text-amber-800 mb-1">{hold.label}</div>
+          {hold.orderNumber && <div className="text-amber-700">{hold.orderNumber}</div>}
+          <div className="flex gap-3 mt-1">
+            <span className="text-muted-foreground">Total: <span className="font-semibold text-foreground">{fmt(hold.total)}</span></span>
+            <span className="text-green-700">Anticipo: <span className="font-semibold">{fmt(maxRefundable)}</span></span>
+          </div>
+        </div>
+
+        {/* Amount */}
+        <div>
+          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+            Monto a reembolsar
+          </label>
+          <input
+            type="number"
+            min={0.01}
+            max={maxRefundable}
+            step={0.01}
+            value={amount}
+            onChange={e => setAmount(e.target.value)}
+            className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] bg-card outline-none focus:border-primary"
+          />
+          <div className="flex gap-2 mt-1.5">
+            {[1, 0.5, 0.25].map(frac => (
+              <button key={frac} onClick={() => setAmount(String(Math.round(maxRefundable * frac * 100) / 100))}
+                className="px-2 py-0.5 border border-border rounded text-[10px] text-muted-foreground hover:bg-muted cursor-pointer">
+                {frac === 1 ? 'Todo' : `${frac * 100}%`}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Method */}
+        <div>
+          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+            Método de devolución
+          </label>
+          <select
+            value={method}
+            onChange={e => setMethod(e.target.value)}
+            className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
+          >
+            {Object.entries(PAYMENT_METHOD_LABELS).map(([v, l]) => (
+              <option key={v} value={v}>{l}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Reason */}
+        <div>
+          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+            Motivo <span className="text-red-500">*</span>
+          </label>
+          <textarea
+            rows={2}
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            placeholder="Describe el motivo del reembolso…"
+            className="w-full px-2.5 py-2 border border-border rounded-lg text-[12px] bg-card outline-none focus:border-primary resize-none"
+          />
+        </div>
+
+        {/* Window expired warning */}
+        {windowExpired && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 text-[11px] text-red-700">
+            <div className="font-bold mb-1">Plazo de reembolso vencido</div>
+            <div>El plazo configurado para reembolso de este apartado ha expirado.</div>
+            {canOverride ? (
+              <button
+                onClick={() => handleSubmit(true)}
+                disabled={submitting}
+                className="mt-2 w-full py-1.5 bg-red-600 text-white rounded-lg text-[11px] font-bold cursor-pointer hover:bg-red-700 disabled:opacity-60"
+              >
+                Forzar reembolso (autorizar)
+              </button>
+            ) : (
+              <div className="mt-1 font-semibold">Se requiere autorización de un supervisor.</div>
+            )}
+          </div>
+        )}
+
+        {error && !windowExpired && (
+          <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            {error}
+          </div>
+        )}
+      </div>
+
+      <div className="px-4 pb-4 flex flex-col gap-2 shrink-0">
+        <button
+          onClick={() => handleSubmit(false)}
+          disabled={submitting || maxRefundable <= 0}
+          className="w-full py-2.5 bg-red-500 text-white rounded-xl text-[13px] font-bold cursor-pointer hover:bg-red-600 disabled:opacity-60 flex items-center justify-center gap-2"
+        >
+          {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+          Procesar reembolso
+        </button>
+        <button onClick={() => onCancel()} className="w-full py-2 text-muted-foreground text-[12px] cursor-pointer hover:text-foreground">
+          Cancelar sin reembolso
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Sale Refund Modal ────────────────────────────────────────────────────────
+
+interface SaleRefundModalProps {
+  order: ApiOrder
+  onDone: () => void
+  onCancel: () => void
+}
+
+function SaleRefundModal({ order, onDone, onCancel }: SaleRefundModalProps) {
+  const { permissions } = useAuthStore()
+  const canPartial = permissions.includes('refunds:partial')
+  const canOverrideWindow = permissions.includes('refunds:override_window')
+  const canOverrideMethod = permissions.includes('refunds:override_method')
+
+  const totalPaid = order.payments.reduce((s, p) => s + Number(p.amount), 0)
+  const totalRefunded = (order.refunds ?? []).reduce((s, r) => s + Number(r.amount), 0)
+  const maxRefundable = Math.max(0, totalPaid - totalRefunded)
+
+  const originalMethod = order.payments.find(p => p.paymentMethod !== 'CREDITO')?.paymentMethod ?? 'CASH'
+  const hasProductItems = order.items.some(i => i.itemType === 'PRODUCT' || (!i.itemType && !!i.productId))
+
+  const fmt = (n: number) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n)
+
+  const [amount, setAmount] = useState(() => String(maxRefundable))
+  const [method, setMethod] = useState(originalMethod)
+  const [restoreInventory, setRestoreInventory] = useState(hasProductItems)
+  const [reason, setReason] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [windowExpired, setWindowExpired] = useState(false)
+  const [done, setDone] = useState(false)
+
+  const handleSubmit = async (forceOverride = false) => {
+    if (!reason.trim()) { setError('El motivo es obligatorio'); return }
+    const amt = parseFloat(amount)
+    if (isNaN(amt) || amt <= 0) { setError('Ingresa un monto válido'); return }
+    if (amt > maxRefundable + 0.001) { setError(`No puede superar el disponible (${fmt(maxRefundable)})`); return }
+    if (!canPartial && amt < maxRefundable - 0.001) { setError('Sin permiso para reembolsos parciales'); return }
+    setSubmitting(true); setError(null)
+    try {
+      await refundOrder(order.id, { amount: amt, refundMethod: method, reason: reason.trim(), restoreInventory, windowOverride: forceOverride })
+      setDone(true)
+      setTimeout(onDone, 1500)
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Error al procesar el reembolso'
+      if (msg.toLowerCase().includes('plazo')) { setWindowExpired(true) }
+      setError(msg)
+    } finally { setSubmitting(false) }
+  }
+
+  if (done) {
+    return (
+      <div className="absolute inset-0 z-50 bg-background/95 flex flex-col items-center justify-center gap-3">
+        <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+          <Check className="w-6 h-6 text-green-600" />
+        </div>
+        <div className="text-[13px] font-bold text-foreground">Reembolso procesado</div>
+        <div className="text-[11px] text-muted-foreground">{fmt(parseFloat(amount))}</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="absolute inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+        <div>
+          <span className="text-[13px] font-extrabold text-foreground">Devolver / Reembolsar</span>
+          <div className="text-[10px] text-muted-foreground">{order.orderNumber} · {customerName(order.customer)}</div>
+        </div>
+        <button onClick={onCancel} className="p-1 rounded hover:bg-muted cursor-pointer">
+          <X className="w-3.5 h-3.5 text-muted-foreground" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        {/* Order summary */}
+        <div className="bg-muted/40 rounded-xl p-3 space-y-1.5">
+          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Detalle de la venta</div>
+          {order.items.map(item => (
+            <div key={item.id} className="flex justify-between text-[11px]">
+              <span className="text-muted-foreground truncate max-w-[160px]">{item.name} ×{item.quantity}</span>
+              <span className="font-semibold">{fmt(Number(item.total))}</span>
+            </div>
+          ))}
+          <div className="h-px bg-border my-1" />
+          <div className="flex justify-between text-[11px] font-bold">
+            <span>Total cobrado</span>
+            <span>{fmt(totalPaid)}</span>
+          </div>
+          {totalRefunded > 0 && (
+            <div className="flex justify-between text-[11px] text-orange-600">
+              <span>Ya reembolsado</span>
+              <span>−{fmt(totalRefunded)}</span>
+            </div>
+          )}
+          <div className="flex justify-between text-[11px] font-bold text-green-700">
+            <span>Disponible</span>
+            <span>{fmt(maxRefundable)}</span>
+          </div>
+        </div>
+
+        {/* Payments */}
+        {order.payments.length > 0 && (
+          <div className="space-y-1">
+            <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Métodos originales</div>
+            <div className="flex flex-wrap gap-1.5">
+              {order.payments.map(p => (
+                <span key={p.id} className="text-[10px] bg-muted text-muted-foreground px-2 py-1 rounded-lg">
+                  {PAYMENT_METHOD_LABELS[p.paymentMethod] ?? p.paymentMethod} · {fmt(Number(p.amount))}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Amount */}
+        <div>
+          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+            Monto a reembolsar
+            {!canPartial && <span className="normal-case font-normal ml-1 text-muted-foreground/70">(solo total)</span>}
+          </label>
+          <input
+            type="number" min={0.01} max={maxRefundable} step={0.01}
+            value={amount}
+            onChange={e => setAmount(e.target.value)}
+            disabled={!canPartial}
+            className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] bg-card outline-none focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
+          />
+          {canPartial && (
+            <div className="flex gap-1.5 mt-1.5">
+              {[1, 0.75, 0.5, 0.25].map(frac => (
+                <button key={frac} onClick={() => setAmount(String(Math.round(maxRefundable * frac * 100) / 100))}
+                  className="flex-1 py-0.5 border border-border rounded text-[10px] text-muted-foreground hover:bg-muted cursor-pointer">
+                  {frac === 1 ? 'Todo' : `${frac * 100}%`}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Method */}
+        <div>
+          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+            Método de devolución
+          </label>
+          {canOverrideMethod ? (
+            <select value={method} onChange={e => setMethod(e.target.value)}
+              className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary">
+              {Object.entries(PAYMENT_METHOD_LABELS).map(([v, l]) => (
+                <option key={v} value={v}>{l}</option>
+              ))}
+            </select>
+          ) : (
+            <div className="flex items-center justify-between px-2.5 py-2 border border-border rounded-lg bg-muted text-[13px]">
+              <span>{PAYMENT_METHOD_LABELS[method] ?? method}</span>
+              <span className="text-[10px] text-muted-foreground">mismo método original</span>
+            </div>
+          )}
+        </div>
+
+        {/* Restore inventory */}
+        {hasProductItems && (
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input type="checkbox" checked={restoreInventory} onChange={e => setRestoreInventory(e.target.checked)}
+              className="mt-0.5 w-4 h-4 cursor-pointer shrink-0" />
+            <div>
+              <div className="text-[12px] font-semibold text-foreground">Regresar al inventario</div>
+              <div className="text-[10px] text-muted-foreground">Restaurar stock de los productos devueltos</div>
+            </div>
+          </label>
+        )}
+
+        {/* Reason */}
+        <div>
+          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+            Motivo <span className="text-red-500">*</span>
+          </label>
+          <textarea rows={2} value={reason} onChange={e => setReason(e.target.value)}
+            placeholder="Describe el motivo del reembolso…"
+            className="w-full px-2.5 py-2 border border-border rounded-lg text-[12px] bg-card outline-none focus:border-primary resize-none" />
+        </div>
+
+        {/* Window expired */}
+        {windowExpired && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 text-[11px] text-red-700">
+            <div className="font-bold mb-1 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" /> Plazo de reembolso vencido
+            </div>
+            <div>{error}</div>
+            {canOverrideWindow ? (
+              <button onClick={() => handleSubmit(true)} disabled={submitting}
+                className="mt-2 w-full py-1.5 bg-red-600 text-white rounded-lg text-[11px] font-bold cursor-pointer hover:bg-red-700 disabled:opacity-60">
+                Forzar reembolso (override)
+              </button>
+            ) : (
+              <div className="mt-1 font-semibold">Se requiere autorización de un supervisor.</div>
+            )}
+          </div>
+        )}
+
+        {error && !windowExpired && (
+          <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 flex items-start gap-1.5">
+            <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />{error}
+          </div>
+        )}
+      </div>
+
+      <div className="px-4 pb-4 pt-3 flex flex-col gap-2 shrink-0 border-t border-border">
+        <button onClick={() => handleSubmit(false)} disabled={submitting || maxRefundable <= 0}
+          className="w-full py-2.5 bg-red-500 text-white rounded-xl text-[13px] font-bold cursor-pointer hover:bg-red-600 disabled:opacity-60 flex items-center justify-center gap-2">
+          {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Undo2 className="w-4 h-4" />}
+          Procesar devolución
+        </button>
+        <button onClick={onCancel}
+          className="w-full py-2 text-muted-foreground text-[12px] cursor-pointer hover:text-foreground bg-transparent border-none">
+          Cancelar
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Apartados Panel ──────────────────────────────────────────────────────────
 
 function ApartadosPanel({
   holdSales, carrito, cartTotal, cliente,
-  onHold, onResume, onDiscard, onClose,
+  onHold, onHoldWithDeposit, onResume, onDiscard, onClose,
 }: {
   holdSales: HoldSale[]
   carrito: CartItem[]
   cartTotal: number
   cliente: Cliente | null
   onHold: (label?: string) => void
+  onHoldWithDeposit: (label: string | undefined, amount: number, method: string) => Promise<void>
   onResume: (id: string) => void
   onDiscard: (id: string) => void
   onClose: () => void
 }) {
   const [label, setLabel] = useState('')
+  const [showDeposit, setShowDeposit] = useState(false)
+  const [refundingHold, setRefundingHold] = useState<HoldSale | null>(null)
 
   const fmt = (n: number) =>
     new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n)
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
+      {refundingHold && (
+        <RefundModal
+          hold={refundingHold}
+          onDone={() => {
+            onDiscard(refundingHold.id)
+            setRefundingHold(null)
+          }}
+          onCancel={() => setRefundingHold(null)}
+        />
+      )}
+      {showDeposit && (
+        <DepositModal
+          total={cartTotal}
+          label={label}
+          onDeposit={async (amount, method) => {
+            await onHoldWithDeposit(label.trim() || undefined, amount, method)
+            setLabel('')
+            setShowDeposit(false)
+          }}
+          onSkip={() => {
+            onHold(label.trim() || undefined)
+            setLabel('')
+            setShowDeposit(false)
+          }}
+          onCancel={() => setShowDeposit(false)}
+        />
+      )}
       <PanelHeader title="Apartados / Hold" onClose={onClose} />
       <div className="flex-1 overflow-y-auto">
 
@@ -831,10 +1382,10 @@ function ApartadosPanel({
               className="w-full px-2.5 py-1.5 border border-border rounded-lg text-[11px] bg-card outline-none focus:border-primary mb-2"
             />
             <button
-              onClick={() => { onHold(label.trim() || undefined); setLabel('') }}
+              onClick={() => setShowDeposit(true)}
               className="w-full py-2 bg-amber-500 text-white rounded-lg text-[12px] font-bold cursor-pointer hover:bg-amber-600 transition-colors flex items-center justify-center gap-1.5"
             >
-              <Pause className="w-3.5 h-3.5" /> Apartar y limpiar carrito
+              <Pause className="w-3.5 h-3.5" /> Apartar carrito
             </button>
           </div>
         )}
@@ -854,18 +1405,34 @@ function ApartadosPanel({
                   {hold.cliente && <div className="text-[10px] text-muted-foreground truncate">{hold.cliente.nombre}</div>}
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-[10px] font-semibold text-foreground">{fmt(hold.total)}</span>
+                    {hold.paidAmount != null && hold.paidAmount > 0 && (
+                      <>
+                        <span className="text-[10px] text-green-600">Anticipo: {fmt(hold.paidAmount)}</span>
+                        <span className="text-[10px] text-amber-600">Saldo: {fmt(hold.total - hold.paidAmount)}</span>
+                      </>
+                    )}
                     <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
                       <Clock className="w-2.5 h-2.5" />
                       {new Date(hold.createdAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
+                  {hold.orderNumber && (
+                    <div className="text-[9px] text-purple-600 font-semibold mt-0.5">{hold.orderNumber}</div>
+                  )}
                 </div>
                 <div className="flex flex-col gap-1 shrink-0">
                   <button onClick={() => onResume(hold.id)}
                     className="flex items-center gap-1 px-2.5 py-1 bg-primary text-primary-foreground rounded text-[10px] font-bold cursor-pointer hover:opacity-90">
-                    <PlayCircle className="w-3 h-3" /> Retomar
+                    <PlayCircle className="w-3 h-3" /> {hold.paidAmount ? 'Liquidar' : 'Retomar'}
                   </button>
-                  <button onClick={() => onDiscard(hold.id)}
+                  <button
+                    onClick={() => {
+                      if (hold.orderId && hold.paidAmount && hold.paidAmount > 0) {
+                        setRefundingHold(hold)
+                      } else {
+                        onDiscard(hold.id)
+                      }
+                    }}
                     className="flex items-center gap-1 px-2.5 py-1 bg-red-100 text-red-600 rounded text-[10px] font-semibold cursor-pointer hover:bg-red-200">
                     <Trash2 className="w-3 h-3" /> Descartar
                   </button>
@@ -945,6 +1512,7 @@ export interface PosSidebarProps {
   cartTotal: number
   holdSales: HoldSale[]
   onHoldCart: (label?: string) => void
+  onHoldCartWithDeposit: (label: string | undefined, amount: number, method: string) => Promise<void>
   onResumeHoldSale: (id: string) => void
   onDiscardHoldSale: (id: string) => void
   onSelectCliente: (c: Cliente) => void
@@ -955,7 +1523,7 @@ export interface PosSidebarProps {
 
 export function PosSidebar({
   carrito, cliente, cartTotal,
-  holdSales, onHoldCart, onResumeHoldSale, onDiscardHoldSale,
+  holdSales, onHoldCart, onHoldCartWithDeposit, onResumeHoldSale, onDiscardHoldSale,
   onSelectCliente, onSessionChange,
   controlledPanel, onPanelChange,
 }: PosSidebarProps) {
@@ -1060,6 +1628,7 @@ export function PosSidebar({
               cartTotal={cartTotal}
               cliente={cliente}
               onHold={onHoldCart}
+              onHoldWithDeposit={onHoldCartWithDeposit}
               onResume={onResumeHoldSale}
               onDiscard={onDiscardHoldSale}
               onClose={() => setActivePanel(null)}

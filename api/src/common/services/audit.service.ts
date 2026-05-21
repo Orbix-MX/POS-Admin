@@ -7,6 +7,7 @@ import { TenantContextService } from '../context/tenant-context.service';
 export type AuditAction =
   | 'ORDER_CANCEL'
   | 'ORDER_RETURN'
+  | 'ORDER_REFUND'
   | 'INVENTORY_ADJUST'
   | 'PRICE_CHANGE'
   | 'USER_STATUS_CHANGE';

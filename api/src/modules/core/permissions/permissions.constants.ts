@@ -30,6 +30,11 @@ export const ALL_PERMISSIONS: PermissionDef[] = [
   { key: 'orders:view', name: 'Ver ventas', module: 'orders', action: 'view' },
   { key: 'orders:create', name: 'Crear ventas', module: 'orders', action: 'create' },
   { key: 'orders:edit', name: 'Editar ventas', module: 'orders', action: 'edit' },
+  // refunds
+  { key: 'refunds:create', name: 'Crear reembolsos', description: 'Procesar reembolsos de ventas y apartados', module: 'refunds', action: 'create' },
+  { key: 'refunds:partial', name: 'Reembolsos parciales', description: 'Procesar devoluciones por monto menor al total cobrado', module: 'refunds', action: 'partial' },
+  { key: 'refunds:override_window', name: 'Forzar reembolso fuera de plazo', description: 'Autorizar reembolsos de apartados cuando venció el plazo configurado', module: 'refunds', action: 'override_window' },
+  { key: 'refunds:override_method', name: 'Cambiar método de reembolso', description: 'Devolver por método distinto al pago original', module: 'refunds', action: 'override_method' },
   // customers
   { key: 'customers:view', name: 'Ver clientes', module: 'customers', action: 'view' },
   { key: 'customers:create', name: 'Crear clientes', module: 'customers', action: 'create' },
@@ -97,7 +102,7 @@ export const ALL_PERMISSIONS: PermissionDef[] = [
 ];
 
 export const MODULES_ORDER = [
-  'dashboard', 'pos', 'products', 'categories', 'orders',
+  'dashboard', 'pos', 'products', 'categories', 'orders', 'refunds',
   'customers', 'receivables', 'suppliers', 'purchases', 'payables', 'cash', 'coupons', 'settings',
   'employees', 'branches', 'users', 'roles', 'reports',
 ];

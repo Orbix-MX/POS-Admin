@@ -401,6 +401,23 @@ export function Configuracion() {
                   </p>
                 </div>
 
+                <div>
+                  <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                    Plazo de reembolso de apartados (horas)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={posSettings.layawayRefundWindowHours ?? 24}
+                    onChange={e => setPosSettings(p => ({ ...p, layawayRefundWindowHours: Number(e.target.value) }))}
+                    className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1.5">
+                    Horas desde la creación del apartado en que se puede reembolsar sin autorización adicional. Usa 0 para sin límite.
+                  </p>
+                </div>
+
                 {posError && (
                   <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                     {posError}

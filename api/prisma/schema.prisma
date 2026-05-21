@@ -121,6 +121,7 @@ model Tenant {
   products           Product[]
   coupons            Coupon[]
   orders             Order[]
+  orderRefunds       OrderRefund[]
   roles              Role[]
   branches           Branch[]
   suppliers          Supplier[]
@@ -212,6 +213,8 @@ model User {
   servicesUpdated           Service[]          @relation("ServiceUpdatedBy")
   serviceQuotesCreated      ServiceQuote[]     @relation("ServiceQuoteCreatedBy")
   ordersCancelled           Order[]            @relation("OrderCancelledBy")
+  paymentsCreated           Payment[]          @relation("PaymentCreatedBy")
+  refundsCreated            OrderRefund[]      @relation("RefundCreatedBy")
   auditLogs                 AuditLog[]         @relation("AuditLogUser")
   workOrdersCreated         WorkOrder[]        @relation("WorkOrderCreatedBy")
   workOrderAssignments      WorkOrderAssignment[] @relation("WorkOrderAssignments")
@@ -708,6 +711,7 @@ model ServiceQuoteItem {
 // ============= Orders =============
 enum OrderStatus {
   PENDING
+  LAYAWAY
   CONFIRMED
   PROCESSING
   SHIPPED
@@ -718,9 +722,18 @@ enum OrderStatus {
 
 enum PaymentStatus {
   PENDING
+  PARTIALLY_PAID
   PAID
   FAILED
   REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentConcept {
+  SALE
+  DOWN_PAYMENT
+  LAYAWAY_DEPOSIT
+  BALANCE_PAYMENT
 }
 
 enum DeliveryStatus {
@@ -779,6 +792,7 @@ model Order {
   items             OrderItem[]
   payments          Payment[]
   accountReceivable AccountReceivable?
+  refunds           OrderRefund[]
   createdBy         User?              @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy         User?              @relation("OrderUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   cancelledBy       User?              @relation("OrderCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
@@ -892,13 +906,42 @@ model Payment {
   amountOriginalCurrency Decimal?      @db.Decimal(10, 2)
   amountMxnEquivalent    Decimal?      @db.Decimal(10, 2)
   status                 PaymentStatus @default(PENDING)
+  paymentConcept         PaymentConcept @default(SALE)
   gatewayResponse        Json?
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
 
+  createdById String?
+  createdBy   User?  @relation("PaymentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
   order Order @relation(fields: [orderId], references: [id])
 
   @@map("payments")
+}
+
+// ============= Order Refunds =============
+model OrderRefund {
+  id             String   @id @default(uuid())
+  tenantId       String
+  orderId        String
+  amount         Decimal  @db.Decimal(10, 2)
+  currency       String   @default("MXN")
+  refundMethod   String
+  originalMethod String?
+  reason         String
+  restoreInventory Boolean @default(false)
+  windowOverride Boolean  @default(false)
+  notes          String?
+  cashMovementId String?
+  createdById    String?
+  createdAt      DateTime @default(now())
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  order     Order  @relation(fields: [orderId], references: [id])
+  createdBy User?  @relation("RefundCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, orderId])
+  @@map("order_refunds")
 }
 
 // ============= Accounts Receivable (CxC) =============

@@ -91,21 +91,17 @@ export class PlatformTenantsService {
 
     const status = dto.trialDays ? 'TRIAL' : (dto.tenant.status ?? 'ACTIVE');
 
-    // Seed permissions outside the transaction — they are global data and
-    // sequential upserts inside a transaction exceed the 5 s interactive timeout.
-    for (const perm of ALL_PERMISSIONS) {
-      await this.prisma.permission.upsert({
-        where: { key: perm.key },
-        update: {},
-        create: {
-          key: perm.key,
-          name: perm.name,
-          description: perm.description ?? null,
-          module: perm.module,
-          action: perm.action,
-        },
-      });
-    }
+    // Seed any missing permissions in a single bulk INSERT … ON CONFLICT DO NOTHING
+    await this.prisma.permission.createMany({
+      data: ALL_PERMISSIONS.map((perm) => ({
+        key: perm.key,
+        name: perm.name,
+        description: perm.description ?? null,
+        module: perm.module,
+        action: perm.action,
+      })),
+      skipDuplicates: true,
+    });
     const permissions = await this.prisma.permission.findMany();
 
     const result = await this.prisma.$transaction(async (tx) => {

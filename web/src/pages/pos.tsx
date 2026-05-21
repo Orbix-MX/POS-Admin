@@ -175,6 +175,7 @@ function CheckoutPanel({
   efectivoUsd, setEfectivoUsd,
   tarjeta, setTarjeta,
   checkoutError, submitting,
+  layawayOrderNumber, layawayPaidAmount,
   onBack, onConfirm,
 }: {
   carrito: CartItem[]
@@ -198,14 +199,27 @@ function CheckoutPanel({
   setTarjeta: (v: string) => void
   checkoutError: string | null
   submitting: boolean
+  layawayOrderNumber: string | null
+  layawayPaidAmount: number
   onBack: () => void
   onConfirm: () => void
 }) {
   const { total, ef, efUsd, efUsdEnMxn, credito, rawCredito, cambio, cashChangeCurrency, hasCard, creditBlocked, mxnApplied, usdApplied } = checkoutVals
   const isBlocked = creditBlocked
+  const isLayaway = !!layawayOrderNumber
 
   return (
     <div className="flex flex-col h-full">
+      {/* Layaway banner */}
+      {isLayaway && (
+        <div className="px-4 py-2.5 bg-purple-50 border-b border-purple-200 shrink-0">
+          <div className="text-[11px] font-bold text-purple-700">Liquidando apartado {layawayOrderNumber}</div>
+          <div className="flex gap-3 mt-0.5">
+            <span className="text-[10px] text-green-600 font-semibold">Anticipo: {fmt(layawayPaidAmount)}</span>
+            <span className="text-[10px] text-purple-600 font-semibold">Saldo: {fmt(total - layawayPaidAmount)}</span>
+          </div>
+        </div>
+      )}
       {/* header */}
       <div className="px-4 py-3.5 border-b border-border shrink-0 flex items-center gap-2">
         <button onClick={onBack} className="p-1.5 rounded-lg hover:bg-muted cursor-pointer">
@@ -551,7 +565,6 @@ function PosBottomBar({
   carrito,
   cartTotal,
   holdSales,
-  onHoldCart,
   onOpenPanel,
 }: {
   activeCashSession: ApiCashSession | null
@@ -559,7 +572,6 @@ function PosBottomBar({
   carrito: CartItem[]
   cartTotal: number
   holdSales: HoldSale[]
-  onHoldCart: () => void
   onOpenPanel: (id: PanelId) => void
 }) {
   const [now, setNow] = useState(() => new Date())
@@ -635,7 +647,7 @@ function PosBottomBar({
       {/* Acciones rápidas */}
       <div className="flex items-center gap-0.5">
         <button
-          onClick={onHoldCart}
+          onClick={() => onOpenPanel('apartados')}
           disabled={carrito.length === 0}
           title={`Apartar carrito${holdSales.length > 0 ? ` (${holdSales.length} guardados)` : ''}`}
           className="relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted border-none bg-transparent cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
@@ -826,7 +838,8 @@ export function POS() {
     clienteQuotes, clienteQuotesLoading, quotePanelOpen, setQuotePanelOpen,
     loadQuoteIntoCart,
     saveAsQuote, savingQuote, savedQuoteNumber, setSavedQuoteNumber,
-    holdSales, holdCurrentCart, resumeHoldSale, discardHoldSale,
+    holdSales, holdCurrentCart, holdCurrentCartWithDeposit, resumeHoldSale, discardHoldSale,
+    layawayOrderId, layawayOrderNumber, layawayPaidAmount,
   } = usePOS()
 
   const [activeSidebarPanel, setActiveSidebarPanel] = useState<PanelId | null>(null)
@@ -905,6 +918,7 @@ export function POS() {
           cartTotal={totals.total}
           holdSales={holdSales}
           onHoldCart={holdCurrentCart}
+          onHoldCartWithDeposit={holdCurrentCartWithDeposit}
           onResumeHoldSale={resumeHoldSale}
           onDiscardHoldSale={discardHoldSale}
           onSelectCliente={selectCliente}
@@ -1056,6 +1070,8 @@ export function POS() {
               setTarjeta={setTarjeta}
               checkoutError={checkoutError}
               submitting={submitting}
+              layawayOrderNumber={layawayOrderNumber}
+              layawayPaidAmount={layawayPaidAmount}
               onBack={backToCart}
               onConfirm={handleConfirmarPago}
             />
@@ -1200,7 +1216,6 @@ export function POS() {
         carrito={carrito}
         cartTotal={totals.total}
         holdSales={holdSales}
-        onHoldCart={holdCurrentCart}
         onOpenPanel={openSidebarPanel}
       />
 

@@ -2,6 +2,7 @@ import { api } from '@/lib/api-client'
 
 export interface TenantSettings {
   cashChangeCurrency?: 'MXN' | 'USD'
+  layawayRefundWindowHours?: number
   [key: string]: unknown
 }
 

@@ -1,8 +1,10 @@
-﻿import { Controller, Get, Param, Patch, Body, Query, Post, HttpCode, HttpStatus } from '@nestjs/common';
+﻿import { Controller, Get, Param, Patch, Body, Query, Post, HttpCode, HttpStatus, Put } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
+import { AddPaymentDto } from './dto/add-payment.dto';
+import { RefundOrderDto } from './dto/refund-order.dto';
 import { QueryOrdersDto } from './dto/query-orders.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
 import { OrderStatus } from '@prisma/client';
@@ -59,6 +61,13 @@ export class OrdersController {
     return this.ordersService.updateStatusAndPayment(id, status);
   }
 
+  @Post(':id/payments')
+  @RequirePermissions('orders:create')
+  @ApiOperation({ summary: 'Add payment(s) to an existing order (layaway settlement, partial payment)' })
+  addPayment(@Param('id') id: string, @Body() dto: AddPaymentDto) {
+    return this.ordersService.addPayment(id, dto);
+  }
+
   @Post(':id/cancel')
   @RequirePermissions('orders:edit')
   @ApiOperation({ summary: 'Cancel an order — reverses inventory, cash and CxC' })
@@ -71,6 +80,13 @@ export class OrdersController {
   @ApiOperation({ summary: 'Return a sale (full refund) — reverses inventory and cash' })
   returnSale(@Param('id') id: string, @Body() dto: CancelOrderDto) {
     return this.ordersService.returnOrder(id, dto.reason);
+  }
+
+  @Post(':id/refund')
+  @RequirePermissions('refunds:create')
+  @ApiOperation({ summary: 'Partial or full refund — creates refund record, EXPENSE cash movement, updates paymentStatus' })
+  refundOrder(@Param('id') id: string, @Body() dto: RefundOrderDto) {
+    return this.ordersService.refundOrder(id, dto);
   }
 
   @Post(':id/send-receipt')
