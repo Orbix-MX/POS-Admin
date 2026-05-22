@@ -3,7 +3,12 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**"]
+      "outputs": ["dist/**", "dist-electron/**", "release/**"]
+    },
+    "pack": {
+      "dependsOn": ["^build"],
+      "outputs": ["release/**"],
+      "cache": false
     },
     "dev": {
       "persistent": true,
