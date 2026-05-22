@@ -19,6 +19,7 @@ export class PurchasesService {
   async create(dto: CreatePurchaseOrderDto) {
     const tenantId = this.tenantContext.requireTenantId();
     const userId = this.auditContext.getUserId();
+    const branchId = this.tenantContext.getBranchId() ?? null;
 
     const random4 = Math.random().toString(36).substring(2, 6).toUpperCase();
     const orderNumber = `PC-${Date.now()}-${random4}`;
@@ -37,6 +38,7 @@ export class PurchasesService {
           tenantId,
           orderNumber,
           supplierId: dto.supplierId,
+          branchId,
           status: 'BORRADOR',
           expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : null,
           notes: dto.notes ?? null,
@@ -235,6 +237,7 @@ export class PurchasesService {
   async receive(id: string, dto: ReceivePurchaseOrderDto) {
     const tenantId = this.tenantContext.requireTenantId();
     const userId = this.auditContext.getUserId();
+    const effectiveBranchId = dto.branchId ?? this.tenantContext.getBranchId() ?? null;
 
     // 1. Load order with items and existing receipts
     const order = await this.prisma.purchaseOrder.findFirst({
@@ -330,13 +333,13 @@ export class PurchasesService {
           },
         });
 
-        // d. Upsert branch inventory if branchId provided
-        if (dto.branchId) {
+        // d. Upsert branch inventory if branchId available (DTO or JWT context)
+        if (effectiveBranchId) {
           await tx.branchInventory.upsert({
-            where: { branchId_productId: { branchId: dto.branchId, productId: ri.productId } },
+            where: { branchId_productId: { branchId: effectiveBranchId, productId: ri.productId } },
             update: { stock: { increment: ri.quantityReceived } },
             create: {
-              branchId: dto.branchId,
+              branchId: effectiveBranchId,
               productId: ri.productId,
               stock: ri.quantityReceived,
             },
@@ -349,7 +352,7 @@ export class PurchasesService {
             tenantId,
             type: 'COMPRA',
             productId: ri.productId,
-            branchId: dto.branchId ?? null,
+            branchId: effectiveBranchId,
             quantity: ri.quantityReceived,
             referenceId: id,
             referenceType: 'PURCHASE',

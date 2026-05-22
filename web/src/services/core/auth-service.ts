@@ -58,14 +58,40 @@ export interface CapabilitiesResponse {
   overUserLimit: boolean
 }
 
+export interface Branch {
+  id: string
+  name: string
+  code: string
+  isMain: boolean
+  status: string
+  city?: string | null
+  address?: string | null
+}
+
+export interface SelectBranchResponse {
+  branchId: string
+  accessToken: string
+}
+
 export interface ProfileResponse {
   user: AuthUser
+  currentBranchId?: string
   permissions?: string[]
   roles?: { id: string; name: string; permissions: string[] }[]
 }
 
 export async function fetchMe(): Promise<ProfileResponse> {
   const { data } = await api.get<ProfileResponse>('/auth/me')
+  return data
+}
+
+export async function fetchBranches(): Promise<Branch[]> {
+  const { data } = await api.get<Branch[]>('/branches')
+  return data
+}
+
+export async function selectBranch(branchId: string): Promise<SelectBranchResponse> {
+  const { data } = await api.patch<SelectBranchResponse>(`/auth/select-branch/${branchId}`, {})
   return data
 }
 

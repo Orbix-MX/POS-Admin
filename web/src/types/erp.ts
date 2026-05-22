@@ -220,3 +220,5 @@ export type ModuleId =
   | 'cotizaciones'
   | 'ordenes-trabajo'
   | 'empleados'
+  | 'pos'
+  | 'branches'

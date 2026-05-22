@@ -3,13 +3,15 @@ import {
   login as loginApi,
   logout as logoutApi,
   selectTenant as selectTenantApi,
+  selectBranch as selectBranchApi,
   fetchCapabilities,
   fetchMe,
+  fetchBranches,
   setAccessToken,
   clearAccessToken,
   getAccessToken,
 } from '@/services/core/auth-service'
-import type { AuthUser, Tenant } from '@/services/core/auth-service'
+import type { AuthUser, Tenant, Branch } from '@/services/core/auth-service'
 
 interface AuthState {
   user: AuthUser | null
@@ -24,10 +26,54 @@ interface AuthState {
   overUserLimit: boolean
   capabilitiesLoaded: boolean
 
+  // Branch state
+  currentBranch: Branch | null
+  availableBranches: Branch[] | null
+  needsBranchSelection: boolean
+
   init: () => Promise<void>
   login: (email: string, password: string) => Promise<void>
   confirmTenant: (slug: string) => Promise<void>
+  confirmBranch: (branchId: string) => Promise<void>
   logout: () => Promise<void>
+}
+
+async function loadBranchesAndAutoSelect(
+  set: (partial: Partial<AuthState>) => void,
+  currentBranchId?: string,
+) {
+  try {
+    const branches = await fetchBranches()
+    const activeBranches = branches.filter((b) => b.status === 'ACTIVE')
+
+    if (activeBranches.length === 0) {
+      set({ availableBranches: [], currentBranch: null, needsBranchSelection: false })
+      return
+    }
+
+    // If only one active branch, auto-select it
+    if (activeBranches.length === 1) {
+      const branch = activeBranches[0]
+      const res = await selectBranchApi(branch.id)
+      setAccessToken(res.accessToken)
+      set({ currentBranch: branch, availableBranches: activeBranches, needsBranchSelection: false })
+      return
+    }
+
+    // Multiple branches — restore last selected or require selection
+    const restored = currentBranchId
+      ? activeBranches.find((b) => b.id === currentBranchId) ?? null
+      : null
+
+    if (restored) {
+      // Already selected in JWT, no need to re-select
+      set({ currentBranch: restored, availableBranches: activeBranches, needsBranchSelection: false })
+    } else {
+      set({ currentBranch: null, availableBranches: activeBranches, needsBranchSelection: true })
+    }
+  } catch {
+    set({ availableBranches: [], needsBranchSelection: false })
+  }
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -41,7 +87,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   enabledModules: [],
   permissions: [],
   overUserLimit: false,
-  capabilitiesLoaded: !getAccessToken(), // true if no token (not authenticated)
+  capabilitiesLoaded: !getAccessToken(),
+
+  currentBranch: null,
+  availableBranches: null,
+  needsBranchSelection: false,
 
   init: async () => {
     if (!getAccessToken()) { set({ capabilitiesLoaded: true }); return }
@@ -55,8 +105,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         capabilitiesLoaded: true,
         user: profile.user,
       })
+      // Restore branch selection
+      await loadBranchesAndAutoSelect(set, profile.currentBranchId)
     } catch {
-      set({ capabilitiesLoaded: true }) // interceptor handles 401 reload
+      set({ capabilitiesLoaded: true })
     }
   },
 
@@ -68,7 +120,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (availableTenants.length === 1) {
         const res = await selectTenantApi(availableTenants[0].slug, accessToken)
         setAccessToken(res.accessToken)
-        // Load permissions now that tenant is selected and token is set
         const profile = await fetchMe().catch(() => null)
         set({
           isAuthenticated: true,
@@ -81,6 +132,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           enabledModules: res.enabledModules ?? [],
           capabilitiesLoaded: true,
         })
+        await loadBranchesAndAutoSelect(set, profile?.currentBranchId)
       } else {
         set({ tempToken: accessToken, user, availableTenants, loading: false })
       }
@@ -97,7 +149,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const res = await selectTenantApi(slug, tempToken)
       setAccessToken(res.accessToken)
-      // Load permissions now that tenant is selected and token is set
       const profile = await fetchMe().catch(() => null)
       set({
         isAuthenticated: true,
@@ -110,8 +161,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         enabledModules: res.enabledModules ?? [],
         capabilitiesLoaded: true,
       })
+      await loadBranchesAndAutoSelect(set, profile?.currentBranchId)
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Error al seleccionar tienda'
+      set({ error: msg, loading: false })
+    }
+  },
+
+  confirmBranch: async (branchId) => {
+    set({ loading: true, error: null })
+    try {
+      const res = await selectBranchApi(branchId)
+      setAccessToken(res.accessToken)
+      const { availableBranches } = get()
+      const branch = availableBranches?.find((b) => b.id === branchId) ?? null
+      set({ currentBranch: branch, needsBranchSelection: false, loading: false })
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Error al seleccionar sucursal'
       set({ error: msg, loading: false })
     }
   },
@@ -130,6 +196,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       permissions: [],
       overUserLimit: false,
       capabilitiesLoaded: true,
+      currentBranch: null,
+      availableBranches: null,
+      needsBranchSelection: false,
     })
   },
 }))

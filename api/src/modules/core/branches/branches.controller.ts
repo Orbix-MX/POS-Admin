@@ -1,41 +1,40 @@
 import {
-  Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, HttpCode, HttpStatus,
+  Controller, Get, Post, Patch, Delete, Body, Param, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { BranchesService } from './branches.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { BulkUpdateInventoryDto, TransferStockDto } from './dto/update-inventory.dto';
-import { RequirePlanGuard, RequirePlan } from '../../../common/guards/require-plan.guard';
-import { RequireModule } from '../../../common/guards/require-module.guard';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
 
-@RequireModule('branches')
 @ApiTags('Branches')
 @ApiBearerAuth()
-@UseGuards(RequirePlanGuard)
-@RequirePlan('PLUS', 'ENTERPRISE')
 @Controller('branches')
 export class BranchesController {
   constructor(private readonly branchesService: BranchesService) {}
 
-  @Post()
-  @RequirePermissions('branches:manage')
-  @ApiOperation({ summary: 'Create a branch (PLUS+)' })
-  create(@Body() dto: CreateBranchDto) {
-    return this.branchesService.create(dto);
-  }
+  // ── Read endpoints — accessible to ALL authenticated users (any plan) ──────
 
   @Get()
-  @RequirePermissions('branches:view')
+  @ApiOperation({ summary: 'List branches for the current tenant' })
   findAll() {
     return this.branchesService.findAll();
   }
 
   @Get(':id')
-  @RequirePermissions('branches:view')
+  @ApiOperation({ summary: 'Get a single branch' })
   findOne(@Param('id') id: string) {
     return this.branchesService.findOne(id);
+  }
+
+  // ── Write endpoints — require permission + plan limit enforced in service ──
+
+  @Post()
+  @RequirePermissions('branches:manage')
+  @ApiOperation({ summary: 'Create a branch (plan limit enforced)' })
+  create(@Body() dto: CreateBranchDto) {
+    return this.branchesService.create(dto);
   }
 
   @Patch(':id')

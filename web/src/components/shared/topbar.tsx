@@ -1,6 +1,8 @@
-import { Search, Sun, Moon, Bell, Plus, Monitor } from 'lucide-react'
+import { Search, Sun, Moon, Bell, Plus, Monitor, MapPin, ChevronDown } from 'lucide-react'
 import { useERPStore } from '@/store/erp-store'
+import { useAuthStore } from '@/store/auth-store'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { useState, useRef, useEffect } from 'react'
 import type { ModuleId } from '@/types/erp'
 
 
@@ -23,6 +25,8 @@ const MODULE_META: Record<ModuleId, { label: string; breadcrumb: string[] }> = {
   configuracion: { label: "Configuración", breadcrumb: ["Administración", "Configuración"] },
   usuarios: { label: "Usuarios", breadcrumb: ["Administración", "Usuarios"] },
   roles: { label: "Roles y Permisos", breadcrumb: ["Administración", "Roles y Permisos"] },
+  pos: { label: "POS", breadcrumb: ["POS"] },
+  branches: { label: "Sucursales", breadcrumb: ["Administración", "Sucursales"] },
 }
 
 const ACTION_LABELS: Partial<Record<ModuleId, string>> = {
@@ -54,9 +58,59 @@ const PATH_TO_MODULE: Record<string, ModuleId> = {
   '/configuracion': 'configuracion',
   '/usuarios': 'usuarios',
   '/roles': 'roles',
+  '/pos': 'pos',
 }
 
 export { MODULE_META }
+
+function BranchSelector() {
+  const { currentBranch, availableBranches, confirmBranch } = useAuthStore()
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  if (!currentBranch) return null
+
+  const canSwitch = (availableBranches?.length ?? 0) > 1
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => canSwitch && setOpen(!open)}
+        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border bg-card text-[12px] font-semibold text-foreground transition-colors ${canSwitch ? 'hover:bg-muted cursor-pointer' : 'cursor-default'}`}
+      >
+        <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
+        <span className="max-w-[120px] truncate">{currentBranch.name}</span>
+        {canSwitch && <ChevronDown className="w-3 h-3 text-muted-foreground" />}
+      </button>
+
+      {open && canSwitch && (
+        <div className="absolute right-0 top-full mt-1.5 w-52 bg-card border border-border rounded-xl shadow-lg z-50 overflow-hidden">
+          <div className="px-3 py-2 border-b border-border">
+            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Cambiar sucursal</span>
+          </div>
+          {availableBranches?.map(branch => (
+            <button
+              key={branch.id}
+              onClick={() => { confirmBranch(branch.id); setOpen(false) }}
+              className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-[13px] hover:bg-muted transition-colors ${branch.id === currentBranch.id ? 'text-primary font-semibold bg-primary/5' : 'text-foreground'}`}
+            >
+              <MapPin className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">{branch.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export function Topbar() {
   const location = useLocation()
@@ -81,6 +135,11 @@ export function Topbar() {
 
       {/* Actions */}
       <div className="flex items-center gap-2.5">
+        {/* Branch Selector */}
+        <BranchSelector />
+
+        <div className="w-px h-5 bg-border" />
+
         {/* POS Button */}
         <button
           onClick={() => router('/pos')}

@@ -33,7 +33,7 @@ export class CashSessionsService {
   async open(dto: OpenCashSessionDto) {
     const tenantId = this.tenantContext.requireTenantId();
     const userId = this.auditContext.getUserId();
-    const branchId = dto.branchId ?? null;
+    const branchId = dto.branchId ?? this.tenantContext.getBranchId() ?? null;
 
     const existing = await this.prisma.cashSession.findFirst({
       where: { tenantId, branchId, status: 'ABIERTA' },
