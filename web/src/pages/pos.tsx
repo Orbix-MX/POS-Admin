@@ -14,8 +14,8 @@ import { openCashSession, type ApiCashSession } from '@/services/core/caja-servi
 // ─── Product card ────────────────────────────────────────────────────────────
 
 function ProductCard({ p, inCartQty, onAdd }: { p: Product; inCartQty: number; onAdd: () => void }) {
-  const agotado = p.stock === 0
-  const lowStock = !agotado && p.stock <= (p.lowStockAlert ?? 5)
+  const agotado = p.trackInventory && p.stock === 0
+  const lowStock = p.trackInventory && !agotado && p.stock <= (p.lowStockAlert ?? 5)
   return (
     <button
       onClick={onAdd}
@@ -38,7 +38,9 @@ function ProductCard({ p, inCartQty, onAdd }: { p: Product; inCartQty: number; o
       <div className="text-xs font-bold text-foreground leading-snug mb-1 mt-3 line-clamp-2">{p.name}</div>
       <div className="text-[10px] text-muted-foreground mb-2 font-mono">{p.sku}</div>
       <div className="text-[15px] font-extrabold text-primary">{fmt(Number(p.price))}</div>
-      <div className="text-[10px] text-muted-foreground mt-1">Stock: {p.stock}</div>
+      <div className="text-[10px] text-muted-foreground mt-1">
+        {p.trackInventory ? `Stock: ${p.stock}` : 'Sin límite de stock'}
+      </div>
     </button>
   )
 }

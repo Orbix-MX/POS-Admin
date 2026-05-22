@@ -348,18 +348,18 @@ export function usePOS() {
     if (!p.id) return
     const existing = carrito.find(i => i.id === p.id && i.type === 'PRODUCT')
     if (existing) {
-      if (existing.qty >= p.stock) {
+      if (p.trackInventory && existing.qty >= p.stock) {
         flashStockWarning(`Stock máximo de "${p.name}" alcanzado (${p.stock} disponibles)`)
         return
       }
       setCarrito(prev => prev.map(i => i.id === p.id && i.type === 'PRODUCT' ? { ...i, qty: i.qty + 1 } : i))
       return
     }
-    if (p.stock <= 0) {
+    if (p.trackInventory && p.stock <= 0) {
       flashStockWarning(`"${p.name}" sin stock disponible`)
       return
     }
-    setCarrito(prev => [...prev, { id: p.id!, name: p.name, sku: p.sku, price: Number(p.price), stock: p.stock, qty: 1, type: 'PRODUCT' as const }])
+    setCarrito(prev => [...prev, { id: p.id!, name: p.name, sku: p.sku, price: Number(p.price), stock: p.trackInventory ? p.stock : 9999, qty: 1, type: 'PRODUCT' as const }])
   }, [carrito, flashStockWarning])
 
   const addServiceToCart = useCallback((s: Service, customPrice?: number) => {
