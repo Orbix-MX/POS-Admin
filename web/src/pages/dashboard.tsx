@@ -10,8 +10,8 @@ import {
   YAxis,
 } from 'recharts'
 import { LayoutDashboard, Loader2 } from 'lucide-react'
-import { Responsive, WidthProvider } from 'react-grid-layout/legacy'
-import type { Layout, ResponsiveLayouts } from 'react-grid-layout/legacy'
+import { ResponsiveGridLayout as Responsive, useContainerWidth } from 'react-grid-layout'
+import type { Layout, LayoutItem, ResponsiveLayouts } from 'react-grid-layout'
 import 'react-grid-layout/css/styles.css'
 import { KPICard } from '@/components/shared/kpi-card'
 import { useDashboard } from '@/hooks/core/use-dashboard'
@@ -21,7 +21,7 @@ import { saveDashboardLayout } from '@/services/core/dashboards-service'
 import { useERPStore } from '@/store/erp-store'
 import { useAuthStore } from '@/store/auth-store'
 
-const ResponsiveGridLayout = WidthProvider(Responsive)
+const ResponsiveGridLayout = Responsive
 
 const CHART_H = 5
 
@@ -62,7 +62,7 @@ function buildDefaultLayouts(widgets: WidgetConfig[]): Record<string, GridItem[]
 }
 
 function toGridItems(layout: Layout): GridItem[] {
-  return layout.map(item => ({ ...item }))
+  return layout.map((item: LayoutItem) => ({ ...item }))
 }
 
 function DynamicDashboard({
@@ -78,6 +78,8 @@ function DynamicDashboard({
 }) {
   const permissions = useAuthStore(s => s.permissions)
   const canEdit = permissions.includes('dashboard:edit') || permissions.includes('dashboard:manage')
+
+  const { width, containerRef } = useContainerWidth()
 
   const [layouts, setLayouts] = useState<Record<string, GridItem[]>>(
     () => (Object.keys(savedLayouts).length > 0 ? savedLayouts : buildDefaultLayouts(widgets)),
@@ -128,15 +130,16 @@ function DynamicDashboard({
           </div>
         )}
       </div>
+      <div ref={containerRef}>
       <ResponsiveGridLayout
+        width={width}
         layouts={layouts as ResponsiveLayouts}
         breakpoints={{ lg: 1200, md: 768, sm: 480, xs: 0 }}
         cols={{ lg: 12, md: 6, sm: 2, xs: 2 }}
         rowHeight={60}
-        margin={[16, 16]}
-        isDraggable={canEdit}
-        isResizable={canEdit}
-        draggableHandle=".drag-handle"
+        margin={[16, 16] as [number, number]}
+        dragConfig={{ enabled: canEdit, handle: '.drag-handle' }}
+        resizeConfig={{ enabled: canEdit }}
         onLayoutChange={handleLayoutChange}
       >
         {widgets.map(widget => (
@@ -145,6 +148,7 @@ function DynamicDashboard({
           </div>
         ))}
       </ResponsiveGridLayout>
+      </div>
     </div>
   )
 }

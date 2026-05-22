@@ -206,7 +206,7 @@ export function Inventario() {
                 <div className="flex items-center justify-between px-4 py-3.5 border-b border-border gap-3">
                   <label className="flex items-center gap-2">
                     <span className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">Categoría</span>
-                    <Select value={catFilter} onValueChange={v => { setCatFilter(v); setPage(1) }}>
+                    <Select value={catFilter} onValueChange={v => { if (v) { setCatFilter(v); setPage(1) } }}>
                       <SelectTrigger size="sm" className="min-w-[160px]">
                         <SelectValue>
                           {catFilter === "Todas"

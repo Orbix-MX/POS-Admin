@@ -370,7 +370,7 @@ function SucursalesSection({ plan }: { plan: string }) {
                 <div className="flex items-center gap-2">
                   <span className="text-[14px] font-bold text-foreground">{branch.name}</span>
                   {branch.isMain && (
-                    <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" title="Sucursal principal" />
+                    <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" aria-label="Sucursal principal" />
                   )}
                   <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${STATUS_COLORS[branch.status]}`}>
                     {STATUS_LABELS[branch.status]}

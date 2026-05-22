@@ -368,7 +368,7 @@ export function ProductFormModal({
           )}
           <div className="mb-3.5">
             <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Código Impuesto</label>
-            <Select value={form.taxCode} onValueChange={v => setForm(p => ({ ...p, taxCode: v }))}>
+            <Select value={form.taxCode} onValueChange={v => setForm(p => ({ ...p, taxCode: v ?? p.taxCode }))}>
               <SelectTrigger size="sm" className="w-full">
                 <SelectValue>{TAX_CODES.find(t => t.value === form.taxCode)?.label ?? form.taxCode}</SelectValue>
               </SelectTrigger>
