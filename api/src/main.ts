@@ -8,6 +8,9 @@ import { HttpExceptionFilter, AllExceptionsFilter } from './common/filters/http-
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // Disable Express ETag to prevent stale 304 responses on multi-tenant data
+  app.getHttpAdapter().getInstance().set('etag', false);
+
   // Security headers — relax CSP for Swagger UI inline scripts
   app.use(
     helmet({

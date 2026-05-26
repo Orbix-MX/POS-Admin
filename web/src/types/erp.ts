@@ -222,3 +222,4 @@ export type ModuleId =
   | 'empleados'
   | 'pos'
   | 'branches'
+  | 'comanda'

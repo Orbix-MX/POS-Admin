@@ -4,7 +4,7 @@ description: Módulos implementados en la API y su estado actual
 type: project
 ---
 
-## Módulos API implementados (a 2026-05-02)
+## Módulos API implementados (actualizado 2026-05-25)
 
 - auth — Login, select-tenant, select-branch, JWT de dos pasos
 - users — CRUD usuarios
@@ -20,6 +20,10 @@ type: project
 - permissions — Permisos canónicos (ALL_PERMISSIONS + MODULES_ORDER)
 - roles — Roles tenant-scoped
 - branches — Sucursales con inventario por sucursal
+- work-orders — Órdenes de trabajo
+- employees — Capital Humano (alta de empleados)
+- platform/dashboards — Gestión de dashboards desde plataforma (sin contexto de tenant), ver [[platform-pattern]]
+- restaurant — Comandas de mesa: createComanda (sin caja), getOpenTables, checkoutComanda (con caja). Usa modelo Order con campos tableNumber + employeeNumber (migración pendiente de correr). Los `as any` en el servicio se eliminan automáticamente tras `prisma generate`.
 
 ## Modelo Supplier (schema)
 

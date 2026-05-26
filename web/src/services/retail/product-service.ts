@@ -33,6 +33,7 @@ export interface Product {
   taxCode: string
   slug: string
   images?: ProductImage[]
+  category?: { id: string; name: string } | null
 }
 
 export async function fetchProducts(): Promise<ListResponse<Product>> {
