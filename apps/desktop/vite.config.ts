@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import electron from 'vite-plugin-electron/simple'
 import path from 'path'
+import fs from 'fs'
 
 export default defineConfig(({ command }) => ({
   plugins: [
@@ -15,7 +16,7 @@ export default defineConfig(({ command }) => ({
           build: {
             sourcemap: command === 'serve',
             rollupOptions: {
-              external: ['better-sqlite3', 'electron', 'electron-updater'],
+              external: ['node-sqlite3-wasm', 'electron', 'electron-updater'],
             },
           },
         },
@@ -40,6 +41,9 @@ export default defineConfig(({ command }) => ({
       '@': path.resolve(__dirname, '../../web/src'),
       '~': path.resolve(__dirname, './src'),
     },
+  },
+  define: {
+    __APP_VERSION__: JSON.stringify('desktop'),
   },
   // Paths relativos para file:// protocol de Electron
   base: command === 'serve' ? '/' : './',

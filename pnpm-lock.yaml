@@ -207,6 +207,9 @@ importers:
       electron-updater:
         specifier: ^6.3.9
         version: 6.8.3
+      node-sqlite3-wasm:
+        specifier: ^0.8.57
+        version: 0.8.57
       uuid:
         specifier: ^9.0.1
         version: 9.0.1
@@ -5458,6 +5461,9 @@ packages:
 
   node-releases@2.0.44:
     resolution: {integrity: sha512-5WUyunoPMsvvEhS8AxHtRzP+oA8UCkJ7YRxatWKjngndhDGLiqEVAQKWjFAiAiuL8zMRGzGSJxFnLetoa43qGQ==}
+
+  node-sqlite3-wasm@0.8.57:
+    resolution: {integrity: sha512-9sME3Agp6vqevHVgMvCV4PMsoTHjuwxjhiooNMiMjjPO3Ea3QbmyAbZn2H9Ko1rkTi2Oo8skv9Y3HvS+rSMcMA==}
 
   nodemailer@8.0.7:
     resolution: {integrity: sha512-pkjE4mkBzQjdJT4/UmlKl3pX0rC9fZmjh7c6C9o7lv66Ac6w9WCnzPzhbPNxwZAzlF4mdq4CSWB5+FbK6FWCow==}
@@ -12684,6 +12690,8 @@ snapshots:
   node-int64@0.4.0: {}
 
   node-releases@2.0.44: {}
+
+  node-sqlite3-wasm@0.8.57: {}
 
   nodemailer@8.0.7: {}
 

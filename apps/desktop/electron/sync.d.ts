@@ -1,4 +1,4 @@
-import type { Database } from 'better-sqlite3';
+import type { Database } from 'node-sqlite3-wasm';
 export interface SyncResult {
     synced: number;
     errors: number;

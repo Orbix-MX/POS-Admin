@@ -1,10 +1,13 @@
-import Database from 'better-sqlite3'
+import { createRequire } from 'module'
 import { app } from 'electron'
 import path from 'path'
 
-let db: Database.Database
+const _require = createRequire(import.meta.url)
+const { Database } = _require('node-sqlite3-wasm') as typeof import('node-sqlite3-wasm')
 
-export function getDb(): Database.Database {
+let db: Database
+
+export function getDb(): Database {
   if (!db) throw new Error('DB not initialized — call initDb() first')
   return db
 }
@@ -12,20 +15,18 @@ export function getDb(): Database.Database {
 export function initDb(): void {
   const dbPath = path.join(app.getPath('userData'), 'orbix-pos.db')
   db = new Database(dbPath)
-  db.pragma('journal_mode = WAL')
-  db.pragma('foreign_keys = ON')
+  db.exec('PRAGMA journal_mode = WAL')
+  db.exec('PRAGMA foreign_keys = ON')
   applySchema(db)
 }
 
-function applySchema(db: Database.Database): void {
+function applySchema(db: Database): void {
   db.exec(`
-    -- KV store para tokens seguros y configuración local
     CREATE TABLE IF NOT EXISTS kv_store (
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
 
-    -- Cache de productos (refresco desde API)
     CREATE TABLE IF NOT EXISTS products_cache (
       id              TEXT PRIMARY KEY,
       sku             TEXT NOT NULL,
@@ -44,7 +45,6 @@ function applySchema(db: Database.Database): void {
       synced_at       INTEGER NOT NULL DEFAULT 0
     );
 
-    -- Cache de clientes
     CREATE TABLE IF NOT EXISTS customers_cache (
       id         TEXT PRIMARY KEY,
       email      TEXT,
@@ -56,7 +56,6 @@ function applySchema(db: Database.Database): void {
       synced_at  INTEGER NOT NULL DEFAULT 0
     );
 
-    -- Cola de ventas pendientes de sincronizar
     CREATE TABLE IF NOT EXISTS pending_sales (
       id             TEXT PRIMARY KEY,
       tenant_id      TEXT NOT NULL,
@@ -78,7 +77,6 @@ function applySchema(db: Database.Database): void {
       status         TEXT NOT NULL DEFAULT 'pending'
     );
 
-    -- Cola de movimientos de caja pendientes
     CREATE TABLE IF NOT EXISTS pending_cash_movements (
       id         TEXT PRIMARY KEY,
       tenant_id  TEXT NOT NULL,
@@ -95,7 +93,6 @@ function applySchema(db: Database.Database): void {
       status     TEXT NOT NULL DEFAULT 'pending'
     );
 
-    -- Metadatos de sincronización
     CREATE TABLE IF NOT EXISTS sync_meta (
       key        TEXT PRIMARY KEY,
       value      TEXT NOT NULL,
@@ -106,22 +103,22 @@ function applySchema(db: Database.Database): void {
 
 // ── Helpers exportados para sync.ts ──────────────────────────────────────────
 
-export function markSaleSynced(db: Database.Database, id: string): void {
+export function markSaleSynced(db: Database, id: string): void {
   db.prepare("UPDATE pending_sales SET status = 'synced', synced_at = ? WHERE id = ?")
-    .run(Date.now(), id)
+    .run([Date.now(), id])
 }
 
-export function markSaleError(db: Database.Database, id: string, error: string): void {
+export function markSaleError(db: Database, id: string, error: string): void {
   db.prepare("UPDATE pending_sales SET status = 'error', sync_error = ? WHERE id = ?")
-    .run(error, id)
+    .run([error, id])
 }
 
-export function markCashMovementSynced(db: Database.Database, id: string): void {
+export function markCashMovementSynced(db: Database, id: string): void {
   db.prepare("UPDATE pending_cash_movements SET status = 'synced', synced_at = ? WHERE id = ?")
-    .run(Date.now(), id)
+    .run([Date.now(), id])
 }
 
-export function markCashMovementError(db: Database.Database, id: string, error: string): void {
+export function markCashMovementError(db: Database, id: string, error: string): void {
   db.prepare("UPDATE pending_cash_movements SET status = 'error', sync_error = ? WHERE id = ?")
-    .run(error, id)
+    .run([error, id])
 }

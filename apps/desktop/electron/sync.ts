@@ -1,4 +1,4 @@
-import type { Database } from 'better-sqlite3'
+import type { Database } from 'node-sqlite3-wasm'
 import { markSaleSynced, markSaleError, markCashMovementSynced, markCashMovementError } from './db'
 
 export interface SyncResult {
@@ -17,11 +17,12 @@ export function cacheProducts(db: Database, products: Array<Record<string, unkno
   `)
 
   const now = Date.now()
-  const insertMany = db.transaction((rows: Array<Record<string, unknown>>) => {
-    for (const p of rows) {
+  db.exec('BEGIN')
+  try {
+    for (const p of products) {
       const images = Array.isArray(p.images) ? p.images : []
       const primaryImage = images.find((i: any) => i.isPrimary) ?? images[0]
-      upsert.run(
+      upsert.run([
         p.id, p.sku, p.name, p.price, p.costPrice ?? 0, p.stock ?? 0,
         p.categoryId ?? null,
         typeof p.category === 'object' && p.category !== null ? (p.category as any).name : null,
@@ -32,11 +33,13 @@ export function cacheProducts(db: Database, products: Array<Record<string, unkno
         p.taxCode ?? '',
         primaryImage?.url ?? null,
         now,
-      )
+      ])
     }
-  })
-
-  insertMany(products)
+    db.exec('COMMIT')
+  } catch (e) {
+    db.exec('ROLLBACK')
+    throw e
+  }
 }
 
 export function cacheCustomers(db: Database, customers: Array<Record<string, unknown>>): void {
@@ -47,13 +50,16 @@ export function cacheCustomers(db: Database, customers: Array<Record<string, unk
   `)
 
   const now = Date.now()
-  const insertMany = db.transaction((rows: Array<Record<string, unknown>>) => {
-    for (const c of rows) {
-      upsert.run(c.id, c.email ?? null, c.firstName, c.lastName, c.phone ?? null, c.status ?? 'ACTIVE', c.type ?? 'NEW', now)
+  db.exec('BEGIN')
+  try {
+    for (const c of customers) {
+      upsert.run([c.id, c.email ?? null, c.firstName, c.lastName, c.phone ?? null, c.status ?? 'ACTIVE', c.type ?? 'NEW', now])
     }
-  })
-
-  insertMany(customers)
+    db.exec('COMMIT')
+  } catch (e) {
+    db.exec('ROLLBACK')
+    throw e
+  }
 }
 
 // ── Sync queue ────────────────────────────────────────────────────────────────
@@ -61,14 +67,14 @@ export function cacheCustomers(db: Database, customers: Array<Record<string, unk
 export async function syncPendingSales(db: Database, apiBase: string, token: string): Promise<SyncResult> {
   const pending = db.prepare(
     "SELECT * FROM pending_sales WHERE status = 'pending' ORDER BY created_at ASC"
-  ).all() as Array<Record<string, unknown>>
+  ).all([]) as Array<Record<string, unknown>>
 
   let synced = 0
   let errors = 0
 
   for (const sale of pending) {
     try {
-      db.prepare("UPDATE pending_sales SET status = 'syncing' WHERE id = ?").run(sale.id)
+      db.prepare("UPDATE pending_sales SET status = 'syncing' WHERE id = ?").run([sale.id])
 
       const items = JSON.parse(sale.items as string)
       const body = {
@@ -114,14 +120,14 @@ export async function syncPendingSales(db: Database, apiBase: string, token: str
 export async function syncPendingCashMovements(db: Database, apiBase: string, token: string): Promise<SyncResult> {
   const pending = db.prepare(
     "SELECT * FROM pending_cash_movements WHERE status = 'pending' ORDER BY created_at ASC"
-  ).all() as Array<Record<string, unknown>>
+  ).all([]) as Array<Record<string, unknown>>
 
   let synced = 0
   let errors = 0
 
   for (const m of pending) {
     try {
-      db.prepare("UPDATE pending_cash_movements SET status = 'syncing' WHERE id = ?").run(m.id)
+      db.prepare("UPDATE pending_cash_movements SET status = 'syncing' WHERE id = ?").run([m.id])
 
       const res = await fetch(`${apiBase}/cash-sessions/${m.session_id}/movements`, {
         method: 'POST',
