@@ -276,17 +276,14 @@ export class OrdersService {
               `Stock insuficiente para "${product.name}". Disponible: ${product.stock}, solicitado: ${item.quantity}`,
             );
           }
-        } else {
-          await tx.product.update({
-            where: { id: item.productId! },
-            data: { stock: { decrement: item.quantity } },
-          });
         }
       }
 
-      // Decrement branch inventory for product items only
+      // Decrement branch inventory only for items with trackInventory
       if (branchId) {
         for (const item of productItems) {
+          const product = productMap.get(item.productId!)!;
+          if (!product.trackInventory) continue;
           const updatedProduct = await tx.product.findUnique({
             where: { id: item.productId! },
             select: { stock: true },

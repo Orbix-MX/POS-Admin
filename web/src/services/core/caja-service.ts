@@ -85,8 +85,8 @@ interface PaginatedResponse<T> {
 
 export async function fetchActiveCashSession(branchId?: string): Promise<ApiCashSession | null> {
   const params = branchId ? { branchId } : {}
-  const { data } = await api.get<ApiCashSession | null>('/cash-sessions/active', { params })
-  return data
+  const { data } = await api.get<ApiCashSession | Record<string, never>>('/cash-sessions/active', { params })
+  return data && 'id' in data ? data as ApiCashSession : null
 }
 
 export async function fetchCashSessions(params?: {

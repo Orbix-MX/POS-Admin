@@ -769,7 +769,9 @@ model Order {
   shippingCost  Decimal       @default(0) @db.Decimal(10, 2)
   discount      Decimal       @default(0) @db.Decimal(10, 2)
   total         Decimal       @db.Decimal(10, 2)
-  notes         String?
+  notes          String?
+  tableNumber    String?
+  employeeNumber String?
 
   couponId   String?
   couponCode String?

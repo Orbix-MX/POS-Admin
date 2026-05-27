@@ -1,4 +1,4 @@
-﻿import { Controller, Get, Post, Patch, Param, Body, Query } from '@nestjs/common';
+﻿import { Controller, Get, Post, Patch, Param, Body, Query, HttpCode } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CashSessionsService } from './cash-sessions.service';
 import { OpenCashSessionDto } from './dto/open-session.dto';
@@ -16,10 +16,12 @@ export class CashSessionsController {
   constructor(private readonly cashSessionsService: CashSessionsService) {}
 
   @Get('active')
+  @HttpCode(200)
   @RequirePermissions('cash:view')
   @ApiOperation({ summary: 'Sesión activa actual' })
-  getActive(@Query('branchId') branchId?: string) {
-    return this.cashSessionsService.getActive(branchId);
+  async getActive(@Query('branchId') branchId?: string) {
+    const session = await this.cashSessionsService.getActive(branchId);
+    return session ?? {};
   }
 
   @Post('active/movement')

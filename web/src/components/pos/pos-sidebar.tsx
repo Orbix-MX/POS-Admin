@@ -3,8 +3,12 @@ import {
   Wallet, TrendingUp, ArrowUpCircle, ArrowDownCircle, Users, Pause,
   X, Plus, Check, Loader2, RotateCcw, AlertCircle, Clock,
   ChevronDown, Trash2, PlayCircle, PanelLeftOpen, PanelLeftClose,
-  ShieldAlert, Eye, EyeOff, Undo2,
+  ShieldAlert, Eye, EyeOff, Undo2, UtensilsCrossed, CreditCard,
 } from 'lucide-react'
+import {
+  checkoutComanda, getOpenTables, fmtComandaMoney,
+  type OpenTable,
+} from '@/services/retail/comanda-service'
 import {
   fetchActiveCashSession, openCashSession, closeCashSession, closeSessionWithAuth,
   verifyCloseAuth, createManualMovement,
@@ -1446,9 +1450,184 @@ function ApartadosPanel({
   )
 }
 
+// ─── Mesas Abiertas Panel ─────────────────────────────────────────────────────
+
+function MesasAbiertasPanel({ onClose }: { onClose: () => void }) {
+  const [tables, setTables] = useState<OpenTable[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selectedTable, setSelectedTable] = useState<OpenTable | null>(null)
+  const [payMethod, setPayMethod] = useState<'CASH' | 'CARD' | 'TRANSFER'>('CASH')
+  const [paying, setPaying] = useState(false)
+  const [payError, setPayError] = useState<string | null>(null)
+  const [paySuccess, setPaySuccess] = useState<string | null>(null)
+
+  const loadTables = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await getOpenTables()
+      setTables(data)
+    } catch {
+      setTables([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { loadTables() }, [loadTables])
+
+  const handleCheckout = async () => {
+    if (!selectedTable) return
+    setPaying(true)
+    setPayError(null)
+    try {
+      await checkoutComanda(selectedTable.id, payMethod)
+      setPaySuccess(`Mesa ${selectedTable.tableNumber} cobrada`)
+      setSelectedTable(null)
+      await loadTables()
+      setTimeout(() => setPaySuccess(null), 3000)
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } }
+      setPayError(err?.response?.data?.message ?? 'Error al cobrar')
+    } finally {
+      setPaying(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      <PanelHeader title="Mesas abiertas" onClose={onClose} />
+
+      {paySuccess && (
+        <div className="mx-3 mt-3 flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-xl text-[11px] text-green-700 font-semibold shrink-0">
+          <Check className="w-3.5 h-3.5 shrink-0" />{paySuccess}
+        </div>
+      )}
+
+      <div className="flex-1 overflow-y-auto">
+        {loading ? (
+          <div className="flex items-center justify-center h-32 gap-2 text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span className="text-xs">Cargando…</span>
+          </div>
+        ) : tables.length === 0 ? (
+          <EmptyState icon={UtensilsCrossed} text="No hay mesas abiertas en este momento" />
+        ) : selectedTable ? (
+          /* ── Checkout form ── */
+          <div className="p-4 space-y-4">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setSelectedTable(null); setPayError(null) }}
+                className="p-1 rounded hover:bg-muted cursor-pointer border-none bg-transparent"
+              >
+                <X className="w-3.5 h-3.5 text-muted-foreground" />
+              </button>
+              <span className="text-[12px] font-extrabold text-foreground">Mesa {selectedTable.tableNumber}</span>
+            </div>
+
+            {/* Items list */}
+            <div className="border border-border rounded-xl overflow-hidden">
+              {selectedTable.items.map(item => (
+                <div key={item.id} className="flex items-center justify-between px-3 py-2 border-b border-border last:border-b-0">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] font-semibold text-foreground truncate">{item.name}</div>
+                    <div className="text-[10px] text-muted-foreground">×{item.quantity} · {fmtComandaMoney(item.price)}</div>
+                  </div>
+                  <div className="text-[11px] font-bold text-foreground shrink-0">{fmtComandaMoney(item.total)}</div>
+                </div>
+              ))}
+              <div className="flex items-center justify-between px-3 py-2.5 bg-muted/40">
+                <span className="text-[12px] font-extrabold text-foreground">Total</span>
+                <span className="text-[14px] font-extrabold text-foreground">{fmtComandaMoney(selectedTable.total)}</span>
+              </div>
+            </div>
+
+            {/* Payment method */}
+            <div>
+              <div className="text-[11px] font-semibold text-muted-foreground mb-2">Método de pago</div>
+              <div className="grid grid-cols-3 gap-1.5">
+                {([
+                  { value: 'CASH', label: 'Efectivo' },
+                  { value: 'CARD', label: 'Tarjeta' },
+                  { value: 'TRANSFER', label: 'Transf.' },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setPayMethod(opt.value)}
+                    className={`py-2 rounded-xl text-[11px] font-bold border cursor-pointer transition-all
+                      ${payMethod === opt.value
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-muted text-muted-foreground border-border hover:bg-muted/80'
+                      }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {payError && (
+              <div className="flex items-start gap-1.5 text-[11px] text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />{payError}
+              </div>
+            )}
+
+            <button
+              onClick={handleCheckout}
+              disabled={paying}
+              className="w-full py-2.5 bg-primary text-primary-foreground rounded-xl text-[12px] font-bold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5 hover:opacity-90 transition-opacity"
+            >
+              {paying
+                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Cobrando…</>
+                : <><CreditCard className="w-3.5 h-3.5" />Cobrar mesa</>
+              }
+            </button>
+          </div>
+        ) : (
+          /* ── Tables list ── */
+          tables.map(table => (
+            <div
+              key={table.id}
+              onClick={() => { setSelectedTable(table); setPayError(null) }}
+              className="flex items-center gap-3 px-4 py-3 border-b border-border hover:bg-muted/30 cursor-pointer transition-colors"
+            >
+              <div className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
+                <UtensilsCrossed className="w-4 h-4 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[12px] font-extrabold text-foreground">Mesa {table.tableNumber}</div>
+                <div className="text-[10px] text-muted-foreground flex items-center gap-1.5">
+                  <Clock className="w-2.5 h-2.5" />
+                  {new Date(table.createdAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+                  <span>·</span>
+                  <span>{table.items.length} producto{table.items.length !== 1 ? 's' : ''}</span>
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="text-[12px] font-extrabold text-foreground">{fmtComandaMoney(table.total)}</div>
+                <div className="text-[9px] text-muted-foreground">{table.orderNumber}</div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {!selectedTable && !loading && tables.length > 0 && (
+        <div className="px-4 py-3 border-t border-border shrink-0">
+          <button
+            onClick={loadTables}
+            className="w-full flex items-center justify-center gap-1.5 py-2 border border-border rounded-xl text-[11px] font-semibold text-muted-foreground hover:bg-muted cursor-pointer transition-colors"
+          >
+            <RotateCcw className="w-3 h-3" /> Actualizar
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Sidebar root ─────────────────────────────────────────────────────────────
 
-export type PanelId = 'caja' | 'ventas' | 'ingreso' | 'egreso' | 'clientes' | 'apartados'
+export type PanelId = 'caja' | 'ventas' | 'ingreso' | 'egreso' | 'clientes' | 'apartados' | 'mesas'
 
 interface SidebarIconProps {
   id: PanelId
@@ -1580,6 +1759,9 @@ export function PosSidebar({
           active={activePanel === 'egreso'}
           onClick={() => toggle('egreso')} {...iconProps} />
         <div className={`h-px bg-border my-0.5 ${railExpanded ? 'mx-1' : 'w-6'}`} />
+        <SidebarIcon id="mesas" icon={UtensilsCrossed} label="Mesas abiertas"
+          active={activePanel === 'mesas'}
+          onClick={() => toggle('mesas')} {...iconProps} />
         <SidebarIcon id="clientes" icon={Users} label="Clientes"
           active={activePanel === 'clientes'}
           onClick={() => toggle('clientes')} {...iconProps} />
@@ -1633,6 +1815,9 @@ export function PosSidebar({
               onDiscard={onDiscardHoldSale}
               onClose={() => setActivePanel(null)}
             />
+          )}
+          {activePanel === 'mesas' && (
+            <MesasAbiertasPanel onClose={() => setActivePanel(null)} />
           )}
         </div>
       )}

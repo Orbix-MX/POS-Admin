@@ -4,7 +4,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   LayoutDashboard, ShoppingBag, ShoppingCart, Package,
   Users, Truck, FileText, Settings, Shield,
-  ChevronDown, LogOut, Landmark, Receipt, TrendingUp, Wrench, UserCheck, MapPin,
+  ChevronDown, LogOut, Landmark, Receipt, TrendingUp, Wrench, UserCheck, MapPin, UtensilsCrossed,
 } from 'lucide-react'
 
 type NavItem = {
@@ -64,6 +64,7 @@ const ALL_NAV: NavGroup[] = [
       { module: 'cotizaciones',label: 'Cotizaciones',icon: FileText,       path: '/cotizaciones'},
       { module: 'ordenes-trabajo', label: 'Órdenes de Trabajo', icon: Wrench, path: '/ordenes-trabajo' },
       { module: 'empleados', label: 'Capital Humano', icon: UserCheck, path: '/empleados' },
+      { module: 'comanda', label: 'Comandas', icon: UtensilsCrossed, path: '/comanda' },
     ],
   },
   {
