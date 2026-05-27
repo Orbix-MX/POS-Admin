@@ -25,7 +25,7 @@ import {
 import { JwtPayload } from './strategies/jwt.strategy';
 import { PlanLimitsService } from '../../../common/services/plan-limits.service';
 import { TenantMembership, Tenant, TenantRole, TenantPlan } from '@prisma/client';
-import { getModulesForPlan } from '@ventasy/types';
+import { getModulesForPlan } from '@orbix/types';
 
 type MembershipWithTenant = TenantMembership & { tenant: Tenant };
 

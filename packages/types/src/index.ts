@@ -1,4 +1,4 @@
-// Shared types between @ventasy/api and @ventasy/web
+// Shared types between @orbix/api and @orbix/web
 
 export interface ListResponse<T> {
   data: T[]

@@ -1,6 +1,6 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { PLAN_ORDER } from '@ventasy/types';
+import { PLAN_ORDER } from '@orbix/types';
 
 export const REQUIRE_PLAN_KEY = 'requirePlan';
 export const RequirePlan = (...plans: string[]) =>

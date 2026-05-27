@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { getMaxUsersForPlan, getMaxBranchesForPlan } from '@ventasy/types';
+import { getMaxUsersForPlan, getMaxBranchesForPlan } from '@orbix/types';
 import { PrismaService } from '../../database/prisma.service';
 
 export interface BranchCapacity {
