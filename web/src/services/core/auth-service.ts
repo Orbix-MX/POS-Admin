@@ -46,6 +46,9 @@ export interface SelectTenantResponse {
   posOnly: boolean
   plan: string
   enabledModules: string[]
+  businessVertical: string
+  posOperationMode: string
+  enabledFeatures: string[]
   tenant: Tenant
 }
 
@@ -56,6 +59,9 @@ export interface CapabilitiesResponse {
   maxUsers: number | null
   activeUsers: number
   overUserLimit: boolean
+  businessVertical: string
+  posOperationMode: string
+  enabledFeatures: string[]
 }
 
 export interface Branch {

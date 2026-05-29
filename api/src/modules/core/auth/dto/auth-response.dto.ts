@@ -1,4 +1,4 @@
-import { UserRole, UserStatus, TenantRole, TenantPlan } from '@prisma/client';
+import { UserRole, UserStatus, TenantRole, TenantPlan, BusinessVertical, PosOperationMode, TenantFeature } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UserResponseDto {
@@ -47,6 +47,9 @@ export class SelectTenantResponseDto {
   @ApiProperty() posOnly: boolean;
   @ApiProperty({ enum: TenantPlan }) plan: TenantPlan;
   @ApiProperty({ type: [String] }) enabledModules: string[];
+  @ApiProperty({ enum: BusinessVertical }) businessVertical: BusinessVertical;
+  @ApiProperty({ enum: PosOperationMode }) posOperationMode: PosOperationMode;
+  @ApiProperty({ type: [String] }) enabledFeatures: TenantFeature[];
   @ApiProperty({ type: TenantSummaryDto }) tenant: TenantSummaryDto;
 }
 
@@ -58,6 +61,9 @@ export class CapabilitiesResponseDto {
   maxUsers: number | null;
   @ApiProperty() activeUsers: number;
   @ApiProperty() overUserLimit: boolean;
+  @ApiProperty({ enum: BusinessVertical }) businessVertical: BusinessVertical;
+  @ApiProperty({ enum: PosOperationMode }) posOperationMode: PosOperationMode;
+  @ApiProperty({ type: [String] }) enabledFeatures: TenantFeature[];
 }
 
 export class SelectBranchResponseDto {

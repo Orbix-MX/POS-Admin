@@ -14,6 +14,8 @@ import {
 } from './dto/update-tenant.dto';
 import { PlatformTenantsQueryDto } from './dto/platform-tenants-query.dto';
 import { ALL_PERMISSIONS } from '../../core/permissions/permissions.constants';
+import { VERTICAL_DEFAULT_FEATURES, VERTICAL_DEFAULT_POS_MODE } from '@orbix/types';
+import { UpdateTenantVerticalDto } from './dto/update-tenant.dto';
 
 type PlatformActor = { id: string };
 
@@ -106,6 +108,10 @@ export class PlatformTenantsService {
 
     const result = await this.prisma.$transaction(async (tx) => {
       // 1. Create tenant
+      const vertical = dto.tenant.businessVertical ?? 'RETAIL';
+      const posMode = dto.tenant.posOperationMode ?? VERTICAL_DEFAULT_POS_MODE[vertical];
+      const features = dto.tenant.enabledFeatures ?? VERTICAL_DEFAULT_FEATURES[vertical];
+
       const tenant = await tx.tenant.create({
         data: {
           name: dto.tenant.name,
@@ -114,6 +120,9 @@ export class PlatformTenantsService {
           status,
           enabledModules: dto.tenant.enabledModules ?? [],
           trialEndsAt,
+          businessVertical: vertical,
+          posOperationMode: posMode,
+          enabledFeatures: features,
         },
       });
 
@@ -313,6 +322,41 @@ export class PlatformTenantsService {
         entityId: id,
         before,
         after: { userLimitOverride: dto.userLimitOverride },
+      },
+    });
+
+    return updated;
+  }
+
+  async updateVertical(id: string, dto: UpdateTenantVerticalDto, actor: PlatformActor) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id } });
+    if (!tenant) throw new NotFoundException('Tenant not found');
+
+    const before = {
+      businessVertical: tenant.businessVertical,
+      posOperationMode: tenant.posOperationMode,
+      enabledFeatures: tenant.enabledFeatures,
+    };
+
+    const updated = await this.prisma.tenant.update({
+      where: { id },
+      data: {
+        businessVertical: dto.businessVertical,
+        posOperationMode: dto.posOperationMode,
+        enabledFeatures: dto.enabledFeatures,
+      },
+    });
+
+    await this.prisma.platformAuditLog.create({
+      data: {
+        platformUserId: actor.id,
+        tenantId: id,
+        action: 'TENANT_VERTICAL_CHANGED',
+        entityType: 'Tenant',
+        entityId: id,
+        before,
+        after: { businessVertical: dto.businessVertical, posOperationMode: dto.posOperationMode, enabledFeatures: dto.enabledFeatures },
+        notes: dto.notes,
       },
     });
 
