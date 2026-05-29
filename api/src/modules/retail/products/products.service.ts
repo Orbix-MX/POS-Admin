@@ -153,9 +153,10 @@ export class ProductsService {
   }
 
   async findOne(id: string): Promise<Product> {
-    const tenantId = this.tenantContext.requireTenantId();
+    const tenantId = this.tenantContext.getTenantId();
+    const where = tenantId ? { id, tenantId } : { id };
     const product = await this.prisma.product.findFirst({
-      where: { id, tenantId },
+      where,
       include: PRODUCT_INCLUDE,
     });
 

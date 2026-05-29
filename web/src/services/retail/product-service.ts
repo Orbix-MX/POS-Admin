@@ -63,7 +63,22 @@ export async function fetchProducts(): Promise<ListResponse<Product>> {
 
 export async function createProduct(data: Product): Promise<Product> {
   const body = {
-    ...data,
+    type: data.type,
+    sku: data.sku,
+    name: data.name,
+    description: data.description,
+    price: data.price,
+    comparePrice: data.comparePrice,
+    costPrice: data.costPrice,
+    categoryId: data.categoryId,
+    status: data.status,
+    stock: data.stock,
+    trackInventory: data.trackInventory,
+    lowStockAlert: data.lowStockAlert,
+    metaTitle: data.metaTitle,
+    metaDescription: data.metaDescription,
+    taxRate: data.taxRate,
+    taxCode: data.taxCode,
     recipeItems: data.recipe?.items?.map((i) => ({
       supplyId: i.supplyId,
       quantity: i.quantity,

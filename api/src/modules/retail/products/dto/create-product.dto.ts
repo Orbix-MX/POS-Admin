@@ -127,7 +127,8 @@ export class CreateProductDto {
   @IsEnum(TaxCode)
   taxCode?: TaxCode;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
   slug?: string;
 

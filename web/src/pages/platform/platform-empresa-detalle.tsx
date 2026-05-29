@@ -23,7 +23,7 @@ type FullTenant = PlatformTenant & {
 const PLANS: TenantPlan[] = ['FREE', 'STARTER', 'PRO', 'PLUS', 'ENTERPRISE']
 
 const ALL_MODULES = [
-  'dashboard', 'ventas', 'compras', 'inventario', 'clientes', 'proveedores',
+  'dashboard', 'ventas', 'compras', 'inventario', 'insumos', 'clientes', 'proveedores',
   'cxc', 'cxp', 'caja', 'reportes', 'servicios', 'cotizaciones', 'empleados',
 ]
 
