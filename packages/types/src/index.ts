@@ -1,4 +1,4 @@
-// Shared types between @ventasy/api and @ventasy/web
+// Shared types between @orbix/api and @orbix/web
 
 export interface ListResponse<T> {
   data: T[]
@@ -31,6 +31,33 @@ export type OrderStatus =
   | 'CANCELLED'
 
 export type PaymentStatus = 'PENDING' | 'PARTIAL' | 'PAID' | 'OVERDUE' | 'CANCELLED'
+
+// ─── Business verticals & POS modes ──────────────────────────────────────────
+
+export type BusinessVertical = 'RETAIL' | 'RESTAURANT' | 'GYM' | 'SERVICES'
+export type PosOperationMode = 'QUICK_SALE' | 'TABLE_SERVICE'
+export type TenantFeature =
+  | 'TABLES'
+  | 'KITCHEN'
+  | 'DELIVERY'
+  | 'MEMBERSHIPS'
+  | 'ACCESS_CONTROL'
+  | 'SERVICES'
+  | 'APPOINTMENTS'
+
+export const VERTICAL_DEFAULT_POS_MODE: Record<BusinessVertical, PosOperationMode> = {
+  RETAIL:     'QUICK_SALE',
+  RESTAURANT: 'TABLE_SERVICE',
+  GYM:        'QUICK_SALE',
+  SERVICES:   'QUICK_SALE',
+}
+
+export const VERTICAL_DEFAULT_FEATURES: Record<BusinessVertical, TenantFeature[]> = {
+  RETAIL:     [],
+  RESTAURANT: ['TABLES', 'KITCHEN'],
+  GYM:        ['MEMBERSHIPS', 'ACCESS_CONTROL'],
+  SERVICES:   ['SERVICES', 'APPOINTMENTS'],
+}
 
 // ─── Plan tiers ──────────────────────────────────────────────────────────────
 

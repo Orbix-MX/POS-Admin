@@ -4,7 +4,7 @@ import {
   IsArray, ValidateNested, MinLength, MaxLength, Matches,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { TenantPlan, TenantStatus } from '@prisma/client';
+import { TenantPlan, TenantStatus, BusinessVertical, PosOperationMode, TenantFeature } from '@prisma/client';
 
 export class ProvisionTenantInfoDto {
   @ApiProperty() @IsString() @MinLength(2) @MaxLength(100) name: string;
@@ -26,6 +26,22 @@ export class ProvisionTenantInfoDto {
   @IsArray()
   @IsString({ each: true })
   enabledModules?: string[];
+
+  @ApiPropertyOptional({ enum: BusinessVertical, default: 'RETAIL' })
+  @IsOptional()
+  @IsEnum(BusinessVertical)
+  businessVertical?: BusinessVertical;
+
+  @ApiPropertyOptional({ enum: PosOperationMode })
+  @IsOptional()
+  @IsEnum(PosOperationMode)
+  posOperationMode?: PosOperationMode;
+
+  @ApiPropertyOptional({ type: [String], enum: TenantFeature })
+  @IsOptional()
+  @IsArray()
+  @IsEnum(TenantFeature, { each: true })
+  enabledFeatures?: TenantFeature[];
 }
 
 export class ProvisionBranchDto {

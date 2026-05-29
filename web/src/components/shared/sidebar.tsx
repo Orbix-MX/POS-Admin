@@ -13,6 +13,7 @@ type NavItem = {
   icon: LucideIcon
   path: string
   permission?: string
+  featureGuard?: (hasFeature: (f: TenantFeature) => boolean, hasPosMode: (m: PosOperationMode) => boolean) => boolean
 }
 
 type NavGroup = {
@@ -22,6 +23,8 @@ type NavGroup = {
 }
 import { useERPStore } from '@/store/erp-store'
 import { useAuthStore } from '@/store/auth-store'
+import { useTenantFeatures } from '@/hooks/use-tenant-features'
+import type { TenantFeature, PosOperationMode } from '@/hooks/use-tenant-features'
 import { AvatarInitials } from './avatar-initials'
 
 function TenantLogo({ logoUrl, name, size = 30 }: { logoUrl?: string; name: string; size?: number }) {
@@ -65,7 +68,13 @@ const ALL_NAV: NavGroup[] = [
       { module: 'cotizaciones',label: 'Cotizaciones',icon: FileText,       path: '/cotizaciones'},
       { module: 'ordenes-trabajo', label: 'Órdenes de Trabajo', icon: Wrench, path: '/ordenes-trabajo' },
       { module: 'empleados', label: 'Capital Humano', icon: UserCheck, path: '/empleados' },
-      { module: 'comanda', label: 'Comandas', icon: UtensilsCrossed, path: '/comanda' },
+      {
+        module: 'comanda',
+        label: 'Comandas',
+        icon: UtensilsCrossed,
+        path: '/comanda',
+        featureGuard: (hasFeature, hasPosMode) => hasFeature('TABLES') || hasPosMode('TABLE_SERVICE'),
+      },
     ],
   },
   {
@@ -84,6 +93,7 @@ const ALL_NAV: NavGroup[] = [
 export function Sidebar() {
   const { empresa, tenantBranding } = useERPStore()
   const { user, logout, enabledModules, permissions, currentBranch, availableBranches, confirmBranch } = useAuthStore()
+  const { hasFeature, hasPosMode } = useTenantFeatures()
   const [expanded, setExpanded] = useState<Record<string, boolean>>({ business: true, management: true })
   const [branchMenuOpen, setBranchMenuOpen] = useState(false)
 
@@ -96,7 +106,8 @@ export function Sidebar() {
     ...group,
     items: group.items.filter(item =>
       enabledModules.includes(item.module) &&
-      (isSuperAdmin || !item.permission || permissions.includes(item.permission))
+      (isSuperAdmin || !item.permission || permissions.includes(item.permission)) &&
+      (!item.featureGuard || item.featureGuard(hasFeature, hasPosMode))
     ),
   })).filter(group => group.items.length > 0)
 

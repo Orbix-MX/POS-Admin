@@ -73,6 +73,28 @@ enum TenantPlan {
   ENTERPRISE
 }
 
+enum BusinessVertical {
+  RETAIL
+  RESTAURANT
+  GYM
+  SERVICES
+}
+
+enum PosOperationMode {
+  QUICK_SALE
+  TABLE_SERVICE
+}
+
+enum TenantFeature {
+  TABLES
+  KITCHEN
+  DELIVERY
+  MEMBERSHIPS
+  ACCESS_CONTROL
+  SERVICES
+  APPOINTMENTS
+}
+
 enum TenantRole {
   OWNER
   ADMIN
@@ -95,8 +117,11 @@ model Tenant {
   name     String
   slug     String       @unique // subdomain / identifier
   status   TenantStatus @default(TRIAL)
-  plan           TenantPlan   @default(FREE)
-  enabledModules String[]     @default([])
+  plan             TenantPlan       @default(FREE)
+  enabledModules   String[]         @default([])
+  businessVertical BusinessVertical @default(RETAIL)    @map("business_vertical")
+  posOperationMode PosOperationMode @default(QUICK_SALE) @map("pos_operation_mode")
+  enabledFeatures  TenantFeature[]  @default([])        @map("enabled_features")
   settings       Json? // { currency, timezone, logo, address, taxId, ... }
 
   // ── SaaS user-limit control ────────────────────────────────────────────────

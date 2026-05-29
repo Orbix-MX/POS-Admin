@@ -2,6 +2,9 @@ import { platformApi } from '@/lib/platform-api-client'
 
 export type TenantStatus = 'ACTIVE' | 'SUSPENDED' | 'TRIAL' | 'CANCELLED' | 'EXPIRED' | 'DISABLED'
 export type TenantPlan = 'FREE' | 'STARTER' | 'PRO' | 'PLUS' | 'ENTERPRISE'
+export type BusinessVertical = 'RETAIL' | 'RESTAURANT' | 'GYM' | 'SERVICES'
+export type PosOperationMode = 'QUICK_SALE' | 'TABLE_SERVICE'
+export type TenantFeature = 'TABLES' | 'KITCHEN' | 'DELIVERY' | 'MEMBERSHIPS' | 'ACCESS_CONTROL' | 'SERVICES' | 'APPOINTMENTS'
 
 export interface PlatformTenant {
   id: string
@@ -10,6 +13,9 @@ export interface PlatformTenant {
   status: TenantStatus
   plan: TenantPlan
   enabledModules: string[]
+  businessVertical: BusinessVertical
+  posOperationMode: PosOperationMode
+  enabledFeatures: TenantFeature[]
   overUserLimit: boolean
   userLimitOverride: number | null
   ownerUserId: string | null
@@ -33,6 +39,9 @@ export interface ProvisionTenantInput {
     plan: TenantPlan
     status?: TenantStatus
     enabledModules?: string[]
+    businessVertical?: BusinessVertical
+    posOperationMode?: PosOperationMode
+    enabledFeatures?: TenantFeature[]
   }
   branch: {
     name: string
@@ -108,6 +117,22 @@ export async function updateTenantPlan(id: string, plan: TenantPlan, notes?: str
 
 export async function updateTenantModules(id: string, enabledModules: string[]) {
   const { data } = await platformApi.patch(`/platform/tenants/${id}/modules`, { enabledModules })
+  return data
+}
+
+export async function updateTenantVertical(
+  id: string,
+  businessVertical: BusinessVertical,
+  posOperationMode: PosOperationMode,
+  enabledFeatures: TenantFeature[],
+  notes?: string,
+) {
+  const { data } = await platformApi.patch(`/platform/tenants/${id}/vertical`, {
+    businessVertical,
+    posOperationMode,
+    enabledFeatures,
+    notes,
+  })
   return data
 }
 

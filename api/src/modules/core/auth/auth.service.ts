@@ -4,6 +4,8 @@ import {
   ConflictException,
   BadRequestException,
   NotFoundException,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -24,8 +26,8 @@ import {
 } from './dto/auth-response.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
 import { PlanLimitsService } from '../../../common/services/plan-limits.service';
-import { TenantMembership, Tenant, TenantRole, TenantPlan } from '@prisma/client';
-import { getModulesForPlan } from '@ventasy/types';
+import { TenantMembership, Tenant, TenantRole, TenantPlan, BusinessVertical, PosOperationMode, TenantFeature } from '@prisma/client';
+import { getModulesForPlan } from '@orbix/types';
 
 type MembershipWithTenant = TenantMembership & { tenant: Tenant };
 
@@ -77,7 +79,16 @@ export class AuthService {
     if (user.status !== 'ACTIVE') throw new UnauthorizedException('Account is not active');
 
     const memberships = user.tenantMemberships as MembershipWithTenant[];
-    const activeMemberships = memberships.filter((m) => m.tenant.status !== 'CANCELLED');
+    const activeMemberships = memberships.filter(
+      (m) => m.tenant.status === 'ACTIVE' || m.tenant.status === 'TRIAL',
+    );
+
+    if (memberships.length > 0 && activeMemberships.length === 0) {
+      throw new HttpException(
+        { statusCode: HttpStatus.FORBIDDEN, code: 'TENANT_INACTIVE', message: 'La empresa ya no se encuentra activa.' },
+        HttpStatus.FORBIDDEN,
+      );
+    }
 
     const accessToken = this.generateToken({ sub: user.id, email: user.email });
     return {
@@ -182,8 +193,20 @@ export class AuthService {
     });
 
     if (!membership) throw new UnauthorizedException('Tenant not found or access denied');
-    if (membership.tenant.status === 'CANCELLED') {
-      throw new BadRequestException('Tenant is not available');
+
+    const ALLOWED_TENANT_STATUSES = ['ACTIVE', 'TRIAL'];
+    if (!ALLOWED_TENANT_STATUSES.includes(membership.tenant.status)) {
+      const tenantStatusMessages: Record<string, string> = {
+        CANCELLED: 'La empresa ya no se encuentra activa.',
+        SUSPENDED: 'La empresa se encuentra suspendida. Contacta al administrador.',
+        EXPIRED: 'La suscripción de la empresa ha expirado.',
+        DISABLED: 'La empresa está deshabilitada. Contacta al administrador.',
+      };
+      const message = tenantStatusMessages[membership.tenant.status] ?? 'La empresa ya no se encuentra activa.';
+      throw new HttpException(
+        { statusCode: HttpStatus.FORBIDDEN, code: 'TENANT_INACTIVE', message },
+        HttpStatus.FORBIDDEN,
+      );
     }
 
     // Per-tenant access gate. Global User.status is checked at login; here we
@@ -227,6 +250,9 @@ export class AuthService {
       posOnly,
       plan,
       enabledModules: effectiveModules,
+      businessVertical: membership.tenant.businessVertical,
+      posOperationMode: membership.tenant.posOperationMode,
+      enabledFeatures: membership.tenant.enabledFeatures,
       tenant: this.mapMembership(membership),
     };
   }
@@ -311,14 +337,29 @@ export class AuthService {
     let maxUsers: number | null = null;
     let activeUsers = 0;
     let overUserLimit = false;
+    let businessVertical: BusinessVertical = 'RETAIL';
+    let posOperationMode: PosOperationMode = 'QUICK_SALE';
+    let enabledFeatures: TenantFeature[] = [];
+
     if (tenantId) {
-      const cap = await this.planLimits.getCapacity(tenantId);
+      const [cap, tenant] = await Promise.all([
+        this.planLimits.getCapacity(tenantId),
+        this.prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { businessVertical: true, posOperationMode: true, enabledFeatures: true },
+        }),
+      ]);
       maxUsers = cap.maxUsers;
       activeUsers = cap.activeUsers;
       overUserLimit = cap.overUserLimit;
+      if (tenant) {
+        businessVertical = tenant.businessVertical;
+        posOperationMode = tenant.posOperationMode;
+        enabledFeatures = tenant.enabledFeatures;
+      }
     }
 
-    return { plan, enabledModules, effectiveModules, maxUsers, activeUsers, overUserLimit };
+    return { plan, enabledModules, effectiveModules, maxUsers, activeUsers, overUserLimit, businessVertical, posOperationMode, enabledFeatures };
   }
 
   private generateToken(payload: JwtPayload): string {

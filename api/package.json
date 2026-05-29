@@ -1,5 +1,5 @@
 {
-  "name": "@ventasy/api",
+  "name": "@orbix/api",
   "version": "0.0.1",
   "description": "",
   "author": "",
@@ -34,7 +34,7 @@
     "@prisma/adapter-neon": "^7.8.0",
     "@prisma/adapter-pg": "^7.3.0",
     "@prisma/client": "^7.8.0",
-    "@ventasy/types": "workspace:*",
+    "@orbix/types": "workspace:*",
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",

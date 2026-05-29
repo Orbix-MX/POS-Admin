@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { X, Loader2, Check, Building2, GitBranch, User, Package } from 'lucide-react'
 import { provisionTenant } from '@/services/platform/platform-tenants-service'
-import type { TenantPlan } from '@/services/platform/platform-tenants-service'
+import type { TenantPlan, BusinessVertical, PosOperationMode } from '@/services/platform/platform-tenants-service'
 
 type Step = 'empresa' | 'plan' | 'sucursal' | 'admin'
 
@@ -33,7 +33,21 @@ interface Props {
   onSuccess: () => void
 }
 
-type EmpresaForm = { name: string; slug: string }
+const VERTICAL_OPTIONS: { value: BusinessVertical; label: string; desc: string }[] = [
+  { value: 'RETAIL',     label: 'Retail',      desc: 'Tienda, mostrador, venta rápida' },
+  { value: 'RESTAURANT', label: 'Restaurante',  desc: 'Mesas, comandas, cocina' },
+  { value: 'GYM',        label: 'Gimnasio',     desc: 'Membresías, accesos' },
+  { value: 'SERVICES',   label: 'Servicios',    desc: 'Citas, órdenes de trabajo' },
+]
+
+const VERTICAL_DEFAULT_POS_MODE: Record<BusinessVertical, PosOperationMode> = {
+  RETAIL:     'QUICK_SALE',
+  RESTAURANT: 'TABLE_SERVICE',
+  GYM:        'QUICK_SALE',
+  SERVICES:   'QUICK_SALE',
+}
+
+type EmpresaForm = { name: string; slug: string; businessVertical: BusinessVertical; posOperationMode: PosOperationMode }
 type SucursalForm = { name: string; code: string; address: string; city: string; state: string; zipCode: string; phone: string }
 type AdminForm = { firstName: string; lastName: string; email: string; password: string }
 
@@ -47,7 +61,7 @@ function errMessage(e: unknown) {
 
 export function PlatformProvisionModal({ onClose, onSuccess }: Props) {
   const [step, setStep] = useState<Step>('empresa')
-  const [empresa, setEmpresa] = useState<EmpresaForm>({ name: '', slug: '' })
+  const [empresa, setEmpresa] = useState<EmpresaForm>({ name: '', slug: '', businessVertical: 'RETAIL', posOperationMode: 'QUICK_SALE' })
   const [plan, setPlan] = useState<TenantPlan>('PRO')
   const [trialDays, setTrialDays] = useState<number | ''>('')
   const [sucursal, setSucursal] = useState<SucursalForm>({ name: '', code: '', address: '', city: '', state: '', zipCode: '', phone: '' })
@@ -87,7 +101,13 @@ export function PlatformProvisionModal({ onClose, onSuccess }: Props) {
     setError(null)
     try {
       await provisionTenant({
-        tenant: { name: empresa.name, slug: empresa.slug, plan },
+        tenant: {
+          name: empresa.name,
+          slug: empresa.slug,
+          plan,
+          businessVertical: empresa.businessVertical,
+          posOperationMode: empresa.posOperationMode,
+        },
         branch: {
           name: sucursal.name,
           code: sucursal.code,
@@ -188,6 +208,47 @@ export function PlatformProvisionModal({ onClose, onSuccess }: Props) {
                   className="w-full px-3 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-[13px] text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-indigo-500 font-mono"
                 />
                 <div className="text-[11px] text-zinc-600 mt-1">Solo letras minúsculas, números y guiones</div>
+              </div>
+              <div>
+                <label className="text-[12px] font-semibold text-zinc-400 block mb-1.5">Tipo de negocio *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {VERTICAL_OPTIONS.map(v => (
+                    <button
+                      key={v.value}
+                      type="button"
+                      onClick={() => setEmpresa(p => ({
+                        ...p,
+                        businessVertical: v.value,
+                        posOperationMode: VERTICAL_DEFAULT_POS_MODE[v.value],
+                      }))}
+                      className={`text-left px-3 py-2 rounded-lg border transition-all cursor-pointer
+                        ${empresa.businessVertical === v.value
+                          ? 'border-indigo-500 bg-indigo-500/10 text-zinc-100'
+                          : 'border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:border-zinc-600'}`}
+                    >
+                      <div className="text-[12px] font-semibold">{v.label}</div>
+                      <div className="text-[10px] opacity-60">{v.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-[12px] font-semibold text-zinc-400 block mb-1.5">Modo POS</label>
+                <div className="flex gap-2">
+                  {(['QUICK_SALE', 'TABLE_SERVICE'] as PosOperationMode[]).map(mode => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setEmpresa(p => ({ ...p, posOperationMode: mode }))}
+                      className={`flex-1 px-3 py-2 rounded-lg border text-[12px] font-semibold transition-all cursor-pointer
+                        ${empresa.posOperationMode === mode
+                          ? 'border-indigo-500 bg-indigo-500/10 text-zinc-100'
+                          : 'border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:border-zinc-600'}`}
+                    >
+                      {mode === 'QUICK_SALE' ? 'Venta Rápida' : 'Mesas/Comandas'}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
