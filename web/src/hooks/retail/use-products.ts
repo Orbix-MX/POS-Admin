@@ -104,9 +104,9 @@ export function useProducts() {
 
   const stats = useMemo(() => ({
     total: products.length,
-    ok: products.filter(x => x.status === "ACTIVE" && x.stock > x.lowStockAlert).length,
-    bajo: products.filter(x => x.status === "ACTIVE" && x.stock <= x.lowStockAlert && x.stock > 0).length,
-    agotado: products.filter(x => x.stock === 0).length,
+    ok: products.filter(x => x.status === "ACTIVE" && (!x.trackInventory || x.stock > x.lowStockAlert)).length,
+    bajo: products.filter(x => x.status === "ACTIVE" && x.trackInventory && x.stock <= x.lowStockAlert && x.stock > 0).length,
+    agotado: products.filter(x => x.trackInventory && x.stock === 0).length,
   }), [products])
 
   const handleSave = useCallback(async () => {

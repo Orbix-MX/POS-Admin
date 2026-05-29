@@ -97,7 +97,7 @@ export function Inventario() {
           return <span className="text-[10px] text-muted-foreground italic">N/A</span>
         }
         const pct = r.trackInventory ? Math.min((r.stock / (r.lowStockAlert * 4)) * 100, 100) : 100
-        const color = r.stock > r.lowStockAlert ? "#16a34a" : r.stock > 0 ? "#d97706" : "#dc2626"
+        const color = !r.trackInventory ? "#16a34a" : r.stock > r.lowStockAlert ? "#16a34a" : r.stock > 0 ? "#d97706" : "#dc2626"
         return (
           <div className="flex flex-col items-center gap-1">
             <span className="font-bold text-sm" style={{ color }}>{r.stock}</span>

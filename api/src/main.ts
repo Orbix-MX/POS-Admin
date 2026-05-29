@@ -18,9 +18,21 @@ async function bootstrap() {
     }),
   );
 
-  // Enable CORS
+  // Enable CORS — CORS_ORIGIN admite lista separada por comas, "*" o vacío
+  const allowedOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:3000')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
   app.enableCors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    origin: (origin, callback) => {
+      // Permitir requests sin Origin (curl, server-to-server, healthchecks)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`Origin not allowed by CORS: ${origin}`), false);
+    },
     credentials: true,
   });
 

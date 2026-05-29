@@ -366,7 +366,7 @@ export function usePOS() {
     if (!p.id) return
     const existing = carrito.find(i => i.id === p.id && i.type === 'PRODUCT')
     if (existing) {
-      if (existing.qty >= p.stock) {
+      if (p.trackInventory && existing.qty >= p.stock) {
         flashStockWarning(`Stock máximo de "${p.name}" alcanzado (${p.stock} disponibles)`)
         return
       }
@@ -374,7 +374,7 @@ export function usePOS() {
       setLastAddedProduct(p)
       return
     }
-    if (p.stock <= 0) {
+    if (p.trackInventory && p.stock <= 0) {
       flashStockWarning(`"${p.name}" sin stock disponible`)
       return
     }
