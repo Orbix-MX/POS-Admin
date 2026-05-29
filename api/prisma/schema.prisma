@@ -135,6 +135,8 @@ model Tenant {
   serviceQuotes      ServiceQuote[]
   workOrders         WorkOrder[]
   auditLogs          AuditLog[]
+  supplies           Supply[]
+  supplyMovements    SupplyMovement[]
 
   usersLastSelected  User[] @relation("UserLastTenant")
   employees          Employee[]
@@ -226,6 +228,9 @@ model User {
   dashboardsUpdated         Dashboard[]        @relation("DashboardUpdatedBy")
   widgetsCreated            Widget[]           @relation("WidgetCreatedBy")
   widgetsUpdated            Widget[]           @relation("WidgetUpdatedBy")
+  suppliesCreated           Supply[]           @relation("SupplyCreatedBy")
+  suppliesUpdated           Supply[]           @relation("SupplyUpdatedBy")
+  supplyMovementsCreated    SupplyMovement[]   @relation("SupplyMovementCreatedBy")
 
   roleAssignments  UserRoleAssignment[]
   permissionGrants UserPermissionGrant[]
@@ -501,6 +506,13 @@ model Category {
 }
 
 // ============= Products =============
+enum ProductType {
+  SIMPLE
+  RECIPE
+  COMBO
+  SERVICE
+}
+
 enum ProductStatus {
   DRAFT
   ACTIVE
@@ -527,6 +539,7 @@ model Product {
   taxCode         TaxCode?      @default(IVA_16)
   comparePrice    Decimal?      @db.Decimal(10, 2)
   costPrice       Decimal?      @db.Decimal(10, 2)
+  type            ProductType   @default(SIMPLE)
   categoryId      String?
   status          ProductStatus @default(DRAFT)
   stock           Int           @default(0)
@@ -552,6 +565,9 @@ model Product {
   purchaseReceiptItems PurchaseReceiptItem[]
   inventoryMovements   InventoryMovement[]
   quoteItems           ServiceQuoteItem[]
+  recipe               Recipe?
+  comboItems           ComboItem[]          @relation("ComboItems")
+  inCombos             ComboItem[]          @relation("ComboChildItems")
   createdBy            User?                @relation("ProductCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy            User?                @relation("ProductUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
@@ -575,6 +591,105 @@ model ProductImage {
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@map("product_images")
+}
+
+// ============= Supplies (Insumos/Ingredientes) =============
+enum SupplyStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum SupplyMovementType {
+  PURCHASE
+  RECIPE_CONSUMPTION
+  ADJUSTMENT
+}
+
+model Supply {
+  id        String       @id @default(uuid())
+  tenantId  String
+  name      String
+  sku       String
+  unit      String
+  stock     Decimal      @default(0) @db.Decimal(10, 3)
+  minStock  Decimal      @default(0) @db.Decimal(10, 3)
+  cost      Decimal      @default(0) @db.Decimal(10, 2)
+  branchId  String?
+  status    SupplyStatus @default(ACTIVE)
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch      Branch?          @relation("BranchSupplies", fields: [branchId], references: [id], onDelete: SetNull)
+  recipeItems RecipeItem[]
+  movements   SupplyMovement[]
+  createdBy   User?            @relation("SupplyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy   User?            @relation("SupplyUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, sku])
+  @@map("supplies")
+}
+
+model SupplyMovement {
+  id          String             @id @default(uuid())
+  tenantId    String
+  supplyId    String
+  type        SupplyMovementType
+  quantity    Decimal            @db.Decimal(10, 3)
+  branchId    String?
+  referenceId String?
+  notes       String?
+  createdById String?
+  createdAt   DateTime           @default(now())
+
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supply    Supply  @relation(fields: [supplyId], references: [id], onDelete: Cascade)
+  branch    Branch? @relation("BranchSupplyMovements", fields: [branchId], references: [id], onDelete: SetNull)
+  createdBy User?   @relation("SupplyMovementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@map("supply_movements")
+}
+
+// ============= Recipes & Combos =============
+model Recipe {
+  id        String   @id @default(uuid())
+  productId String   @unique
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  items   RecipeItem[]
+
+  @@map("recipes")
+}
+
+model RecipeItem {
+  id       String  @id @default(uuid())
+  recipeId String
+  supplyId String
+  quantity Decimal @db.Decimal(10, 3)
+  unit     String
+
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  supply Supply @relation(fields: [supplyId], references: [id])
+
+  @@map("recipe_items")
+}
+
+model ComboItem {
+  id             String @id @default(uuid())
+  comboProductId String
+  childProductId String
+  quantity       Int    @default(1)
+
+  combo Product @relation("ComboItems", fields: [comboProductId], references: [id], onDelete: Cascade)
+  child Product @relation("ComboChildItems", fields: [childProductId], references: [id])
+
+  @@map("combo_items")
 }
 
 // ============= Coupons =============
@@ -869,6 +984,8 @@ model Branch {
   inventoryMovements InventoryMovement[]
   cashSessions       CashSession[]
   purchaseOrders     PurchaseOrder[]
+  supplies           Supply[]           @relation("BranchSupplies")
+  supplyMovements    SupplyMovement[]   @relation("BranchSupplyMovements")
 
   usersLastSelected  User[] @relation("UserLastBranch")
 

@@ -52,15 +52,42 @@ export class OrdersService {
     const productItems = dto.items.filter((i) => !i.itemType || i.itemType === 'PRODUCT');
     const serviceItems = dto.items.filter((i) => i.itemType === 'SERVICE');
 
-    // Validate and load products
+    // Validate and load products (include recipe for consumption check)
     const productIds = [...new Set(productItems.map((i) => i.productId).filter(Boolean) as string[])];
     const products = productIds.length
-      ? await this.prisma.product.findMany({ where: { id: { in: productIds } }, include: { category: true } })
+      ? await this.prisma.product.findMany({
+          where: { id: { in: productIds } },
+          include: {
+            category: true,
+            recipe: { include: { items: { include: { supply: true } } } },
+          },
+        })
       : [];
     if (products.length !== productIds.length) {
       const found = new Set(products.map((p) => p.id));
       const missing = productIds.filter((id) => !found.has(id));
       throw new NotFoundException(`Productos no encontrados: ${missing.join(', ')}`);
+    }
+
+    // Pre-validate supply stock for RECIPE products
+    for (const item of productItems) {
+      const product = products.find((p) => p.id === item.productId)!;
+      if ((product as any).type !== 'RECIPE') continue;
+      const recipe = (product as any).recipe;
+      if (!recipe?.items?.length) {
+        throw new BadRequestException(
+          `El producto "${product.name}" es de tipo receta pero no tiene ingredientes configurados`,
+        );
+      }
+      for (const ri of recipe.items) {
+        const needed = Number(ri.quantity) * item.quantity;
+        if (Number(ri.supply.stock) < needed) {
+          throw new BadRequestException(
+            `Stock insuficiente del insumo "${ri.supply.name}". ` +
+            `Disponible: ${ri.supply.stock} ${ri.supply.unit}, necesario: ${needed} ${ri.unit}`,
+          );
+        }
+      }
     }
 
     // Optionally validate services from catalog
@@ -261,11 +288,44 @@ export class OrdersService {
         });
       }
 
-      // Decrement stock only for product items — guarded against negative stock.
+      // Decrement stock only for SIMPLE product items — guarded against negative stock.
       // updateMany with stock>=qty is atomic at row level; count===0 means the
       // product is untracked-with-insufficient or a concurrent sale drained it.
       for (const item of productItems) {
         const product = productMap.get(item.productId!)!;
+        if ((product as any).type === 'RECIPE') {
+          // Consume recipe supply ingredients
+          const recipe = (product as any).recipe;
+          if (recipe?.items?.length) {
+            for (const ri of recipe.items) {
+              const needed = Number(ri.quantity) * item.quantity;
+              const res = await tx.supply.updateMany({
+                where: { id: ri.supplyId, stock: { gte: needed } },
+                data: { stock: { decrement: needed } },
+              });
+              if (res.count === 0) {
+                throw new BadRequestException(
+                  `Stock insuficiente del insumo "${ri.supply.name}" al procesar venta`,
+                );
+              }
+              await tx.supplyMovement.create({
+                data: {
+                  tenantId,
+                  supplyId: ri.supplyId,
+                  type: 'RECIPE_CONSUMPTION',
+                  quantity: needed,
+                  referenceId: newOrder.id,
+                  notes: `Consumo receta: ${product.name}`,
+                  ...(branchId && { branchId }),
+                  ...(createdById && { createdById }),
+                },
+              });
+            }
+          }
+          continue;
+        }
+
+        // SIMPLE product stock decrement
         if (product.trackInventory) {
           const res = await tx.product.updateMany({
             where: { id: item.productId!, stock: { gte: item.quantity } },
@@ -279,11 +339,11 @@ export class OrdersService {
         }
       }
 
-      // Decrement branch inventory only for items with trackInventory
+      // Decrement branch inventory only for SIMPLE items with trackInventory
       if (branchId) {
         for (const item of productItems) {
           const product = productMap.get(item.productId!)!;
-          if (!product.trackInventory) continue;
+          if ((product as any).type !== 'SIMPLE' || !product.trackInventory) continue;
           const updatedProduct = await tx.product.findUnique({
             where: { id: item.productId! },
             select: { stock: true },

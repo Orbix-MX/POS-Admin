@@ -29,7 +29,15 @@ export const TAX_CODES = [
   { value: "IVA_16", label: "IVA 16%" },
 ]
 
+export const PRODUCT_TYPE_OPTIONS = [
+  { value: 'SIMPLE', label: 'Producto Simple' },
+  { value: 'RECIPE', label: 'Receta / Preparado' },
+  { value: 'COMBO', label: 'Combo / Paquete' },
+  { value: 'SERVICE', label: 'Servicio' },
+]
+
 export const EMPTY_FORM: Product = {
+  type: "SIMPLE",
   sku: "",
   name: "",
   description: "",
@@ -45,7 +53,9 @@ export const EMPTY_FORM: Product = {
   metaDescription: "",
   taxRate: 0,
   taxCode: "IVA_16",
-  slug: ""
+  slug: "",
+  recipe: null,
+  comboItems: [],
 }
 
 export function useProducts() {

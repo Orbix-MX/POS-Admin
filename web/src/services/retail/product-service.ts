@@ -14,8 +14,26 @@ export interface ProductImage {
   createdAt: string
 }
 
+export type ProductType = 'SIMPLE' | 'RECIPE' | 'COMBO' | 'SERVICE'
+
+export interface RecipeItem {
+  id?: string
+  supplyId: string
+  quantity: number
+  unit: string
+  supply?: { id: string; name: string; unit: string; stock: number }
+}
+
+export interface ComboItem {
+  id?: string
+  childProductId: string
+  quantity: number
+  child?: { id: string; name: string; sku: string; images?: ProductImage[] }
+}
+
 export interface Product {
   id?: string
+  type: ProductType
   sku: string
   name: string
   description: string
@@ -34,6 +52,8 @@ export interface Product {
   slug: string
   images?: ProductImage[]
   category?: { id: string; name: string } | null
+  recipe?: { id: string; notes?: string; items: RecipeItem[] } | null
+  comboItems?: ComboItem[]
 }
 
 export async function fetchProducts(): Promise<ListResponse<Product>> {
@@ -42,18 +62,25 @@ export async function fetchProducts(): Promise<ListResponse<Product>> {
 }
 
 export async function createProduct(data: Product): Promise<Product> {
-  const { data: result } = await api.post<Product>('products', data)
+  const body = {
+    ...data,
+    recipeItems: data.recipe?.items?.map((i) => ({
+      supplyId: i.supplyId,
+      quantity: i.quantity,
+      unit: i.unit,
+    })),
+    comboItems: data.comboItems?.map((ci) => ({
+      childProductId: ci.childProductId,
+      quantity: ci.quantity,
+    })),
+  }
+  const { data: result } = await api.post<Product>('products', body)
   return result
 }
 
-type UpdateProductBody = Pick<Product,
-  'name' | 'description' | 'price' | 'comparePrice' | 'costPrice' |
-  'categoryId' | 'status' | 'stock' | 'trackInventory' | 'lowStockAlert' |
-  'metaTitle' | 'metaDescription' | 'taxRate' | 'taxCode'
->
-
 export async function updateProduct(id: string, data: Product): Promise<Product> {
-  const body: UpdateProductBody = {
+  const body = {
+    type: data.type,
     name: data.name,
     description: data.description,
     price: data.price,
@@ -68,6 +95,15 @@ export async function updateProduct(id: string, data: Product): Promise<Product>
     metaDescription: data.metaDescription,
     taxRate: data.taxRate,
     taxCode: data.taxCode,
+    recipeItems: data.recipe?.items?.map((i) => ({
+      supplyId: i.supplyId,
+      quantity: i.quantity,
+      unit: i.unit,
+    })),
+    comboItems: data.comboItems?.map((ci) => ({
+      childProductId: ci.childProductId,
+      quantity: ci.quantity,
+    })),
   }
   const { data: result } = await api.patch<Product>(`products/${id}`, body)
   return result

@@ -29,6 +29,7 @@ import { Cotizaciones } from '@/pages/cotizaciones'
 import { OrdenesTrabajo } from '@/pages/ordenes-trabajo'
 import { Empleados } from '@/pages/empleados'
 import { Comanda } from '@/pages/comanda'
+import { Insumos } from '@/pages/insumos'
 import { PlatformLogin } from '@/pages/platform/platform-login'
 import { PlatformDashboard } from '@/pages/platform/platform-dashboard'
 import { PlatformEmpresas } from '@/pages/platform/platform-empresas'
@@ -59,6 +60,7 @@ const PATH_TO_MODULE: Record<string, ModuleId> = {
   '/empleados': 'empleados',
   '/pos': 'pos',
   '/comanda': 'comanda',
+  '/insumos': 'insumos',
 }
 
 function ModuleRoute({ module, children }: { module: string; children: ReactNode }) {
@@ -134,6 +136,7 @@ function AppLayout() {
             <Route path="/ordenes-trabajo" element={<ModuleRoute module="ordenes-trabajo"><OrdenesTrabajo /></ModuleRoute>} />
             <Route path="/empleados" element={<ModuleRoute module="empleados"><Empleados /></ModuleRoute>} />
             <Route path="/comanda" element={<ModuleRoute module="comanda"><Comanda /></ModuleRoute>} />
+            <Route path="/insumos" element={<ModuleRoute module="inventario"><Insumos /></ModuleRoute>} />
           </Routes>
         </div>
       </div>
