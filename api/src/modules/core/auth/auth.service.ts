@@ -27,7 +27,7 @@ import {
 import { JwtPayload } from './strategies/jwt.strategy';
 import { PlanLimitsService } from '../../../common/services/plan-limits.service';
 import { TenantMembership, Tenant, TenantRole, TenantPlan, BusinessVertical, PosOperationMode, TenantFeature } from '@prisma/client';
-import { getModulesForPlan } from '@orbix/types';
+import { getModulesForPlan, getAllowedModulesForVertical } from '@orbix/types';
 
 type MembershipWithTenant = TenantMembership & { tenant: Tenant };
 
@@ -230,9 +230,10 @@ export class AuthService {
       },
     });
 
-    const { plan, enabledModules: extraModules } = membership.tenant;
+    const { plan, enabledModules: extraModules, businessVertical } = membership.tenant;
     const planModules = getModulesForPlan(plan) as unknown as string[];
-    const effectiveModules = [...new Set([...planModules, ...extraModules])];
+    const allModules = [...new Set([...planModules, ...extraModules])];
+    const effectiveModules = getAllowedModulesForVertical(allModules, businessVertical as BusinessVertical);
 
     const accessToken = this.generateToken({
       sub: userId,

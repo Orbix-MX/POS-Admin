@@ -30,6 +30,7 @@ import { OrdenesTrabajo } from '@/pages/ordenes-trabajo'
 import { Empleados } from '@/pages/empleados'
 import { Comanda } from '@/pages/comanda'
 import { Insumos } from '@/pages/insumos'
+import { Kitchen } from '@/pages/kitchen'
 import { PlatformLogin } from '@/pages/platform/platform-login'
 import { PlatformDashboard } from '@/pages/platform/platform-dashboard'
 import { PlatformEmpresas } from '@/pages/platform/platform-empresas'
@@ -107,9 +108,9 @@ function AppLayout() {
             {meta.label}
           </h1>
           <div className="flex gap-2">
-            <button className="flex items-center gap-1.5 px-3 py-1.5 border border-border rounded-lg bg-card text-xs cursor-pointer text-muted-foreground">
+            {/* <button className="flex items-center gap-1.5 px-3 py-1.5 border border-border rounded-lg bg-card text-xs cursor-pointer text-muted-foreground">
               <Download className="w-3.5 h-3.5" /> Importar/Exportar
-            </button>
+            </button> */}
           </div>
         </div>
 
@@ -146,6 +147,7 @@ function AppLayout() {
 
 function TenantAuthGate() {
   const { isAuthenticated, availableTenants, capabilitiesLoaded, needsBranchSelection, availableBranches, init } = useAuthStore()
+  const location = useLocation()
 
   useEffect(() => { init() }, [init])
 
@@ -157,6 +159,11 @@ function TenantAuthGate() {
     </div>
   )
   if (needsBranchSelection) { document.title = APP_SUFFIX; return <SelectBranch /> }
+
+  if (location.pathname === '/kitchen') {
+    document.title = `Cocina | ${APP_SUFFIX}`
+    return <Kitchen />
+  }
 
   return <AppLayout />
 }

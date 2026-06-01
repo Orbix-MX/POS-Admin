@@ -2,6 +2,7 @@ import {
   Injectable,
   ConflictException,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { PasswordUtil } from '../../../common/utils/password.util';
@@ -14,7 +15,13 @@ import {
 } from './dto/update-tenant.dto';
 import { PlatformTenantsQueryDto } from './dto/platform-tenants-query.dto';
 import { ALL_PERMISSIONS } from '../../core/permissions/permissions.constants';
-import { VERTICAL_DEFAULT_FEATURES, VERTICAL_DEFAULT_POS_MODE } from '@orbix/types';
+import {
+  VERTICAL_DEFAULT_FEATURES,
+  VERTICAL_DEFAULT_POS_MODE,
+  VERTICAL_DEFAULT_EXTRAS,
+  isModuleCompatibleWithVertical,
+  BusinessVertical,
+} from '@orbix/types';
 import { UpdateTenantVerticalDto } from './dto/update-tenant.dto';
 
 type PlatformActor = { id: string };
@@ -112,13 +119,16 @@ export class PlatformTenantsService {
       const posMode = dto.tenant.posOperationMode ?? VERTICAL_DEFAULT_POS_MODE[vertical];
       const features = dto.tenant.enabledFeatures ?? VERTICAL_DEFAULT_FEATURES[vertical];
 
+      const defaultExtras = VERTICAL_DEFAULT_EXTRAS[vertical] ?? [];
+      const enabledModules = dto.tenant.enabledModules ?? defaultExtras;
+
       const tenant = await tx.tenant.create({
         data: {
           name: dto.tenant.name,
           slug: dto.tenant.slug,
           plan: dto.tenant.plan,
           status,
-          enabledModules: dto.tenant.enabledModules ?? [],
+          enabledModules,
           trialEndsAt,
           businessVertical: vertical,
           posOperationMode: posMode,
@@ -281,6 +291,17 @@ export class PlatformTenantsService {
   async updateModules(id: string, dto: UpdateTenantModulesDto, actor: PlatformActor) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id } });
     if (!tenant) throw new NotFoundException('Tenant not found');
+
+    // Validate extras are compatible with the tenant's business vertical
+    const vertical = tenant.businessVertical as BusinessVertical;
+    const incompatible = dto.enabledModules.filter(
+      m => !isModuleCompatibleWithVertical(m, vertical),
+    );
+    if (incompatible.length > 0) {
+      throw new BadRequestException(
+        `Modules incompatible with vertical '${vertical}': ${incompatible.join(', ')}`,
+      );
+    }
 
     const before = { enabledModules: tenant.enabledModules };
     const updated = await this.prisma.tenant.update({

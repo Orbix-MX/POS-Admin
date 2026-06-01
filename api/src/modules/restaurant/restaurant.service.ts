@@ -45,6 +45,7 @@ export class RestaurantService {
           total,
           status: 'PENDING',
           paymentStatus: 'PENDING',
+          kitchenStatus: 'PENDING',
           tableNumber: dto.tableNumber,
           employeeNumber: dto.employeeNumber,
           ...(branchId != null && { branchId }),

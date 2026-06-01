@@ -4,7 +4,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   LayoutDashboard, ShoppingBag, ShoppingCart, Package,
   Users, Truck, FileText, Settings, Shield,
-  ChevronDown, LogOut, Landmark, Receipt, TrendingUp, Wrench, UserCheck, MapPin, UtensilsCrossed, FlaskConical,
+  ChevronDown, LogOut, Landmark, Receipt, TrendingUp, Wrench, UserCheck, MapPin, UtensilsCrossed, FlaskConical, ChefHat,
 } from 'lucide-react'
 
 type NavItem = {
@@ -14,6 +14,7 @@ type NavItem = {
   path: string
   permission?: string
   featureGuard?: (hasFeature: (f: TenantFeature) => boolean, hasPosMode: (m: PosOperationMode) => boolean) => boolean
+  verticalGuard?: (hasVertical: (v: BusinessVertical) => boolean) => boolean
 }
 
 type NavGroup = {
@@ -24,7 +25,7 @@ type NavGroup = {
 import { useERPStore } from '@/store/erp-store'
 import { useAuthStore } from '@/store/auth-store'
 import { useTenantFeatures } from '@/hooks/use-tenant-features'
-import type { TenantFeature, PosOperationMode } from '@/hooks/use-tenant-features'
+import type { TenantFeature, PosOperationMode, BusinessVertical } from '@/hooks/use-tenant-features'
 import { AvatarInitials } from './avatar-initials'
 
 function TenantLogo({ logoUrl, name, size = 30 }: { logoUrl?: string; name: string; size?: number }) {
@@ -74,6 +75,16 @@ const ALL_NAV: NavGroup[] = [
         icon: UtensilsCrossed,
         path: '/comanda',
         featureGuard: (hasFeature, hasPosMode) => hasFeature('TABLES') || hasPosMode('TABLE_SERVICE'),
+        verticalGuard: (hasVertical) => hasVertical('RESTAURANT'),
+      },
+      {
+        module: 'kitchen',
+        label: 'Cocina',
+        icon: ChefHat,
+        path: '/kitchen',
+        permission: 'kitchen:view',
+        featureGuard: (hasFeature) => hasFeature('KITCHEN'),
+        verticalGuard: (hasVertical) => hasVertical('RESTAURANT'),
       },
     ],
   },
@@ -102,12 +113,15 @@ export function Sidebar() {
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN'
 
+  const { hasVertical } = useTenantFeatures()
+
   const visibleGroups = ALL_NAV.map(group => ({
     ...group,
     items: group.items.filter(item =>
       enabledModules.includes(item.module) &&
       (isSuperAdmin || !item.permission || permissions.includes(item.permission)) &&
-      (!item.featureGuard || item.featureGuard(hasFeature, hasPosMode))
+      (!item.featureGuard || item.featureGuard(hasFeature, hasPosMode)) &&
+      (!item.verticalGuard || item.verticalGuard(hasVertical))
     ),
   })).filter(group => group.items.length > 0)
 

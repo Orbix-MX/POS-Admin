@@ -938,6 +938,15 @@ enum DeliveryStatus {
   DELIVERED
 }
 
+enum KitchenOrderStatus {
+  PENDING
+  IN_PROGRESS
+  PAUSED
+  READY
+  REJECTED
+  DELIVERED
+}
+
 enum OrderItemType {
   PRODUCT
   SERVICE
@@ -970,6 +979,14 @@ model Order {
   deliveryStatus        DeliveryStatus?
   estimatedDeliveryDate DateTime?
   deliveredAt           DateTime?
+
+  kitchenStatus          KitchenOrderStatus?
+  kitchenStartedAt       DateTime?
+  kitchenReadyAt         DateTime?
+  kitchenPausedAt        DateTime?
+  kitchenRejectedAt      DateTime?
+  kitchenRejectedById    String?
+  kitchenRejectionComment String?
 
   cancelledAt        DateTime?
   cancellationReason String?

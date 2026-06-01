@@ -30,6 +30,14 @@ export type OrderStatus =
   | 'COMPLETED'
   | 'CANCELLED'
 
+export type KitchenOrderStatus =
+  | 'PENDING'
+  | 'IN_PROGRESS'
+  | 'PAUSED'
+  | 'READY'
+  | 'REJECTED'
+  | 'DELIVERED'
+
 export type PaymentStatus = 'PENDING' | 'PARTIAL' | 'PAID' | 'OVERDUE' | 'CANCELLED'
 
 // ─── Business verticals & POS modes ──────────────────────────────────────────
@@ -98,20 +106,20 @@ export enum SystemModule {
   ACCESS_CONTROL = 'access-control',
 }
 
-// Modules included per plan tier (cumulative — each tier adds to the previous)
+// Modules included per plan tier (cumulative — each tier adds to the previous).
+// POS and COMANDA are NOT in the base plan: they are assigned as vertical-specific
+// extras at provision time via VERTICAL_DEFAULT_EXTRAS.
 const MODULES_BY_TIER: Array<{ plan: TenantPlan; modules: SystemModule[] }> = [
   {
     plan: 'FREE',
     modules: [
       SystemModule.DASHBOARD,
-      SystemModule.POS,
       SystemModule.VENTAS,
       SystemModule.CLIENTES,
       SystemModule.CAJA,
       SystemModule.USUARIOS,
       SystemModule.ROLES,
       SystemModule.CONFIGURACION,
-      SystemModule.COMANDA,
     ],
   },
   {
@@ -146,6 +154,32 @@ export function getModulesForPlan(plan: TenantPlan): SystemModule[] {
   return MODULES_BY_TIER.filter((_, i) => i <= tierIndex).flatMap((t) => t.modules)
 }
 
+// Extras assigned automatically at tenant provision based on vertical.
+// These are stored in Tenant.enabledModules (additive on top of plan).
+export const VERTICAL_DEFAULT_EXTRAS: Record<BusinessVertical, string[]> = {
+  RETAIL:     [SystemModule.POS],
+  RESTAURANT: [SystemModule.COMANDA, SystemModule.KITCHEN],
+  GYM:        [],
+  SERVICES:   [],
+}
+
+// ─── Vertical / module compatibility ─────────────────────────────────────────
+// POS = quick-sale retail; COMANDA/KITCHEN = restaurant-only.
+// Extend this map as new verticals are added — no other file needs to change.
+
+export const VERTICAL_INCOMPATIBLE_MODULES: Partial<Record<BusinessVertical, SystemModule[]>> = {
+  RETAIL:     [SystemModule.COMANDA, SystemModule.KITCHEN],
+  RESTAURANT: [SystemModule.POS],
+}
+
+export function isModuleCompatibleWithVertical(module: string, vertical: BusinessVertical): boolean {
+  const incompatible = (VERTICAL_INCOMPATIBLE_MODULES[vertical] ?? []) as unknown as string[]
+  return !incompatible.includes(module)
+}
+
+export function getAllowedModulesForVertical(modules: string[], vertical: BusinessVertical): string[] {
+  return modules.filter(m => isModuleCompatibleWithVertical(m, vertical))
+}
 
 // ─── Per-tenant access state (lives on TenantMembership, NOT on the global User)
 // ────────────────────────────────────────────────────────────────────────────

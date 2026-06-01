@@ -22,6 +22,15 @@ type FullTenant = PlatformTenant & {
 
 const PLANS: TenantPlan[] = ['FREE', 'STARTER', 'PRO', 'PLUS', 'ENTERPRISE']
 
+const VERTICAL_INCOMPATIBLE: Partial<Record<string, string[]>> = {
+  RETAIL:     ['comanda', 'kitchen'],
+  RESTAURANT: ['pos'],
+}
+
+function isCompatibleWithVertical(mod: string, vertical: string): boolean {
+  return !(VERTICAL_INCOMPATIBLE[vertical] ?? []).includes(mod)
+}
+
 const MODULE_LABELS: Record<string, string> = {
   dashboard: 'Dashboard', pos: 'POS', ventas: 'Ventas', inventario: 'Inventario',
   clientes: 'Clientes', compras: 'Compras', proveedores: 'Proveedores',
@@ -35,7 +44,7 @@ const MODULE_LABELS: Record<string, string> = {
 
 const PLAN_ORDER: TenantPlan[] = ['FREE', 'STARTER', 'PRO', 'PLUS', 'ENTERPRISE']
 const MODULES_BY_TIER: Array<{ plan: TenantPlan; modules: string[] }> = [
-  { plan: 'FREE',       modules: ['dashboard', 'pos', 'ventas', 'clientes', 'caja', 'usuarios', 'roles', 'configuracion', 'comanda'] },
+  { plan: 'FREE',       modules: ['dashboard', 'ventas', 'clientes', 'caja', 'usuarios', 'roles', 'configuracion'] },
   { plan: 'STARTER',   modules: ['inventario', 'insumos'] },
   { plan: 'PRO',       modules: ['compras', 'proveedores', 'servicios', 'cotizaciones', 'ordenes-trabajo', 'empleados', 'reportes', 'branches'] },
   { plan: 'PLUS',      modules: ['cxc', 'cxp'] },
@@ -568,49 +577,89 @@ export function PlatformEmpresaDetalle() {
         const allMods = Object.keys(MODULE_LABELS)
         const extraMods = allMods.filter(m => !planMods.has(m))
         const extraEnabled = selectedModules.filter(m => !planMods.has(m))
+        const vertical = tenant.businessVertical
+
         return (
           <div className="bg-zinc-800/60 border border-zinc-700/50 rounded-xl p-6">
             <div className="flex items-center justify-between mb-1">
               <div className="text-[13px] font-bold text-zinc-300">Módulos del tenant</div>
-              <div className="text-[12px] text-zinc-500">
-                Plan <span className="text-indigo-400 font-semibold">{tenant.plan}</span>
+              <div className="flex items-center gap-3 text-[12px]">
+                <span className="text-zinc-500">
+                  Plan <span className="text-indigo-400 font-semibold">{tenant.plan}</span>
+                </span>
+                <span className="px-2 py-0.5 rounded bg-zinc-700 text-zinc-400 text-[11px] font-mono">
+                  {vertical}
+                </span>
                 {extraEnabled.length > 0 && (
-                  <span className="ml-2 text-emerald-400">+{extraEnabled.length} extras</span>
+                  <span className="text-emerald-400">+{extraEnabled.length} extras</span>
                 )}
               </div>
             </div>
             <div className="text-[12px] text-zinc-500 mb-5">
               Módulos del plan están siempre activos. Puedes agregar módulos extra fuera del plan.
+              Los módulos marcados con ⚠ son incompatibles con el vertical actual y no se mostrarán al usuario.
             </div>
 
-            {/* Plan modules — locked on */}
+            {/* Plan modules — locked on, show incompatibility warning */}
             <div className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider mb-2">
               Incluidos en el plan ({planMods.size})
             </div>
             <div className="grid grid-cols-1 gap-1.5 mb-6 sm:grid-cols-2 lg:grid-cols-3">
-              {[...planMods].map(mod => (
-                <div
-                  key={mod}
-                  className="flex items-center justify-between px-4 py-2.5 rounded-lg border border-indigo-500/20 bg-indigo-600/5"
-                >
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[13px] font-medium text-indigo-300">
-                      {MODULE_LABELS[mod] ?? mod}
-                    </span>
-                    <span className="text-[10px] text-zinc-600 font-mono">{mod}</span>
+              {[...planMods].map(mod => {
+                const compatible = isCompatibleWithVertical(mod, vertical)
+                return (
+                  <div
+                    key={mod}
+                    title={!compatible ? `Incompatible con vertical ${vertical} — no se mostrará en el sidebar` : undefined}
+                    className={`flex items-center justify-between px-4 py-2.5 rounded-lg border
+                      ${compatible
+                        ? 'border-indigo-500/20 bg-indigo-600/5'
+                        : 'border-amber-500/30 bg-amber-500/5'
+                      }`}
+                  >
+                    <div className="flex flex-col gap-0.5">
+                      <span className={`text-[13px] font-medium ${compatible ? 'text-indigo-300' : 'text-amber-400'}`}>
+                        {MODULE_LABELS[mod] ?? mod}
+                      </span>
+                      <span className="text-[10px] text-zinc-600 font-mono">{mod}</span>
+                      {!compatible && (
+                        <span className="text-[10px] text-amber-500">
+                          ⚠ Incompatible con {vertical}
+                        </span>
+                      )}
+                    </div>
+                    <Check className={`w-4 h-4 flex-shrink-0 ${compatible ? 'text-indigo-500' : 'text-amber-500/50'}`} />
                   </div>
-                  <Check className="w-4 h-4 text-indigo-500 flex-shrink-0" />
-                </div>
-              ))}
+                )
+              })}
             </div>
 
-            {/* Extra modules — toggleable */}
+            {/* Extra modules — toggleable; incompatible ones locked */}
             <div className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider mb-2">
               Módulos extra ({extraEnabled.length} activos de {extraMods.length})
             </div>
             <div className="grid grid-cols-1 gap-1.5 mb-6 sm:grid-cols-2 lg:grid-cols-3">
               {extraMods.map(mod => {
                 const enabled = selectedModules.includes(mod)
+                const compatible = isCompatibleWithVertical(mod, vertical)
+
+                if (!compatible) {
+                  return (
+                    <div
+                      key={mod}
+                      title={`Incompatible con vertical ${vertical}`}
+                      className="flex items-center justify-between px-4 py-2.5 rounded-lg border border-zinc-800 bg-zinc-900/30 opacity-50 cursor-not-allowed"
+                    >
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[13px] font-medium text-zinc-600">{MODULE_LABELS[mod] ?? mod}</span>
+                        <span className="text-[10px] text-zinc-700 font-mono">{mod}</span>
+                        <span className="text-[10px] text-amber-600">⚠ No compatible con {vertical}</span>
+                      </div>
+                      <X className="w-4 h-4 text-zinc-700 flex-shrink-0" />
+                    </div>
+                  )
+                }
+
                 return (
                   <button
                     key={mod}
