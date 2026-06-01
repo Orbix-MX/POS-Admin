@@ -60,12 +60,14 @@ export class CashSessionsController {
   }
 
   @Post('verify-auth')
+  @RequirePermissions('pos.cash:close')
   @ApiOperation({ summary: 'Verificar credenciales de autorizador para cierre de caja' })
   verifyCloseAuth(@Body() dto: VerifyAuthDto) {
     return this.cashSessionsService.verifyCloseAuth(dto);
   }
 
   @Patch(':id/close-authorized')
+  @RequirePermissions('pos.cash:close')
   @ApiOperation({ summary: 'Cerrar sesión con autorización de administrador' })
   closeWithAuth(@Param('id') id: string, @Body() dto: CloseWithAuthDto) {
     return this.cashSessionsService.closeWithAuth(id, dto);
