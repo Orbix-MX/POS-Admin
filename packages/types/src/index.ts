@@ -92,6 +92,10 @@ export enum SystemModule {
   INSUMOS       = 'insumos',
   // Future verticals
   GYM           = 'gym',
+  KITCHEN       = 'kitchen',
+  DELIVERY      = 'delivery',
+  MEMBERSHIPS   = 'memberships',
+  ACCESS_CONTROL = 'access-control',
 }
 
 // Modules included per plan tier (cumulative — each tier adds to the previous)
@@ -141,6 +145,7 @@ export function getModulesForPlan(plan: TenantPlan): SystemModule[] {
   const tierIndex = PLAN_ORDER.indexOf(plan)
   return MODULES_BY_TIER.filter((_, i) => i <= tierIndex).flatMap((t) => t.modules)
 }
+
 
 // ─── Per-tenant access state (lives on TenantMembership, NOT on the global User)
 // ────────────────────────────────────────────────────────────────────────────

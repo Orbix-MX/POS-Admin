@@ -22,10 +22,30 @@ type FullTenant = PlatformTenant & {
 
 const PLANS: TenantPlan[] = ['FREE', 'STARTER', 'PRO', 'PLUS', 'ENTERPRISE']
 
-const ALL_MODULES = [
-  'dashboard', 'ventas', 'compras', 'inventario', 'insumos', 'clientes', 'proveedores',
-  'cxc', 'cxp', 'caja', 'reportes', 'servicios', 'cotizaciones', 'empleados',
+const MODULE_LABELS: Record<string, string> = {
+  dashboard: 'Dashboard', pos: 'POS', ventas: 'Ventas', inventario: 'Inventario',
+  clientes: 'Clientes', compras: 'Compras', proveedores: 'Proveedores',
+  servicios: 'Servicios', cotizaciones: 'Cotizaciones', 'ordenes-trabajo': 'Órdenes de Trabajo',
+  cxc: 'CxC', cxp: 'CxP', caja: 'Caja', reportes: 'Reportes',
+  usuarios: 'Usuarios', roles: 'Roles', configuracion: 'Configuración',
+  branches: 'Sucursales', empleados: 'Empleados', comanda: 'Comandas',
+  insumos: 'Insumos', gym: 'Gym', kitchen: 'Kitchen', delivery: 'Delivery',
+  memberships: 'Membresías', 'access-control': 'Control Acceso',
+}
+
+const PLAN_ORDER: TenantPlan[] = ['FREE', 'STARTER', 'PRO', 'PLUS', 'ENTERPRISE']
+const MODULES_BY_TIER: Array<{ plan: TenantPlan; modules: string[] }> = [
+  { plan: 'FREE',       modules: ['dashboard', 'pos', 'ventas', 'clientes', 'caja', 'usuarios', 'roles', 'configuracion', 'comanda'] },
+  { plan: 'STARTER',   modules: ['inventario', 'insumos'] },
+  { plan: 'PRO',       modules: ['compras', 'proveedores', 'servicios', 'cotizaciones', 'ordenes-trabajo', 'empleados', 'reportes', 'branches'] },
+  { plan: 'PLUS',      modules: ['cxc', 'cxp'] },
+  { plan: 'ENTERPRISE', modules: [] },
 ]
+
+function getModulesForPlan(plan: TenantPlan): string[] {
+  const tierIndex = PLAN_ORDER.indexOf(plan)
+  return MODULES_BY_TIER.filter((_, i) => i <= tierIndex).flatMap(t => t.modules)
+}
 
 const BRANCH_STATUS_OPTIONS: BranchStatus[] = ['ACTIVE', 'INACTIVE', 'SUSPENDED']
 
@@ -543,40 +563,93 @@ export function PlatformEmpresaDetalle() {
       )}
 
       {/* Tab: Módulos */}
-      {activeTab === 'modulos' && (
-        <div className="bg-zinc-800/60 border border-zinc-700/50 rounded-xl p-6">
-          <div className="text-[13px] font-bold text-zinc-300 mb-4">Módulos habilitados extra</div>
-          <div className="text-[12px] text-zinc-500 mb-4">
-            Estos módulos se habilitan ADEMÁS de los incluidos en el plan. Los módulos del plan no se pueden deshabilitar aquí.
-          </div>
-          <div className="grid grid-cols-4 gap-2 mb-5">
-            {ALL_MODULES.map(mod => {
-              const checked = selectedModules.includes(mod)
-              return (
-                <button
+      {activeTab === 'modulos' && (() => {
+        const planMods = new Set(getModulesForPlan(tenant.plan))
+        const allMods = Object.keys(MODULE_LABELS)
+        const extraMods = allMods.filter(m => !planMods.has(m))
+        const extraEnabled = selectedModules.filter(m => !planMods.has(m))
+        return (
+          <div className="bg-zinc-800/60 border border-zinc-700/50 rounded-xl p-6">
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-[13px] font-bold text-zinc-300">Módulos del tenant</div>
+              <div className="text-[12px] text-zinc-500">
+                Plan <span className="text-indigo-400 font-semibold">{tenant.plan}</span>
+                {extraEnabled.length > 0 && (
+                  <span className="ml-2 text-emerald-400">+{extraEnabled.length} extras</span>
+                )}
+              </div>
+            </div>
+            <div className="text-[12px] text-zinc-500 mb-5">
+              Módulos del plan están siempre activos. Puedes agregar módulos extra fuera del plan.
+            </div>
+
+            {/* Plan modules — locked on */}
+            <div className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider mb-2">
+              Incluidos en el plan ({planMods.size})
+            </div>
+            <div className="grid grid-cols-1 gap-1.5 mb-6 sm:grid-cols-2 lg:grid-cols-3">
+              {[...planMods].map(mod => (
+                <div
                   key={mod}
-                  onClick={() => toggleModule(mod)}
-                  className={`px-3 py-2.5 rounded-lg text-[12px] font-medium border transition-all cursor-pointer
-                    ${checked
-                      ? 'bg-indigo-600/20 border-indigo-500/60 text-indigo-300'
-                      : 'bg-zinc-800 border-zinc-700 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300'
-                    }`}
+                  className="flex items-center justify-between px-4 py-2.5 rounded-lg border border-indigo-500/20 bg-indigo-600/5"
                 >
-                  {mod}
-                </button>
-              )
-            })}
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[13px] font-medium text-indigo-300">
+                      {MODULE_LABELS[mod] ?? mod}
+                    </span>
+                    <span className="text-[10px] text-zinc-600 font-mono">{mod}</span>
+                  </div>
+                  <Check className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+                </div>
+              ))}
+            </div>
+
+            {/* Extra modules — toggleable */}
+            <div className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider mb-2">
+              Módulos extra ({extraEnabled.length} activos de {extraMods.length})
+            </div>
+            <div className="grid grid-cols-1 gap-1.5 mb-6 sm:grid-cols-2 lg:grid-cols-3">
+              {extraMods.map(mod => {
+                const enabled = selectedModules.includes(mod)
+                return (
+                  <button
+                    key={mod}
+                    onClick={() => toggleModule(mod)}
+                    className={`flex items-center justify-between px-4 py-2.5 rounded-lg border transition-all cursor-pointer text-left
+                      ${enabled
+                        ? 'bg-emerald-600/10 border-emerald-500/40 hover:border-emerald-400/60'
+                        : 'bg-zinc-900/60 border-zinc-700/60 hover:border-zinc-600'
+                      }`}
+                  >
+                    <div className="flex flex-col gap-0.5">
+                      <span className={`text-[13px] font-medium ${enabled ? 'text-emerald-300' : 'text-zinc-500'}`}>
+                        {MODULE_LABELS[mod] ?? mod}
+                      </span>
+                      <span className="text-[10px] text-zinc-600 font-mono">{mod}</span>
+                    </div>
+                    <div className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ml-3
+                      ${enabled ? 'bg-emerald-600' : 'bg-zinc-700'}`}
+                    >
+                      <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform
+                        ${enabled ? 'translate-x-4' : 'translate-x-0.5'}`}
+                      />
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+
+            <button
+              onClick={handleModulesSave}
+              disabled={saving}
+              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-[13px] font-semibold rounded-lg border-none cursor-pointer disabled:opacity-50 flex items-center gap-2"
+            >
+              {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              Guardar extras
+            </button>
           </div>
-          <button
-            onClick={handleModulesSave}
-            disabled={saving}
-            className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-[13px] font-semibold rounded-lg border-none cursor-pointer disabled:opacity-50 flex items-center gap-2"
-          >
-            {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-            Guardar módulos
-          </button>
-        </div>
-      )}
+        )
+      })()}
 
       {/* Tab: Límites */}
       {activeTab === 'limites' && (
