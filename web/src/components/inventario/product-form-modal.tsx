@@ -803,7 +803,7 @@ export function ProductFormModal({
               onValueChange={v => setForm(p => ({
                 ...p,
                 taxCode: v ?? p.taxCode,
-                taxRate: TAX_RATE_MAP[v] ?? p.taxRate,
+                taxRate: (v ? TAX_RATE_MAP[v] : undefined) ?? p.taxRate,
               }))}
             >
               <SelectTrigger size="sm" className="w-full">
