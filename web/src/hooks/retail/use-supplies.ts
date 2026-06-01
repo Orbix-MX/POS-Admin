@@ -1,35 +1,43 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import type { Supply } from '@/services/retail/supplies-service'
+import type { MeasurementUnit } from '@/services/retail/measurement-units-service'
 import {
   fetchSupplies, createSupply, updateSupply, deleteSupply, adjustSupplyStock,
 } from '@/services/retail/supplies-service'
+import { fetchMeasurementUnits } from '@/services/retail/measurement-units-service'
 
-const EMPTY_FORM: Omit<Supply, 'id' | 'createdAt' | 'updatedAt' | 'branch'> = {
+export type SupplyFormState = {
+  name: string
+  sku: string
+  unit: string
+  baseUnitId: string | null
+  inventoryUnitId: string | null
+  conversionFactor: number
+  stock: number
+  minStock: number
+  cost: number
+  status: 'ACTIVE' | 'INACTIVE'
+  branchId?: string
+}
+
+const EMPTY_FORM: SupplyFormState = {
   name: '',
   sku: '',
   unit: '',
+  baseUnitId: null,
+  inventoryUnitId: null,
+  conversionFactor: 1,
   stock: 0,
   minStock: 0,
   cost: 0,
   status: 'ACTIVE',
 }
 
-export const SUPPLY_UNITS = [
-  { value: 'kg', label: 'Kilogramo (kg)' },
-  { value: 'gr', label: 'Gramo (gr)' },
-  { value: 'lt', label: 'Litro (lt)' },
-  { value: 'ml', label: 'Mililitro (ml)' },
-  { value: 'pieza', label: 'Pieza' },
-  { value: 'porcion', label: 'Porción' },
-  { value: 'caja', label: 'Caja' },
-  { value: 'bolsa', label: 'Bolsa' },
-  { value: 'rollo', label: 'Rollo' },
-]
-
 const PER_PAGE = 8
 
 export function useSupplies() {
   const [supplies, setSupplies] = useState<Supply[]>([])
+  const [measurementUnits, setMeasurementUnits] = useState<MeasurementUnit[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -37,7 +45,7 @@ export function useSupplies() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState<typeof EMPTY_FORM>({ ...EMPTY_FORM })
+  const [form, setForm] = useState<SupplyFormState>({ ...EMPTY_FORM })
 
   const [adjustModalOpen, setAdjustModalOpen] = useState(false)
   const [adjustingId, setAdjustingId] = useState<string | null>(null)
@@ -48,8 +56,9 @@ export function useSupplies() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetchSupplies()
+      const [res, units] = await Promise.all([fetchSupplies(), fetchMeasurementUnits()])
       setSupplies(res.data || [])
+      setMeasurementUnits(units)
     } catch {
       setError('Error al cargar insumos')
     } finally {
@@ -92,12 +101,16 @@ export function useSupplies() {
     const s = supplies.find((x) => x.id === id)
     if (!s) return
     setEditingId(id)
+    const convFactor = Number(s.conversionFactor ?? 1) || 1
     setForm({
       name: s.name,
       sku: s.sku,
       unit: s.unit,
-      stock: Number(s.stock),
-      minStock: Number(s.minStock),
+      baseUnitId: s.baseUnitId ?? null,
+      inventoryUnitId: s.inventoryUnitId ?? null,
+      conversionFactor: convFactor,
+      stock: Number(s.stock) / convFactor,
+      minStock: Number(s.minStock) / convFactor,
       cost: Number(s.cost),
       status: s.status,
       branchId: s.branchId,
@@ -113,10 +126,17 @@ export function useSupplies() {
 
   const handleSave = useCallback(async () => {
     try {
+      const convFactor = form.conversionFactor || 1
+      const basePayload = {
+        ...form,
+        stock: form.stock * convFactor,
+        minStock: form.minStock * convFactor,
+      }
       if (editingId) {
-        await updateSupply(editingId, form)
+        const { sku: _sku, ...updatePayload } = basePayload
+        await updateSupply(editingId, updatePayload)
       } else {
-        await createSupply(form)
+        await createSupply(basePayload as any)
       }
       handleCloseModal()
       await loadSupplies()
@@ -144,19 +164,23 @@ export function useSupplies() {
 
   const handleAdjust = useCallback(async () => {
     if (!adjustingId || adjustQty === 0) return
+    const adjustingSupply = supplies.find((s) => s.id === adjustingId)
+    // Send the inventoryUnit symbol so the backend converts to baseUnit automatically
+    const unit = adjustingSupply?.inventoryUnit?.symbol ?? adjustingSupply?.unit
     try {
-      await adjustSupplyStock(adjustingId, adjustQty, adjustNotes || undefined)
+      await adjustSupplyStock(adjustingId, adjustQty, adjustNotes || undefined, unit)
       setAdjustModalOpen(false)
       setAdjustingId(null)
       await loadSupplies()
     } catch (e: any) {
       setError(e?.response?.data?.message ?? 'Error al ajustar stock')
     }
-  }, [adjustingId, adjustQty, adjustNotes, loadSupplies])
+  }, [adjustingId, adjustQty, adjustNotes, supplies, loadSupplies])
 
   return {
     supplies, loading, error, search, setSearch, page, setPage,
     filtered, pageData, stats, perPage: PER_PAGE,
+    measurementUnits,
     modalOpen, editingId, form, setForm,
     handleOpenNew, handleEdit, handleCloseModal, handleSave, handleDelete,
     adjustModalOpen, setAdjustModalOpen, adjustingId, adjustQty, setAdjustQty,

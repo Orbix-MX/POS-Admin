@@ -1,8 +1,8 @@
 import { useMemo } from 'react'
 import { DataTable, Pagination, type Column } from '@/components/shared/data-table'
 import { FormModal, FormField } from '@/components/shared/form-modal'
-import { Search, Plus, Pencil, Trash2, Loader2, Package, AlertTriangle, TrendingDown, ArrowUpDown } from 'lucide-react'
-import { useSupplies, SUPPLY_UNITS } from '@/hooks/retail/use-supplies'
+import { Search, Plus, Pencil, Trash2, Loader2, Package, AlertTriangle, TrendingDown, ArrowUpDown, ArrowRight } from 'lucide-react'
+import { useSupplies } from '@/hooks/retail/use-supplies'
 import type { Supply } from '@/services/retail/supplies-service'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
@@ -18,16 +18,66 @@ function StockBadge({ stock, minStock }: { stock: number; minStock: number }) {
   )
 }
 
+/** Display stock in inventory unit (stock stored in base unit) */
+function StockDisplay({ supply }: { supply: Supply }) {
+  const convFactor = Number(supply.conversionFactor ?? 1) || 1
+  const invSymbol = supply.inventoryUnit?.symbol ?? supply.unit
+  const baseSymbol = supply.baseUnit?.symbol ?? supply.unit
+  const rawStock = Number(supply.stock)
+
+  if (supply.inventoryUnitId && convFactor !== 1) {
+    const inventoryQty = rawStock / convFactor
+    return (
+      <div>
+        <StockBadge stock={inventoryQty} minStock={Number(supply.minStock) / convFactor} />
+        <div className="text-[10px] text-muted-foreground mt-0.5">
+          {invSymbol} ({rawStock.toLocaleString('es-MX', { maximumFractionDigits: 0 })} {baseSymbol})
+        </div>
+      </div>
+    )
+  }
+  return <StockBadge stock={rawStock} minStock={Number(supply.minStock)} />
+}
+
 export function Insumos() {
   const {
     loading, error, search, setSearch, page, setPage,
     filtered, pageData, stats, perPage,
+    measurementUnits,
     modalOpen, editingId, form, setForm,
     handleOpenNew, handleEdit, handleCloseModal, handleSave, handleDelete,
     adjustModalOpen, setAdjustModalOpen, adjustingId, adjustQty, setAdjustQty,
     adjustNotes, setAdjustNotes, handleOpenAdjust, handleAdjust,
     supplies, loadSupplies,
   } = useSupplies()
+
+  // Derived form state
+  const inventoryUnit = useMemo(
+    () => measurementUnits.find((u) => u.id === form.inventoryUnitId) ?? null,
+    [measurementUnits, form.inventoryUnitId],
+  )
+  const baseUnitObj = useMemo(
+    () => measurementUnits.find((u) => u.id === form.baseUnitId) ?? null,
+    [measurementUnits, form.baseUnitId],
+  )
+
+  // Units compatible with currently selected inventory unit (same category)
+  const compatibleBaseUnits = useMemo(() => {
+    if (!inventoryUnit) return measurementUnits
+    return measurementUnits.filter(
+      (u) => u.category === inventoryUnit.category && u.id !== form.inventoryUnitId,
+    )
+  }, [measurementUnits, inventoryUnit, form.inventoryUnitId])
+
+  // Auto-compute conversionFactor when both units selected and same WEIGHT/VOLUME category
+  const autoConversionFactor = useMemo(() => {
+    if (!inventoryUnit || !baseUnitObj) return null
+    if (inventoryUnit.category === 'COUNT') return null
+    const inv = Number(inventoryUnit.baseFactor)
+    const base = Number(baseUnitObj.baseFactor)
+    if (base === 0) return null
+    return inv / base
+  }, [inventoryUnit, baseUnitObj])
 
   const adjustingSupply = supplies.find((s) => s.id === adjustingId)
 
@@ -38,20 +88,47 @@ export function Insumos() {
     },
     {
       label: 'Insumo',
-      render: (r) => (
-        <div>
-          <div className="font-semibold text-[13px]">{r.name}</div>
-          <div className="text-[11px] text-muted-foreground">{r.unit}</div>
-        </div>
-      ),
+      render: (r) => {
+        const invSymbol = r.inventoryUnit?.symbol ?? r.unit
+        const baseSymbol = r.baseUnit?.symbol ?? r.unit
+        const hasTwoUnits = r.inventoryUnitId && r.baseUnitId && invSymbol !== baseSymbol
+        return (
+          <div>
+            <div className="font-semibold text-[13px]">{r.name}</div>
+            <div className="text-[11px] text-muted-foreground flex items-center gap-1">
+              {hasTwoUnits ? (
+                <>
+                  <span>{invSymbol}</span>
+                  <ArrowRight className="w-2.5 h-2.5" />
+                  <span>{baseSymbol}</span>
+                  <span className="text-[10px] opacity-60">(×{Number(r.conversionFactor ?? 1)})</span>
+                </>
+              ) : (
+                <span>{invSymbol}</span>
+              )}
+            </div>
+          </div>
+        )
+      },
     },
     {
       label: 'Stock',
-      render: (r) => <StockBadge stock={Number(r.stock)} minStock={Number(r.minStock)} />,
+      render: (r) => <StockDisplay supply={r} />,
     },
     {
       label: 'Mín.',
-      render: (r) => <span className="text-[12px] text-muted-foreground">{Number(r.minStock).toLocaleString('es-MX', { maximumFractionDigits: 3 })} {r.unit}</span>,
+      render: (r) => {
+        const convFactor = Number(r.conversionFactor ?? 1) || 1
+        const invSymbol = r.inventoryUnit?.symbol ?? r.unit
+        const minQty = r.inventoryUnitId && convFactor !== 1
+          ? Number(r.minStock) / convFactor
+          : Number(r.minStock)
+        return (
+          <span className="text-[12px] text-muted-foreground">
+            {minQty.toLocaleString('es-MX', { maximumFractionDigits: 3 })} {invSymbol}
+          </span>
+        )
+      },
     },
     {
       label: 'Costo',
@@ -199,50 +276,162 @@ export function Insumos() {
         title={editingId ? 'Editar Insumo' : 'Nuevo Insumo'}
       >
         <div className="grid grid-cols-2 gap-x-4">
+          {/* Nombre */}
           <div className="col-span-2">
             <FormField label="Nombre" value={form.name} onChange={(v) => setForm((p) => ({ ...p, name: v }))} />
           </div>
+
+          {/* SKU solo en creación */}
           {!editingId && (
             <FormField label="SKU" value={form.sku} onChange={(v) => setForm((p) => ({ ...p, sku: v }))} />
           )}
+
+          {/* ── Unidades ── */}
+          {/* Paso 1: Unidad inventario (display operativa) */}
           <div className="mb-3.5">
-            <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Unidad de medida</label>
-            <Select value={form.unit} onValueChange={(v) => setForm((p) => ({ ...p, unit: v ?? p.unit }))}>
+            <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+              Unidad inventario
+              <span className="font-normal ml-1 text-[10px]">(KG, LT, Caja…)</span>
+            </label>
+            <Select
+              value={form.inventoryUnitId ?? ''}
+              onValueChange={(v) => {
+                const mu = measurementUnits.find((u) => u.id === v)
+                // Reset base unit and factor when changing inventory unit
+                setForm((p) => ({
+                  ...p,
+                  inventoryUnitId: v || null,
+                  unit: mu ? mu.symbol : p.unit,
+                  baseUnitId: null,
+                  conversionFactor: 1,
+                }))
+              }}
+            >
               <SelectTrigger size="sm" className="w-full">
-                <SelectValue placeholder="Selecciona unidad" />
+                <SelectValue placeholder="Seleccionar…">
+                  {inventoryUnit ? `${inventoryUnit.name} (${inventoryUnit.symbol})` : null}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {SUPPLY_UNITS.map((u) => (
-                  <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
+                {(['WEIGHT', 'VOLUME', 'COUNT'] as const).map((cat) => {
+                  const catUnits = measurementUnits.filter((u) => u.category === cat)
+                  if (!catUnits.length) return null
+                  return catUnits.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.name} ({u.symbol})
+                    </SelectItem>
+                  ))
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Paso 2: Unidad mínima/base (almacenamiento interno) */}
+          <div className="mb-3.5">
+            <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+              Unidad mínima / base
+              <span className="font-normal ml-1 text-[10px]">(GR, ML, Pieza…)</span>
+            </label>
+            <Select
+              value={form.baseUnitId ?? ''}
+              onValueChange={(v) => {
+                const mu = measurementUnits.find((u) => u.id === v)
+                // Auto-compute factor for WEIGHT/VOLUME
+                let factor = form.conversionFactor
+                if (mu && inventoryUnit && inventoryUnit.category !== 'COUNT') {
+                  const inv = Number(inventoryUnit.baseFactor)
+                  const base = Number(mu.baseFactor)
+                  if (base > 0) factor = inv / base
+                }
+                setForm((p) => ({
+                  ...p,
+                  baseUnitId: v || null,
+                  conversionFactor: factor,
+                }))
+              }}
+            >
+              <SelectTrigger size="sm" className="w-full">
+                <SelectValue placeholder="Seleccionar…">
+                  {baseUnitObj ? `${baseUnitObj.name} (${baseUnitObj.symbol})` : null}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {compatibleBaseUnits.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.name} ({u.symbol})
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-          {editingId && (
+
+          {/* Paso 3: Equivalencia / factor de conversión */}
+          {form.inventoryUnitId && form.baseUnitId && (
+            <div className="col-span-2 mb-3.5 p-3 bg-muted/30 rounded-lg border border-border">
+              <label className="block text-xs font-semibold text-muted-foreground mb-2">
+                Equivalencia
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-[13px] font-medium text-foreground">1 {inventoryUnit?.symbol}</span>
+                <span className="text-muted-foreground">=</span>
+                {autoConversionFactor !== null ? (
+                  // WEIGHT/VOLUME: auto-computed, show read-only
+                  <>
+                    <span className="text-[13px] font-semibold text-primary">{autoConversionFactor}</span>
+                    <span className="text-[13px] text-foreground">{baseUnitObj?.symbol}</span>
+                    <span className="text-[11px] text-muted-foreground ml-1">(automático)</span>
+                  </>
+                ) : (
+                  // COUNT: user defines factor
+                  <>
+                    <input
+                      type="number"
+                      min="0.000001"
+                      step="1"
+                      value={form.conversionFactor}
+                      onChange={(e) => setForm((p) => ({ ...p, conversionFactor: Number(e.target.value) || 1 }))}
+                      className="w-24 px-2 py-1 border border-border rounded text-[13px] bg-card outline-none focus:border-primary text-center font-semibold"
+                    />
+                    <span className="text-[13px] text-foreground">{baseUnitObj?.symbol}</span>
+                  </>
+                )}
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1.5">
+                Stock se almacena en <strong>{baseUnitObj?.symbol}</strong>.
+                {autoConversionFactor !== null
+                  ? ` Al ingresar ${inventoryUnit?.symbol}, el sistema convierte automáticamente.`
+                  : ' Define cuántas unidades mínimas equivale 1 unidad inventario (ej: 1 Caja = 24 Piezas).'}
+              </p>
+            </div>
+          )}
+
+          {/* Stock */}
+          {editingId ? (
             <FormField
-              label="Stock actual"
+              label={`Stock actual (${(inventoryUnit?.symbol ?? form.unit) || 'unidades'})`}
+              type="number"
+              value={Number(form.stock).toString()}
+              onChange={(v) => setForm((p) => ({ ...p, stock: Number(v) || 0 }))}
+            />
+          ) : (
+            <FormField
+              label={`Stock inicial (${(inventoryUnit?.symbol ?? form.unit) || 'unidades'})`}
               type="number"
               value={Number(form.stock).toString()}
               onChange={(v) => setForm((p) => ({ ...p, stock: Number(v) || 0 }))}
             />
           )}
-          {!editingId && (
-            <FormField
-              label="Stock inicial"
-              type="number"
-              value={Number(form.stock).toString()}
-              onChange={(v) => setForm((p) => ({ ...p, stock: Number(v) || 0 }))}
-            />
-          )}
+
           <FormField
-            label="Stock mínimo"
+            label={`Stock mínimo (${(inventoryUnit?.symbol ?? form.unit) || 'unidades'})`}
             type="number"
             value={Number(form.minStock).toString()}
             onChange={(v) => setForm((p) => ({ ...p, minStock: Number(v) || 0 }))}
           />
           <FormField
-            label="Costo unitario"
+            label={`Costo por ${inventoryUnit?.symbol || 'unidad'}`}
             type="number"
+            step={0.01}
             value={Number(form.cost).toString()}
             onChange={(v) => setForm((p) => ({ ...p, cost: Number(v) || 0 }))}
           />
@@ -258,6 +447,7 @@ export function Insumos() {
             </select>
           </div>
         </div>
+
         <div className="flex gap-2.5 justify-end pt-2">
           <button
             type="button"
@@ -281,16 +471,29 @@ export function Insumos() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-sm p-6">
             <h2 className="text-base font-bold mb-1">Ajustar Stock</h2>
-            {adjustingSupply && (
-              <p className="text-sm text-muted-foreground mb-4">
-                {adjustingSupply.name} — Stock actual:{' '}
-                <strong>{Number(adjustingSupply.stock).toLocaleString('es-MX', { maximumFractionDigits: 3 })} {adjustingSupply.unit}</strong>
-              </p>
-            )}
+            {adjustingSupply && (() => {
+              const convFactor = Number(adjustingSupply.conversionFactor ?? 1) || 1
+              const invSymbol = adjustingSupply.inventoryUnit?.symbol ?? adjustingSupply.unit
+              const baseSymbol = adjustingSupply.baseUnit?.symbol ?? adjustingSupply.unit
+              const rawStock = Number(adjustingSupply.stock)
+              const displayStock = adjustingSupply.inventoryUnitId && convFactor !== 1
+                ? `${(rawStock / convFactor).toLocaleString('es-MX', { maximumFractionDigits: 3 })} ${invSymbol}  (${rawStock.toLocaleString('es-MX', { maximumFractionDigits: 3 })} ${baseSymbol})`
+                : `${rawStock.toLocaleString('es-MX', { maximumFractionDigits: 3 })} ${invSymbol}`
+              return (
+                <p className="text-sm text-muted-foreground mb-4">
+                  {adjustingSupply.name} — Stock actual: <strong>{displayStock}</strong>
+                </p>
+              )
+            })()}
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
                   Cantidad (+ agregar / - restar)
+                  {adjustingSupply?.inventoryUnit && (
+                    <span className="font-normal ml-1 text-[11px]">
+                      en {adjustingSupply.inventoryUnit.symbol}
+                    </span>
+                  )}
                 </label>
                 <input
                   type="number"
@@ -299,6 +502,11 @@ export function Insumos() {
                   onChange={(e) => setAdjustQty(Number(e.target.value))}
                   className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] bg-card outline-none focus:border-primary"
                 />
+                {adjustingSupply?.inventoryUnitId && Number(adjustingSupply.conversionFactor ?? 1) !== 1 && adjustQty !== 0 && (
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    = {(adjustQty * (Number(adjustingSupply.conversionFactor) || 1)).toLocaleString('es-MX', { maximumFractionDigits: 3 })} {adjustingSupply.baseUnit?.symbol ?? adjustingSupply.unit} internamente
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Notas (opcional)</label>

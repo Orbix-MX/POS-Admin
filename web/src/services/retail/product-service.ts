@@ -21,7 +21,20 @@ export interface RecipeItem {
   supplyId: string
   quantity: number
   unit: string
-  supply?: { id: string; name: string; unit: string; stock: number }
+  unitId?: string | null
+  normalizedQuantity?: number | null
+  supply?: {
+    id: string
+    name: string
+    unit: string
+    stock: number
+    cost: number
+    conversionFactor?: number
+    inventoryUnitId?: string | null
+    baseUnitId?: string | null
+    inventoryUnit?: { id: string; symbol: string; name: string } | null
+    baseUnit?: { id: string; symbol: string; name: string } | null
+  }
 }
 
 export interface ComboItem {
@@ -83,6 +96,7 @@ export async function createProduct(data: Product): Promise<Product> {
       supplyId: i.supplyId,
       quantity: i.quantity,
       unit: i.unit,
+      unitId: i.unitId ?? undefined,
     })),
     comboItems: data.comboItems?.map((ci) => ({
       childProductId: ci.childProductId,
@@ -114,6 +128,7 @@ export async function updateProduct(id: string, data: Product): Promise<Product>
       supplyId: i.supplyId,
       quantity: i.quantity,
       unit: i.unit,
+      unitId: i.unitId ?? undefined,
     })),
     comboItems: data.comboItems?.map((ci) => ({
       childProductId: ci.childProductId,

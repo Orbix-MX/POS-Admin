@@ -25,9 +25,13 @@ export const STATUS_OPTIONS = [
 ]
 
 export const TAX_CODES = [
-  { value: "EXCENTO", label: "IVA 0%" },
-  { value: "IVA_16", label: "IVA 16%" },
+  { value: "EXCENTO", label: "IVA 0%", rate: 0 },
+  { value: "IVA_16", label: "IVA 16%", rate: 16 },
 ]
+
+export const TAX_RATE_MAP: Record<string, number> = Object.fromEntries(
+  TAX_CODES.map((t) => [t.value, t.rate]),
+)
 
 export const PRODUCT_TYPE_OPTIONS = [
   { value: 'SIMPLE', label: 'Producto Simple' },

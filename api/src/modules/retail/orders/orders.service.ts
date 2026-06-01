@@ -17,6 +17,7 @@ import {
   calculateTax,
   convertMoney,
 } from '../../../common/utils/money.util';
+import { safeConvertUnits } from '../../../common/helpers/unit-conversion';
 
 @Injectable()
 export class OrdersService {
@@ -59,7 +60,13 @@ export class OrdersService {
           where: { id: { in: productIds } },
           include: {
             category: true,
-            recipe: { include: { items: { include: { supply: true } } } },
+            recipe: {
+              include: {
+                items: {
+                  include: { supply: { include: { baseUnit: true, inventoryUnit: true } } },
+                },
+              },
+            },
           },
         })
       : [];
@@ -80,11 +87,16 @@ export class OrdersService {
         );
       }
       for (const ri of recipe.items) {
-        const needed = Number(ri.quantity) * item.quantity;
-        if (Number(ri.supply.stock) < needed) {
+        // neededInStockUnit = quantity in the same unit as supply.stock (baseUnit when configured)
+        const stockUnit = (ri.supply as any).baseUnit?.symbol ?? ri.supply.unit;
+        const neededInStockUnit = ri.normalizedQuantity != null
+          ? Number(ri.normalizedQuantity) * item.quantity
+          : safeConvertUnits(Number(ri.quantity) * item.quantity, ri.unit, stockUnit);
+        if (Number(ri.supply.stock) < neededInStockUnit) {
+          const displayUnit = (ri.supply as any).inventoryUnit?.symbol ?? ri.supply.unit;
           throw new BadRequestException(
             `Stock insuficiente del insumo "${ri.supply.name}". ` +
-            `Disponible: ${ri.supply.stock} ${ri.supply.unit}, necesario: ${needed} ${ri.unit}`,
+            `Disponible: ${ri.supply.stock} ${stockUnit}, necesario: ${neededInStockUnit.toFixed(3)} ${stockUnit}`,
           );
         }
       }
@@ -298,7 +310,10 @@ export class OrdersService {
           const recipe = (product as any).recipe;
           if (recipe?.items?.length) {
             for (const ri of recipe.items) {
-              const needed = Number(ri.quantity) * item.quantity;
+              const stockUnit = (ri.supply as any).baseUnit?.symbol ?? ri.supply.unit;
+              const needed = ri.normalizedQuantity != null
+                ? Number(ri.normalizedQuantity) * item.quantity
+                : safeConvertUnits(Number(ri.quantity) * item.quantity, ri.unit, stockUnit);
               const res = await tx.supply.updateMany({
                 where: { id: ri.supplyId, stock: { gte: needed } },
                 data: { stock: { decrement: needed } },
@@ -308,6 +323,9 @@ export class OrdersService {
                   `Stock insuficiente del insumo "${ri.supply.name}" al procesar venta`,
                 );
               }
+              const convNote = ri.normalizedQuantity != null && ri.unit !== stockUnit
+                ? `Consumo receta: ${product.name} (${Number(ri.quantity)} ${ri.unit} → ${needed.toFixed(3)} ${stockUnit})`
+                : `Consumo receta: ${product.name}`;
               await tx.supplyMovement.create({
                 data: {
                   tenantId,
@@ -315,7 +333,7 @@ export class OrdersService {
                   type: 'RECIPE_CONSUMPTION',
                   quantity: needed,
                   referenceId: newOrder.id,
-                  notes: `Consumo receta: ${product.name}`,
+                  notes: convNote,
                   ...(branchId && { branchId }),
                   ...(createdById && { createdById }),
                 },

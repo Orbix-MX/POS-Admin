@@ -17,6 +17,12 @@ export class RecipeItemDto {
   @ApiProperty()
   @IsString()
   unit: string;
+
+  @ApiPropertyOptional({ description: 'MeasurementUnit id — enables auto normalizedQuantity' })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  unitId?: string;
 }
 
 export class ComboItemDto {

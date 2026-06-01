@@ -1,11 +1,26 @@
 import type { ListResponse } from '@/interfaces/list-response'
 import { api } from '@/lib/api-client'
+import type { MeasurementUnit } from './measurement-units-service'
+
+export interface SupplyAllowedUnit {
+  id: string
+  unitId: string
+  conversionFactor: number
+  unit: MeasurementUnit
+}
 
 export interface Supply {
   id?: string
   name: string
   sku: string
   unit: string
+  purchaseUnit?: string | null
+  baseUnitId?: string | null
+  baseUnit?: MeasurementUnit | null
+  inventoryUnitId?: string | null
+  inventoryUnit?: MeasurementUnit | null
+  conversionFactor?: number
+  allowedUnits?: SupplyAllowedUnit[]
   stock: number
   minStock: number
   cost: number
@@ -46,8 +61,13 @@ export async function deleteSupply(id: string): Promise<void> {
   await api.delete(`supplies/${id}`)
 }
 
-export async function adjustSupplyStock(id: string, quantity: number, notes?: string): Promise<Supply> {
-  const { data } = await api.patch<Supply>(`supplies/${id}/stock`, { quantity, notes })
+export async function adjustSupplyStock(
+  id: string,
+  quantity: number,
+  notes?: string,
+  unit?: string,
+): Promise<Supply> {
+  const { data } = await api.patch<Supply>(`supplies/${id}/stock`, { quantity, notes, unit })
   return data
 }
 

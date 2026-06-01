@@ -8,6 +8,11 @@ export class AdjustStockDto {
   @IsNumber()
   quantity: number;
 
+  @ApiPropertyOptional({ description: 'Unit of the quantity. If different from supply inventoryUnit, auto-converts.' })
+  @IsOptional()
+  @IsString()
+  unit?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

@@ -618,6 +618,43 @@ model ProductImage {
   @@map("product_images")
 }
 
+// ============= Measurement Units =============
+enum UnitCategory {
+  WEIGHT
+  VOLUME
+  COUNT
+}
+
+model MeasurementUnit {
+  id         String       @id @default(uuid())
+  name       String
+  symbol     String       @unique
+  category   UnitCategory
+  baseFactor Decimal      @default(1) @db.Decimal(15, 6)
+  isBase     Boolean      @default(false)
+  isSystem   Boolean      @default(true)
+
+  baseSupplies      Supply[]           @relation("SupplyBaseUnit")
+  inventorySupplies Supply[]           @relation("SupplyInventoryUnit")
+  allowedInSupplies SupplyAllowedUnit[]
+  recipeItems       RecipeItem[]
+
+  @@map("measurement_units")
+}
+
+model SupplyAllowedUnit {
+  id               String  @id @default(uuid())
+  supplyId         String
+  unitId           String
+  conversionFactor Decimal @default(1) @db.Decimal(15, 6)
+
+  supply Supply          @relation(fields: [supplyId], references: [id], onDelete: Cascade)
+  unit   MeasurementUnit @relation(fields: [unitId], references: [id], onDelete: Restrict)
+
+  @@unique([supplyId, unitId])
+  @@map("supply_allowed_units")
+}
+
 // ============= Supplies (Insumos/Ingredientes) =============
 enum SupplyStatus {
   ACTIVE
@@ -631,28 +668,35 @@ enum SupplyMovementType {
 }
 
 model Supply {
-  id        String       @id @default(uuid())
-  tenantId  String
-  name      String
-  sku       String
-  unit      String
-  stock     Decimal      @default(0) @db.Decimal(10, 3)
-  minStock  Decimal      @default(0) @db.Decimal(10, 3)
-  cost      Decimal      @default(0) @db.Decimal(10, 2)
-  branchId  String?
-  status    SupplyStatus @default(ACTIVE)
+  id               String       @id @default(uuid())
+  tenantId         String
+  name             String
+  sku              String
+  unit             String
+  purchaseUnit     String?      @map("purchase_unit")
+  stock            Decimal      @default(0) @db.Decimal(15, 6)
+  minStock         Decimal      @default(0) @db.Decimal(15, 6)
+  cost             Decimal      @default(0) @db.Decimal(10, 2)
+  baseUnitId       String?
+  inventoryUnitId  String?
+  conversionFactor Decimal      @default(1) @db.Decimal(15, 6)
+  branchId         String?
+  status           SupplyStatus @default(ACTIVE)
 
   createdById String?
   updatedById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branch      Branch?          @relation("BranchSupplies", fields: [branchId], references: [id], onDelete: SetNull)
-  recipeItems RecipeItem[]
-  movements   SupplyMovement[]
-  createdBy   User?            @relation("SupplyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  updatedBy   User?            @relation("SupplyUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  baseUnit      MeasurementUnit?   @relation("SupplyBaseUnit", fields: [baseUnitId], references: [id], onDelete: SetNull)
+  inventoryUnit MeasurementUnit?   @relation("SupplyInventoryUnit", fields: [inventoryUnitId], references: [id], onDelete: SetNull)
+  allowedUnits  SupplyAllowedUnit[]
+  tenant        Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch        Branch?            @relation("BranchSupplies", fields: [branchId], references: [id], onDelete: SetNull)
+  recipeItems   RecipeItem[]
+  movements     SupplyMovement[]
+  createdBy     User?              @relation("SupplyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy     User?              @relation("SupplyUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, sku])
   @@map("supplies")
@@ -693,14 +737,17 @@ model Recipe {
 }
 
 model RecipeItem {
-  id       String  @id @default(uuid())
-  recipeId String
-  supplyId String
-  quantity Decimal @db.Decimal(10, 3)
-  unit     String
+  id                 String   @id @default(uuid())
+  recipeId           String
+  supplyId           String
+  quantity           Decimal  @db.Decimal(10, 3)
+  unit               String
+  unitId             String?
+  normalizedQuantity Decimal? @db.Decimal(15, 6)
 
-  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
-  supply Supply @relation(fields: [supplyId], references: [id])
+  recipe          Recipe           @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  supply          Supply           @relation(fields: [supplyId], references: [id])
+  measurementUnit MeasurementUnit? @relation(fields: [unitId], references: [id], onDelete: SetNull)
 
   @@map("recipe_items")
 }

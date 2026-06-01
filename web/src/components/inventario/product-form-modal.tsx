@@ -1,7 +1,7 @@
-import { useRef, useState, useEffect, type Dispatch, type SetStateAction } from 'react'
+import { useRef, useState, useEffect, useMemo, type Dispatch, type SetStateAction } from 'react'
 import { FormModal, FormField } from '@/components/shared/form-modal'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { STATUS_OPTIONS, TAX_CODES, PRODUCT_TYPE_OPTIONS } from '@/hooks/retail/use-products'
+import { STATUS_OPTIONS, TAX_CODES, TAX_RATE_MAP, PRODUCT_TYPE_OPTIONS } from '@/hooks/retail/use-products'
 import type { Product, RecipeItem, ComboItem } from '@/services/retail/product-service'
 import type { Category } from '@/services/retail/categories-service'
 import { uploadProductImage, deleteProductImage } from '@/services/retail/product-service'
@@ -95,35 +95,79 @@ function IconSpinner() {
 function RecipeEditor({
   items,
   onChange,
+  onCostChange,
 }: {
   items: RecipeItem[]
   onChange: (items: RecipeItem[]) => void
+  onCostChange?: (cost: number) => void
 }) {
   const [supplies, setSupplies] = useState<Supply[]>([])
 
   useEffect(() => {
-    fetchSupplies().then((r) => setSupplies(r.data || [])).catch(() => {})
+    fetchSupplies()
+      .then((r) => setSupplies((r.data || []).filter((s) => s.status === 'ACTIVE')))
+      .catch(() => {})
   }, [])
 
-  const addItem = () => {
-    onChange([...items, { supplyId: '', quantity: 1, unit: '' }])
-  }
+  const addItem = () =>
+    onChange([...items, { supplyId: '', quantity: 1, unit: '', unitId: null }])
 
-  const removeItem = (idx: number) => {
+  const removeItem = (idx: number) =>
     onChange(items.filter((_, i) => i !== idx))
-  }
 
   const updateItem = (idx: number, patch: Partial<RecipeItem>) => {
-    onChange(items.map((item, i) => {
-      if (i !== idx) return item
-      const updated = { ...item, ...patch }
-      if (patch.supplyId) {
-        const supply = supplies.find((s) => s.id === patch.supplyId)
-        if (supply) updated.unit = supply.unit
-      }
-      return updated
-    }))
+    onChange(
+      items.map((item, i) => {
+        if (i !== idx) return item
+        const updated = { ...item, ...patch }
+
+        // When supply changes, reset unit to inventoryUnit
+        if ('supplyId' in patch) {
+          const s = supplies.find((x) => x.id === patch.supplyId)
+          if (s) {
+            updated.unitId = s.inventoryUnitId ?? null
+            updated.unit = s.inventoryUnit?.symbol ?? s.unit
+          } else {
+            updated.unitId = null
+            updated.unit = ''
+          }
+        }
+
+        // Recompute normalizedQuantity
+        const s = supplies.find((x) => x.id === updated.supplyId)
+        if (s && updated.unitId) {
+          const cf = Number(s.conversionFactor ?? 1) || 1
+          if (updated.unitId === s.inventoryUnitId) {
+            updated.normalizedQuantity = updated.quantity * cf
+          } else if (updated.unitId === s.baseUnitId) {
+            updated.normalizedQuantity = updated.quantity
+          }
+        }
+
+        return updated
+      }),
+    )
   }
+
+  const totalCost = useMemo(() => {
+    return items.reduce((sum, item) => {
+      const s = supplies.find((x) => x.id === item.supplyId)
+      if (!s || !item.quantity) return sum
+      const cost = Number(s.cost) || 0
+      const cf = Number(s.conversionFactor ?? 1) || 1
+      if (!s.inventoryUnitId || !item.unitId || item.unitId === s.inventoryUnitId) {
+        return sum + item.quantity * cost
+      }
+      if (item.unitId === s.baseUnitId) {
+        return sum + (item.quantity / cf) * cost
+      }
+      return sum + item.quantity * cost
+    }, 0)
+  }, [items, supplies])
+
+  useEffect(() => {
+    onCostChange?.(totalCost)
+  }, [totalCost, onCostChange])
 
   return (
     <div className="col-span-2 mb-3.5">
@@ -137,51 +181,164 @@ function RecipeEditor({
           <Plus className="w-3 h-3" /> Agregar
         </button>
       </div>
-      {items.length === 0 && (
-        <p className="text-xs text-muted-foreground text-center py-3 border border-dashed border-border rounded-lg">
+
+      {items.length === 0 ? (
+        <p className="text-xs text-muted-foreground text-center py-4 border border-dashed border-border rounded-lg">
           Sin ingredientes. Agrega al menos uno.
         </p>
+      ) : (
+        <>
+          {/* Column headers */}
+          <div className="grid grid-cols-[1fr_7.5rem_5.5rem_5rem_1.75rem] gap-1.5 px-1 mb-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Insumo</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Unidad</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Cantidad</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground text-right">Subtotal</span>
+            <span />
+          </div>
+
+          <div className="space-y-1.5">
+            {items.map((item, idx) => {
+              const s = supplies.find((x) => x.id === item.supplyId)
+              const cf = Number(s?.conversionFactor ?? 1) || 1
+              const hasTwoUnits =
+                s?.inventoryUnitId && s?.baseUnitId && s.inventoryUnitId !== s.baseUnitId
+
+              // Unit options: only units valid for this supply
+              const unitOptions = s
+                ? ([
+                    s.inventoryUnitId
+                      ? {
+                          id: s.inventoryUnitId,
+                          symbol: s.inventoryUnit?.symbol ?? s.unit,
+                          label: s.inventoryUnit
+                            ? `${s.inventoryUnit.name} (${s.inventoryUnit.symbol})`
+                            : s.unit,
+                        }
+                      : null,
+                    s.baseUnitId && s.baseUnitId !== s.inventoryUnitId
+                      ? {
+                          id: s.baseUnitId,
+                          symbol: s.baseUnit?.symbol ?? '',
+                          label: s.baseUnit
+                            ? `${s.baseUnit.name} (${s.baseUnit.symbol})`
+                            : '',
+                        }
+                      : null,
+                  ] as const).filter((x): x is NonNullable<typeof x> => x !== null)
+                : []
+
+              // Conversion preview
+              let conversionText = ''
+              if (hasTwoUnits && item.quantity > 0 && item.unitId && s) {
+                const invSym = s.inventoryUnit?.symbol ?? s.unit
+                const baseSym = s.baseUnit?.symbol ?? s.unit
+                if (item.unitId === s.inventoryUnitId) {
+                  const bq = item.quantity * cf
+                  conversionText = `= ${bq.toLocaleString('es-MX', { maximumFractionDigits: 3 })} ${baseSym}`
+                } else if (item.unitId === s.baseUnitId) {
+                  const iq = item.quantity / cf
+                  conversionText = `= ${iq.toLocaleString('es-MX', { maximumFractionDigits: 3 })} ${invSym}`
+                }
+              }
+
+              // Per-ingredient cost subtotal
+              const cost = Number(s?.cost) || 0
+              let subtotal = 0
+              if (s && item.quantity > 0) {
+                if (!s.inventoryUnitId || !item.unitId || item.unitId === s.inventoryUnitId) {
+                  subtotal = item.quantity * cost
+                } else if (item.unitId === s.baseUnitId) {
+                  subtotal = (item.quantity / cf) * cost
+                } else {
+                  subtotal = item.quantity * cost
+                }
+              }
+
+              return (
+                <div key={idx} className="rounded-lg border border-border bg-card/50 p-2 space-y-1">
+                  <div className="grid grid-cols-[1fr_7.5rem_5.5rem_5rem_1.75rem] gap-1.5 items-center">
+                    {/* Supply */}
+                    <select
+                      value={item.supplyId}
+                      onChange={(e) => updateItem(idx, { supplyId: e.target.value })}
+                      className="w-full px-2 py-1.5 border border-border rounded-md text-[12px] bg-card outline-none focus:border-primary"
+                    >
+                      <option value="">— Insumo —</option>
+                      {supplies.map((sup) => (
+                        <option key={sup.id} value={sup.id}>
+                          {sup.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    {/* Unit */}
+                    {unitOptions.length > 1 ? (
+                      <select
+                        value={item.unitId ?? ''}
+                        onChange={(e) => {
+                          const opt = unitOptions.find((u) => u.id === e.target.value)
+                          updateItem(idx, { unitId: e.target.value, unit: opt?.symbol ?? '' })
+                        }}
+                        className="w-full px-2 py-1.5 border border-border rounded-md text-[12px] bg-card outline-none focus:border-primary"
+                      >
+                        {unitOptions.map((u) => (
+                          <option key={u.id} value={u.id}>{u.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="px-2 py-1.5 text-[12px] text-muted-foreground bg-muted/30 rounded-md border border-border text-center block">
+                        {s?.inventoryUnit?.symbol ?? s?.unit ?? item.unit ?? '—'}
+                      </span>
+                    )}
+
+                    {/* Quantity */}
+                    <input
+                      type="number"
+                      step="0.001"
+                      min="0.001"
+                      value={item.quantity}
+                      onChange={(e) => updateItem(idx, { quantity: Number(e.target.value) || 0 })}
+                      className="w-full px-2 py-1.5 border border-border rounded-md text-[12px] bg-card outline-none focus:border-primary text-right"
+                    />
+
+                    {/* Subtotal */}
+                    <span className="text-[12px] text-right font-medium text-foreground shrink-0">
+                      {subtotal > 0
+                        ? subtotal.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })
+                        : '—'}
+                    </span>
+
+                    {/* Delete */}
+                    <button
+                      type="button"
+                      onClick={() => removeItem(idx)}
+                      className="p-1 text-muted-foreground hover:text-destructive transition-colors flex items-center justify-center"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Conversion preview */}
+                  {conversionText && (
+                    <p className="text-[11px] text-blue-600 dark:text-blue-400 pl-1 font-medium">
+                      {conversionText}
+                    </p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Recipe total cost */}
+          <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-border">
+            <span className="text-[12px] font-semibold text-muted-foreground">Costo total receta</span>
+            <span className="text-[14px] font-bold text-foreground">
+              {totalCost.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}
+            </span>
+          </div>
+        </>
       )}
-      <div className="space-y-2">
-        {items.map((item, idx) => {
-          const supply = supplies.find((s) => s.id === item.supplyId)
-          return (
-            <div key={idx} className="flex gap-2 items-center">
-              <select
-                value={item.supplyId}
-                onChange={(e) => updateItem(idx, { supplyId: e.target.value })}
-                className="flex-1 px-2 py-1.5 border border-border rounded-lg text-[12px] bg-card outline-none focus:border-primary"
-              >
-                <option value="">— Insumo —</option>
-                {supplies.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.unit})
-                  </option>
-                ))}
-              </select>
-              <input
-                type="number"
-                step="0.001"
-                min="0.001"
-                value={item.quantity}
-                onChange={(e) => updateItem(idx, { quantity: Number(e.target.value) || 0 })}
-                className="w-24 px-2 py-1.5 border border-border rounded-lg text-[12px] bg-card outline-none focus:border-primary"
-                placeholder="Cantidad"
-              />
-              <span className="text-[11px] text-muted-foreground w-10 shrink-0">
-                {supply?.unit ?? item.unit ?? ''}
-              </span>
-              <button
-                type="button"
-                onClick={() => removeItem(idx)}
-                className="p-1 text-muted-foreground hover:text-destructive transition-colors"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )
-        })}
-      </div>
     </div>
   )
 }
@@ -192,10 +349,12 @@ function ComboEditor({
   items,
   currentProductId,
   onChange,
+  onCostChange,
 }: {
   items: ComboItem[]
   currentProductId: string | null
   onChange: (items: ComboItem[]) => void
+  onCostChange?: (cost: number) => void
 }) {
   const [products, setProducts] = useState<Product[]>([])
 
@@ -203,21 +362,28 @@ function ComboEditor({
     fetchProducts().then((r) => setProducts(r.data || [])).catch(() => {})
   }, [])
 
-  const eligible = products.filter(
-    (p) => p.type === 'SIMPLE' && p.id !== currentProductId,
-  )
+  const eligible = products.filter((p) => p.id !== currentProductId)
 
-  const addItem = () => {
+  const totalCost = useMemo(() => {
+    return items.reduce((sum, item) => {
+      const p = products.find((x) => x.id === item.childProductId)
+      if (!p || !item.quantity) return sum
+      return sum + Number(p.costPrice) * item.quantity
+    }, 0)
+  }, [items, products])
+
+  useEffect(() => {
+    onCostChange?.(totalCost)
+  }, [totalCost, onCostChange])
+
+  const addItem = () =>
     onChange([...items, { childProductId: '', quantity: 1 }])
-  }
 
-  const removeItem = (idx: number) => {
+  const removeItem = (idx: number) =>
     onChange(items.filter((_, i) => i !== idx))
-  }
 
-  const updateItem = (idx: number, patch: Partial<ComboItem>) => {
+  const updateItem = (idx: number, patch: Partial<ComboItem>) =>
     onChange(items.map((item, i) => (i !== idx ? item : { ...item, ...patch })))
-  }
 
   return (
     <div className="col-span-2 mb-3.5">
@@ -231,44 +397,75 @@ function ComboEditor({
           <Plus className="w-3 h-3" /> Agregar
         </button>
       </div>
-      {items.length === 0 && (
+
+      {items.length === 0 ? (
         <p className="text-xs text-muted-foreground text-center py-3 border border-dashed border-border rounded-lg">
           Sin productos. Agrega al menos uno.
         </p>
-      )}
-      <div className="space-y-2">
-        {items.map((item, idx) => (
-          <div key={idx} className="flex gap-2 items-center">
-            <select
-              value={item.childProductId}
-              onChange={(e) => updateItem(idx, { childProductId: e.target.value })}
-              className="flex-1 px-2 py-1.5 border border-border rounded-lg text-[12px] bg-card outline-none focus:border-primary"
-            >
-              <option value="">— Producto —</option>
-              {eligible.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.sku})
-                </option>
-              ))}
-            </select>
-            <input
-              type="number"
-              min="1"
-              value={item.quantity}
-              onChange={(e) => updateItem(idx, { quantity: Number(e.target.value) || 1 })}
-              className="w-20 px-2 py-1.5 border border-border rounded-lg text-[12px] bg-card outline-none focus:border-primary"
-              placeholder="Cant."
-            />
-            <button
-              type="button"
-              onClick={() => removeItem(idx)}
-              className="p-1 text-muted-foreground hover:text-destructive transition-colors"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+      ) : (
+        <>
+          {/* Column headers */}
+          <div className="grid grid-cols-[1fr_5rem_5rem_1.75rem] gap-1.5 px-1 mb-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Producto</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Cantidad</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground text-right">Subtotal</span>
+            <span />
           </div>
-        ))}
-      </div>
+
+          <div className="space-y-1.5">
+            {items.map((item, idx) => {
+              const p = products.find((x) => x.id === item.childProductId)
+              const subtotal = p ? Number(p.costPrice) * item.quantity : 0
+              return (
+                <div key={idx} className="rounded-lg border border-border bg-card/50 p-2">
+                  <div className="grid grid-cols-[1fr_5rem_5rem_1.75rem] gap-1.5 items-center">
+                    <select
+                      value={item.childProductId}
+                      onChange={(e) => updateItem(idx, { childProductId: e.target.value })}
+                      className="w-full px-2 py-1.5 border border-border rounded-md text-[12px] bg-card outline-none focus:border-primary"
+                    >
+                      <option value="">— Producto —</option>
+                      {eligible.map((prod) => (
+                        <option key={prod.id} value={prod.id}>
+                          {prod.name} ({prod.sku}) [{prod.type}]
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={item.quantity}
+                      onChange={(e) => updateItem(idx, { quantity: Number(e.target.value) || 1 })}
+                      className="w-full px-2 py-1.5 border border-border rounded-md text-[12px] bg-card outline-none focus:border-primary text-right"
+                    />
+                    <span className="text-[12px] text-right font-medium text-foreground">
+                      {subtotal > 0
+                        ? subtotal.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })
+                        : '—'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeItem(idx)}
+                      className="p-1 text-muted-foreground hover:text-destructive transition-colors flex items-center justify-center"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Total */}
+          <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-border">
+            <span className="text-[12px] font-semibold text-muted-foreground">Costo total combo</span>
+            <span className="text-[14px] font-bold text-foreground">
+              {totalCost.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}
+            </span>
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -540,12 +737,50 @@ export function ProductFormModal({
 
           {/* Recipe items editor */}
           {showRecipe && (
-            <RecipeEditor
-              items={form.recipe?.items ?? []}
-              onChange={(items) =>
-                setForm((p) => ({ ...p, recipe: { ...(p.recipe ?? { id: '', notes: undefined }), items } }))
-              }
-            />
+            <>
+              <RecipeEditor
+                items={form.recipe?.items ?? []}
+                onChange={(items) =>
+                  setForm((p) => ({ ...p, recipe: { ...(p.recipe ?? { id: '', notes: undefined }), items } }))
+                }
+                onCostChange={(cost) => setForm((p) => ({ ...p, costPrice: cost }))}
+              />
+              {/* Price / margin analysis */}
+              {Number(form.costPrice) > 0 && Number(form.price) > 0 && (() => {
+                const costVal = Number(form.costPrice)
+                const priceVal = Number(form.price)
+                const margin = ((priceVal - costVal) / costVal) * 100
+                return (
+                  <div className="col-span-2 mb-3.5 rounded-lg border border-border bg-muted/20 p-3">
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2.5">
+                      Análisis de precio
+                    </div>
+                    <div className="flex items-center justify-around gap-2">
+                      <div className="text-center">
+                        <div className="text-[10px] text-muted-foreground mb-0.5">Costo receta</div>
+                        <div className="text-[13px] font-semibold">
+                          {costVal.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}
+                        </div>
+                      </div>
+                      <span className="text-muted-foreground text-[11px]">→</span>
+                      <div className="text-center">
+                        <div className="text-[10px] text-muted-foreground mb-0.5">Precio venta</div>
+                        <div className="text-[13px] font-semibold">
+                          {priceVal.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}
+                        </div>
+                      </div>
+                      <span className="text-muted-foreground text-[11px]">→</span>
+                      <div className="text-center">
+                        <div className="text-[10px] text-muted-foreground mb-0.5">Margen</div>
+                        <div className={`text-[15px] font-bold ${margin >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                          {margin >= 0 ? '+' : ''}{margin.toFixed(1)}%
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+            </>
           )}
 
           {/* Combo items editor */}
@@ -554,6 +789,7 @@ export function ProductFormModal({
               items={form.comboItems ?? []}
               currentProductId={editingId}
               onChange={(items) => setForm((p) => ({ ...p, comboItems: items }))}
+              onCostChange={(cost) => setForm((p) => ({ ...p, costPrice: cost }))}
             />
           )}
 
@@ -562,7 +798,14 @@ export function ProductFormModal({
           )}
           <div className="mb-3.5">
             <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Código Impuesto</label>
-            <Select value={form.taxCode} onValueChange={v => setForm(p => ({ ...p, taxCode: v ?? p.taxCode }))}>
+            <Select
+              value={form.taxCode}
+              onValueChange={v => setForm(p => ({
+                ...p,
+                taxCode: v ?? p.taxCode,
+                taxRate: TAX_RATE_MAP[v] ?? p.taxRate,
+              }))}
+            >
               <SelectTrigger size="sm" className="w-full">
                 <SelectValue>{TAX_CODES.find(t => t.value === form.taxCode)?.label ?? form.taxCode}</SelectValue>
               </SelectTrigger>
@@ -571,7 +814,6 @@ export function ProductFormModal({
               </SelectContent>
             </Select>
           </div>
-          <FormField label="Tasa Impuesto" type="number" value={Number(form.taxRate || 0).toString()} onChange={v => setForm(p => ({ ...p, taxRate: Number(v) || 0 }))} />
           <div className="col-span-2">
             <FormField label="Meta Title" value={form.metaTitle} onChange={v => setForm(p => ({ ...p, metaTitle: v }))} />
           </div>

@@ -22,7 +22,15 @@ const MAX_IMAGE_WIDTH = 1200;
 const PRODUCT_INCLUDE = {
   category: true,
   images: { orderBy: { sortOrder: 'asc' as const } },
-  recipe: { include: { items: { include: { supply: true } } } },
+  recipe: {
+    include: {
+      items: {
+        include: {
+          supply: { include: { inventoryUnit: true, baseUnit: true } },
+        },
+      },
+    },
+  },
   comboItems: { include: { child: true } },
   _count: { select: { orderItems: true } },
 } satisfies Prisma.ProductInclude;
@@ -35,6 +43,39 @@ export class ProductsService {
     private audit: AuditService,
     private r2: R2Service,
   ) {}
+
+  private async resolveNormalizedQty(
+    db: any,
+    item: { supplyId: string; quantity: number; unitId?: string | null },
+  ): Promise<number | null> {
+    if (!item.unitId) return null;
+
+    const supply = await db.supply.findUnique({
+      where: { id: item.supplyId },
+      select: { inventoryUnitId: true, baseUnitId: true, conversionFactor: true },
+    });
+
+    if (!supply) return null;
+
+    const convFactor = Number(supply.conversionFactor ?? 1) || 1;
+
+    if (item.unitId === supply.inventoryUnitId) {
+      return item.quantity * convFactor;
+    }
+    if (item.unitId === supply.baseUnitId) {
+      return item.quantity;
+    }
+
+    // Legacy: supplyAllowedUnit lookup
+    const [allowed, unit] = await Promise.all([
+      db.supplyAllowedUnit.findUnique({
+        where: { supplyId_unitId: { supplyId: item.supplyId, unitId: item.unitId } },
+      }),
+      db.measurementUnit.findUnique({ where: { id: item.unitId } }),
+    ]);
+    const factor = allowed ? Number(allowed.conversionFactor) : (unit ? Number(unit.baseFactor) : 1);
+    return item.quantity * factor;
+  }
 
   async create(createProductDto: CreateProductDto): Promise<Product> {
     const tenantId = this.tenantContext.requireTenantId();
@@ -82,16 +123,19 @@ export class ProductsService {
       });
 
       if (type === 'RECIPE' && recipeItems?.length) {
-        const recipe = await tx.recipe.create({
+        const normalizedItems = await Promise.all(
+          recipeItems.map(async (i) => ({
+            supplyId: i.supplyId,
+            quantity: i.quantity,
+            unit: i.unit,
+            unitId: i.unitId ?? null,
+            normalizedQuantity: await this.resolveNormalizedQty(tx, i),
+          })),
+        );
+        await tx.recipe.create({
           data: {
             productId: created.id,
-            items: {
-              create: recipeItems.map((i) => ({
-                supplyId: i.supplyId,
-                quantity: i.quantity,
-                unit: i.unit,
-              })),
-            },
+            items: { create: normalizedItems },
           },
         });
         return tx.product.findUnique({ where: { id: created.id }, include: PRODUCT_INCLUDE }) as Promise<Product>;
@@ -211,26 +255,32 @@ export class ProductsService {
         if (existingRecipe) {
           await tx.recipeItem.deleteMany({ where: { recipeId: existingRecipe.id } });
           if (recipeItems.length > 0) {
-            await tx.recipeItem.createMany({
-              data: recipeItems.map((i) => ({
+            const normalizedItems = await Promise.all(
+              recipeItems.map(async (i) => ({
                 recipeId: existingRecipe.id,
                 supplyId: i.supplyId,
                 quantity: i.quantity,
                 unit: i.unit,
+                unitId: i.unitId ?? null,
+                normalizedQuantity: await this.resolveNormalizedQty(tx, i),
               })),
-            });
+            );
+            await tx.recipeItem.createMany({ data: normalizedItems });
           }
         } else if (recipeItems.length > 0) {
+          const normalizedItems = await Promise.all(
+            recipeItems.map(async (i) => ({
+              supplyId: i.supplyId,
+              quantity: i.quantity,
+              unit: i.unit,
+              unitId: i.unitId ?? null,
+              normalizedQuantity: await this.resolveNormalizedQty(tx, i),
+            })),
+          );
           await tx.recipe.create({
             data: {
               productId: id,
-              items: {
-                create: recipeItems.map((i) => ({
-                  supplyId: i.supplyId,
-                  quantity: i.quantity,
-                  unit: i.unit,
-                })),
-              },
+              items: { create: normalizedItems },
             },
           });
         }
@@ -422,12 +472,26 @@ export class ProductsService {
     });
   }
 
-  async upsertRecipe(productId: string, items: Array<{ supplyId: string; quantity: number; unit: string }>, notes?: string) {
+  async upsertRecipe(
+    productId: string,
+    items: Array<{ supplyId: string; quantity: number; unit: string; unitId?: string }>,
+    notes?: string,
+  ) {
     const tenantId = this.tenantContext.requireTenantId();
     const product = await this.prisma.product.findFirst({
       where: { id: productId, tenantId, type: 'RECIPE' },
     });
     if (!product) throw new NotFoundException('Producto tipo RECIPE no encontrado');
+
+    const normalizedItems = await Promise.all(
+      items.map(async (i) => ({
+        supplyId: i.supplyId,
+        quantity: i.quantity,
+        unit: i.unit,
+        unitId: i.unitId ?? null,
+        normalizedQuantity: await this.resolveNormalizedQty(this.prisma, i),
+      })),
+    );
 
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.recipe.findUnique({ where: { productId } });
@@ -437,26 +501,18 @@ export class ProductsService {
           where: { id: existing.id },
           data: {
             notes: notes ?? existing.notes,
-            items: {
-              create: items.map((i) => ({ supplyId: i.supplyId, quantity: i.quantity, unit: i.unit })),
-            },
+            items: { create: normalizedItems },
           },
         });
       } else {
         await tx.recipe.create({
-          data: {
-            productId,
-            notes,
-            items: {
-              create: items.map((i) => ({ supplyId: i.supplyId, quantity: i.quantity, unit: i.unit })),
-            },
-          },
+          data: { productId, notes, items: { create: normalizedItems } },
         });
       }
 
       return tx.recipe.findUnique({
         where: { productId },
-        include: { items: { include: { supply: true } } },
+        include: { items: { include: { supply: true, measurementUnit: true } } },
       });
     });
   }
