@@ -60,6 +60,21 @@ export function usePOS() {
   // ---- product filter ----
   const [search, setSearch]       = useState('')
   const searchRef                 = useRef<HTMLInputElement>(null)
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
+
+  // ---- groups (unique categories from active products) ----
+  // computed from full products list (not filtered) so chips show all groups
+  const grupos = useMemo(() => {
+    const seen = new Map<string, { id: string; name: string; count: number }>()
+    for (const p of products) {
+      if (p.status !== 'ACTIVE') continue
+      const id = p.category?.id ?? '__none__'
+      const name = p.category?.name ?? 'Sin categoría'
+      if (!seen.has(id)) seen.set(id, { id, name, count: 0 })
+      seen.get(id)!.count++
+    }
+    return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name, 'es'))
+  }, [products])
 
   // ---- cart ----
   const [carrito, setCarrito]     = useState<CartItem[]>([])
@@ -269,9 +284,10 @@ export function usePOS() {
     const q = search.toLowerCase()
     return products.filter(p => {
       if (p.status !== 'ACTIVE') return false
+      if (selectedGroup && (p.category?.id ?? '__none__') !== selectedGroup) return false
       return !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
     })
-  }, [search, products])
+  }, [search, products, selectedGroup])
 
   // ---- products grouped by category ----
   const productosPorCategoria = useMemo(() => {
@@ -678,6 +694,8 @@ export function usePOS() {
     services,
     // filters
     search, setSearch, searchRef,
+    selectedGroup, setSelectedGroup,
+    grupos,
     productosFiltrados,
     productosPorCategoria,
     lastAddedProduct,
