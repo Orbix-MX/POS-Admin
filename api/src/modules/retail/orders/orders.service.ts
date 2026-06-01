@@ -249,6 +249,7 @@ export class OrdersService {
           ...(couponCode != null && { couponCode }),
           status: dto.isLayaway ? ('LAYAWAY' as any) : ((dto.status ?? 'PENDING') as any),
           paymentStatus: initialPaymentStatus as any,
+          orderOrigin: 'RETAIL_POS',
           ...(createdById != null && { createdById }),
           ...(branchId != null && { branchId }),
           ...(dto.sourceQuoteId != null && { serviceQuoteId: dto.sourceQuoteId }),
@@ -536,12 +537,13 @@ export class OrdersService {
 
   async findAll(query: QueryOrdersDto): Promise<PaginatedResponse<Order>> {
     const tenantId = this.tenantContext.requireTenantId();
-    const { skip, limit, page, customerId, status } = query;
+    const { skip, limit, page, customerId, status, orderOrigin } = query;
 
     const where: any = {
       tenantId,
       ...(customerId != null && { customerId }),
       ...(status != null && { status }),
+      ...(orderOrigin != null && { orderOrigin }),
     };
 
     const [orders, total] = await Promise.all([

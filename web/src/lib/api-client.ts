@@ -24,6 +24,14 @@ api.interceptors.response.use(
       clearAccessToken()
       window.location.reload()
     }
+    if (error.response?.status === 403 && error.response?.data?.code === 'TENANT_SUSPENDED') {
+      const url: string = error.config?.url ?? ''
+      const isAuthFlow = url.includes('/auth/login') || url.includes('/auth/select-tenant')
+      if (!isAuthFlow) {
+        clearAccessToken()
+        window.dispatchEvent(new CustomEvent('tenant:suspended'))
+      }
+    }
     return Promise.reject(error)
   }
 )

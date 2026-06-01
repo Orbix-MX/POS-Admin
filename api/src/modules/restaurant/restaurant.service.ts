@@ -46,6 +46,7 @@ export class RestaurantService {
           status: 'PENDING',
           paymentStatus: 'PENDING',
           kitchenStatus: 'PENDING',
+          orderOrigin: 'RESTAURANT_COMANDA',
           tableNumber: dto.tableNumber,
           employeeNumber: dto.employeeNumber,
           ...(branchId != null && { branchId }),
@@ -125,6 +126,15 @@ export class RestaurantService {
     }
 
     const netAmount = roundMoney(Number(order.total));
+    const totalPagado = roundMoney(dto.payments.reduce((s, p) => s + p.amount, 0));
+
+    if (totalPagado < netAmount) {
+      throw new BadRequestException(
+        `Pago insuficiente. Total: $${netAmount}, pagado: $${totalPagado}`,
+      );
+    }
+
+    const finalPaymentStatus = totalPagado >= netAmount ? 'PAID' : 'PARTIALLY_PAID';
 
     return this.prisma.$transaction(async (tx) => {
       // Decrement stock for product items with trackInventory = true
@@ -152,40 +162,44 @@ export class RestaurantService {
         }
       }
 
-      // Create payment record
-      await tx.payment.create({
-        data: {
-          orderId: order.id,
-          paymentMethod: dto.paymentMethod,
-          currency: 'MXN',
-          amount: netAmount,
-          paymentConcept: 'SALE',
-          status: 'PAID',
-          ...(userId != null && { createdById: userId }),
-        },
-      });
+      // Create payment records + cash movements per payment entry
+      for (const payment of dto.payments) {
+        const currency = payment.currency ?? 'MXN';
+        await tx.payment.create({
+          data: {
+            orderId: order.id,
+            paymentMethod: payment.paymentMethod,
+            currency,
+            amount: payment.amount,
+            ...(payment.amountReceived != null && { amountReceived: payment.amountReceived }),
+            ...(payment.changeGiven != null && { changeGiven: payment.changeGiven }),
+            paymentConcept: 'SALE',
+            status: 'PAID',
+            ...(userId != null && { createdById: userId }),
+          },
+        });
 
-      // Create cash movement
-      await tx.cashMovement.create({
-        data: {
-          tenantId,
-          cashSessionId: session.id,
-          type: 'SALE',
-          currency: 'MXN',
-          amount: netAmount,
-          paymentMethod: dto.paymentMethod,
-          referenceId: order.id,
-          referenceType: 'ORDER',
-          createdById: userId ?? null,
-        },
-      });
+        await tx.cashMovement.create({
+          data: {
+            tenantId,
+            cashSessionId: session.id,
+            type: 'SALE',
+            currency,
+            amount: payment.amount,
+            paymentMethod: payment.paymentMethod,
+            referenceId: order.id,
+            referenceType: 'ORDER',
+            createdById: userId ?? null,
+          },
+        });
+      }
 
-      // Update order to DELIVERED + PAID
+      // Update order to DELIVERED + paid status
       return tx.order.update({
         where: { id: order.id },
         data: {
           status: 'DELIVERED',
-          paymentStatus: 'PAID',
+          paymentStatus: finalPaymentStatus as any,
         },
         include: {
           items: true,

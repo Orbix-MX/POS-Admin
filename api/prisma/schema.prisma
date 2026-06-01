@@ -952,6 +952,14 @@ enum OrderItemType {
   SERVICE
 }
 
+enum OrderOrigin {
+  RETAIL_POS
+  RESTAURANT_COMANDA
+  DELIVERY
+  KIOSK
+  ONLINE
+}
+
 model Order {
   id            String        @id @default(uuid())
   tenantId      String
@@ -980,6 +988,7 @@ model Order {
   estimatedDeliveryDate DateTime?
   deliveredAt           DateTime?
 
+  orderOrigin            OrderOrigin?
   kitchenStatus          KitchenOrderStatus?
   kitchenStartedAt       DateTime?
   kitchenReadyAt         DateTime?

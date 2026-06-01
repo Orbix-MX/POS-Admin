@@ -36,6 +36,7 @@ import { PlatformDashboard } from '@/pages/platform/platform-dashboard'
 import { PlatformEmpresas } from '@/pages/platform/platform-empresas'
 import { PlatformEmpresaDetalle } from '@/pages/platform/platform-empresa-detalle'
 import { PlatformAuditoria } from '@/pages/platform/platform-auditoria'
+import { TenantSuspended } from '@/pages/tenant-suspended'
 import { Download } from 'lucide-react'
 import type { ModuleId } from '@/types/erp'
 
@@ -146,11 +147,18 @@ function AppLayout() {
 }
 
 function TenantAuthGate() {
-  const { isAuthenticated, availableTenants, capabilitiesLoaded, needsBranchSelection, availableBranches, init } = useAuthStore()
+  const { isAuthenticated, availableTenants, capabilitiesLoaded, needsBranchSelection, availableBranches, init, tenantSuspended, setTenantSuspended } = useAuthStore()
   const location = useLocation()
 
   useEffect(() => { init() }, [init])
 
+  useEffect(() => {
+    const handler = () => setTenantSuspended(true)
+    window.addEventListener('tenant:suspended', handler)
+    return () => window.removeEventListener('tenant:suspended', handler)
+  }, [setTenantSuspended])
+
+  if (tenantSuspended) { document.title = `Empresa suspendida | ${APP_SUFFIX}`; return <TenantSuspended /> }
   if (!isAuthenticated && !availableTenants) { document.title = `Iniciar sesión | ${APP_SUFFIX}`; return <Login /> }
   if (!isAuthenticated && availableTenants) { document.title = APP_SUFFIX; return <SelectTenant /> }
   if (!capabilitiesLoaded || availableBranches === null) return (

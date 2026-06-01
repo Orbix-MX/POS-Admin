@@ -1,10 +1,12 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PrismaService } from '../../../../database/prisma.service';
 import { TokenBlacklistService } from '../services/token-blacklist.service';
 import { TenantRole, TenantPlan } from '@prisma/client';
+
+const ALLOWED_TENANT_STATUSES = ['ACTIVE', 'TRIAL'] as const;
 
 export interface JwtPayload {
   sub: string;
@@ -43,6 +45,20 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     if (!user || user.status !== 'ACTIVE') {
       throw new UnauthorizedException('User not found or inactive');
+    }
+
+    if (payload.tenantId) {
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: payload.tenantId },
+        select: { status: true },
+      });
+      if (!tenant || !(ALLOWED_TENANT_STATUSES as readonly string[]).includes(tenant.status)) {
+        throw new ForbiddenException({
+          statusCode: 403,
+          code: 'TENANT_SUSPENDED',
+          message: 'La empresa se encuentra suspendida o inactiva. Contacta al administrador.',
+        });
+      }
     }
 
     return {

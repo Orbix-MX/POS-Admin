@@ -84,8 +84,15 @@ export class AuthService {
     );
 
     if (memberships.length > 0 && activeMemberships.length === 0) {
+      const allSuspended = memberships.every((m) => m.tenant.status === 'SUSPENDED');
       throw new HttpException(
-        { statusCode: HttpStatus.FORBIDDEN, code: 'TENANT_INACTIVE', message: 'La empresa ya no se encuentra activa.' },
+        {
+          statusCode: HttpStatus.FORBIDDEN,
+          code: allSuspended ? 'TENANT_SUSPENDED' : 'TENANT_INACTIVE',
+          message: allSuspended
+            ? 'Tu empresa se encuentra suspendida. Contacta al administrador.'
+            : 'La empresa ya no se encuentra activa.',
+        },
         HttpStatus.FORBIDDEN,
       );
     }

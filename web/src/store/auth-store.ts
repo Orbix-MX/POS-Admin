@@ -34,11 +34,14 @@ interface AuthState {
   availableBranches: Branch[] | null
   needsBranchSelection: boolean
 
+  tenantSuspended: boolean
+
   init: () => Promise<void>
   login: (email: string, password: string) => Promise<void>
   confirmTenant: (slug: string) => Promise<void>
   confirmBranch: (branchId: string) => Promise<void>
   logout: () => Promise<void>
+  setTenantSuspended: (value: boolean) => void
 }
 
 async function loadBranchesAndAutoSelect(
@@ -98,6 +101,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   currentBranch: null,
   availableBranches: null,
   needsBranchSelection: false,
+  tenantSuspended: false,
+
+  setTenantSuspended: (value) => set({
+    tenantSuspended: value,
+    isAuthenticated: false,
+    capabilitiesLoaded: true,
+  }),
 
   init: async () => {
     if (!getAccessToken()) { set({ capabilitiesLoaded: true }); return }
@@ -219,6 +229,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       businessVertical: 'RETAIL',
       posOperationMode: 'QUICK_SALE',
       enabledFeatures: [],
+      tenantSuspended: false,
     })
   },
 }))
