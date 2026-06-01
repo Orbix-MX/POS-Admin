@@ -223,3 +223,5 @@ export type ModuleId =
   | 'pos'
   | 'branches'
   | 'comanda'
+  | 'insumos'
+  | 'kitchen'

@@ -67,6 +67,13 @@ export function Inventario() {
     handleCloseModal: handleCatCloseModal, loadCategories,
   } = useCategories()
 
+  const TYPE_BADGE: Record<string, { label: string; cls: string }> = {
+    SIMPLE:  { label: 'Simple',   cls: 'bg-gray-100 text-gray-600' },
+    RECIPE:  { label: 'Receta',   cls: 'bg-orange-100 text-orange-700' },
+    COMBO:   { label: 'Combo',    cls: 'bg-purple-100 text-purple-700' },
+    SERVICE: { label: 'Servicio', cls: 'bg-blue-100 text-blue-700' },
+  }
+
   // ── Product columns ───────────────────────────────────────────────────────
   const prodColumns: Column<Product>[] = useMemo(() => [
     { label: "SKU", render: r => <span className="font-mono text-[11px] text-muted-foreground font-semibold">{r.sku}</span> },
@@ -79,7 +86,16 @@ export function Inventario() {
       )
     },
     {
+      label: "Tipo", render: r => {
+        const t = TYPE_BADGE[r.type ?? 'SIMPLE'] ?? TYPE_BADGE.SIMPLE
+        return <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${t.cls}`}>{t.label}</span>
+      }
+    },
+    {
       label: "Stock", align: "center", render: r => {
+        if (r.type !== 'SIMPLE' && r.type != null) {
+          return <span className="text-[10px] text-muted-foreground italic">N/A</span>
+        }
         const pct = r.trackInventory ? Math.min((r.stock / (r.lowStockAlert * 4)) * 100, 100) : 100
         const color = !r.trackInventory ? "#16a34a" : r.stock > r.lowStockAlert ? "#16a34a" : r.stock > 0 ? "#d97706" : "#dc2626"
         return (

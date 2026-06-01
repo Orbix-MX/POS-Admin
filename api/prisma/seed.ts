@@ -799,6 +799,31 @@ async function main() {
   });
   console.log('✅ Linked plusOwner to Sucursal Centro');
 
+  // ============= Measurement Units =============
+  const MEASUREMENT_UNITS = [
+    // WEIGHT — base: gr
+    { id: 'munit-gr-0001', name: 'Gramo',      symbol: 'gr',      category: 'WEIGHT' as const, baseFactor: 1,    isBase: true  },
+    { id: 'munit-kg-0002', name: 'Kilogramo',  symbol: 'kg',      category: 'WEIGHT' as const, baseFactor: 1000, isBase: false },
+    // VOLUME — base: ml
+    { id: 'munit-ml-0003', name: 'Mililitro',  symbol: 'ml',      category: 'VOLUME' as const, baseFactor: 1,    isBase: true  },
+    { id: 'munit-lt-0004', name: 'Litro',      symbol: 'lt',      category: 'VOLUME' as const, baseFactor: 1000, isBase: false },
+    // COUNT — no universal cross-unit conversion; user defines factor per supply
+    { id: 'munit-pz-0005', name: 'Pieza',      symbol: 'pieza',   category: 'COUNT'  as const, baseFactor: 1,    isBase: true  },
+    { id: 'munit-cx-0006', name: 'Caja',       symbol: 'caja',    category: 'COUNT'  as const, baseFactor: 1,    isBase: false },
+    { id: 'munit-bl-0007', name: 'Bolsa',      symbol: 'bolsa',   category: 'COUNT'  as const, baseFactor: 1,    isBase: false },
+    { id: 'munit-ro-0008', name: 'Rollo',      symbol: 'rollo',   category: 'COUNT'  as const, baseFactor: 1,    isBase: false },
+    { id: 'munit-po-0009', name: 'Porción',    symbol: 'porcion', category: 'COUNT'  as const, baseFactor: 1,    isBase: false },
+    { id: 'munit-pk-0010', name: 'Paquete',    symbol: 'paquete', category: 'COUNT'  as const, baseFactor: 1,    isBase: false },
+  ];
+  for (const u of MEASUREMENT_UNITS) {
+    await prisma.measurementUnit.upsert({
+      where: { symbol: u.symbol },
+      update: { name: u.name, category: u.category, baseFactor: u.baseFactor, isBase: u.isBase },
+      create: u,
+    });
+  }
+  console.log(`✅ Seeded ${MEASUREMENT_UNITS.length} measurement units`);
+
   console.log('🎉 Seeding completed!');
 }
 

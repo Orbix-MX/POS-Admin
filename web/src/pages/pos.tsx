@@ -74,6 +74,50 @@ function ServiceCard({ s, inCartQty, onAdd }: { s: Service; inCartQty: number; o
   )
 }
 
+// ─── Group bar ───────────────────────────────────────────────────────────────
+
+function GroupBar({
+  grupos,
+  selected,
+  onSelect,
+}: {
+  grupos: { id: string; name: string; count: number }[]
+  selected: string | null
+  onSelect: (id: string | null) => void
+}) {
+  if (grupos.length === 0) return null
+  return (
+    <div className="flex items-center gap-2 px-4 py-2.5 overflow-x-auto shrink-0 border-b border-border scrollbar-none">
+      <button
+        onClick={() => onSelect(null)}
+        className={`shrink-0 flex flex-col items-center justify-center min-w-[64px] h-14 px-3 rounded-xl border-[1.5px] transition-all cursor-pointer
+          ${selected === null
+            ? 'bg-primary border-primary text-primary-foreground shadow-sm'
+            : 'bg-card border-border text-muted-foreground hover:border-primary hover:text-foreground hover:bg-muted/40'
+          }`}
+      >
+        <span className="text-[12px] font-extrabold leading-tight">Todos</span>
+      </button>
+      {grupos.map(g => (
+        <button
+          key={g.id}
+          onClick={() => onSelect(selected === g.id ? null : g.id)}
+          className={`shrink-0 flex flex-col items-center justify-center min-w-[72px] h-14 px-3 rounded-xl border-[1.5px] transition-all cursor-pointer
+            ${selected === g.id
+              ? 'bg-primary border-primary text-primary-foreground shadow-sm'
+              : 'bg-card border-border text-muted-foreground hover:border-primary hover:text-foreground hover:bg-muted/40'
+            }`}
+        >
+          <span className="text-[12px] font-extrabold leading-tight text-center line-clamp-2 max-w-[80px]">{g.name}</span>
+          <span className={`text-[10px] font-semibold mt-0.5 ${selected === g.id ? 'text-primary-foreground/70' : 'text-muted-foreground/60'}`}>
+            {g.count} prod.
+          </span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // ─── Cart item ───────────────────────────────────────────────────────────────
 
 function CartRow({ item, onPlus, onMinus, onRemove }: {
@@ -1001,6 +1045,8 @@ export function POS() {
     catalogLoading,
     products,
     search, setSearch, searchRef,
+    selectedGroup, setSelectedGroup,
+    grupos,
     productosFiltrados,
     productosPorCategoria,
     lastAddedProduct,
@@ -1177,6 +1223,15 @@ export function POS() {
               </button>
             )}
           </div>
+
+          {/* Groups filter bar — products tab only */}
+          {catalogTab === 'products' && (
+            <GroupBar
+              grupos={grupos}
+              selected={selectedGroup}
+              onSelect={setSelectedGroup}
+            />
+          )}
 
           {/* Manual service input */}
           {manualServiceOpen && (

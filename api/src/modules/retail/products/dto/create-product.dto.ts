@@ -1,9 +1,49 @@
-﻿import { IsString, IsNumber, IsOptional, IsEnum, IsBoolean, IsUUID, Min, MinLength, MaxLength } from 'class-validator';
+﻿import { IsString, IsNumber, IsOptional, IsEnum, IsBoolean, IsUUID, Min, MinLength, MaxLength, ValidateNested, IsArray } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ProductStatus, TaxCode } from '@prisma/client';
+import { ProductStatus, TaxCode, ProductType } from '@prisma/client';
 import { Type, Transform } from 'class-transformer';
 
+export class RecipeItemDto {
+  @ApiProperty()
+  @IsUUID()
+  supplyId: string;
+
+  @ApiProperty()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.001)
+  quantity: number;
+
+  @ApiProperty()
+  @IsString()
+  unit: string;
+
+  @ApiPropertyOptional({ description: 'MeasurementUnit id — enables auto normalizedQuantity' })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  unitId?: string;
+}
+
+export class ComboItemDto {
+  @ApiProperty()
+  @IsUUID()
+  childProductId: string;
+
+  @ApiPropertyOptional({ default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  quantity?: number;
+}
+
 export class CreateProductDto {
+  @ApiPropertyOptional({ enum: ProductType, default: 'SIMPLE' })
+  @IsOptional()
+  @IsEnum(ProductType)
+  type?: ProductType;
+
   @ApiProperty()
   @IsString()
   @MinLength(2)
@@ -93,7 +133,22 @@ export class CreateProductDto {
   @IsEnum(TaxCode)
   taxCode?: TaxCode;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
   slug?: string;
+
+  @ApiPropertyOptional({ type: [RecipeItemDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RecipeItemDto)
+  recipeItems?: RecipeItemDto[];
+
+  @ApiPropertyOptional({ type: [ComboItemDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ComboItemDto)
+  comboItems?: ComboItemDto[];
 }

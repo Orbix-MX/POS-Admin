@@ -101,6 +101,10 @@ export const ALL_PERMISSIONS: PermissionDef[] = [
   { key: 'tenant:view', name: 'Ver información empresa', description: 'Ver datos generales y branding de la empresa', module: 'tenant', action: 'view' },
   { key: 'tenant:edit', name: 'Editar información empresa', description: 'Editar datos generales de la empresa', module: 'tenant', action: 'edit' },
   { key: 'tenant:branding', name: 'Gestionar branding', description: 'Subir y cambiar logo y banner de la empresa', module: 'tenant', action: 'branding' },
+  // kitchen (KDS)
+  { key: 'kitchen:view',   name: 'Ver cocina (KDS)',       description: 'Ver órdenes activas en pantalla de cocina',     module: 'kitchen', action: 'view'   },
+  { key: 'kitchen:manage', name: 'Gestionar cocina',       description: 'Iniciar, pausar, reanudar y marcar listo',      module: 'kitchen', action: 'manage' },
+  { key: 'kitchen:reject', name: 'Rechazar órdenes',       description: 'Rechazar órdenes con comentario obligatorio',   module: 'kitchen', action: 'reject' },
 ];
 
 export const MODULES_ORDER = [
