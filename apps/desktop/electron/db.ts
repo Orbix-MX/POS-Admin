@@ -1,26 +1,30 @@
 import { createRequire } from 'module'
 import { app } from 'electron'
 import path from 'path'
+import { mkdirSync } from 'fs'
+import type BetterSqlite3 from 'better-sqlite3'
 
 const _require = createRequire(import.meta.url)
-const { Database } = _require('node-sqlite3-wasm') as typeof import('node-sqlite3-wasm')
+const Database = _require('better-sqlite3') as typeof BetterSqlite3
 
-let db: Database
+let db: BetterSqlite3.Database
 
-export function getDb(): Database {
+export function getDb(): BetterSqlite3.Database {
   if (!db) throw new Error('DB not initialized — call initDb() first')
   return db
 }
 
 export function initDb(): void {
-  const dbPath = path.join(app.getPath('userData'), 'orbix-pos.db')
-  db = new Database(dbPath)
-  db.exec('PRAGMA journal_mode = WAL')
-  db.exec('PRAGMA foreign_keys = ON')
+  const dbDir = path.join(app.getPath('appData'), 'OrbixPOS')
+  mkdirSync(dbDir, { recursive: true })
+  const dbPath = path.join(dbDir, 'orbix-pos.db')
+  db = new Database(dbPath) as BetterSqlite3.Database
+  db.pragma('journal_mode = WAL')
+  db.pragma('foreign_keys = ON')
   applySchema(db)
 }
 
-function applySchema(db: Database): void {
+function applySchema(db: BetterSqlite3.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS kv_store (
       key   TEXT PRIMARY KEY,
@@ -103,22 +107,22 @@ function applySchema(db: Database): void {
 
 // ── Helpers exportados para sync.ts ──────────────────────────────────────────
 
-export function markSaleSynced(db: Database, id: string): void {
+export function markSaleSynced(db: BetterSqlite3.Database, id: string): void {
   db.prepare("UPDATE pending_sales SET status = 'synced', synced_at = ? WHERE id = ?")
-    .run([Date.now(), id])
+    .run(Date.now(), id)
 }
 
-export function markSaleError(db: Database, id: string, error: string): void {
+export function markSaleError(db: BetterSqlite3.Database, id: string, error: string): void {
   db.prepare("UPDATE pending_sales SET status = 'error', sync_error = ? WHERE id = ?")
-    .run([error, id])
+    .run(error, id)
 }
 
-export function markCashMovementSynced(db: Database, id: string): void {
+export function markCashMovementSynced(db: BetterSqlite3.Database, id: string): void {
   db.prepare("UPDATE pending_cash_movements SET status = 'synced', synced_at = ? WHERE id = ?")
-    .run([Date.now(), id])
+    .run(Date.now(), id)
 }
 
-export function markCashMovementError(db: Database, id: string, error: string): void {
+export function markCashMovementError(db: BetterSqlite3.Database, id: string, error: string): void {
   db.prepare("UPDATE pending_cash_movements SET status = 'error', sync_error = ? WHERE id = ?")
-    .run([error, id])
+    .run(error, id)
 }

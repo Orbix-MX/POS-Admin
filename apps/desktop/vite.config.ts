@@ -7,7 +7,6 @@ import { readFileSync, renameSync } from 'fs'
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8'))
 
 const appVersion = JSON.stringify(pkg.version)
-import fs from 'fs'
 
 export default defineConfig(({ command }) => ({
   plugins: [
@@ -36,7 +35,7 @@ export default defineConfig(({ command }) => ({
           build: {
             sourcemap: command === 'serve',
             rollupOptions: {
-              external: ['node-sqlite3-wasm', 'electron', 'electron-updater'],
+              external: ['better-sqlite3', 'electron', 'electron-updater'],
             },
           },
         },
@@ -64,13 +63,10 @@ export default defineConfig(({ command }) => ({
     },
   },
   define: {
-    __APP_VERSION__: JSON.stringify('desktop'),
+    __APP_VERSION__: JSON.stringify(pkg.version),
   },
   // Paths relativos para file:// protocol de Electron
   base: command === 'serve' ? '/' : './',
-  define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
-  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,
