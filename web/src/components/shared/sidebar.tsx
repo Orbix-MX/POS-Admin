@@ -4,7 +4,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   LayoutDashboard, ShoppingBag, ShoppingCart, Package,
   Users, Truck, FileText, Settings, Shield,
-  ChevronDown, LogOut, Landmark, Receipt, TrendingUp, Wrench, UserCheck, MapPin,
+  ChevronDown, LogOut, Landmark, Receipt, TrendingUp, Wrench, UserCheck, MapPin, UtensilsCrossed, FlaskConical, ChefHat,
 } from 'lucide-react'
 
 type NavItem = {
@@ -13,6 +13,8 @@ type NavItem = {
   icon: LucideIcon
   path: string
   permission?: string
+  featureGuard?: (hasFeature: (f: TenantFeature) => boolean, hasPosMode: (m: PosOperationMode) => boolean) => boolean
+  verticalGuard?: (hasVertical: (v: BusinessVertical) => boolean) => boolean
 }
 
 type NavGroup = {
@@ -22,6 +24,8 @@ type NavGroup = {
 }
 import { useERPStore } from '@/store/erp-store'
 import { useAuthStore } from '@/store/auth-store'
+import { useTenantFeatures } from '@/hooks/use-tenant-features'
+import type { TenantFeature, PosOperationMode, BusinessVertical } from '@/hooks/use-tenant-features'
 import { AvatarInitials } from './avatar-initials'
 
 function TenantLogo({ logoUrl, name, size = 30 }: { logoUrl?: string; name: string; size?: number }) {
@@ -58,12 +62,30 @@ const ALL_NAV: NavGroup[] = [
       { module: 'ventas',    label: 'Ventas',       icon: ShoppingBag,     path: '/ventas'    },
       { module: 'compras',   label: 'Compras',      icon: ShoppingCart,    path: '/compras'   },
       { module: 'inventario',label: 'Inventario',   icon: Package,         path: '/inventario'},
+      { module: 'insumos',   label: 'Insumos',      icon: FlaskConical,    path: '/insumos'   },
       { module: 'clientes',  label: 'Clientes',     icon: Users,           path: '/clientes'  },
       { module: 'proveedores',label: 'Proveedores', icon: Truck,           path: '/proveedores'},
       { module: 'servicios', label: 'Servicios',    icon: Wrench,          path: '/servicios' },
       { module: 'cotizaciones',label: 'Cotizaciones',icon: FileText,       path: '/cotizaciones'},
       { module: 'ordenes-trabajo', label: 'Órdenes de Trabajo', icon: Wrench, path: '/ordenes-trabajo' },
       { module: 'empleados', label: 'Capital Humano', icon: UserCheck, path: '/empleados' },
+      {
+        module: 'comanda',
+        label: 'Comandas',
+        icon: UtensilsCrossed,
+        path: '/comanda',
+        featureGuard: (hasFeature, hasPosMode) => hasFeature('TABLES') || hasPosMode('TABLE_SERVICE'),
+        verticalGuard: (hasVertical) => hasVertical('RESTAURANT'),
+      },
+      {
+        module: 'kitchen',
+        label: 'Cocina',
+        icon: ChefHat,
+        path: '/kitchen',
+        permission: 'kitchen:view',
+        featureGuard: (hasFeature) => hasFeature('KITCHEN'),
+        verticalGuard: (hasVertical) => hasVertical('RESTAURANT'),
+      },
     ],
   },
   {
@@ -82,6 +104,7 @@ const ALL_NAV: NavGroup[] = [
 export function Sidebar() {
   const { empresa, tenantBranding } = useERPStore()
   const { user, logout, enabledModules, permissions, currentBranch, availableBranches, confirmBranch } = useAuthStore()
+  const { hasFeature, hasPosMode } = useTenantFeatures()
   const [expanded, setExpanded] = useState<Record<string, boolean>>({ business: true, management: true })
   const [branchMenuOpen, setBranchMenuOpen] = useState(false)
 
@@ -90,11 +113,15 @@ export function Sidebar() {
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN'
 
+  const { hasVertical } = useTenantFeatures()
+
   const visibleGroups = ALL_NAV.map(group => ({
     ...group,
     items: group.items.filter(item =>
       enabledModules.includes(item.module) &&
-      (isSuperAdmin || !item.permission || permissions.includes(item.permission))
+      (isSuperAdmin || !item.permission || permissions.includes(item.permission)) &&
+      (!item.featureGuard || item.featureGuard(hasFeature, hasPosMode)) &&
+      (!item.verticalGuard || item.verticalGuard(hasVertical))
     ),
   })).filter(group => group.items.length > 0)
 

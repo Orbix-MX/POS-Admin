@@ -17,6 +17,7 @@ import {
   calculateTax,
   convertMoney,
 } from '../../../common/utils/money.util';
+import { safeConvertUnits } from '../../../common/helpers/unit-conversion';
 
 @Injectable()
 export class OrdersService {
@@ -52,15 +53,53 @@ export class OrdersService {
     const productItems = dto.items.filter((i) => !i.itemType || i.itemType === 'PRODUCT');
     const serviceItems = dto.items.filter((i) => i.itemType === 'SERVICE');
 
-    // Validate and load products
+    // Validate and load products (include recipe for consumption check)
     const productIds = [...new Set(productItems.map((i) => i.productId).filter(Boolean) as string[])];
     const products = productIds.length
-      ? await this.prisma.product.findMany({ where: { id: { in: productIds } }, include: { category: true } })
+      ? await this.prisma.product.findMany({
+          where: { id: { in: productIds } },
+          include: {
+            category: true,
+            recipe: {
+              include: {
+                items: {
+                  include: { supply: { include: { baseUnit: true, inventoryUnit: true } } },
+                },
+              },
+            },
+          },
+        })
       : [];
     if (products.length !== productIds.length) {
       const found = new Set(products.map((p) => p.id));
       const missing = productIds.filter((id) => !found.has(id));
       throw new NotFoundException(`Productos no encontrados: ${missing.join(', ')}`);
+    }
+
+    // Pre-validate supply stock for RECIPE products
+    for (const item of productItems) {
+      const product = products.find((p) => p.id === item.productId)!;
+      if ((product as any).type !== 'RECIPE') continue;
+      const recipe = (product as any).recipe;
+      if (!recipe?.items?.length) {
+        throw new BadRequestException(
+          `El producto "${product.name}" es de tipo receta pero no tiene ingredientes configurados`,
+        );
+      }
+      for (const ri of recipe.items) {
+        // neededInStockUnit = quantity in the same unit as supply.stock (baseUnit when configured)
+        const stockUnit = (ri.supply as any).baseUnit?.symbol ?? ri.supply.unit;
+        const neededInStockUnit = ri.normalizedQuantity != null
+          ? Number(ri.normalizedQuantity) * item.quantity
+          : safeConvertUnits(Number(ri.quantity) * item.quantity, ri.unit, stockUnit);
+        if (Number(ri.supply.stock) < neededInStockUnit) {
+          const displayUnit = (ri.supply as any).inventoryUnit?.symbol ?? ri.supply.unit;
+          throw new BadRequestException(
+            `Stock insuficiente del insumo "${ri.supply.name}". ` +
+            `Disponible: ${ri.supply.stock} ${stockUnit}, necesario: ${neededInStockUnit.toFixed(3)} ${stockUnit}`,
+          );
+        }
+      }
     }
 
     // Optionally validate services from catalog
@@ -210,6 +249,7 @@ export class OrdersService {
           ...(couponCode != null && { couponCode }),
           status: dto.isLayaway ? ('LAYAWAY' as any) : ((dto.status ?? 'PENDING') as any),
           paymentStatus: initialPaymentStatus as any,
+          orderOrigin: 'RETAIL_POS',
           ...(createdById != null && { createdById }),
           ...(branchId != null && { branchId }),
           ...(dto.sourceQuoteId != null && { serviceQuoteId: dto.sourceQuoteId }),
@@ -261,11 +301,50 @@ export class OrdersService {
         });
       }
 
-      // Decrement stock only for product items — guarded against negative stock.
+      // Decrement stock only for SIMPLE product items — guarded against negative stock.
       // updateMany with stock>=qty is atomic at row level; count===0 means the
       // product is untracked-with-insufficient or a concurrent sale drained it.
       for (const item of productItems) {
         const product = productMap.get(item.productId!)!;
+        if ((product as any).type === 'RECIPE') {
+          // Consume recipe supply ingredients
+          const recipe = (product as any).recipe;
+          if (recipe?.items?.length) {
+            for (const ri of recipe.items) {
+              const stockUnit = (ri.supply as any).baseUnit?.symbol ?? ri.supply.unit;
+              const needed = ri.normalizedQuantity != null
+                ? Number(ri.normalizedQuantity) * item.quantity
+                : safeConvertUnits(Number(ri.quantity) * item.quantity, ri.unit, stockUnit);
+              const res = await tx.supply.updateMany({
+                where: { id: ri.supplyId, stock: { gte: needed } },
+                data: { stock: { decrement: needed } },
+              });
+              if (res.count === 0) {
+                throw new BadRequestException(
+                  `Stock insuficiente del insumo "${ri.supply.name}" al procesar venta`,
+                );
+              }
+              const convNote = ri.normalizedQuantity != null && ri.unit !== stockUnit
+                ? `Consumo receta: ${product.name} (${Number(ri.quantity)} ${ri.unit} → ${needed.toFixed(3)} ${stockUnit})`
+                : `Consumo receta: ${product.name}`;
+              await tx.supplyMovement.create({
+                data: {
+                  tenantId,
+                  supplyId: ri.supplyId,
+                  type: 'RECIPE_CONSUMPTION',
+                  quantity: needed,
+                  referenceId: newOrder.id,
+                  notes: convNote,
+                  ...(branchId && { branchId }),
+                  ...(createdById && { createdById }),
+                },
+              });
+            }
+          }
+          continue;
+        }
+
+        // SIMPLE product stock decrement
         if (product.trackInventory) {
           const res = await tx.product.updateMany({
             where: { id: item.productId!, stock: { gte: item.quantity } },
@@ -276,17 +355,14 @@ export class OrdersService {
               `Stock insuficiente para "${product.name}". Disponible: ${product.stock}, solicitado: ${item.quantity}`,
             );
           }
-        } else {
-          await tx.product.update({
-            where: { id: item.productId! },
-            data: { stock: { decrement: item.quantity } },
-          });
         }
       }
 
-      // Decrement branch inventory for product items only
+      // Decrement branch inventory only for SIMPLE items with trackInventory
       if (branchId) {
         for (const item of productItems) {
+          const product = productMap.get(item.productId!)!;
+          if ((product as any).type !== 'SIMPLE' || !product.trackInventory) continue;
           const updatedProduct = await tx.product.findUnique({
             where: { id: item.productId! },
             select: { stock: true },
@@ -461,12 +537,13 @@ export class OrdersService {
 
   async findAll(query: QueryOrdersDto): Promise<PaginatedResponse<Order>> {
     const tenantId = this.tenantContext.requireTenantId();
-    const { skip, limit, page, customerId, status } = query;
+    const { skip, limit, page, customerId, status, orderOrigin } = query;
 
     const where: any = {
       tenantId,
       ...(customerId != null && { customerId }),
       ...(status != null && { status }),
+      ...(orderOrigin != null && { orderOrigin }),
     };
 
     const [orders, total] = await Promise.all([

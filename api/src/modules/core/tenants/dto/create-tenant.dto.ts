@@ -1,6 +1,6 @@
-﻿import { IsString, IsOptional, IsEnum, IsEmail, IsInt, Min, MinLength } from 'class-validator';
+﻿import { IsString, IsOptional, IsEnum, IsEmail, IsInt, IsArray, Min, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { TenantPlan } from '@prisma/client';
+import { TenantPlan, BusinessVertical, PosOperationMode, TenantFeature } from '@prisma/client';
 
 export class CreateTenantDto {
   @ApiProperty({ example: 'Mi Tienda' })
@@ -19,6 +19,22 @@ export class CreateTenantDto {
   @ApiPropertyOptional({ description: 'JSON settings: currency, timezone, logo, address...' })
   @IsOptional()
   settings?: Record<string, any>;
+
+  @ApiPropertyOptional({ enum: BusinessVertical, default: 'RETAIL' })
+  @IsOptional()
+  @IsEnum(BusinessVertical)
+  businessVertical?: BusinessVertical;
+
+  @ApiPropertyOptional({ enum: PosOperationMode, default: 'QUICK_SALE' })
+  @IsOptional()
+  @IsEnum(PosOperationMode)
+  posOperationMode?: PosOperationMode;
+
+  @ApiPropertyOptional({ type: [String], enum: TenantFeature })
+  @IsOptional()
+  @IsArray()
+  @IsEnum(TenantFeature, { each: true })
+  enabledFeatures?: TenantFeature[];
 
   @ApiPropertyOptional({ description: 'Manual active-user cap overriding the plan default (any plan)' })
   @IsOptional()

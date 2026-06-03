@@ -28,11 +28,15 @@ import { Servicios } from '@/pages/servicios'
 import { Cotizaciones } from '@/pages/cotizaciones'
 import { OrdenesTrabajo } from '@/pages/ordenes-trabajo'
 import { Empleados } from '@/pages/empleados'
+import { Comanda } from '@/pages/comanda'
+import { Insumos } from '@/pages/insumos'
+import { Kitchen } from '@/pages/kitchen'
 import { PlatformLogin } from '@/pages/platform/platform-login'
 import { PlatformDashboard } from '@/pages/platform/platform-dashboard'
 import { PlatformEmpresas } from '@/pages/platform/platform-empresas'
 import { PlatformEmpresaDetalle } from '@/pages/platform/platform-empresa-detalle'
 import { PlatformAuditoria } from '@/pages/platform/platform-auditoria'
+import { TenantSuspended } from '@/pages/tenant-suspended'
 import { Download } from 'lucide-react'
 import type { ModuleId } from '@/types/erp'
 
@@ -57,6 +61,8 @@ const PATH_TO_MODULE: Record<string, ModuleId> = {
   '/ordenes-trabajo': 'ordenes-trabajo',
   '/empleados': 'empleados',
   '/pos': 'pos',
+  '/comanda': 'comanda',
+  '/insumos': 'insumos',
 }
 
 function ModuleRoute({ module, children }: { module: string; children: ReactNode }) {
@@ -103,9 +109,9 @@ function AppLayout() {
             {meta.label}
           </h1>
           <div className="flex gap-2">
-            <button className="flex items-center gap-1.5 px-3 py-1.5 border border-border rounded-lg bg-card text-xs cursor-pointer text-muted-foreground">
+            {/* <button className="flex items-center gap-1.5 px-3 py-1.5 border border-border rounded-lg bg-card text-xs cursor-pointer text-muted-foreground">
               <Download className="w-3.5 h-3.5" /> Importar/Exportar
-            </button>
+            </button> */}
           </div>
         </div>
 
@@ -131,6 +137,8 @@ function AppLayout() {
             <Route path="/cotizaciones" element={<ModuleRoute module="cotizaciones"><Cotizaciones /></ModuleRoute>} />
             <Route path="/ordenes-trabajo" element={<ModuleRoute module="ordenes-trabajo"><OrdenesTrabajo /></ModuleRoute>} />
             <Route path="/empleados" element={<ModuleRoute module="empleados"><Empleados /></ModuleRoute>} />
+            <Route path="/comanda" element={<ModuleRoute module="comanda"><Comanda /></ModuleRoute>} />
+            <Route path="/insumos" element={<ModuleRoute module="inventario"><Insumos /></ModuleRoute>} />
           </Routes>
         </div>
       </div>
@@ -139,10 +147,18 @@ function AppLayout() {
 }
 
 function TenantAuthGate() {
-  const { isAuthenticated, availableTenants, capabilitiesLoaded, needsBranchSelection, availableBranches, init } = useAuthStore()
+  const { isAuthenticated, availableTenants, capabilitiesLoaded, needsBranchSelection, availableBranches, init, tenantSuspended, setTenantSuspended } = useAuthStore()
+  const location = useLocation()
 
   useEffect(() => { init() }, [init])
 
+  useEffect(() => {
+    const handler = () => setTenantSuspended(true)
+    window.addEventListener('tenant:suspended', handler)
+    return () => window.removeEventListener('tenant:suspended', handler)
+  }, [setTenantSuspended])
+
+  if (tenantSuspended) { document.title = `Empresa suspendida | ${APP_SUFFIX}`; return <TenantSuspended /> }
   if (!isAuthenticated && !availableTenants) { document.title = `Iniciar sesión | ${APP_SUFFIX}`; return <Login /> }
   if (!isAuthenticated && availableTenants) { document.title = APP_SUFFIX; return <SelectTenant /> }
   if (!capabilitiesLoaded || availableBranches === null) return (
@@ -151,6 +167,11 @@ function TenantAuthGate() {
     </div>
   )
   if (needsBranchSelection) { document.title = APP_SUFFIX; return <SelectBranch /> }
+
+  if (location.pathname === '/kitchen') {
+    document.title = `Cocina | ${APP_SUFFIX}`
+    return <Kitchen />
+  }
 
   return <AppLayout />
 }

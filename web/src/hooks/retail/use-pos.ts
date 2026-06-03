@@ -51,6 +51,7 @@ export function usePOS() {
   const [services, setServices]   = useState<Service[]>([])
   const [catalogLoading, setCatalogLoading] = useState(true)
   const [catalogTab, setCatalogTab] = useState<'products' | 'services'>('products')
+  const [lastAddedProduct, setLastAddedProduct] = useState<Product | null>(null)
   const [serviceSearch, setServiceSearch] = useState('')
   // manual service capture
   const [manualServiceOpen, setManualServiceOpen] = useState(false)
@@ -59,6 +60,21 @@ export function usePOS() {
   // ---- product filter ----
   const [search, setSearch]       = useState('')
   const searchRef                 = useRef<HTMLInputElement>(null)
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
+
+  // ---- groups (unique categories from active products) ----
+  // computed from full products list (not filtered) so chips show all groups
+  const grupos = useMemo(() => {
+    const seen = new Map<string, { id: string; name: string; count: number }>()
+    for (const p of products) {
+      if (p.status !== 'ACTIVE') continue
+      const id = p.category?.id ?? '__none__'
+      const name = p.category?.name ?? 'Sin categoría'
+      if (!seen.has(id)) seen.set(id, { id, name, count: 0 })
+      seen.get(id)!.count++
+    }
+    return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name, 'es'))
+  }, [products])
 
   // ---- cart ----
   const [carrito, setCarrito]     = useState<CartItem[]>([])
@@ -250,14 +266,17 @@ export function usePOS() {
   // ---- load catalog ----
   useEffect(() => {
     setCatalogLoading(true)
-    Promise.all([fetchProducts(), fetchClientes(), fetchServices({ isActive: true, limit: 200 })])
-      .then(([prodRes, clts, svcRes]) => {
-        setProducts(prodRes.data ?? [])
-        setClientes(clts)
-        setServices(svcRes.data ?? [])
-      })
-      .catch(() => {})
-      .finally(() => setCatalogLoading(false))
+    const loadAll = async () => {
+      const [prodRes, cltsRes, svcRes] = await Promise.allSettled([
+        fetchProducts(),
+        fetchClientes(),
+        fetchServices({ isActive: true, limit: 200 }),
+      ])
+      if (prodRes.status === 'fulfilled') setProducts(prodRes.value.data ?? [])
+      if (cltsRes.status === 'fulfilled') setClientes(cltsRes.value)
+      if (svcRes.status === 'fulfilled') setServices(svcRes.value.data ?? [])
+    }
+    loadAll().finally(() => setCatalogLoading(false))
   }, [])
 
   // ---- filtered products ----
@@ -265,9 +284,24 @@ export function usePOS() {
     const q = search.toLowerCase()
     return products.filter(p => {
       if (p.status !== 'ACTIVE') return false
+      if (selectedGroup && (p.category?.id ?? '__none__') !== selectedGroup) return false
       return !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
     })
-  }, [search, products])
+  }, [search, products, selectedGroup])
+
+  // ---- products grouped by category ----
+  const productosPorCategoria = useMemo(() => {
+    const groups = new Map<string, { categoryName: string; categoryId: string; products: Product[] }>()
+    for (const p of productosFiltrados) {
+      const key = p.category?.id ?? '__none__'
+      const name = p.category?.name ?? 'Sin categoría'
+      if (!groups.has(key)) groups.set(key, { categoryName: name, categoryId: key, products: [] })
+      groups.get(key)!.products.push(p)
+    }
+    return Array.from(groups.values()).sort((a, b) =>
+      a.categoryName.localeCompare(b.categoryName, 'es'),
+    )
+  }, [productosFiltrados])
 
   // ---- filtered services ----
   const serviciosFiltrados = useMemo(() => {
@@ -348,18 +382,20 @@ export function usePOS() {
     if (!p.id) return
     const existing = carrito.find(i => i.id === p.id && i.type === 'PRODUCT')
     if (existing) {
-      if (existing.qty >= p.stock) {
+      if (p.trackInventory && existing.qty >= p.stock) {
         flashStockWarning(`Stock máximo de "${p.name}" alcanzado (${p.stock} disponibles)`)
         return
       }
       setCarrito(prev => prev.map(i => i.id === p.id && i.type === 'PRODUCT' ? { ...i, qty: i.qty + 1 } : i))
+      setLastAddedProduct(p)
       return
     }
-    if (p.stock <= 0) {
+    if (p.trackInventory && p.stock <= 0) {
       flashStockWarning(`"${p.name}" sin stock disponible`)
       return
     }
-    setCarrito(prev => [...prev, { id: p.id!, name: p.name, sku: p.sku, price: Number(p.price), stock: p.stock, qty: 1, type: 'PRODUCT' as const }])
+    setCarrito(prev => [...prev, { id: p.id!, name: p.name, sku: p.sku, price: Number(p.price), stock: p.trackInventory ? p.stock : 9999, qty: 1, type: 'PRODUCT' as const }])
+    setLastAddedProduct(p)
   }, [carrito, flashStockWarning])
 
   const addServiceToCart = useCallback((s: Service, customPrice?: number) => {
@@ -658,7 +694,11 @@ export function usePOS() {
     services,
     // filters
     search, setSearch, searchRef,
+    selectedGroup, setSelectedGroup,
+    grupos,
     productosFiltrados,
+    productosPorCategoria,
+    lastAddedProduct,
     catalogTab, setCatalogTab,
     serviceSearch, setServiceSearch,
     serviciosFiltrados,

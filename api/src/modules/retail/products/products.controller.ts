@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Patch,
   Param,
@@ -23,6 +24,7 @@ import { QueryProductDto } from './dto/query-product.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
 import { Public } from '../../../common/decorators/public.decorator';
 import { RequireModule } from '../../../common/guards/require-module.guard';
+import { RecipeItemDto, ComboItemDto } from './dto/create-product.dto';
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
 
@@ -112,8 +114,50 @@ export class ProductsController {
   @Patch(':id/stock')
   @ApiBearerAuth()
   @RequirePermissions('products:edit')
-  @ApiOperation({ summary: 'Update product stock' })
+  @ApiOperation({ summary: 'Update product stock (SIMPLE only)' })
   updateStock(@Param('id') id: string, @Body('quantity') quantity: number) {
     return this.productsService.updateStock(id, quantity);
+  }
+
+  @Get(':id/recipe')
+  @ApiBearerAuth()
+  @RequirePermissions('products:view')
+  @ApiOperation({ summary: 'Get recipe for a RECIPE-type product' })
+  getRecipe(@Param('id') id: string) {
+    return this.productsService.getRecipe(id);
+  }
+
+  @Put(':id/recipe')
+  @ApiBearerAuth()
+  @RequirePermissions('products:edit')
+  @ApiOperation({ summary: 'Upsert recipe items for a RECIPE-type product' })
+  upsertRecipe(
+    @Param('id') id: string,
+    @Body('items') items: RecipeItemDto[],
+    @Body('notes') notes?: string,
+  ) {
+    return this.productsService.upsertRecipe(id, items, notes);
+  }
+
+  @Get(':id/combo-items')
+  @ApiBearerAuth()
+  @RequirePermissions('products:view')
+  @ApiOperation({ summary: 'Get combo items for a COMBO-type product' })
+  getComboItems(@Param('id') id: string) {
+    return this.productsService.getComboItems(id);
+  }
+
+  @Put(':id/combo-items')
+  @ApiBearerAuth()
+  @RequirePermissions('products:edit')
+  @ApiOperation({ summary: 'Upsert combo items for a COMBO-type product' })
+  upsertComboItems(
+    @Param('id') id: string,
+    @Body('items') items: ComboItemDto[],
+  ) {
+    return this.productsService.upsertComboItems(id, items.map((i) => ({
+      childProductId: i.childProductId,
+      quantity: i.quantity ?? 1,
+    })));
   }
 }

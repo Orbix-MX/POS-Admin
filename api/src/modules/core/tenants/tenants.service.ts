@@ -53,6 +53,9 @@ export class TenantsService {
           plan: dto.plan,
           settings: dto.settings,
           userLimitOverride: dto.userLimitOverride,
+          ...(dto.businessVertical && { businessVertical: dto.businessVertical }),
+          ...(dto.posOperationMode && { posOperationMode: dto.posOperationMode }),
+          ...(dto.enabledFeatures && { enabledFeatures: dto.enabledFeatures }),
           // 30-day trial on creation
           trialEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         },
@@ -134,6 +137,9 @@ export class TenantsService {
         ...(dto.status && { status: dto.status }),
         ...(dto.settings !== undefined && { settings: dto.settings }),
         ...(dto.userLimitOverride !== undefined && { userLimitOverride: dto.userLimitOverride }),
+        ...(dto.businessVertical && { businessVertical: dto.businessVertical }),
+        ...(dto.posOperationMode && { posOperationMode: dto.posOperationMode }),
+        ...(dto.enabledFeatures !== undefined && { enabledFeatures: dto.enabledFeatures }),
       },
     });
 
