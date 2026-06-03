@@ -1,6 +1,10 @@
 import { app, BrowserWindow, ipcMain, shell, nativeTheme, safeStorage, dialog } from 'electron'
-import { autoUpdater } from 'electron-updater'
+import pkg from 'electron-updater'
+const { autoUpdater } = pkg
 import path from 'path'
+import { fileURLToPath } from 'url'
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 import { getDb, initDb } from './db'
 import { syncPendingSales, syncPendingCashMovements, cacheProducts, cacheCustomers } from './sync'
 import { printTicket, printPdf } from './printer'
@@ -20,7 +24,7 @@ function createWindow() {
     autoHideMenuBar: true,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#09090b' : '#ffffff',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false,
@@ -36,6 +40,7 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow!.show()
+    mainWindow!.webContents.openDevTools()
   })
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
