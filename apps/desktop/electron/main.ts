@@ -3,6 +3,7 @@ import pkg from 'electron-updater'
 const { autoUpdater } = pkg
 import path from 'path'
 import { fileURLToPath } from 'url'
+
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 import { getDb, initDb } from './db'
@@ -27,7 +28,6 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false,
     },
   })
 
@@ -41,6 +41,10 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow!.show()
     mainWindow!.webContents.openDevTools()
+  })
+
+  mainWindow.webContents.on('console-message', (_e, level, message, line, sourceId) => {
+    if (level >= 2) console.error(`[RENDERER ${level === 3 ? 'ERROR' : 'WARN'}] ${message} (${sourceId}:${line})`)
   })
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -82,16 +86,15 @@ function setupIpcHandlers() {
   // ── Secure Storage (JWT) ──
   ipcMain.handle('storage:set', (_e, key: string, value: string) => {
     if (!safeStorage.isEncryptionAvailable()) {
-      // Fallback: store as-is (dev environments without keychain)
-      db.prepare('INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)').run(key, value)
+      db.prepare('INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)').run([key, value])
       return
     }
     const encrypted = safeStorage.encryptString(value).toString('base64')
-    db.prepare('INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)').run(key, encrypted)
+    db.prepare('INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)').run([key, encrypted])
   })
 
   ipcMain.handle('storage:get', (_e, key: string): string | null => {
-    const row = db.prepare('SELECT value FROM kv_store WHERE key = ?').get(key) as { value: string } | undefined
+    const row = db.prepare('SELECT value FROM kv_store WHERE key = ?').get([key]) as { value: string } | undefined
     if (!row) return null
     if (!safeStorage.isEncryptionAvailable()) return row.value
     try {
@@ -102,12 +105,12 @@ function setupIpcHandlers() {
   })
 
   ipcMain.handle('storage:delete', (_e, key: string) => {
-    db.prepare('DELETE FROM kv_store WHERE key = ?').run(key)
+    db.prepare('DELETE FROM kv_store WHERE key = ?').run([key])
   })
 
   // ── DB: Products cache ──
   ipcMain.handle('db:products:get', () => {
-    return db.prepare('SELECT * FROM products_cache WHERE status = ? ORDER BY name ASC').all('ACTIVE')
+    return db.prepare('SELECT * FROM products_cache WHERE status = ? ORDER BY name ASC').all(['ACTIVE'])
   })
 
   ipcMain.handle('db:products:cache', (_e, products: unknown[]) => {
@@ -117,7 +120,7 @@ function setupIpcHandlers() {
 
   // ── DB: Customers cache ──
   ipcMain.handle('db:customers:get', () => {
-    return db.prepare('SELECT * FROM customers_cache ORDER BY first_name ASC').all()
+    return db.prepare('SELECT * FROM customers_cache ORDER BY first_name ASC').all([])
   })
 
   ipcMain.handle('db:customers:cache', (_e, customers: unknown[]) => {
@@ -133,20 +136,20 @@ function setupIpcHandlers() {
         (id, tenant_id, branch_id, user_id, client_id, items, subtotal, discount, tax, total,
          payment_method, payment_amount, change_amount, notes, created_at, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-    `).run(
+    `).run([
       s.id, s.tenantId, s.branchId, s.userId, s.clientId,
       JSON.stringify(s.items), s.subtotal, s.discount, s.tax, s.total,
       s.paymentMethod, s.paymentAmount, s.changeAmount, s.notes, Date.now(),
-    )
+    ])
     return { ok: true }
   })
 
   ipcMain.handle('db:sales:get-pending', () => {
-    return db.prepare("SELECT * FROM pending_sales WHERE status = 'pending' ORDER BY created_at ASC").all()
+    return db.prepare("SELECT * FROM pending_sales WHERE status = 'pending' ORDER BY created_at ASC").all([])
   })
 
   ipcMain.handle('db:sales:count-pending', () => {
-    const row = db.prepare("SELECT COUNT(*) as n FROM pending_sales WHERE status = 'pending'").get() as { n: number }
+    const row = db.prepare("SELECT COUNT(*) as n FROM pending_sales WHERE status = 'pending'").get([]) as { n: number }
     return row.n
   })
 
@@ -157,7 +160,7 @@ function setupIpcHandlers() {
       INSERT INTO pending_cash_movements
         (id, tenant_id, branch_id, session_id, type, amount, concept, notes, user_id, created_at, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-    `).run(m.id, m.tenantId, m.branchId, m.sessionId, m.type, m.amount, m.concept, m.notes, m.userId, Date.now())
+    `).run([m.id, m.tenantId, m.branchId, m.sessionId, m.type, m.amount, m.concept, m.notes, m.userId, Date.now()])
     return { ok: true }
   })
 
@@ -169,7 +172,7 @@ function setupIpcHandlers() {
       const cashResult = await syncPendingCashMovements(db, apiBase, token)
       const now = Date.now()
       db.prepare('INSERT OR REPLACE INTO sync_meta (key, value, updated_at) VALUES (?, ?, ?)')
-        .run('last_sync', now.toString(), now)
+        .run(['last_sync', now.toString(), now])
       return { ok: true, ...salesResult, cashSynced: cashResult.synced, cashErrors: cashResult.errors }
     } catch (err) {
       return { ok: false, error: String(err) }
@@ -177,7 +180,7 @@ function setupIpcHandlers() {
   })
 
   ipcMain.handle('sync:last-time', () => {
-    const row = db.prepare("SELECT value FROM sync_meta WHERE key = 'last_sync'").get() as { value: string } | undefined
+    const row = db.prepare("SELECT value FROM sync_meta WHERE key = 'last_sync'").get([]) as { value: string } | undefined
     return row ? parseInt(row.value) : null
   })
 

@@ -8,13 +8,18 @@ let db;
 function getDb() {
   if (!db)
     throw new Error("DB not initialized — call initDb() first");
+const _require = createRequire(import.meta.url);
+const { Database } = _require("node-sqlite3-wasm");
+let db;
+function getDb() {
+  if (!db) throw new Error("DB not initialized — call initDb() first");
   return db;
 }
 function initDb() {
   const dbPath = path.join(app.getPath("userData"), "orbix-pos.db");
   db = new Database(dbPath);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
+  db.exec("PRAGMA journal_mode = WAL");
+  db.exec("PRAGMA foreign_keys = ON");
   applySchema(db);
 }
 function applySchema(db2) {
@@ -25,7 +30,6 @@ function applySchema(db2) {
       value TEXT NOT NULL
     );
 
-    -- Cache de productos (refresco desde API)
     CREATE TABLE IF NOT EXISTS products_cache (
       id              TEXT PRIMARY KEY,
       sku             TEXT NOT NULL,
@@ -44,7 +48,6 @@ function applySchema(db2) {
       synced_at       INTEGER NOT NULL DEFAULT 0
     );
 
-    -- Cache de clientes
     CREATE TABLE IF NOT EXISTS customers_cache (
       id         TEXT PRIMARY KEY,
       email      TEXT,
@@ -56,7 +59,6 @@ function applySchema(db2) {
       synced_at  INTEGER NOT NULL DEFAULT 0
     );
 
-    -- Cola de ventas pendientes de sincronizar
     CREATE TABLE IF NOT EXISTS pending_sales (
       id             TEXT PRIMARY KEY,
       tenant_id      TEXT NOT NULL,
@@ -78,7 +80,6 @@ function applySchema(db2) {
       status         TEXT NOT NULL DEFAULT 'pending'
     );
 
-    -- Cola de movimientos de caja pendientes
     CREATE TABLE IF NOT EXISTS pending_cash_movements (
       id         TEXT PRIMARY KEY,
       tenant_id  TEXT NOT NULL,
@@ -95,7 +96,6 @@ function applySchema(db2) {
       status     TEXT NOT NULL DEFAULT 'pending'
     );
 
-    -- Metadatos de sincronización
     CREATE TABLE IF NOT EXISTS sync_meta (
       key        TEXT PRIMARY KEY,
       value      TEXT NOT NULL,
@@ -123,14 +123,34 @@ function cacheProducts(db2, products) {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const now = Date.now();
-  const insertMany = db2.transaction((rows) => {
-    for (const p of rows) {
+  db2.exec("BEGIN");
+  try {
+    for (const p of products) {
       const images = Array.isArray(p.images) ? p.images : [];
       const primaryImage = images.find((i) => i.isPrimary) ?? images[0];
-      upsert.run(p.id, p.sku, p.name, p.price, p.costPrice ?? 0, p.stock ?? 0, p.categoryId ?? null, typeof p.category === "object" && p.category !== null ? p.category.name : null, p.status ?? "ACTIVE", p.trackInventory ? 1 : 0, p.lowStockAlert ?? 10, p.taxRate ?? 0, p.taxCode ?? "", (primaryImage == null ? void 0 : primaryImage.url) ?? null, now);
+      upsert.run([
+        p.id,
+        p.sku,
+        p.name,
+        p.price,
+        p.costPrice ?? 0,
+        p.stock ?? 0,
+        p.categoryId ?? null,
+        typeof p.category === "object" && p.category !== null ? p.category.name : null,
+        p.status ?? "ACTIVE",
+        p.trackInventory ? 1 : 0,
+        p.lowStockAlert ?? 10,
+        p.taxRate ?? 0,
+        p.taxCode ?? "",
+        (primaryImage == null ? void 0 : primaryImage.url) ?? null,
+        now
+      ]);
     }
-  });
-  insertMany(products);
+    db2.exec("COMMIT");
+  } catch (e) {
+    db2.exec("ROLLBACK");
+    throw e;
+  }
 }
 function cacheCustomers(db2, customers) {
   const upsert = db2.prepare(`
@@ -540,3 +560,4 @@ function setupAutoUpdater() {
   }), 1e4);
 }
 //# sourceMappingURL=main.js.map
+}

@@ -3,3 +3,16 @@ packages:
   - "web"
   - "apps/*"
   - "packages/*"
+
+onlyBuiltDependencies:
+  - "@nestjs/core"
+  - "@prisma/engines"
+  - "@scarf/scarf"
+  - "bcrypt"
+  - "better-sqlite3"
+  - "esbuild"
+  - "electron"
+  - "msw"
+  - "prisma"
+  - "puppeteer"
+  - "unrs-resolver"
