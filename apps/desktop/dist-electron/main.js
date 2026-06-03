@@ -1,21 +1,24 @@
-import { app as E, dialog as f, BrowserWindow as N, ipcMain as o, safeStorage as L, nativeTheme as A, shell as w } from "electron";
-import U from "electron-updater";
-import g from "path";
-import { fileURLToPath as b } from "url";
-import O from "better-sqlite3";
-import S from "fs";
-let h;
-function I() {
-  if (!h)
+import { app, dialog, BrowserWindow, ipcMain, safeStorage, nativeTheme, shell } from "electron";
+import pkg from "electron-updater";
+import path from "path";
+import { fileURLToPath } from "url";
+import Database from "better-sqlite3";
+import fs from "fs";
+let db;
+function getDb() {
+  if (!db)
     throw new Error("DB not initialized — call initDb() first");
-  return h;
+  return db;
 }
-function v() {
-  const e = g.join(E.getPath("userData"), "orbix-pos.db");
-  h = new O(e), h.pragma("journal_mode = WAL"), h.pragma("foreign_keys = ON"), C(h);
+function initDb() {
+  const dbPath = path.join(app.getPath("userData"), "orbix-pos.db");
+  db = new Database(dbPath);
+  db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON");
+  applySchema(db);
 }
-function C(e) {
-  e.exec(`
+function applySchema(db2) {
+  db2.exec(`
     -- KV store para tokens seguros y configuración local
     CREATE TABLE IF NOT EXISTS kv_store (
       key   TEXT PRIMARY KEY,
@@ -100,158 +103,183 @@ function C(e) {
     );
   `);
 }
-function D(e, r) {
-  e.prepare("UPDATE pending_sales SET status = 'synced', synced_at = ? WHERE id = ?").run(Date.now(), r);
+function markSaleSynced(db2, id) {
+  db2.prepare("UPDATE pending_sales SET status = 'synced', synced_at = ? WHERE id = ?").run(Date.now(), id);
 }
-function k(e, r, a) {
-  e.prepare("UPDATE pending_sales SET status = 'error', sync_error = ? WHERE id = ?").run(a, r);
+function markSaleError(db2, id, error) {
+  db2.prepare("UPDATE pending_sales SET status = 'error', sync_error = ? WHERE id = ?").run(error, id);
 }
-function P(e, r) {
-  e.prepare("UPDATE pending_cash_movements SET status = 'synced', synced_at = ? WHERE id = ?").run(Date.now(), r);
+function markCashMovementSynced(db2, id) {
+  db2.prepare("UPDATE pending_cash_movements SET status = 'synced', synced_at = ? WHERE id = ?").run(Date.now(), id);
 }
-function x(e, r, a) {
-  e.prepare("UPDATE pending_cash_movements SET status = 'error', sync_error = ? WHERE id = ?").run(a, r);
+function markCashMovementError(db2, id, error) {
+  db2.prepare("UPDATE pending_cash_movements SET status = 'error', sync_error = ? WHERE id = ?").run(error, id);
 }
-function X(e, r) {
-  const a = e.prepare(`
+function cacheProducts(db2, products) {
+  const upsert = db2.prepare(`
     INSERT OR REPLACE INTO products_cache
       (id, sku, name, price, cost_price, stock, category_id, category_name, status,
        track_inventory, low_stock_alert, tax_rate, tax_code, image_url, synced_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `), n = Date.now();
-  e.transaction((l) => {
-    for (const t of l) {
-      const c = Array.isArray(t.images) ? t.images : [], d = c.find((m) => m.isPrimary) ?? c[0];
-      a.run(t.id, t.sku, t.name, t.price, t.costPrice ?? 0, t.stock ?? 0, t.categoryId ?? null, typeof t.category == "object" && t.category !== null ? t.category.name : null, t.status ?? "ACTIVE", t.trackInventory ? 1 : 0, t.lowStockAlert ?? 10, t.taxRate ?? 0, t.taxCode ?? "", (d == null ? void 0 : d.url) ?? null, n);
+  `);
+  const now = Date.now();
+  const insertMany = db2.transaction((rows) => {
+    for (const p of rows) {
+      const images = Array.isArray(p.images) ? p.images : [];
+      const primaryImage = images.find((i) => i.isPrimary) ?? images[0];
+      upsert.run(p.id, p.sku, p.name, p.price, p.costPrice ?? 0, p.stock ?? 0, p.categoryId ?? null, typeof p.category === "object" && p.category !== null ? p.category.name : null, p.status ?? "ACTIVE", p.trackInventory ? 1 : 0, p.lowStockAlert ?? 10, p.taxRate ?? 0, p.taxCode ?? "", (primaryImage == null ? void 0 : primaryImage.url) ?? null, now);
     }
-  })(r);
+  });
+  insertMany(products);
 }
-function $(e, r) {
-  const a = e.prepare(`
+function cacheCustomers(db2, customers) {
+  const upsert = db2.prepare(`
     INSERT OR REPLACE INTO customers_cache
       (id, email, first_name, last_name, phone, status, type, synced_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `), n = Date.now();
-  e.transaction((l) => {
-    for (const t of l)
-      a.run(t.id, t.email ?? null, t.firstName, t.lastName, t.phone ?? null, t.status ?? "ACTIVE", t.type ?? "NEW", n);
-  })(r);
+  `);
+  const now = Date.now();
+  const insertMany = db2.transaction((rows) => {
+    for (const c of rows) {
+      upsert.run(c.id, c.email ?? null, c.firstName, c.lastName, c.phone ?? null, c.status ?? "ACTIVE", c.type ?? "NEW", now);
+    }
+  });
+  insertMany(customers);
 }
-async function F(e, r, a) {
-  const n = e.prepare("SELECT * FROM pending_sales WHERE status = 'pending' ORDER BY created_at ASC").all();
-  let i = 0, l = 0;
-  for (const t of n)
+async function syncPendingSales(db2, apiBase, token) {
+  const pending = db2.prepare("SELECT * FROM pending_sales WHERE status = 'pending' ORDER BY created_at ASC").all();
+  let synced = 0;
+  let errors = 0;
+  for (const sale of pending) {
     try {
-      e.prepare("UPDATE pending_sales SET status = 'syncing' WHERE id = ?").run(t.id);
-      const c = JSON.parse(t.items), d = {
-        offlineId: t.id,
-        clienteId: t.client_id ?? null,
-        items: c,
-        subtotal: t.subtotal,
-        descuentos: t.discount,
-        tax: t.tax,
-        total: t.total,
-        metodoPago: t.payment_method,
-        pagoCon: t.payment_amount,
-        cambio: t.change_amount,
-        notas: t.notes ?? null
-      }, m = await fetch(`${r}/pos/ventas`, {
+      db2.prepare("UPDATE pending_sales SET status = 'syncing' WHERE id = ?").run(sale.id);
+      const items = JSON.parse(sale.items);
+      const body = {
+        offlineId: sale.id,
+        clienteId: sale.client_id ?? null,
+        items,
+        subtotal: sale.subtotal,
+        descuentos: sale.discount,
+        tax: sale.tax,
+        total: sale.total,
+        metodoPago: sale.payment_method,
+        pagoCon: sale.payment_amount,
+        cambio: sale.change_amount,
+        notas: sale.notes ?? null
+      };
+      const res = await fetch(`${apiBase}/pos/ventas`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${a}`
+          Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify(d),
+        body: JSON.stringify(body),
         signal: AbortSignal.timeout(15e3)
       });
-      if (!m.ok) {
-        const R = await m.text().catch(() => m.statusText);
-        throw new Error(`HTTP ${m.status}: ${R}`);
+      if (!res.ok) {
+        const text = await res.text().catch(() => res.statusText);
+        throw new Error(`HTTP ${res.status}: ${text}`);
       }
-      D(e, t.id), i++;
-    } catch (c) {
-      k(e, t.id, String(c)), l++;
+      markSaleSynced(db2, sale.id);
+      synced++;
+    } catch (err) {
+      markSaleError(db2, sale.id, String(err));
+      errors++;
     }
-  return { synced: i, errors: l };
+  }
+  return { synced, errors };
 }
-async function M(e, r, a) {
-  const n = e.prepare("SELECT * FROM pending_cash_movements WHERE status = 'pending' ORDER BY created_at ASC").all();
-  let i = 0, l = 0;
-  for (const t of n)
+async function syncPendingCashMovements(db2, apiBase, token) {
+  const pending = db2.prepare("SELECT * FROM pending_cash_movements WHERE status = 'pending' ORDER BY created_at ASC").all();
+  let synced = 0;
+  let errors = 0;
+  for (const m of pending) {
     try {
-      e.prepare("UPDATE pending_cash_movements SET status = 'syncing' WHERE id = ?").run(t.id);
-      const c = await fetch(`${r}/cash-sessions/${t.session_id}/movements`, {
+      db2.prepare("UPDATE pending_cash_movements SET status = 'syncing' WHERE id = ?").run(m.id);
+      const res = await fetch(`${apiBase}/cash-sessions/${m.session_id}/movements`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${a}`
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
-          offlineId: t.id,
-          type: t.type,
-          amount: t.amount,
-          concept: t.concept,
-          notes: t.notes ?? null
+          offlineId: m.id,
+          type: m.type,
+          amount: m.amount,
+          concept: m.concept,
+          notes: m.notes ?? null
         }),
         signal: AbortSignal.timeout(1e4)
       });
-      if (!c.ok) {
-        const d = await c.text().catch(() => c.statusText);
-        throw new Error(`HTTP ${c.status}: ${d}`);
+      if (!res.ok) {
+        const text = await res.text().catch(() => res.statusText);
+        throw new Error(`HTTP ${res.status}: ${text}`);
       }
-      P(e, t.id), i++;
-    } catch (c) {
-      x(e, t.id, String(c)), l++;
+      markCashMovementSynced(db2, m.id);
+      synced++;
+    } catch (err) {
+      markCashMovementError(db2, m.id, String(err));
+      errors++;
     }
-  return { synced: i, errors: l };
+  }
+  return { synced, errors };
 }
-async function B(e, r) {
-  const a = H(r);
-  return new Promise((n, i) => {
-    const { BrowserWindow: l } = require("electron"), t = new l({
-      show: !1,
-      webPreferences: { nodeIntegration: !1, contextIsolation: !0 }
+async function printTicket(win, data) {
+  const html = buildTicketHtml(data);
+  return new Promise((resolve, reject) => {
+    const { BrowserWindow: BW } = require("electron");
+    const printWin = new BW({
+      show: false,
+      webPreferences: { nodeIntegration: false, contextIsolation: true }
     });
-    t.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(a)}`), t.webContents.once("did-finish-load", () => {
-      t.webContents.print({
-        silent: !0,
-        printBackground: !0,
+    printWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    printWin.webContents.once("did-finish-load", () => {
+      printWin.webContents.print({
+        silent: true,
+        printBackground: true,
         margins: { marginType: "none" }
-      }, (c, d) => {
-        t.close(), c ? n() : i(new Error(d ?? "Print failed"));
+      }, (success, errorType) => {
+        printWin.close();
+        if (success)
+          resolve();
+        else
+          reject(new Error(errorType ?? "Print failed"));
       });
     });
   });
 }
-async function W(e, r) {
-  const { filePath: a } = await f.showSaveDialog(e, {
+async function printPdf(win, opts) {
+  const { filePath } = await dialog.showSaveDialog(win, {
     title: "Guardar PDF",
-    defaultPath: g.join(E.getPath("documents"), `${r.title}.pdf`),
+    defaultPath: path.join(app.getPath("documents"), `${opts.title}.pdf`),
     filters: [{ name: "PDF", extensions: ["pdf"] }]
   });
-  if (!a)
+  if (!filePath)
     throw new Error("Cancelled");
-  const { BrowserWindow: n } = require("electron"), i = new n({
-    show: !1,
-    webPreferences: { nodeIntegration: !1, contextIsolation: !0 }
+  const { BrowserWindow: BW } = require("electron");
+  const pdfWin = new BW({
+    show: false,
+    webPreferences: { nodeIntegration: false, contextIsolation: true }
   });
-  await i.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(r.html)}`);
-  const l = await i.webContents.printToPDF({
-    printBackground: !0,
+  await pdfWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(opts.html)}`);
+  const pdfData = await pdfWin.webContents.printToPDF({
+    printBackground: true,
     pageSize: "A4"
   });
-  return i.close(), S.writeFileSync(a, l), a;
+  pdfWin.close();
+  fs.writeFileSync(filePath, pdfData);
+  return filePath;
 }
-function p(e) {
-  return e.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function fmt(n) {
+  return n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
-function H(e) {
-  const r = e.items.map((a) => `
+function buildTicketHtml(d) {
+  const itemRows = d.items.map((i) => `
     <tr>
-      <td>${T(a.nombre)}</td>
-      <td style="text-align:center">${a.qty}</td>
-      <td style="text-align:right">$${p(a.precio)}</td>
-      <td style="text-align:right">$${p(a.total)}</td>
+      <td>${escHtml(i.nombre)}</td>
+      <td style="text-align:center">${i.qty}</td>
+      <td style="text-align:right">$${fmt(i.precio)}</td>
+      <td style="text-align:right">$${fmt(i.total)}</td>
     </tr>`).join("");
   return `<!DOCTYPE html>
 <html lang="es">
@@ -274,11 +302,11 @@ function H(e) {
 </style>
 </head>
 <body>
-  <h1>${T(e.sucursal)}</h1>
-  <p class="center">Folio: ${T(e.folio)}</p>
-  <p class="center">${T(e.fecha)}</p>
-  <p class="center">Cajero: ${T(e.cajero)}</p>
-  ${e.cliente ? `<p class="center">Cliente: ${T(e.cliente)}</p>` : ""}
+  <h1>${escHtml(d.sucursal)}</h1>
+  <p class="center">Folio: ${escHtml(d.folio)}</p>
+  <p class="center">${escHtml(d.fecha)}</p>
+  <p class="center">Cajero: ${escHtml(d.cajero)}</p>
+  ${d.cliente ? `<p class="center">Cliente: ${escHtml(d.cliente)}</p>` : ""}
   <div class="divider"></div>
   <table>
     <thead>
@@ -287,152 +315,228 @@ function H(e) {
         <th style="text-align:right">Precio</th><th style="text-align:right">Total</th>
       </tr>
     </thead>
-    <tbody>${r}</tbody>
+    <tbody>${itemRows}</tbody>
   </table>
   <div class="divider"></div>
   <table class="totals">
-    <tr><td class="label">Subtotal</td><td class="value">$${p(e.subtotal)}</td></tr>
-    ${e.descuento > 0 ? `<tr><td class="label">Descuento</td><td class="value">-$${p(e.descuento)}</td></tr>` : ""}
-    ${e.impuesto > 0 ? `<tr><td class="label">Impuesto</td><td class="value">$${p(e.impuesto)}</td></tr>` : ""}
+    <tr><td class="label">Subtotal</td><td class="value">$${fmt(d.subtotal)}</td></tr>
+    ${d.descuento > 0 ? `<tr><td class="label">Descuento</td><td class="value">-$${fmt(d.descuento)}</td></tr>` : ""}
+    ${d.impuesto > 0 ? `<tr><td class="label">Impuesto</td><td class="value">$${fmt(d.impuesto)}</td></tr>` : ""}
     <tr class="grand-total">
-      <td class="label">TOTAL</td><td class="value">$${p(e.total)}</td>
+      <td class="label">TOTAL</td><td class="value">$${fmt(d.total)}</td>
     </tr>
-    <tr><td class="label">Pago (${T(e.metodoPago)})</td><td class="value">$${p(e.cambio + e.total)}</td></tr>
-    ${e.cambio > 0 ? `<tr><td class="label">Cambio</td><td class="value">$${p(e.cambio)}</td></tr>` : ""}
+    <tr><td class="label">Pago (${escHtml(d.metodoPago)})</td><td class="value">$${fmt(d.cambio + d.total)}</td></tr>
+    ${d.cambio > 0 ? `<tr><td class="label">Cambio</td><td class="value">$${fmt(d.cambio)}</td></tr>` : ""}
   </table>
   <div class="divider"></div>
   <p class="center">¡Gracias por su compra!</p>
 </body>
 </html>`;
 }
-function T(e) {
-  return String(e ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+function escHtml(s) {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
-const { autoUpdater: u } = U, V = b(import.meta.url), _ = g.dirname(V);
-let s = null;
-function y() {
-  s = new N({
+const { autoUpdater } = pkg;
+const __filename$1 = fileURLToPath(import.meta.url);
+const __dirname$1 = path.dirname(__filename$1);
+let mainWindow = null;
+function createWindow() {
+  mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 1024,
     minHeight: 600,
-    show: !1,
+    show: false,
     titleBarStyle: process.platform === "darwin" ? "hidden" : "default",
-    autoHideMenuBar: !0,
-    backgroundColor: A.shouldUseDarkColors ? "#09090b" : "#ffffff",
+    autoHideMenuBar: true,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#09090b" : "#ffffff",
     webPreferences: {
-      preload: g.join(_, "preload.cjs"),
-      nodeIntegration: !1,
-      contextIsolation: !0,
-      sandbox: !1
+      preload: path.join(__dirname$1, "preload.cjs"),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false
     }
-  }), process.env.VITE_DEV_SERVER_URL ? (s.loadURL(process.env.VITE_DEV_SERVER_URL), s.webContents.openDevTools()) : s.loadFile(g.join(_, "../dist/index.html")), s.once("ready-to-show", () => {
-    s.show(), s.webContents.openDevTools();
-  }), s.webContents.setWindowOpenHandler(({ url: e }) => (w.openExternal(e), { action: "deny" })), s.on("closed", () => {
-    s = null;
+  });
+  if (process.env["VITE_DEV_SERVER_URL"]) {
+    mainWindow.loadURL(process.env["VITE_DEV_SERVER_URL"]);
+    mainWindow.webContents.openDevTools();
+  } else {
+    mainWindow.loadFile(path.join(__dirname$1, "../dist/index.html"));
+  }
+  mainWindow.once("ready-to-show", () => {
+    mainWindow.show();
+    mainWindow.webContents.openDevTools();
+  });
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: "deny" };
+  });
+  mainWindow.on("closed", () => {
+    mainWindow = null;
   });
 }
-E.whenReady().then(() => {
-  v(), y(), Y(), j(), E.on("activate", () => {
-    N.getAllWindows().length === 0 && y();
+app.whenReady().then(() => {
+  initDb();
+  createWindow();
+  setupIpcHandlers();
+  setupAutoUpdater();
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
-E.on("window-all-closed", () => {
-  process.platform !== "darwin" && E.quit();
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
 });
-function Y() {
-  const e = I();
-  o.handle("app:version", () => E.getVersion()), o.handle("app:platform", () => process.platform), o.handle("storage:set", (r, a, n) => {
-    if (!L.isEncryptionAvailable()) {
-      e.prepare("INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)").run(a, n);
+function setupIpcHandlers() {
+  const db2 = getDb();
+  ipcMain.handle("app:version", () => app.getVersion());
+  ipcMain.handle("app:platform", () => process.platform);
+  ipcMain.handle("storage:set", (_e, key, value) => {
+    if (!safeStorage.isEncryptionAvailable()) {
+      db2.prepare("INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)").run(key, value);
       return;
     }
-    const i = L.encryptString(n).toString("base64");
-    e.prepare("INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)").run(a, i);
-  }), o.handle("storage:get", (r, a) => {
-    const n = e.prepare("SELECT value FROM kv_store WHERE key = ?").get(a);
-    if (!n) return null;
-    if (!L.isEncryptionAvailable()) return n.value;
+    const encrypted = safeStorage.encryptString(value).toString("base64");
+    db2.prepare("INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)").run(key, encrypted);
+  });
+  ipcMain.handle("storage:get", (_e, key) => {
+    const row = db2.prepare("SELECT value FROM kv_store WHERE key = ?").get(key);
+    if (!row) return null;
+    if (!safeStorage.isEncryptionAvailable()) return row.value;
     try {
-      return L.decryptString(Buffer.from(n.value, "base64"));
+      return safeStorage.decryptString(Buffer.from(row.value, "base64"));
     } catch {
-      return n.value;
+      return row.value;
     }
-  }), o.handle("storage:delete", (r, a) => {
-    e.prepare("DELETE FROM kv_store WHERE key = ?").run(a);
-  }), o.handle("db:products:get", () => e.prepare("SELECT * FROM products_cache WHERE status = ? ORDER BY name ASC").all("ACTIVE")), o.handle("db:products:cache", (r, a) => (X(e, a), { ok: !0 })), o.handle("db:customers:get", () => e.prepare("SELECT * FROM customers_cache ORDER BY first_name ASC").all()), o.handle("db:customers:cache", (r, a) => ($(e, a), { ok: !0 })), o.handle("db:sales:save-pending", (r, a) => {
-    const n = a;
-    return e.prepare(`
+  });
+  ipcMain.handle("storage:delete", (_e, key) => {
+    db2.prepare("DELETE FROM kv_store WHERE key = ?").run(key);
+  });
+  ipcMain.handle("db:products:get", () => {
+    return db2.prepare("SELECT * FROM products_cache WHERE status = ? ORDER BY name ASC").all("ACTIVE");
+  });
+  ipcMain.handle("db:products:cache", (_e, products) => {
+    cacheProducts(db2, products);
+    return { ok: true };
+  });
+  ipcMain.handle("db:customers:get", () => {
+    return db2.prepare("SELECT * FROM customers_cache ORDER BY first_name ASC").all();
+  });
+  ipcMain.handle("db:customers:cache", (_e, customers) => {
+    cacheCustomers(db2, customers);
+    return { ok: true };
+  });
+  ipcMain.handle("db:sales:save-pending", (_e, sale) => {
+    const s = sale;
+    db2.prepare(`
       INSERT INTO pending_sales
         (id, tenant_id, branch_id, user_id, client_id, items, subtotal, discount, tax, total,
          payment_method, payment_amount, change_amount, notes, created_at, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
     `).run(
-      n.id,
-      n.tenantId,
-      n.branchId,
-      n.userId,
-      n.clientId,
-      JSON.stringify(n.items),
-      n.subtotal,
-      n.discount,
-      n.tax,
-      n.total,
-      n.paymentMethod,
-      n.paymentAmount,
-      n.changeAmount,
-      n.notes,
+      s.id,
+      s.tenantId,
+      s.branchId,
+      s.userId,
+      s.clientId,
+      JSON.stringify(s.items),
+      s.subtotal,
+      s.discount,
+      s.tax,
+      s.total,
+      s.paymentMethod,
+      s.paymentAmount,
+      s.changeAmount,
+      s.notes,
       Date.now()
-    ), { ok: !0 };
-  }), o.handle("db:sales:get-pending", () => e.prepare("SELECT * FROM pending_sales WHERE status = 'pending' ORDER BY created_at ASC").all()), o.handle("db:sales:count-pending", () => e.prepare("SELECT COUNT(*) as n FROM pending_sales WHERE status = 'pending'").get().n), o.handle("db:cash:save-pending", (r, a) => {
-    const n = a;
-    return e.prepare(`
+    );
+    return { ok: true };
+  });
+  ipcMain.handle("db:sales:get-pending", () => {
+    return db2.prepare("SELECT * FROM pending_sales WHERE status = 'pending' ORDER BY created_at ASC").all();
+  });
+  ipcMain.handle("db:sales:count-pending", () => {
+    const row = db2.prepare("SELECT COUNT(*) as n FROM pending_sales WHERE status = 'pending'").get();
+    return row.n;
+  });
+  ipcMain.handle("db:cash:save-pending", (_e, movement) => {
+    const m = movement;
+    db2.prepare(`
       INSERT INTO pending_cash_movements
         (id, tenant_id, branch_id, session_id, type, amount, concept, notes, user_id, created_at, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-    `).run(n.id, n.tenantId, n.branchId, n.sessionId, n.type, n.amount, n.concept, n.notes, n.userId, Date.now()), { ok: !0 };
-  }), o.handle("sync:run", async (r, a) => {
-    const { apiBase: n, token: i } = a;
+    `).run(m.id, m.tenantId, m.branchId, m.sessionId, m.type, m.amount, m.concept, m.notes, m.userId, Date.now());
+    return { ok: true };
+  });
+  ipcMain.handle("sync:run", async (_e, opts) => {
+    const { apiBase, token } = opts;
     try {
-      const l = await F(e, n, i), t = await M(e, n, i), c = Date.now();
-      return e.prepare("INSERT OR REPLACE INTO sync_meta (key, value, updated_at) VALUES (?, ?, ?)").run("last_sync", c.toString(), c), { ok: !0, ...l, cashSynced: t.synced, cashErrors: t.errors };
-    } catch (l) {
-      return { ok: !1, error: String(l) };
+      const salesResult = await syncPendingSales(db2, apiBase, token);
+      const cashResult = await syncPendingCashMovements(db2, apiBase, token);
+      const now = Date.now();
+      db2.prepare("INSERT OR REPLACE INTO sync_meta (key, value, updated_at) VALUES (?, ?, ?)").run("last_sync", now.toString(), now);
+      return { ok: true, ...salesResult, cashSynced: cashResult.synced, cashErrors: cashResult.errors };
+    } catch (err) {
+      return { ok: false, error: String(err) };
     }
-  }), o.handle("sync:last-time", () => {
-    const r = e.prepare("SELECT value FROM sync_meta WHERE key = 'last_sync'").get();
-    return r ? parseInt(r.value) : null;
-  }), o.handle("print:ticket", async (r, a) => {
+  });
+  ipcMain.handle("sync:last-time", () => {
+    const row = db2.prepare("SELECT value FROM sync_meta WHERE key = 'last_sync'").get();
+    return row ? parseInt(row.value) : null;
+  });
+  ipcMain.handle("print:ticket", async (_e, data) => {
     try {
-      return await B(s, a), { ok: !0 };
-    } catch (n) {
-      return { ok: !1, error: String(n) };
+      await printTicket(mainWindow, data);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: String(err) };
     }
-  }), o.handle("print:pdf", async (r, a) => {
+  });
+  ipcMain.handle("print:pdf", async (_e, opts) => {
     try {
-      return { ok: !0, path: await W(s, a) };
-    } catch (n) {
-      return { ok: !1, error: String(n) };
+      const pdfPath = await printPdf(mainWindow, opts);
+      return { ok: true, path: pdfPath };
+    } catch (err) {
+      return { ok: false, error: String(err) };
     }
-  }), o.handle("print:printers", async () => s ? s.webContents.getPrintersAsync() : []), o.handle("dialog:save", async (r, a) => await f.showSaveDialog(s, a));
+  });
+  ipcMain.handle("print:printers", async () => {
+    if (!mainWindow) return [];
+    return mainWindow.webContents.getPrintersAsync();
+  });
+  ipcMain.handle("dialog:save", async (_e, opts) => {
+    const result = await dialog.showSaveDialog(mainWindow, opts);
+    return result;
+  });
 }
-function j() {
-  process.env.NODE_ENV !== "development" && (u.autoDownload = !1, u.logger = null, u.on("update-available", (e) => {
-    s == null || s.webContents.send("updater:available", e);
-  }), u.on("download-progress", (e) => {
-    s == null || s.webContents.send("updater:progress", e);
-  }), u.on("update-downloaded", () => {
-    s == null || s.webContents.send("updater:ready");
-  }), o.handle("updater:check", async () => {
+function setupAutoUpdater() {
+  if (process.env.NODE_ENV === "development") return;
+  autoUpdater.autoDownload = false;
+  autoUpdater.logger = null;
+  autoUpdater.on("update-available", (info) => {
+    mainWindow == null ? void 0 : mainWindow.webContents.send("updater:available", info);
+  });
+  autoUpdater.on("download-progress", (progress) => {
+    mainWindow == null ? void 0 : mainWindow.webContents.send("updater:progress", progress);
+  });
+  autoUpdater.on("update-downloaded", () => {
+    mainWindow == null ? void 0 : mainWindow.webContents.send("updater:ready");
+  });
+  ipcMain.handle("updater:check", async () => {
     try {
-      return await u.checkForUpdates(), { ok: !0 };
-    } catch (e) {
-      return { ok: !1, error: String(e) };
+      await autoUpdater.checkForUpdates();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: String(err) };
     }
-  }), o.handle("updater:download", () => {
-    u.downloadUpdate();
-  }), o.handle("updater:install", () => {
-    u.quitAndInstall();
-  }), setTimeout(() => u.checkForUpdates().catch(() => {
-  }), 1e4));
+  });
+  ipcMain.handle("updater:download", () => {
+    autoUpdater.downloadUpdate();
+  });
+  ipcMain.handle("updater:install", () => {
+    autoUpdater.quitAndInstall();
+  });
+  setTimeout(() => autoUpdater.checkForUpdates().catch(() => {
+  }), 1e4);
 }
+//# sourceMappingURL=main.js.map
