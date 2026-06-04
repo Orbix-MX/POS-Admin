@@ -4,6 +4,7 @@ import { Type } from 'class-transformer';
 import { IsEnum, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { ServiceQuoteStatus } from '@prisma/client';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
+import { RequireModule } from '../../../common/guards/require-module.guard';
 import { ReportsService } from './reports.service';
 
 class MonthlyQuotesQueryDto {
@@ -77,6 +78,7 @@ class MonthlySalesQueryDto {
   branchId?: string;
 }
 
+@RequireModule('reportes')
 @ApiTags('Reports')
 @ApiBearerAuth()
 @Controller('reports')

@@ -6,7 +6,9 @@ import { UpdateWorkOrderDto } from './dto/update-work-order.dto';
 import { AssignUserDto } from './dto/assign-user.dto';
 import { QueryWorkOrdersDto } from './dto/query-work-orders.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
+import { RequireModule } from '../../../common/guards/require-module.guard';
 
+@RequireModule('ordenes-trabajo')
 @ApiTags('Work Orders')
 @ApiBearerAuth()
 @Controller('work-orders')
