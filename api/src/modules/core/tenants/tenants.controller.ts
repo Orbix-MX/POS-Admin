@@ -13,6 +13,7 @@ import {
   ParseFilePipe,
   MaxFileSizeValidator,
   FileTypeValidator,
+  UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -21,6 +22,8 @@ import { TenantsService } from './tenants.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
+import { RolesGuard } from '../../../common/guards/roles.guard';
+import { Roles } from '../../../common/decorators/roles.decorator';
 import type { TenantInfo } from './tenants.service';
 
 const MAX_BRANDING_SIZE = 5 * 1024 * 1024;
@@ -34,33 +37,38 @@ export class TenantsController {
   // ── Super-admin endpoints ──────────────────────────────────────────────────
 
   @Post()
-  @RequirePermissions('tenants:manage')
+  @UseGuards(RolesGuard)
+  @Roles('SUPER_ADMIN')
   @ApiOperation({ summary: 'Create a new tenant (super-admin only)' })
   create(@Body() dto: CreateTenantDto) {
     return this.tenantsService.create(dto);
   }
 
   @Get()
-  @RequirePermissions('tenants:manage')
+  @UseGuards(RolesGuard)
+  @Roles('SUPER_ADMIN')
   @ApiOperation({ summary: 'List all tenants (super-admin only)' })
   findAll() {
     return this.tenantsService.findAll();
   }
 
   @Get(':id')
-  @RequirePermissions('tenants:manage')
+  @UseGuards(RolesGuard)
+  @Roles('SUPER_ADMIN')
   findOne(@Param('id') id: string) {
     return this.tenantsService.findOne(id);
   }
 
   @Patch(':id')
-  @RequirePermissions('tenants:manage')
+  @UseGuards(RolesGuard)
+  @Roles('SUPER_ADMIN')
   update(@Param('id') id: string, @Body() dto: UpdateTenantDto) {
     return this.tenantsService.update(id, dto);
   }
 
   @Delete(':id')
-  @RequirePermissions('tenants:manage')
+  @UseGuards(RolesGuard)
+  @Roles('SUPER_ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string) {
     return this.tenantsService.remove(id);

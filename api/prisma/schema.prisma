@@ -1670,3 +1670,13 @@ model WidgetRole {
   @@id([widgetId, roleId])
   @@map("widget_roles")
 }
+
+// ============= Auth =============
+
+model RevokedToken {
+  jti       String   @id
+  expiresAt DateTime
+  revokedAt DateTime @default(now())
+
+  @@map("revoked_tokens")
+}

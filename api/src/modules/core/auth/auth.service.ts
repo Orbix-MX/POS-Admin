@@ -105,12 +105,12 @@ export class AuthService {
     };
   }
 
-  logout(token: string): void {
+  async logout(token: string): Promise<void> {
     if (!token) return;
     try {
       const decoded = this.jwtService.decode<JwtPayload>(token);
       if (decoded?.jti && decoded?.exp) {
-        this.tokenBlacklist.revoke(decoded.jti, decoded.exp * 1000);
+        await this.tokenBlacklist.revoke(decoded.jti, decoded.exp * 1000);
       }
     } catch {
       // ignore malformed tokens

@@ -5,8 +5,13 @@ export default registerAs('jwt', () => {
   if (!secret) {
     throw new Error('JWT_SECRET environment variable is required');
   }
+  const platformSecret = process.env.PLATFORM_JWT_SECRET;
+  if (!platformSecret) {
+    throw new Error('PLATFORM_JWT_SECRET environment variable is required');
+  }
   return {
     secret,
+    platformSecret,
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   };
 });

@@ -12,7 +12,6 @@ import { CategoriesService, CategoryWithChildren } from './categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
-import { Public } from '../../../common/decorators/public.decorator';
 import { RequireModule } from '../../../common/guards/require-module.guard';
 
 @RequireModule('inventario')
@@ -38,14 +37,16 @@ export class CategoriesController {
   }
 
   @Get('tree')
-  @Public()
+  @ApiBearerAuth()
+  @RequirePermissions('categories:view')
   @ApiOperation({ summary: 'Get category tree (hierarchical)' })
   findTree(): Promise<CategoryWithChildren[]> {
     return this.categoriesService.findTree();
   }
 
   @Get(':id')
-  @Public()
+  @ApiBearerAuth()
+  @RequirePermissions('categories:view')
   @ApiOperation({ summary: 'Get category by ID' })
   findOne(@Param('id') id: string) {
     return this.categoriesService.findOne(id);

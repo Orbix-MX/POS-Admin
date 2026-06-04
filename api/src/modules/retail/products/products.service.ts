@@ -197,10 +197,9 @@ export class ProductsService {
   }
 
   async findOne(id: string): Promise<Product> {
-    const tenantId = this.tenantContext.getTenantId();
-    const where = tenantId ? { id, tenantId } : { id };
+    const tenantId = this.tenantContext.requireTenantId();
     const product = await this.prisma.product.findFirst({
-      where,
+      where: { id, tenantId },
       include: PRODUCT_INCLUDE,
     });
 
@@ -410,7 +409,8 @@ export class ProductsService {
   }
 
   async updateStock(id: string, quantity: number): Promise<Product> {
-    const product = await this.prisma.product.findUnique({ where: { id } });
+    const tenantId = this.tenantContext.requireTenantId();
+    const product = await this.prisma.product.findFirst({ where: { id, tenantId } });
 
     if (!product) throw new NotFoundException('Product not found');
 
@@ -427,7 +427,7 @@ export class ProductsService {
     if (newStock < 0) throw new BadRequestException('Insufficient stock');
 
     const updated = await this.prisma.product.update({
-      where: { id },
+      where: { id, tenantId },
       data: { stock: newStock },
     });
 
@@ -444,8 +444,10 @@ export class ProductsService {
   }
 
   async getLowStock(limit = 10) {
+    const tenantId = this.tenantContext.requireTenantId();
     return this.prisma.product.findMany({
       where: {
+        tenantId,
         type: 'SIMPLE',
         trackInventory: true,
         stock: {

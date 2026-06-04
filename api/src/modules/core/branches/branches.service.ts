@@ -101,6 +101,8 @@ export class BranchesService {
 
   async setMain(id: string): Promise<Branch> {
     const tenantId = this.tenantContext.requireTenantId();
+    const branch = await this.prisma.branch.findFirst({ where: { id, tenantId } });
+    if (!branch) throw new NotFoundException('Branch not found');
     await this.prisma.branch.updateMany({ where: { tenantId }, data: { isMain: false } });
     return this.prisma.branch.update({ where: { id }, data: { isMain: true } });
   }
@@ -120,6 +122,9 @@ export class BranchesService {
   }
 
   async removeMember(branchId: string, userId: string): Promise<void> {
+    const tenantId = this.tenantContext.requireTenantId();
+    const branch = await this.prisma.branch.findFirst({ where: { id: branchId, tenantId } });
+    if (!branch) throw new NotFoundException('Branch not found');
     await this.prisma.branchMembership.delete({
       where: { branchId_userId: { branchId, userId } },
     });

@@ -12,7 +12,7 @@ import { PlatformJwtStrategy } from './strategies/platform-jwt.strategy';
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('jwt.secret') as string,
+        secret: configService.get<string>('jwt.platformSecret') as string,
         signOptions: {
           expiresIn: (configService.get<string>('jwt.expiresIn') || '7d') as `${number}${'s'|'m'|'h'|'d'|'w'}`,
         },

@@ -22,7 +22,6 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { QueryProductDto } from './dto/query-product.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
-import { Public } from '../../../common/decorators/public.decorator';
 import { RequireModule } from '../../../common/guards/require-module.guard';
 import { RecipeItemDto, ComboItemDto } from './dto/create-product.dto';
 
@@ -59,7 +58,8 @@ export class ProductsController {
   }
 
   @Get(':id')
-  @Public()
+  @ApiBearerAuth()
+  @RequirePermissions('products:view')
   @ApiOperation({ summary: 'Get product by ID' })
   findOne(@Param('id') id: string) {
     return this.productsService.findOne(id);
