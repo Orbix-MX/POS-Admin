@@ -1,5 +1,6 @@
-﻿import { Controller, Get, Post, Patch, Param, Body, Query, HttpCode } from '@nestjs/common';
+﻿import { Controller, Get, Post, Patch, Param, Body, Query, HttpCode, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 import { CashSessionsService } from './cash-sessions.service';
 import { OpenCashSessionDto } from './dto/open-session.dto';
 import { CloseCashSessionDto } from './dto/close-session.dto';
@@ -60,6 +61,8 @@ export class CashSessionsController {
   }
 
   @Post('verify-auth')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @RequirePermissions('pos.cash:close')
   @ApiOperation({ summary: 'Verificar credenciales de autorizador para cierre de caja' })
   verifyCloseAuth(@Body() dto: VerifyAuthDto) {
@@ -67,6 +70,8 @@ export class CashSessionsController {
   }
 
   @Patch(':id/close-authorized')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @RequirePermissions('pos.cash:close')
   @ApiOperation({ summary: 'Cerrar sesión con autorización de administrador' })
   closeWithAuth(@Param('id') id: string, @Body() dto: CloseWithAuthDto) {

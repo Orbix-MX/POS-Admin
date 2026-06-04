@@ -161,6 +161,10 @@ export class TenantsService {
   /** Add a user to the current tenant */
   async addMember(userId: string, role = 'STAFF' as any): Promise<void> {
     const tenantId = this.tenantContext.requireTenantId();
+
+    const userExists = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+    if (!userExists) throw new NotFoundException('User not found');
+
     const existing = await this.prisma.tenantMembership.findUnique({
       where: { tenantId_userId: { tenantId, userId } },
       select: { status: true },

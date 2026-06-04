@@ -349,7 +349,6 @@ export class ProductsService {
     });
 
     if (!product) throw new NotFoundException('Product not found');
-    console.log('file', file);
 
     const webpBuffer = await sharp(file.buffer)
       .resize({ width: MAX_IMAGE_WIDTH, withoutEnlargement: true })
@@ -391,13 +390,9 @@ export class ProductsService {
   async removeImage(productId: string, imageId: string) {
     const tenantId = this.tenantContext.requireTenantId();
 
-    console.log('[removeImage] productId=%s imageId=%s tenantId=%s', productId, imageId, tenantId);
-
     const image = await this.prisma.productImage.findFirst({
       where: { id: imageId, productId, product: { tenantId } },
     });
-
-    console.log('[removeImage] found=%s', !!image);
 
     if (!image) throw new NotFoundException('Image not found');
 

@@ -9,6 +9,7 @@ interface CacheEntry {
 }
 
 const CACHE_TTL_MS = 60_000; // 60 seconds
+const CACHE_MAX_SIZE = 500;
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
@@ -116,12 +117,16 @@ export class PermissionsGuard implements CanActivate {
       expiresAt: now + CACHE_TTL_MS,
     });
 
-    // Evict expired entries periodically (every 100 writes)
-    if (this.cache.size > 100) {
+    if (this.cache.size > CACHE_MAX_SIZE) {
+      // First pass: evict expired entries
       for (const [key, entry] of this.cache) {
-        if (entry.expiresAt <= now) {
-          this.cache.delete(key);
-        }
+        if (entry.expiresAt <= now) this.cache.delete(key);
+        if (this.cache.size <= CACHE_MAX_SIZE) break;
+      }
+      // Second pass: evict oldest (Map preserves insertion order)
+      for (const key of this.cache.keys()) {
+        if (this.cache.size <= CACHE_MAX_SIZE) break;
+        this.cache.delete(key);
       }
     }
 

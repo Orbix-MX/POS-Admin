@@ -65,6 +65,8 @@ export class AuthController {
   }
 
   @Patch('select-tenant/:slug')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Select active tenant — returns new JWT with tenantId embedded' })
   selectTenant(

@@ -14,6 +14,10 @@ import { roundMoney } from '../../../common/utils/money.util';
 const CASH_INCOME_TYPES = ['SALE', 'CXC_PAYMENT', 'INCOME'] as const;
 const CASH_EXPENSE_TYPES = ['SUPPLIER_PAYMENT', 'EXPENSE'] as const;
 
+// Valid-format bcrypt hash used as constant-time dummy when user email is not found.
+// Prevents timing oracle that would reveal which emails exist in the system.
+const TIMING_SAFE_DUMMY_HASH = '$2b$10$abcdefghijklmnopqrstuuQfTkF.n8cXD.5EGovU1qWDzd3tpjRCC';
+
 type MovementLike = {
   type: string;
   paymentMethod: string;
@@ -214,10 +218,9 @@ export class CashSessionsService {
     const tenantId = this.tenantContext.requireTenantId();
 
     const user = await this.prisma.user.findFirst({ where: { email: dto.authEmail } });
-    if (!user) throw new UnauthorizedException('Credenciales incorrectas');
-
-    const passwordValid = await bcrypt.compare(dto.authPassword, user.password);
-    if (!passwordValid) throw new UnauthorizedException('Credenciales incorrectas');
+    // Always run bcrypt regardless of whether user exists — prevents timing oracle
+    const passwordValid = await bcrypt.compare(dto.authPassword, user?.password ?? TIMING_SAFE_DUMMY_HASH);
+    if (!user || !passwordValid) throw new UnauthorizedException('Credenciales incorrectas');
 
     const membership = await this.prisma.tenantMembership.findFirst({
       where: { userId: user.id, tenantId },
@@ -242,10 +245,9 @@ export class CashSessionsService {
     const adminUser = await this.prisma.user.findFirst({
       where: { email: dto.authEmail },
     });
-    if (!adminUser) throw new UnauthorizedException('Credenciales incorrectas');
-
-    const passwordValid = await bcrypt.compare(dto.authPassword, adminUser.password);
-    if (!passwordValid) throw new UnauthorizedException('Credenciales incorrectas');
+    // Always run bcrypt regardless of whether user exists — prevents timing oracle
+    const passwordValid = await bcrypt.compare(dto.authPassword, adminUser?.password ?? TIMING_SAFE_DUMMY_HASH);
+    if (!adminUser || !passwordValid) throw new UnauthorizedException('Credenciales incorrectas');
 
     // Ensure authorizer belongs to the same tenant
     const membership = await this.prisma.tenantMembership.findFirst({
