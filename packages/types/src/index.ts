@@ -96,8 +96,9 @@ export enum SystemModule {
   CONFIGURACION = 'configuracion',
   BRANCHES      = 'branches',
   EMPLEADOS     = 'empleados',
-  COMANDA       = 'comanda',
-  INSUMOS       = 'insumos',
+  COMANDA          = 'comanda',
+  CAJA_RESTAURANTE = 'caja-restaurante',
+  INSUMOS          = 'insumos',
   // Future verticals
   GYM           = 'gym',
   KITCHEN       = 'kitchen',
@@ -120,6 +121,8 @@ const MODULES_BY_TIER: Array<{ plan: TenantPlan; modules: SystemModule[] }> = [
       SystemModule.USUARIOS,
       SystemModule.ROLES,
       SystemModule.CONFIGURACION,
+      SystemModule.COMANDA,
+      SystemModule.CAJA_RESTAURANTE,
     ],
   },
   {

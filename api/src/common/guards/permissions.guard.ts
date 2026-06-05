@@ -53,9 +53,11 @@ export class PermissionsGuard implements CanActivate {
       tenantId,
     );
 
-    return requiredPermissions.every((perm) =>
-      effectivePermissions.includes(perm),
-    );
+    // Each entry may be a single perm ('a:b') or a pipe-separated OR group ('a:b|a:c').
+    return requiredPermissions.every((permOrGroup) => {
+      const options = permOrGroup.split('|');
+      return options.some((perm) => effectivePermissions.includes(perm));
+    });
   }
 
   private async getEffectivePermissions(

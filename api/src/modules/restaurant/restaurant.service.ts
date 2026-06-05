@@ -4,7 +4,9 @@ import { PrismaService } from '../../database/prisma.service';
 import { AuditContextService } from '../../common/context/audit-context.service';
 import { TenantContextService } from '../../common/context/tenant-context.service';
 import { CreateComandaDto } from './dto/create-comanda.dto';
+import { AddItemsToComandaDto } from './dto/add-items-to-comanda.dto';
 import { CheckoutComandaDto } from './dto/checkout-comanda.dto';
+import { DirectCheckoutDto } from './dto/direct-checkout.dto';
 
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
@@ -49,6 +51,7 @@ export class RestaurantService {
           orderOrigin: 'RESTAURANT_COMANDA',
           tableNumber: dto.tableNumber,
           employeeNumber: dto.employeeNumber,
+          guestCount: dto.guestCount,
           ...(branchId != null && { branchId }),
           ...(createdById != null && { createdById }),
         },
@@ -64,6 +67,7 @@ export class RestaurantService {
             itemType: isProduct ? 'PRODUCT' : 'SERVICE',
             ...(isProduct && item.productId != null && { productId: item.productId }),
             name: item.name ?? (isProduct ? 'Producto' : 'Servicio'),
+            description: item.notes ?? null,
             sku: null,
             quantity: item.quantity,
             price: item.price,
@@ -99,6 +103,51 @@ export class RestaurantService {
       include: {
         items: true,
       },
+    });
+  }
+
+  async addItemsToComanda(orderId: string, dto: AddItemsToComandaDto) {
+    const tenantId = this.tenantContext.requireTenantId();
+
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, tenantId, paymentStatus: 'PENDING' },
+    });
+    if (!order) throw new NotFoundException('Comanda no encontrada o ya cobrada');
+    if (!dto.items?.length) throw new BadRequestException('Debes agregar al menos un item');
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const item of dto.items) {
+        const isProduct = !item.itemType || item.itemType === 'PRODUCT';
+        const lineSubtotal = roundMoney(item.price * item.quantity);
+        await tx.orderItem.create({
+          data: {
+            orderId: order.id,
+            itemType: isProduct ? 'PRODUCT' : 'SERVICE',
+            ...(isProduct && item.productId != null && { productId: item.productId }),
+            name: item.name ?? (isProduct ? 'Producto' : 'Servicio'),
+            description: item.notes ?? null,
+            sku: null,
+            quantity: item.quantity,
+            price: item.price,
+            discount: 0,
+            tax: 0,
+            subtotal: lineSubtotal,
+            total: lineSubtotal,
+          },
+        });
+      }
+
+      const allItems = await tx.orderItem.findMany({ where: { orderId: order.id } });
+      const newTotal = roundMoney(allItems.reduce((s, i) => s + Number(i.total), 0));
+      await tx.order.update({
+        where: { id: order.id },
+        data: { subtotal: newTotal, total: newTotal },
+      });
+    });
+
+    return this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { items: true },
     });
   }
 
@@ -200,6 +249,138 @@ export class RestaurantService {
         data: {
           status: 'DELIVERED',
           paymentStatus: finalPaymentStatus as any,
+        },
+        include: {
+          items: true,
+          payments: true,
+        },
+      });
+    });
+  }
+
+  async directCheckout(dto: DirectCheckoutDto) {
+    if (!dto.items?.length) {
+      throw new BadRequestException('El cobro directo debe tener al menos un item');
+    }
+
+    const tenantId = this.tenantContext.requireTenantId();
+    const branchId = this.tenantContext.getBranchId() ?? null;
+    const userId = this.auditContext.getUserId() ?? null;
+
+    // Verify active cash session before entering the transaction
+    const session = await this.prisma.cashSession.findFirst({
+      where: { tenantId, branchId: branchId ?? undefined, status: 'ABIERTA' },
+      select: { id: true },
+    });
+    if (!session) {
+      throw new BadRequestException('No hay sesión de caja activa. Abre la caja antes de cobrar.');
+    }
+
+    const subtotal = roundMoney(
+      dto.items.reduce((sum, item) => sum + item.price * item.quantity, 0),
+    );
+    const total = subtotal;
+    const orderNumber = `D-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Create the order
+      const newOrder = await tx.order.create({
+        data: {
+          orderNumber,
+          tenantId,
+          subtotal,
+          tax: 0,
+          shippingCost: 0,
+          discount: 0,
+          total,
+          status: 'PENDING',
+          paymentStatus: 'PENDING',
+          tableNumber: null,
+          employeeNumber: null,
+          ...(branchId != null && { branchId }),
+          ...(userId != null && { createdById: userId }),
+        },
+      });
+
+      // 2. Create order items
+      for (const item of dto.items) {
+        const isProduct = item.productId != null;
+        const lineSubtotal = roundMoney(item.price * item.quantity);
+
+        await tx.orderItem.create({
+          data: {
+            orderId: newOrder.id,
+            itemType: isProduct ? 'PRODUCT' : 'SERVICE',
+            ...(isProduct && { productId: item.productId }),
+            name: item.name ?? (isProduct ? 'Producto' : 'Servicio'),
+            sku: null,
+            quantity: item.quantity,
+            price: item.price,
+            discount: 0,
+            tax: 0,
+            subtotal: lineSubtotal,
+            total: lineSubtotal,
+          },
+        });
+      }
+
+      // 3. Decrement stock for product items with trackInventory = true
+      const productItems = dto.items.filter((i) => i.productId != null);
+
+      for (const item of productItems) {
+        const product = await tx.product.findUnique({
+          where: { id: item.productId! },
+          select: { trackInventory: true, stock: true, name: true },
+        });
+        if (!product) continue;
+
+        if (product.trackInventory) {
+          const res = await tx.product.updateMany({
+            where: { id: item.productId!, stock: { gte: item.quantity } },
+            data: { stock: { decrement: item.quantity } },
+          });
+          if (res.count === 0) {
+            throw new BadRequestException(
+              `Stock insuficiente para "${product.name}". Disponible: ${product.stock}, solicitado: ${item.quantity}`,
+            );
+          }
+        }
+      }
+
+      // 4. Create payment record
+      await tx.payment.create({
+        data: {
+          orderId: newOrder.id,
+          paymentMethod: dto.paymentMethod,
+          currency: 'MXN',
+          amount: total,
+          paymentConcept: 'SALE',
+          status: 'PAID',
+          ...(userId != null && { createdById: userId }),
+        },
+      });
+
+      // 5. Create cash movement
+      await tx.cashMovement.create({
+        data: {
+          tenantId,
+          cashSessionId: session.id,
+          type: 'SALE',
+          currency: 'MXN',
+          amount: total,
+          paymentMethod: dto.paymentMethod,
+          referenceId: newOrder.id,
+          referenceType: 'ORDER',
+          createdById: userId ?? null,
+        },
+      });
+
+      // 6. Mark order as delivered and paid, return with relations
+      return tx.order.update({
+        where: { id: newOrder.id },
+        data: {
+          status: 'DELIVERED',
+          paymentStatus: 'PAID',
         },
         include: {
           items: true,

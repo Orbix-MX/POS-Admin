@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Area,
   AreaChart,
@@ -11,15 +10,13 @@ import {
 } from 'recharts'
 import { LayoutDashboard, Loader2 } from 'lucide-react'
 import { ResponsiveGridLayout as Responsive, useContainerWidth } from 'react-grid-layout'
-import type { Layout, LayoutItem, ResponsiveLayouts } from 'react-grid-layout'
+import type { ResponsiveLayouts } from 'react-grid-layout'
 import 'react-grid-layout/css/styles.css'
 import { KPICard } from '@/components/shared/kpi-card'
 import { useDashboard } from '@/hooks/core/use-dashboard'
 import { WidgetRenderer } from '@/components/dashboard/widget-renderer'
 import type { WidgetConfig, WidgetType, GridItem } from '@/services/core/dashboards-service'
-import { saveDashboardLayout } from '@/services/core/dashboards-service'
 import { useERPStore } from '@/store/erp-store'
-import { useAuthStore } from '@/store/auth-store'
 
 const ResponsiveGridLayout = Responsive
 
@@ -61,93 +58,43 @@ function buildDefaultLayouts(widgets: WidgetConfig[]): Record<string, GridItem[]
   return { lg: items }
 }
 
-function toGridItems(layout: Layout): GridItem[] {
-  return layout.map((item: LayoutItem) => ({ ...item }))
-}
 
 function DynamicDashboard({
   name,
   widgets,
-  dashboardId,
-  layouts: savedLayouts,
 }: {
   name: string
   widgets: WidgetConfig[]
   dashboardId: string
   layouts: Record<string, GridItem[]>
 }) {
-  const permissions = useAuthStore(s => s.permissions)
-  const canEdit = permissions.includes('dashboard:edit') || permissions.includes('dashboard:manage')
-
   const { width, containerRef } = useContainerWidth()
 
-  const [layouts, setLayouts] = useState<Record<string, GridItem[]>>(
-    () => (Object.keys(savedLayouts).length > 0 ? savedLayouts : buildDefaultLayouts(widgets)),
-  )
-  const [saving, setSaving] = useState(false)
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const handleLayoutChange = useCallback(
-    (_currentLayout: Layout, allLayouts: ResponsiveLayouts) => {
-      if (!canEdit) return
-      const normalized: Record<string, GridItem[]> = {}
-      for (const [bp, items] of Object.entries(allLayouts)) {
-        if (items != null) normalized[bp] = toGridItems(items)
-      }
-      setLayouts(normalized)
-
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-      saveTimerRef.current = setTimeout(async () => {
-        setSaving(true)
-        try {
-          await saveDashboardLayout(dashboardId, normalized)
-        } finally {
-          setSaving(false)
-        }
-      }, 1500)
-    },
-    [canEdit, dashboardId],
-  )
-
-  useEffect(
-    () => () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    },
-    [],
-  )
+  const layouts = buildDefaultLayouts(widgets)
 
   return (
     <div className="px-7 pt-7 pb-4 flex flex-col gap-5">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <LayoutDashboard className="w-3.5 h-3.5 text-muted-foreground" />
-          <span className="text-[12px] text-muted-foreground font-medium">{name}</span>
-        </div>
-        {canEdit && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-muted-foreground">Arrastra para reorganizar</span>
-            {saving && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
-          </div>
-        )}
+      <div className="flex items-center gap-2">
+        <LayoutDashboard className="w-3.5 h-3.5 text-muted-foreground" />
+        <span className="text-[12px] text-muted-foreground font-medium">{name}</span>
       </div>
       <div ref={containerRef}>
-      <ResponsiveGridLayout
-        width={width}
-        layouts={layouts as ResponsiveLayouts}
-        breakpoints={{ lg: 1200, md: 768, sm: 480, xs: 0 }}
-        cols={{ lg: 12, md: 6, sm: 2, xs: 2 }}
-        rowHeight={60}
-        margin={[16, 16] as [number, number]}
-        dragConfig={{ enabled: canEdit, handle: '.drag-handle' }}
-        resizeConfig={{ enabled: canEdit }}
-        onLayoutChange={handleLayoutChange}
-      >
-        {widgets.map(widget => (
-          <div key={widget.id} className="h-full">
-            <WidgetRenderer widget={widget} canEdit={canEdit} />
-          </div>
-        ))}
-      </ResponsiveGridLayout>
+        <ResponsiveGridLayout
+          width={width}
+          layouts={layouts as ResponsiveLayouts}
+          breakpoints={{ lg: 1200, md: 768, sm: 480, xs: 0 }}
+          cols={{ lg: 12, md: 6, sm: 2, xs: 2 }}
+          rowHeight={60}
+          margin={[16, 16] as [number, number]}
+          isDraggable={false}
+          isResizable={false}
+        >
+          {widgets.map(widget => (
+            <div key={widget.id} className="h-full">
+              <WidgetRenderer widget={widget} canEdit={false} />
+            </div>
+          ))}
+        </ResponsiveGridLayout>
       </div>
     </div>
   )

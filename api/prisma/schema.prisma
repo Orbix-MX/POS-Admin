@@ -47,7 +47,7 @@ model PlatformUser {
 }
 
 model PlatformAuditLog {
-  id             String        @id @default(uuid())
+  id             String   @id @default(uuid())
   platformUserId String?
   tenantId       String?
   action         String
@@ -56,7 +56,7 @@ model PlatformAuditLog {
   before         Json?
   after          Json?
   notes          String?
-  createdAt      DateTime      @default(now())
+  createdAt      DateTime @default(now())
 
   platformUser PlatformUser? @relation(fields: [platformUserId], references: [id], onDelete: SetNull)
 
@@ -113,15 +113,15 @@ enum MembershipStatus {
 }
 
 model Tenant {
-  id       String       @id @default(uuid())
-  name     String
-  slug     String       @unique // subdomain / identifier
-  status   TenantStatus @default(TRIAL)
+  id               String           @id @default(uuid())
+  name             String
+  slug             String           @unique // subdomain / identifier
+  status           TenantStatus     @default(TRIAL)
   plan             TenantPlan       @default(FREE)
   enabledModules   String[]         @default([])
-  businessVertical BusinessVertical @default(RETAIL)    @map("business_vertical")
+  businessVertical BusinessVertical @default(RETAIL)     @map("business_vertical")
   posOperationMode PosOperationMode @default(QUICK_SALE) @map("pos_operation_mode")
-  enabledFeatures  TenantFeature[]  @default([])        @map("enabled_features")
+  enabledFeatures  TenantFeature[]  @default([])         @map("enabled_features")
   settings       Json? // { currency, timezone, logo, address, taxId, ... }
 
   // ── SaaS user-limit control ────────────────────────────────────────────────
@@ -162,11 +162,12 @@ model Tenant {
   auditLogs          AuditLog[]
   supplies           Supply[]
   supplyMovements    SupplyMovement[]
+  printerConfigs     PrinterConfig[]
 
-  usersLastSelected  User[] @relation("UserLastTenant")
-  employees          Employee[]
-  dashboards         Dashboard[]
-  widgets            Widget[]
+  usersLastSelected User[]      @relation("UserLastTenant")
+  employees         Employee[]
+  dashboards        Dashboard[]
+  widgets           Widget[]
 
   owner User? @relation("TenantOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
 
@@ -229,23 +230,23 @@ model User {
   suppliersCreated Supplier[] @relation("SupplierCreatedBy")
   suppliersUpdated Supplier[] @relation("SupplierUpdatedBy")
 
-  purchaseOrdersCreated     PurchaseOrder[]    @relation("POCreatedBy")
-  purchaseOrdersUpdated     PurchaseOrder[]    @relation("POUpdatedBy")
-  purchaseReceiptsReceived  PurchaseReceipt[]  @relation("ReceiptReceivedBy")
-  inventoryMovementsCreated InventoryMovement[] @relation("MovementCreatedBy")
-  supplierPaymentsCreated   SupplierPayment[]  @relation("SupplierPaymentCreatedBy")
-  cashMovementsCreated      CashMovement[]     @relation("CashMovementCreatedBy")
-  cashSessionsOpened        CashSession[]      @relation("CashSessionOpenedBy")
-  cashSessionsClosed        CashSession[]      @relation("CashSessionClosedBy")
-  cashSessionsAuthorized    CashSession[]      @relation("CashSessionAuthorizedBy")
-  servicesCreated           Service[]          @relation("ServiceCreatedBy")
-  servicesUpdated           Service[]          @relation("ServiceUpdatedBy")
-  serviceQuotesCreated      ServiceQuote[]     @relation("ServiceQuoteCreatedBy")
-  ordersCancelled           Order[]            @relation("OrderCancelledBy")
-  paymentsCreated           Payment[]          @relation("PaymentCreatedBy")
-  refundsCreated            OrderRefund[]      @relation("RefundCreatedBy")
-  auditLogs                 AuditLog[]         @relation("AuditLogUser")
-  workOrdersCreated         WorkOrder[]        @relation("WorkOrderCreatedBy")
+  purchaseOrdersCreated     PurchaseOrder[]       @relation("POCreatedBy")
+  purchaseOrdersUpdated     PurchaseOrder[]       @relation("POUpdatedBy")
+  purchaseReceiptsReceived  PurchaseReceipt[]     @relation("ReceiptReceivedBy")
+  inventoryMovementsCreated InventoryMovement[]   @relation("MovementCreatedBy")
+  supplierPaymentsCreated   SupplierPayment[]     @relation("SupplierPaymentCreatedBy")
+  cashMovementsCreated      CashMovement[]        @relation("CashMovementCreatedBy")
+  cashSessionsOpened        CashSession[]         @relation("CashSessionOpenedBy")
+  cashSessionsClosed        CashSession[]         @relation("CashSessionClosedBy")
+  cashSessionsAuthorized    CashSession[]         @relation("CashSessionAuthorizedBy")
+  servicesCreated           Service[]             @relation("ServiceCreatedBy")
+  servicesUpdated           Service[]             @relation("ServiceUpdatedBy")
+  serviceQuotesCreated      ServiceQuote[]        @relation("ServiceQuoteCreatedBy")
+  ordersCancelled           Order[]               @relation("OrderCancelledBy")
+  paymentsCreated           Payment[]             @relation("PaymentCreatedBy")
+  refundsCreated            OrderRefund[]         @relation("RefundCreatedBy")
+  auditLogs                 AuditLog[]            @relation("AuditLogUser")
+  workOrdersCreated         WorkOrder[]           @relation("WorkOrderCreatedBy")
   workOrderAssignments      WorkOrderAssignment[] @relation("WorkOrderAssignments")
   employeesCreated          Employee[]         @relation("EmployeeCreatedBy")
   employeesUpdated          Employee[]         @relation("EmployeeUpdatedBy")
@@ -260,7 +261,7 @@ model User {
   roleAssignments  UserRoleAssignment[]
   permissionGrants UserPermissionGrant[]
 
-  managedBranches  Branch[]           @relation("BranchManager")
+  managedBranches   Branch[]           @relation("BranchManager")
   branchMemberships BranchMembership[]
 
   lastTenantSelectedId String? @map("last_tenant_selected_id")
@@ -294,19 +295,19 @@ model Customer {
   email     String
   firstName String
   lastName  String
-  phone      String?
-  company    String?
-  city       String?
-  legalName  String?  @map("legal_name")
+  phone     String?
+  company   String?
+  city      String?
+  legalName String?        @map("legal_name")
   status    CustomerStatus @default(ACTIVE)
 
   type        CustomerType @default(NEW)
   totalOrders Int          @default(0)
   totalSpent  Decimal      @default(0) @db.Decimal(10, 2)
 
-  hasCredit   Boolean      @default(false)
-  creditLimit Decimal?     @db.Decimal(10, 2)
-  creditDays  Int          @default(0)
+  hasCredit   Boolean  @default(false)
+  creditLimit Decimal? @db.Decimal(10, 2)
+  creditDays  Int      @default(0)
 
   createdById String?
   updatedById String?
@@ -403,32 +404,32 @@ enum InventoryMovementType {
 }
 
 model PurchaseOrder {
-  id          String              @id @default(uuid())
-  tenantId    String
-  orderNumber String
-  supplierId  String
-  branchId    String?
-  status      PurchaseOrderStatus @default(BORRADOR)
-  orderDate   DateTime            @default(now())
+  id           String              @id @default(uuid())
+  tenantId     String
+  orderNumber  String
+  supplierId   String
+  branchId     String?
+  status       PurchaseOrderStatus @default(BORRADOR)
+  orderDate    DateTime            @default(now())
   expectedDate DateTime?
-  subtotal    Decimal             @db.Decimal(10, 2)
-  tax         Decimal             @default(0) @db.Decimal(10, 2)
-  total       Decimal             @db.Decimal(10, 2)
-  notes       String?
+  subtotal     Decimal             @db.Decimal(10, 2)
+  tax          Decimal             @default(0) @db.Decimal(10, 2)
+  total        Decimal             @db.Decimal(10, 2)
+  notes        String?
 
   createdById String?
   updatedById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  tenant         Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  supplier       Supplier             @relation(fields: [supplierId], references: [id])
-  branch         Branch?              @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  tenant         Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier       Supplier            @relation(fields: [supplierId], references: [id])
+  branch         Branch?             @relation(fields: [branchId], references: [id], onDelete: SetNull)
   items          PurchaseOrderItem[]
   receipts       PurchaseReceipt[]
   accountPayable AccountPayable?
-  createdBy      User?                @relation("POCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  updatedBy      User?                @relation("POUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdBy      User?               @relation("POCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy      User?               @relation("POUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, orderNumber])
   @@map("purchase_orders")
@@ -457,8 +458,8 @@ model PurchaseReceipt {
   notes           String?
   createdAt       DateTime @default(now())
 
-  purchaseOrder PurchaseOrder        @relation(fields: [purchaseOrderId], references: [id])
-  receivedBy    User?                @relation("ReceiptReceivedBy", fields: [receivedById], references: [id], onDelete: SetNull)
+  purchaseOrder PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id])
+  receivedBy    User?                 @relation("ReceiptReceivedBy", fields: [receivedById], references: [id], onDelete: SetNull)
   items         PurchaseReceiptItem[]
 
   @@map("purchase_receipts")
@@ -477,7 +478,7 @@ model PurchaseReceiptItem {
 }
 
 model InventoryMovement {
-  id            String               @id @default(uuid())
+  id            String                @id @default(uuid())
   tenantId      String
   type          InventoryMovementType
   productId     String
@@ -487,7 +488,7 @@ model InventoryMovement {
   referenceType String?
   notes         String?
   createdById   String?
-  createdAt     DateTime             @default(now())
+  createdAt     DateTime              @default(now())
 
   tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   product   Product @relation(fields: [productId], references: [id])
@@ -580,8 +581,8 @@ model Product {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  tenant               Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  category             Category?            @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category             Category?             @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   images               ProductImage[]
   orderItems           OrderItem[]
   coupons              Coupon[]
@@ -822,14 +823,14 @@ model Coupon {
 // ============= Services =============
 
 model Service {
-  id                String   @id @default(uuid())
+  id                String  @id @default(uuid())
   tenantId          String
   name              String
   description       String?
-  basePrice         Decimal  @db.Decimal(10, 2)
+  basePrice         Decimal @db.Decimal(10, 2)
   estimatedDuration String?
-  hasVariablePrice  Boolean  @default(false)
-  isActive          Boolean  @default(true)
+  hasVariablePrice  Boolean @default(false)
+  isActive          Boolean @default(true)
 
   createdById String?
   updatedById String?
@@ -961,21 +962,22 @@ enum OrderOrigin {
 }
 
 model Order {
-  id            String        @id @default(uuid())
-  tenantId      String
-  orderNumber   String
-  customerId    String?
-  addressId     String?
-  status        OrderStatus   @default(PENDING)
-  paymentStatus PaymentStatus @default(PENDING)
-  subtotal      Decimal       @db.Decimal(10, 2)
-  tax           Decimal       @default(0) @db.Decimal(10, 2)
-  shippingCost  Decimal       @default(0) @db.Decimal(10, 2)
-  discount      Decimal       @default(0) @db.Decimal(10, 2)
-  total         Decimal       @db.Decimal(10, 2)
+  id             String        @id @default(uuid())
+  tenantId       String
+  orderNumber    String
+  customerId     String?
+  addressId      String?
+  status         OrderStatus   @default(PENDING)
+  paymentStatus  PaymentStatus @default(PENDING)
+  subtotal       Decimal       @db.Decimal(10, 2)
+  tax            Decimal       @default(0) @db.Decimal(10, 2)
+  shippingCost   Decimal       @default(0) @db.Decimal(10, 2)
+  discount       Decimal       @default(0) @db.Decimal(10, 2)
+  total          Decimal       @db.Decimal(10, 2)
   notes          String?
   tableNumber    String?
   employeeNumber String?
+  guestCount     Int?
 
   couponId   String?
   couponCode String?
@@ -1084,8 +1086,9 @@ model Branch {
   purchaseOrders     PurchaseOrder[]
   supplies           Supply[]           @relation("BranchSupplies")
   supplyMovements    SupplyMovement[]   @relation("BranchSupplyMovements")
+  printerConfigs     PrinterConfig[]
 
-  usersLastSelected  User[] @relation("UserLastBranch")
+  usersLastSelected User[] @relation("UserLastBranch")
 
   @@unique([tenantId, code])
   @@map("branches")
@@ -1119,26 +1122,26 @@ model BranchInventory {
 
 // ============= Payments =============
 model Payment {
-  id                     String        @id @default(uuid())
+  id                     String         @id @default(uuid())
   orderId                String
   paymentMethod          String
   transactionId          String?
-  currency               String        @default("MXN")
-  amount                 Decimal       @db.Decimal(10, 2)
-  amountReceived         Decimal?      @db.Decimal(10, 2)
-  changeGiven            Decimal?      @db.Decimal(10, 2)
+  currency               String         @default("MXN")
+  amount                 Decimal        @db.Decimal(10, 2)
+  amountReceived         Decimal?       @db.Decimal(10, 2)
+  changeGiven            Decimal?       @db.Decimal(10, 2)
   changeCurrency         String?
-  exchangeRateUsed       Decimal?      @db.Decimal(10, 4)
-  amountOriginalCurrency Decimal?      @db.Decimal(10, 2)
-  amountMxnEquivalent    Decimal?      @db.Decimal(10, 2)
-  status                 PaymentStatus @default(PENDING)
+  exchangeRateUsed       Decimal?       @db.Decimal(10, 4)
+  amountOriginalCurrency Decimal?       @db.Decimal(10, 2)
+  amountMxnEquivalent    Decimal?       @db.Decimal(10, 2)
+  status                 PaymentStatus  @default(PENDING)
   paymentConcept         PaymentConcept @default(SALE)
   gatewayResponse        Json?
-  createdAt              DateTime      @default(now())
-  updatedAt              DateTime      @updatedAt
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
 
   createdById String?
-  createdBy   User?  @relation("PaymentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("PaymentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   order Order @relation(fields: [orderId], references: [id])
 
@@ -1147,20 +1150,20 @@ model Payment {
 
 // ============= Order Refunds =============
 model OrderRefund {
-  id             String   @id @default(uuid())
-  tenantId       String
-  orderId        String
-  amount         Decimal  @db.Decimal(10, 2)
-  currency       String   @default("MXN")
-  refundMethod   String
-  originalMethod String?
-  reason         String
-  restoreInventory Boolean @default(false)
-  windowOverride Boolean  @default(false)
-  notes          String?
-  cashMovementId String?
-  createdById    String?
-  createdAt      DateTime @default(now())
+  id               String   @id @default(uuid())
+  tenantId         String
+  orderId          String
+  amount           Decimal  @db.Decimal(10, 2)
+  currency         String   @default("MXN")
+  refundMethod     String
+  originalMethod   String?
+  reason           String
+  restoreInventory Boolean  @default(false)
+  windowOverride   Boolean  @default(false)
+  notes            String?
+  cashMovementId   String?
+  createdById      String?
+  createdAt        DateTime @default(now())
 
   tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   order     Order  @relation(fields: [orderId], references: [id])
@@ -1242,26 +1245,26 @@ enum CashMovementType {
 }
 
 model CashSession {
-  id                  String            @id @default(uuid())
-  tenantId            String
-  branchId            String?
-  status              CashSessionStatus @default(ABIERTA)
-  exchangeRateUsdMxn  Decimal           @default(1) @db.Decimal(10, 4)
-  openingAmount       Decimal           @db.Decimal(10, 2)
-  openingAmountUsd    Decimal           @default(0) @db.Decimal(10, 2)
-  closingAmount       Decimal?          @db.Decimal(10, 2)
-  cashCounted         Decimal?          @db.Decimal(10, 2)
-  cashCountedUsd      Decimal?          @db.Decimal(10, 2)
-  difference          Decimal?          @db.Decimal(10, 2)
-  differenceUsd       Decimal?          @db.Decimal(10, 2)
-  notes               String?
-  openedById          String?
-  closedById          String?
-  authorizedById      String?
-  openedAt            DateTime          @default(now())
-  closedAt            DateTime?
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
+  id                 String            @id @default(uuid())
+  tenantId           String
+  branchId           String?
+  status             CashSessionStatus @default(ABIERTA)
+  exchangeRateUsdMxn Decimal           @default(1) @db.Decimal(10, 4)
+  openingAmount      Decimal           @db.Decimal(10, 2)
+  openingAmountUsd   Decimal           @default(0) @db.Decimal(10, 2)
+  closingAmount      Decimal?          @db.Decimal(10, 2)
+  cashCounted        Decimal?          @db.Decimal(10, 2)
+  cashCountedUsd     Decimal?          @db.Decimal(10, 2)
+  difference         Decimal?          @db.Decimal(10, 2)
+  differenceUsd      Decimal?          @db.Decimal(10, 2)
+  notes              String?
+  openedById         String?
+  closedById         String?
+  authorizedById     String?
+  openedAt           DateTime          @default(now())
+  closedAt           DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
 
   tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch       Branch?        @relation(fields: [branchId], references: [id], onDelete: SetNull)
@@ -1285,9 +1288,9 @@ model AccountPayable {
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 
-  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  purchaseOrder PurchaseOrder    @relation(fields: [purchaseOrderId], references: [id])
-  supplier      Supplier         @relation(fields: [supplierId], references: [id])
+  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder     @relation(fields: [purchaseOrderId], references: [id])
+  supplier      Supplier          @relation(fields: [supplierId], references: [id])
   payments      SupplierPayment[]
 
   @@map("accounts_payable")
@@ -1362,8 +1365,8 @@ model AuditLog {
 // ============= Permissions & Roles (tenant-scoped) =============
 
 model Permission {
-  id          String @id @default(uuid())
-  key         String @unique
+  id          String  @id @default(uuid())
+  key         String  @unique
   name        String
   description String?
   module      String
@@ -1522,8 +1525,8 @@ model WorkOrder {
   notes       String?
 
   createdById String?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   tenant      Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer    Customer              @relation(fields: [customerId], references: [id])
@@ -1583,8 +1586,8 @@ model Dashboard {
   dashboardWidgets DashboardWidget[]
   layouts          DashboardLayout[]
   roles            DashboardRole[]
-  createdBy User?             @relation("DashboardCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  updatedBy User?             @relation("DashboardUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdBy        User?             @relation("DashboardCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy        User?             @relation("DashboardUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, slug])
   @@index([tenantId, isActive])
@@ -1595,7 +1598,7 @@ model DashboardLayout {
   id          String @id @default(uuid())
   dashboardId String
   breakpoint  String // "lg" | "md" | "sm" | "xs"
-  layout      Json   // GridItem[] — { i, x, y, w, h, minW?, minH?, static? }
+  layout      Json // GridItem[] — { i, x, y, w, h, minW?, minH?, static? }
 
   dashboard Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
 
@@ -1621,11 +1624,11 @@ model Widget {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   dashboards DashboardWidget[]
   roles      WidgetRole[]
-  createdBy  User?            @relation("WidgetCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  updatedBy  User?            @relation("WidgetUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdBy  User?             @relation("WidgetCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy  User?             @relation("WidgetUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
   @@map("widgets")
@@ -1669,4 +1672,46 @@ model WidgetRole {
 
   @@id([widgetId, roleId])
   @@map("widget_roles")
+}
+
+// ============= Printer Configs =============
+
+enum PrinterType {
+  TICKET
+  SALE_TICKET
+  LABEL
+  REPORT
+}
+
+enum PrinterConnection {
+  USB
+  NETWORK
+  BLUETOOTH
+  SYSTEM
+}
+
+model PrinterConfig {
+  id             String            @id @default(uuid())
+  tenantId       String
+  branchId       String?
+  name           String
+  type           PrinterType       @default(TICKET)
+  connectionType PrinterConnection @default(NETWORK)
+  ipAddress        String?
+  port             Int?
+  usbPath          String?
+  bluetoothAddress String? // MAC address (00:11:22:33:44:55) o puerto RFCOMM (/dev/rfcomm0, COM3)
+  systemName       String?
+  paperWidth     Int?
+  isDefault      Boolean           @default(false)
+  isActive       Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([branchId])
+  @@map("printer_configs")
 }
