@@ -29,6 +29,8 @@ import { Cotizaciones } from '@/pages/cotizaciones'
 import { OrdenesTrabajo } from '@/pages/ordenes-trabajo'
 import { Empleados } from '@/pages/empleados'
 import { Comanda } from '@/pages/comanda'
+import { ComandaLogin } from '@/pages/comanda-login'
+import { CajaRestaurante } from '@/pages/caja-restaurante'
 import { Insumos } from '@/pages/insumos'
 import { Kitchen } from '@/pages/kitchen'
 import { PlatformLogin } from '@/pages/platform/platform-login'
@@ -37,7 +39,7 @@ import { PlatformEmpresas } from '@/pages/platform/platform-empresas'
 import { PlatformEmpresaDetalle } from '@/pages/platform/platform-empresa-detalle'
 import { PlatformAuditoria } from '@/pages/platform/platform-auditoria'
 import { TenantSuspended } from '@/pages/tenant-suspended'
-import { Download } from 'lucide-react'
+import { Download, UtensilsCrossed } from 'lucide-react'
 import type { ModuleId } from '@/types/erp'
 
 const PATH_TO_MODULE: Record<string, ModuleId> = {
@@ -61,7 +63,7 @@ const PATH_TO_MODULE: Record<string, ModuleId> = {
   '/ordenes-trabajo': 'ordenes-trabajo',
   '/empleados': 'empleados',
   '/pos': 'pos',
-  '/comanda': 'comanda',
+  '/caja-restaurante': 'caja-restaurante',
   '/insumos': 'insumos',
 }
 
@@ -137,11 +139,63 @@ function AppLayout() {
             <Route path="/cotizaciones" element={<ModuleRoute module="cotizaciones"><Cotizaciones /></ModuleRoute>} />
             <Route path="/ordenes-trabajo" element={<ModuleRoute module="ordenes-trabajo"><OrdenesTrabajo /></ModuleRoute>} />
             <Route path="/empleados" element={<ModuleRoute module="empleados"><Empleados /></ModuleRoute>} />
-            <Route path="/comanda" element={<ModuleRoute module="comanda"><Comanda /></ModuleRoute>} />
-            <Route path="/insumos" element={<ModuleRoute module="inventario"><Insumos /></ModuleRoute>} />
+            <Route path="/caja-restaurante" element={<ModuleRoute module="caja-restaurante"><CajaRestaurante /></ModuleRoute>} />
+            <Route path="/insumos" element={<ModuleRoute module="insumos"><Insumos /></ModuleRoute>} />
+            <Route path="/kitchen" element={<ModuleRoute module="kitchen"><Kitchen /></ModuleRoute>} />
           </Routes>
         </div>
       </div>
+    </div>
+  )
+}
+
+function ComandaGate() {
+  const {
+    isAuthenticated, capabilitiesLoaded, needsBranchSelection,
+    availableBranches, permissions, init, logout,
+  } = useAuthStore()
+
+  useEffect(() => { init() }, [init])
+
+  if (!isAuthenticated) return <ComandaLogin />
+
+  if (!capabilitiesLoaded || availableBranches === null) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (needsBranchSelection) return <ComandaLogin />
+
+  if (!permissions.includes('comanda:view')) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background p-4">
+        <div className="text-center space-y-4">
+          <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center mx-auto">
+            <UtensilsCrossed className="w-8 h-8 text-red-500" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-foreground">Sin acceso</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Tu usuario no tiene permiso para acceder a Comandas.
+            </p>
+          </div>
+          <button
+            onClick={logout}
+            className="px-5 py-2 bg-card border border-border rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+          >
+            Cerrar sesión
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-screen flex flex-col overflow-hidden bg-background">
+      <Comanda />
     </div>
   )
 }
@@ -206,8 +260,10 @@ function PlatformGate() {
 function AppRouter() {
   const location = useLocation()
   const isPlatform = location.pathname.startsWith('/platform')
+  const isComanda  = location.pathname === '/comanda'
 
   if (isPlatform) return <PlatformGate />
+  if (isComanda)  return <ComandaGate />
   return <TenantAuthGate />
 }
 

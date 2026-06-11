@@ -4,6 +4,7 @@ import { fetchProducts, type Product } from '@/services/retail/product-service'
 import { fetchCliente, fetchClientes, type Cliente } from '@/services/core/clientes-service'
 import { fetchServices, type Service } from '@/services/retail/services-service'
 import { createOrder, updateOrderStatus, addOrderPayment } from '@/services/retail/ventas-service'
+import { printOrder } from '@/services/core/print-service'
 import { fetchQuote, fetchQuotesByCustomer, createQuote, type ServiceQuote } from '@/services/retail/cotizaciones-service'
 import { fetchActiveCashSession, type ApiCashSession } from '@/services/core/caja-service'
 import { fetchSettings } from '@/services/core/configuracion-service'
@@ -566,6 +567,7 @@ export function usePOS() {
         setPendingOrderNumber(order.orderNumber)
         setStage('pending_card')
       } else {
+        printOrder(order.id)
         setSuccessNumber(order.orderNumber)
         setStage('success')
         setTimeout(() => {
@@ -588,6 +590,7 @@ export function usePOS() {
     setConfirming(true)
     try {
       await updateOrderStatus(pendingOrderId, 'CONFIRMED')
+      printOrder(pendingOrderId)
       setSuccessNumber(pendingOrderNumber)
       setPendingOrderId(null)
       setPendingOrderNumber(null)

@@ -58,7 +58,7 @@ export class DashboardsController {
   }
 
   @Patch(':id/layout')
-  @RequirePermissions('dashboard:edit')
+  @RequirePermissions('dashboard:edit|dashboard:manage')
   @ApiOperation({ summary: 'Persist grid layout for all breakpoints' })
   updateLayout(@Param('id') id: string, @Body() dto: UpdateLayoutDto) {
     return this.dashboardsService.updateLayout(id, dto);

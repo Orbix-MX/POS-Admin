@@ -28,6 +28,7 @@ const MODULE_META: Record<ModuleId, { label: string; breadcrumb: string[] }> = {
   pos: { label: "POS", breadcrumb: ["POS"] },
   branches: { label: "Sucursales", breadcrumb: ["Administración", "Sucursales"] },
   comanda: { label: "Comandas", breadcrumb: ["Negocio", "Comandas"] },
+  'caja-restaurante': { label: "Caja Restaurante", breadcrumb: ["Negocio", "Caja Restaurante"] },
   insumos: { label: "Insumos", breadcrumb: ["Negocio", "Insumos"] },
   kitchen: { label: "Cocina", breadcrumb: ["Negocio", "Cocina"] },
 }
@@ -63,6 +64,7 @@ const PATH_TO_MODULE: Record<string, ModuleId> = {
   '/roles': 'roles',
   '/pos': 'pos',
   '/comanda': 'comanda',
+  '/caja-restaurante': 'caja-restaurante',
   '/insumos': 'insumos',
   '/kitchen': 'kitchen',
 }

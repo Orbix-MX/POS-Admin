@@ -92,6 +92,9 @@ export const ALL_PERMISSIONS: PermissionDef[] = [
   { key: 'employees:create', name: 'Dar de alta empleados', description: 'Registrar nuevos empleados', module: 'employees', action: 'create' },
   { key: 'employees:edit', name: 'Editar empleados', description: 'Editar datos de empleados', module: 'employees', action: 'edit' },
   { key: 'employees:delete', name: 'Dar de baja empleados', description: 'Desactivar empleados', module: 'employees', action: 'delete' },
+  // comanda (restaurante)
+  { key: 'comanda:view',   name: 'Acceder a Comandas',  description: 'Acceder al módulo de captura de comandas de restaurante', module: 'comanda', action: 'view'   },
+  { key: 'comanda:manage', name: 'Administrar Comandas', description: 'Ver y gestionar todas las comandas del restaurante',       module: 'comanda', action: 'manage' },
   // reports
   { key: 'reports:view', name: 'Ver reportes', module: 'reports', action: 'view' },
   // settings
@@ -108,7 +111,7 @@ export const ALL_PERMISSIONS: PermissionDef[] = [
 ];
 
 export const MODULES_ORDER = [
-  'dashboard', 'pos', 'products', 'categories', 'orders', 'refunds',
+  'dashboard', 'pos', 'comanda', 'products', 'categories', 'orders', 'refunds',
   'customers', 'receivables', 'suppliers', 'purchases', 'payables', 'cash', 'coupons', 'settings',
   'employees', 'branches', 'users', 'roles', 'reports',
 ];

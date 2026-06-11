@@ -4,7 +4,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   LayoutDashboard, ShoppingBag, ShoppingCart, Package,
   Users, Truck, FileText, Settings, Shield,
-  ChevronDown, LogOut, Landmark, Receipt, TrendingUp, Wrench, UserCheck, MapPin, UtensilsCrossed, FlaskConical, ChefHat,
+  ChevronDown, LogOut, Landmark, Receipt, TrendingUp, Wrench, UserCheck, MapPin, CreditCard, FlaskConical, ChefHat,
 } from 'lucide-react'
 
 type NavItem = {
@@ -69,22 +69,15 @@ const ALL_NAV: NavGroup[] = [
       { module: 'cotizaciones',label: 'Cotizaciones',icon: FileText,       path: '/cotizaciones'},
       { module: 'ordenes-trabajo', label: 'Órdenes de Trabajo', icon: Wrench, path: '/ordenes-trabajo' },
       { module: 'empleados', label: 'Capital Humano', icon: UserCheck, path: '/empleados' },
-      {
-        module: 'comanda',
-        label: 'Comandas',
-        icon: UtensilsCrossed,
-        path: '/comanda',
-        featureGuard: (hasFeature, hasPosMode) => hasFeature('TABLES') || hasPosMode('TABLE_SERVICE'),
-        verticalGuard: (hasVertical) => hasVertical('RESTAURANT'),
-      },
+      { module: 'caja-restaurante', label: 'Caja Restaurante', icon: CreditCard, path: '/caja-restaurante' },
       {
         module: 'kitchen',
         label: 'Cocina',
         icon: ChefHat,
         path: '/kitchen',
         permission: 'kitchen:view',
-        featureGuard: (hasFeature) => hasFeature('KITCHEN'),
-        verticalGuard: (hasVertical) => hasVertical('RESTAURANT'),
+        featureGuard: (hasFeature: (f: string) => boolean) => hasFeature('KITCHEN'),
+        verticalGuard: (hasVertical: (v: string) => boolean) => hasVertical('RESTAURANT'),
       },
     ],
   },

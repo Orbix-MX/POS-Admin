@@ -210,4 +210,22 @@ export class ReportsController {
       branchId: query.branchId,
     });
   }
+
+  @Get('orders/monthly')
+  @RequirePermissions('reports:view')
+  @ApiOperation({
+    summary: 'Cantidad de ventas del mes',
+    description:
+      'Returns a COUNTER-format WidgetResponse with the number of paid orders (not revenue) for the requested month, including month-over-month comparison.',
+  })
+  @ApiQuery({ name: 'year',     required: false, description: 'Year (default: current)' })
+  @ApiQuery({ name: 'month',    required: false, description: 'Month 1-12 (default: current)' })
+  @ApiQuery({ name: 'branchId', required: false, description: 'Filter by branch ID' })
+  monthlyOrderCount(@Query() query: MonthlySalesQueryDto) {
+    return this.reportsService.monthlyOrderCount({
+      year:     query.year,
+      month:    query.month,
+      branchId: query.branchId,
+    });
+  }
 }

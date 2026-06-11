@@ -4,6 +4,7 @@ import {
   IsArray,
   ValidateNested,
   IsNumber,
+  IsInt,
   Min,
   IsOptional,
   IsUUID,
@@ -30,6 +31,12 @@ export class ComandaItemDto {
   @MaxLength(300)
   name?: string;
 
+  @ApiPropertyOptional({ description: 'Nota para cocina', maxLength: 500 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  notes?: string;
+
   @ApiProperty({ minimum: 1 })
   @Type(() => Number)
   @IsNumber()
@@ -50,11 +57,17 @@ export class CreateComandaDto {
   @MaxLength(50)
   tableNumber: string;
 
-  @ApiProperty({ description: 'Número de empleado que toma la comanda', maxLength: 50 })
+  @ApiPropertyOptional({ description: 'Número de empleado que toma la comanda', maxLength: 50 })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(50)
-  employeeNumber: string;
+  employeeNumber?: string;
+
+  @ApiProperty({ description: 'Número de personas en la mesa', minimum: 1 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  guestCount: number;
 
   @ApiProperty({ type: [ComandaItemDto] })
   @IsArray()
