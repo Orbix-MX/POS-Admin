@@ -17,6 +17,8 @@ export interface JwtPayload {
   branchId?: string;
   plan?: TenantPlan;
   enabledModules?: string[];
+  /** Token kind. Special-purpose tokens (e.g. 'enroll') must never authenticate a request. */
+  typ?: 'enroll';
   exp?: number;
 }
 
@@ -35,6 +37,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload) {
+    // Special-purpose tokens (e.g. device enrollment) are exchange-only and must
+    // never authenticate a request as a Bearer token.
+    if (payload.typ) {
+      throw new UnauthorizedException('Invalid token type');
+    }
+
     if (payload.jti && this.tokenBlacklist.isRevoked(payload.jti)) {
       throw new UnauthorizedException('Token has been revoked');
     }

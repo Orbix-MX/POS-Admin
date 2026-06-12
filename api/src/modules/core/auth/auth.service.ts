@@ -140,6 +140,52 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
+  // ─── Device enrollment (QR) ──────────────────────────────────────────────────
+  // The QR carries only this short-lived, single-use, TENANT-scoped token — not
+  // a user session. The app exchanges it (POST /devices/enroll) over HTTPS to
+  // register itself against the tenant's license. The token can't be used as
+  // Bearer auth (JwtStrategy rejects any token with `typ`) and is burned on
+  // first use via the token blacklist. Waiters still log in normally afterward.
+  private static readonly ENROLL_TTL_SECONDS = 600;
+
+  async createEnrollmentToken(
+    tenantId: string,
+    branchId?: string,
+  ): Promise<{ token: string; expiresAt: Date; expiresInSeconds: number }> {
+    if (!tenantId) {
+      throw new BadRequestException('Select a tenant before enrolling a device');
+    }
+    // Only enroll devices under a valid license.
+    await this.licenseService.assertValid(tenantId);
+
+    const ttl = AuthService.ENROLL_TTL_SECONDS;
+    const token = this.jwtService.sign(
+      { tenantId, branchId, typ: 'enroll', jti: randomUUID() },
+      { expiresIn: `${ttl}s` },
+    );
+    return { token, expiresAt: new Date(Date.now() + ttl * 1000), expiresInSeconds: ttl };
+  }
+
+  /** Verifies + burns an enrollment token, returning the tenant it enrolls into. */
+  async consumeEnrollmentToken(token: string): Promise<{ tenantId: string; branchId?: string }> {
+    let payload: JwtPayload;
+    try {
+      payload = this.jwtService.verify<JwtPayload>(token);
+    } catch {
+      throw new UnauthorizedException('Enrollment code invalid or expired');
+    }
+
+    if (payload.typ !== 'enroll' || !payload.jti || !payload.tenantId) {
+      throw new UnauthorizedException('Invalid enrollment code');
+    }
+    if (this.tokenBlacklist.isRevoked(payload.jti)) {
+      throw new UnauthorizedException('Enrollment code already used');
+    }
+    if (payload.exp) await this.tokenBlacklist.revoke(payload.jti, payload.exp * 1000);
+
+    return { tenantId: payload.tenantId, branchId: payload.branchId };
+  }
+
   private async buildAccessTokenForUser(userId: string): Promise<string> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || user.status !== 'ACTIVE') {

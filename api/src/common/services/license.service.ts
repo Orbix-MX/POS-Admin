@@ -127,6 +127,43 @@ export class LicenseService {
     });
   }
 
+  /** Masks a license key for tenant-facing display (reveals only the last group). */
+  private maskKey(key: string): string {
+    const parts = key.split('-');
+    if (parts.length < 2) return '••••';
+    const last = parts[parts.length - 1];
+    return [parts[0], ...parts.slice(1, -1).map(() => '••••'), last].join('-');
+  }
+
+  /**
+   * Tenant-facing license overview: never exposes the raw license key, includes
+   * live validation and device-seat usage. Safe to show inside the tenant app.
+   */
+  async getLicenseOverview(tenantId: string) {
+    const [license, validation, activeDevices] = await Promise.all([
+      this.getCurrentLicense(tenantId),
+      this.validateLicense(tenantId),
+      this.prisma.device.count({ where: { tenantId, status: 'ACTIVE' } }),
+    ]);
+
+    return {
+      license: license
+        ? {
+            keyMasked: this.maskKey(license.licenseKey),
+            status: license.status,
+            plan: license.plan,
+            startsAt: license.startsAt,
+            expiresAt: license.expiresAt,
+            maxUsers: license.maxUsers,
+            maxBranches: license.maxBranches,
+            maxDevices: license.maxDevices,
+          }
+        : null,
+      validation,
+      devices: { active: activeDevices, max: license?.maxDevices ?? null },
+    };
+  }
+
   // ─── Validation ──────────────────────────────────────────────────────────────
   async validateLicense(tenantId: string): Promise<LicenseValidation> {
     const cached = this.cache.get(tenantId);

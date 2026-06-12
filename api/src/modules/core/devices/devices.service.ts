@@ -64,6 +64,21 @@ export class DevicesService {
     });
   }
 
+  /**
+   * Enroll a device into a tenant after a valid enrollment token was consumed.
+   * Returns the device plus minimal tenant context so the app knows which
+   * company it joined. The caller (DevicesController) has already validated +
+   * burned the enrollment token.
+   */
+  async enroll(tenantId: string, dto: ActivateDeviceDto) {
+    const device = await this.activate(tenantId, dto);
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, name: true, slug: true },
+    });
+    return { device, tenant };
+  }
+
   async list(tenantId: string) {
     return this.prisma.device.findMany({
       where: { tenantId },
