@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "turbo run dev",
     "dev:mobile": "turbo run dev --filter=@orbix/api --filter=@orbix/app",
+    "dev:server": "turbo run dev --filter=@orbix/api",
+    "dev:web": "turbo run dev --filter=@orbix/api --filter=@orbix/web",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test"

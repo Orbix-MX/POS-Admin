@@ -13,6 +13,7 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../../../database/prisma.service';
 import { PasswordUtil } from '../../../common/utils/password.util';
 import { TokenBlacklistService } from './services/token-blacklist.service';
+import { RefreshTokenService } from './services/refresh-token.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import {
@@ -23,9 +24,11 @@ import {
   SelectTenantResponseDto,
   SelectBranchResponseDto,
   CapabilitiesResponseDto,
+  RefreshResponseDto,
 } from './dto/auth-response.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
 import { PlanLimitsService } from '../../../common/services/plan-limits.service';
+import { LicenseService } from '../../../common/services/license.service';
 import { TenantMembership, Tenant, TenantRole, TenantPlan, BusinessVertical, PosOperationMode, TenantFeature } from '@prisma/client';
 import { getModulesForPlan, getAllowedModulesForVertical } from '@orbix/types';
 
@@ -38,7 +41,9 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private tokenBlacklist: TokenBlacklistService,
+    private refreshTokens: RefreshTokenService,
     private planLimits: PlanLimitsService,
+    private licenseService: LicenseService,
   ) {}
 
   async register(registerDto: RegisterDto): Promise<AuthResponseDto> {
@@ -60,7 +65,8 @@ export class AuthService {
     });
 
     const accessToken = this.generateToken({ sub: user.id, email: user.email });
-    return { accessToken, user: this.mapUser(user) };
+    const refreshToken = await this.refreshTokens.issue(user.id);
+    return { accessToken, refreshToken, user: this.mapUser(user) };
   }
 
   async login(loginDto: LoginDto): Promise<AuthResponseDto> {
@@ -98,14 +104,19 @@ export class AuthService {
     }
 
     const accessToken = this.generateToken({ sub: user.id, email: user.email });
+    const refreshToken = await this.refreshTokens.issue(user.id);
     return {
       accessToken,
+      refreshToken,
       user: this.mapUser(user),
       availableTenants: activeMemberships.map((m) => this.mapMembership(m)),
     };
   }
 
-  async logout(token: string): Promise<void> {
+  async logout(token: string, refreshToken?: string): Promise<void> {
+    if (refreshToken) {
+      await this.refreshTokens.revokeByRaw(refreshToken).catch(() => undefined);
+    }
     if (!token) return;
     try {
       const decoded = this.jwtService.decode<JwtPayload>(token);
@@ -115,6 +126,86 @@ export class AuthService {
     } catch {
       // ignore malformed tokens
     }
+  }
+
+  /**
+   * Rotates a refresh token and re-mints an access token. The new access token's
+   * claims are rebuilt from the user's persisted lastTenantSelected /
+   * lastBranchSelected, re-validating tenant/membership/branch status against the
+   * live DB — so a suspended tenant or deactivated branch drops out of the token.
+   */
+  async refresh(rawRefreshToken: string): Promise<RefreshResponseDto> {
+    const { userId, refreshToken } = await this.refreshTokens.rotate(rawRefreshToken);
+    const accessToken = await this.buildAccessTokenForUser(userId);
+    return { accessToken, refreshToken };
+  }
+
+  private async buildAccessTokenForUser(userId: string): Promise<string> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.status !== 'ACTIVE') {
+      throw new UnauthorizedException('User not found or inactive');
+    }
+
+    // No tenant selected yet → preliminary token, same shape as fresh login.
+    if (!user.lastTenantSelectedId) {
+      return this.generateToken({ sub: user.id, email: user.email });
+    }
+
+    const membership = await this.prisma.tenantMembership.findFirst({
+      where: { userId, tenantId: user.lastTenantSelectedId },
+      include: { tenant: true },
+    });
+
+    const ALLOWED_TENANT_STATUSES = ['ACTIVE', 'TRIAL'];
+    // Tenant/membership no longer usable → fall back to preliminary token so the
+    // client is forced to re-select a tenant.
+    if (
+      !membership ||
+      membership.status !== 'ACTIVE' ||
+      !ALLOWED_TENANT_STATUSES.includes(membership.tenant.status)
+    ) {
+      return this.generateToken({ sub: user.id, email: user.email });
+    }
+
+    // License gate on refresh — drop to a preliminary (tenant-less) token if the
+    // tenant's license is no longer valid, forcing a fresh tenant selection.
+    const license = await this.licenseService.validateLicense(membership.tenantId);
+    if (!license.valid) {
+      return this.generateToken({ sub: user.id, email: user.email });
+    }
+
+    const { plan, enabledModules: extraModules, businessVertical } = membership.tenant;
+    const effectiveModules = this.computeEffectiveModules(plan, extraModules, businessVertical);
+
+    // Keep the branch only if it is still active under this tenant.
+    let branchId: string | undefined;
+    if (user.lastBranchSelectedId) {
+      const branch = await this.prisma.branch.findFirst({
+        where: { id: user.lastBranchSelectedId, tenantId: membership.tenantId, status: 'ACTIVE' },
+        select: { id: true },
+      });
+      branchId = branch?.id;
+    }
+
+    return this.generateToken({
+      sub: user.id,
+      email: user.email,
+      tenantId: membership.tenantId,
+      tenantRole: membership.role,
+      branchId,
+      plan,
+      enabledModules: effectiveModules,
+    });
+  }
+
+  private computeEffectiveModules(
+    plan: TenantPlan,
+    extraModules: string[],
+    businessVertical: BusinessVertical,
+  ): string[] {
+    const planModules = getModulesForPlan(plan) as unknown as string[];
+    const allModules = [...new Set([...planModules, ...extraModules])];
+    return getAllowedModulesForVertical(allModules, businessVertical);
   }
 
   async getProfile(userId: string): Promise<ProfileResponseDto> {
@@ -229,6 +320,19 @@ export class AuthService {
       );
     }
 
+    // License gate — the tenant must hold a valid license to be entered.
+    const license = await this.licenseService.validateLicense(membership.tenantId);
+    if (!license.valid) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.FORBIDDEN,
+          code: `LICENSE_${license.reason}`,
+          message: this.licenseService.reasonMessage(license.reason),
+        },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
     await this.prisma.user.update({
       where: { id: userId },
       data: {
@@ -238,9 +342,7 @@ export class AuthService {
     });
 
     const { plan, enabledModules: extraModules, businessVertical } = membership.tenant;
-    const planModules = getModulesForPlan(plan) as unknown as string[];
-    const allModules = [...new Set([...planModules, ...extraModules])];
-    const effectiveModules = getAllowedModulesForVertical(allModules, businessVertical as BusinessVertical);
+    const effectiveModules = this.computeEffectiveModules(plan, extraModules, businessVertical);
 
     const accessToken = this.generateToken({
       sub: userId,

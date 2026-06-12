@@ -25,6 +25,7 @@ import { EmployeesModule } from './modules/core/employees/employees.module';
 import { DashboardsModule } from './modules/core/dashboards/dashboards.module';
 import { ReportsModule } from './modules/core/reports/reports.module';
 import { PrinterConfigsModule } from './modules/core/printer-configs/printer-configs.module';
+import { DevicesModule } from './modules/core/devices/devices.module';
 
 // Retail modules — retail/POS vertical
 import { CategoriesModule } from './modules/retail/categories/categories.module';
@@ -66,6 +67,7 @@ import { PlatformModule } from './modules/platform/platform.module';
     DashboardsModule,
     ReportsModule,
     PrinterConfigsModule,
+    DevicesModule,
 
     // Retail
     CategoriesModule,
