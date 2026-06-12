@@ -4,7 +4,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Screen, Card, Text, Button, SegmentedControl } from '@/components/ui';
 import { useTheme } from '@/providers/theme-provider';
 import { useAppStore, type ColorSchemePreference } from '@/store/app-store';
-import { useAuth } from '@/hooks/use-auth';
+import { useDeviceSession } from '@/hooks/use-device-session';
+import { useDeviceStore } from '@/store/device-store';
 
 const THEME_OPTIONS: { value: ColorSchemePreference; label: string }[] = [
   { value: 'system', label: 'Sistema' },
@@ -12,11 +13,17 @@ const THEME_OPTIONS: { value: ColorSchemePreference; label: string }[] = [
   { value: 'dark', label: 'Oscuro' },
 ];
 
+function initials(first?: string, last?: string) {
+  return `${first?.[0] ?? ''}${last?.[0] ?? ''}`.toUpperCase() || 'OP';
+}
+
 export default function ProfileScreen() {
   const theme = useTheme();
   const colorScheme = useAppStore((s) => s.colorScheme);
   const setColorScheme = useAppStore((s) => s.setColorScheme);
-  const { logout } = useAuth();
+  const { operator, tenant, branch, role } = useDeviceSession();
+  const signOutOperator = useDeviceStore((s) => s.signOutOperator);
+  const unlinkDevice = useDeviceStore((s) => s.unlinkDevice);
 
   return (
     <Screen>
@@ -32,15 +39,28 @@ export default function ProfileScreen() {
               style={{ width: 56, height: 56, borderRadius: theme.radius.full, alignItems: 'center', justifyContent: 'center' }}
             >
               <Text variant="subtitle" color={theme.colors.onPrimary}>
-                CM
+                {initials(operator?.employee.firstName, operator?.employee.lastName)}
               </Text>
             </LinearGradient>
-            <View>
-              <Text variant="subtitle">Carlos Mendoza</Text>
+            <View style={{ flex: 1 }}>
+              <Text variant="subtitle">
+                {operator ? `${operator.employee.firstName} ${operator.employee.lastName}` : 'Operador'}
+              </Text>
               <Text variant="small" tone="secondary">
-                Mesero · turno noche
+                {role?.name ?? 'Mesero'}
+                {operator?.employee.employeeNumber ? ` · #${operator.employee.employeeNumber}` : ''}
               </Text>
             </View>
+          </View>
+        </Card>
+
+        <Card>
+          <Text variant="eyebrow" tone="secondary" style={{ marginBottom: theme.spacing.sm }}>
+            Dispositivo
+          </Text>
+          <View style={{ gap: 4 }}>
+            <Text variant="small" tone="secondary">Empresa: <Text variant="small">{tenant?.name ?? '—'}</Text></Text>
+            <Text variant="small" tone="secondary">Sucursal: <Text variant="small">{branch?.name ?? '—'}</Text></Text>
           </View>
         </Card>
 
@@ -51,7 +71,8 @@ export default function ProfileScreen() {
           <SegmentedControl options={THEME_OPTIONS} value={colorScheme} onChange={setColorScheme} />
         </Card>
 
-        <Button label="Cerrar sesión" variant="danger" icon="logout" fullWidth onPress={() => void logout()} />
+        <Button label="Cerrar turno" variant="secondary" icon="logout" fullWidth onPress={signOutOperator} />
+        <Button label="Desvincular dispositivo" variant="danger" fullWidth onPress={() => void unlinkDevice()} />
       </ScrollView>
     </Screen>
   );

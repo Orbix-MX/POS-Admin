@@ -3,7 +3,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'react-native';
 
-import { AppProviders, useSession } from '@/providers';
+import { AppProviders, useDeviceSession } from '@/providers';
 
 export default function RootLayout() {
   return (
@@ -14,30 +14,32 @@ export default function RootLayout() {
 }
 
 /**
- * Phase 3 — public vs protected route groups.
+ * Device-first boot routing:
+ *   unregistered          → (activation)  — scan QR / enter license key
+ *   registered, no operator → (auth)      — PIN login
+ *   operator signed in    → (app)         — comandera
  *
- * `Stack.Protected` swaps the active group based on auth state:
- *   - authenticated → `(app)` (protected screens)
- *   - guest         → `(auth)` (login / tenant & branch selection)
- *
- * While the session is bootstrapping we render nothing and let the native
- * splash screen stay up (SessionProvider hides it once bootstrap settles).
+ * While booting we render nothing and keep the native splash up (DeviceProvider
+ * hides it once validation resolves).
  */
 function RootNavigator() {
-  const { isLoading, isAuthenticated } = useSession();
+  const { isBooting, isRegistered, hasOperator } = useDeviceSession();
   const colorScheme = useColorScheme();
 
-  if (isLoading) return null;
+  if (isBooting) return null;
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <StatusBar style="auto" />
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Protected guard={isAuthenticated}>
-          <Stack.Screen name="(app)" />
+        <Stack.Protected guard={!isRegistered}>
+          <Stack.Screen name="(activation)" />
         </Stack.Protected>
-        <Stack.Protected guard={!isAuthenticated}>
+        <Stack.Protected guard={isRegistered && !hasOperator}>
           <Stack.Screen name="(auth)" />
+        </Stack.Protected>
+        <Stack.Protected guard={hasOperator}>
+          <Stack.Screen name="(app)" />
         </Stack.Protected>
       </Stack>
     </ThemeProvider>

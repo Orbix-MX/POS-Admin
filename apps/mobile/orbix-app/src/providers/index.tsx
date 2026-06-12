@@ -8,7 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { QueryProvider } from './query-provider';
 import { NetworkProvider } from './network-provider';
-import { SessionProvider } from './session-provider';
+import { DeviceProvider } from './device-provider';
 import { ThemeProvider } from './theme-provider';
 
 export function AppProviders({ children }: PropsWithChildren) {
@@ -18,7 +18,7 @@ export function AppProviders({ children }: PropsWithChildren) {
         <ThemeProvider>
           <QueryProvider>
             <NetworkProvider>
-              <SessionProvider>{children}</SessionProvider>
+              <DeviceProvider>{children}</DeviceProvider>
             </NetworkProvider>
           </QueryProvider>
         </ThemeProvider>
@@ -27,6 +27,6 @@ export function AppProviders({ children }: PropsWithChildren) {
   );
 }
 
-export { useSession } from './session-provider';
+export { useDeviceSession, useDeviceSession as useSession } from '@/hooks/use-device-session';
 export { useNetwork } from './network-provider';
 export { useTheme } from './theme-provider';

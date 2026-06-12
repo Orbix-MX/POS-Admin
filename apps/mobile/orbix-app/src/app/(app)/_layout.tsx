@@ -1,21 +1,22 @@
 import { Redirect, Tabs } from 'expo-router';
 
-import { useSession } from '@/providers';
+import { useDeviceSession } from '@/hooks/use-device-session';
 import { useResponsive } from '@/hooks/use-responsive';
 import { AppTabBar } from '@/components/navigation';
 import { TAB_ROUTES } from '@/constants/navigation';
 
 /**
- * Protected tab group. One Tabs navigator drives both layouts: a left rail on
- * tablet (tabBarPosition 'left') and a bottom nav on phone — both rendered by
- * the custom AppTabBar. Defense-in-depth redirect keeps deep links out.
+ * Protected tab group. Requires an authorized device + signed-in operator. One
+ * Tabs navigator drives both layouts: a left rail on tablet (tabBarPosition
+ * 'left') and a bottom nav on phone. Defense-in-depth redirect keeps deep links
+ * out when no operator is signed in.
  */
 export default function AppLayout() {
-  const { isAuthenticated, isLoading } = useSession();
+  const { isBooting, hasOperator } = useDeviceSession();
   const { isTablet } = useResponsive();
 
-  if (isLoading) return null;
-  if (!isAuthenticated) return <Redirect href="/sign-in" />;
+  if (isBooting) return null;
+  if (!hasOperator) return <Redirect href="/pin-login" />;
 
   return (
     <Tabs

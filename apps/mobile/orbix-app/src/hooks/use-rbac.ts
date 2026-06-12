@@ -1,48 +1,24 @@
 /**
- * Phase 8 — Session-bound RBAC.
- *
- * Wraps the pure helpers in `utils/rbac` with the current session's permissions,
- * modules and role, so screens can write `can('orders:create')` /
- * `hasModule(SystemModule.COMANDA)` / `hasRole('OWNER')` without plumbing.
- *
- * SUPER_ADMIN bypasses permission and module checks (mirrors the API guard).
+ * Phase 8 — operator-bound RBAC for the comandera. Permissions/role come from
+ * the PIN-authenticated operator (device store). Pure helpers live in utils/rbac.
  */
 import { useMemo } from 'react';
 
-import { useSession } from '@/providers/session-provider';
-import {
-  hasPermission,
-  hasModule,
-  hasRole,
-  isBypassRole,
-  type PermissionMatch,
-} from '@/utils/rbac';
-import type { SystemModule } from '@orbix/types';
+import { useDeviceSession } from '@/hooks/use-device-session';
+import { hasPermission, hasRole, type PermissionMatch } from '@/utils/rbac';
 
 export function useRbac() {
-  const { permissions, modules, user, tenant } = useSession();
+  const { permissions, role } = useDeviceSession();
 
-  return useMemo(() => {
-    const bypass = isBypassRole(user?.role);
-
-    return {
-      /** Check permission key(s) against the current session. */
+  return useMemo(
+    () => ({
+      /** Check permission key(s) against the current operator. */
       can: (required: string | string[], mode: PermissionMatch = 'all') =>
-        bypass || hasPermission(permissions, required, mode),
-
-      /** Check whether the tenant has the given module(s) enabled. */
-      hasModule: (
-        required: string | SystemModule | (string | SystemModule)[],
-        mode: PermissionMatch = 'any',
-      ) => bypass || hasModule(modules, required, mode),
-
-      /** Check the platform-level user role. */
-      hasRole: (allowed: string | string[]) => hasRole(user?.role, allowed),
-
-      /** Check the per-tenant membership role (OWNER/ADMIN/MANAGER/STAFF). */
-      hasTenantRole: (allowed: string | string[]) => hasRole(tenant?.memberRole, allowed),
-
-      isSuperAdmin: bypass,
-    };
-  }, [permissions, modules, user?.role, tenant?.memberRole]);
+        hasPermission(permissions, required, mode),
+      /** Check the operator's role name. */
+      hasRole: (allowed: string | string[]) => hasRole(role?.name, allowed),
+      roleName: role?.name ?? null,
+    }),
+    [permissions, role],
+  );
 }

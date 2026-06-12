@@ -1,2 +1,2 @@
-export { useSession } from '@/providers/session-provider';
-export type { SessionContextValue } from '@/providers/session-provider';
+// Back-compat alias — the session is now device + operator based.
+export { useDeviceSession, useDeviceSession as useSession } from './use-device-session';

@@ -1092,6 +1092,7 @@ model Branch {
   supplies           Supply[]           @relation("BranchSupplies")
   supplyMovements    SupplyMovement[]   @relation("BranchSupplyMovements")
   printerConfigs     PrinterConfig[]
+  devices            Device[]
 
   usersLastSelected User[] @relation("UserLastBranch")
 
@@ -1396,6 +1397,7 @@ model Role {
   userAssignments UserRoleAssignment[]
   dashboardRoles  DashboardRole[]
   widgetRoles     WidgetRole[]
+  employees       Employee[]           @relation("EmployeeRole")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1494,17 +1496,25 @@ model Employee {
   status         EmployeeStatus @default(ACTIVE)
   notes          String?
 
+  // Operative PIN login (comandera). Deterministic hash (sha256 + pepper) so it
+  // can be looked up + kept unique per tenant. `roleId` sources the operator's
+  // permissions from the RBAC roles table without needing a User account.
+  pinHash        String?        @map("pin_hash")
+  roleId         String?        @map("role_id")
+
   createdById String?
   updatedById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role      Role?  @relation("EmployeeRole", fields: [roleId], references: [id], onDelete: SetNull)
   createdBy User?  @relation("EmployeeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy User?  @relation("EmployeeUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, employeeNumber])
   @@unique([tenantId, email])
+  @@unique([tenantId, pinHash])
   @@map("employees")
 }
 
@@ -1763,9 +1773,17 @@ model License {
 model Device {
   id          String       @id @default(uuid())
   tenantId    String       @map("tenant_id")
+  branchId    String?      @map("branch_id")
   licenseId   String?      @map("license_id")
   deviceId    String       @map("device_id") // client-generated stable id / fingerprint
+  // Durable device credential — the app's principal. Returned once on activate
+  // and again on validate (keyed by deviceId). Revoked when status != ACTIVE.
+  // Designed to also back future offline operation / local validation.
+  deviceToken String?      @unique @map("device_token")
   name        String?
+  model       String?
+  os          String?
+  appVersion  String?      @map("app_version")
   type        DeviceType   @default(OTHER)
   status      DeviceStatus @default(ACTIVE)
   lastSeenAt  DateTime?    @map("last_seen_at")
@@ -1774,6 +1792,7 @@ model Device {
   updatedAt   DateTime     @updatedAt @map("updated_at")
 
   tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch  Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
   license License? @relation(fields: [licenseId], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, deviceId])

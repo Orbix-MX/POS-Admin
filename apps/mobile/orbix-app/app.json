@@ -35,7 +35,13 @@
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Orbix usa la cámara para escanear el código de activación del dispositivo."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

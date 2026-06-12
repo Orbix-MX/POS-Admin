@@ -75,9 +75,26 @@ export const apiClient = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-const AUTH_ENDPOINTS = ['/auth/login', '/auth/register', '/auth/refresh'];
+const AUTH_ENDPOINTS = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/refresh',
+  '/devices/validate',
+  '/devices/activate',
+  '/staff/pin-login',
+];
 function isAuthEndpoint(url?: string): boolean {
   return !!url && AUTH_ENDPOINTS.some((p) => url.includes(p));
+}
+
+/**
+ * Attaches the device credential to every request as `X-Device-Token`. The
+ * device is the API principal in the comandera; pass null to clear (unlink).
+ * (Server-side device-auth on business endpoints is future work.)
+ */
+export function setDeviceAuthToken(token: string | null): void {
+  if (token) apiClient.defaults.headers.common['X-Device-Token'] = token;
+  else delete apiClient.defaults.headers.common['X-Device-Token'];
 }
 
 apiClient.interceptors.request.use((config) => {
@@ -151,7 +168,12 @@ apiClient.interceptors.response.use(
 /** Extracts a human-friendly message from an axios/API error. */
 export function getApiErrorMessage(error: unknown, fallback = 'Algo salió mal'): string {
   if (axios.isAxiosError(error)) {
-    const data = error.response?.data as { message?: string | string[] } | undefined;
+    // No response = couldn't reach the API (wrong URL / device can't see the
+    // host / CORS on web). Surface that instead of a misleading domain message.
+    if (!error.response) {
+      return `No se pudo conectar con el servidor (${Env.apiUrl}). Verifica la red y la URL del API.`;
+    }
+    const data = error.response.data as { message?: string | string[] } | undefined;
     const msg = data?.message;
     if (Array.isArray(msg)) return msg[0] ?? fallback;
     if (typeof msg === 'string') return msg;
