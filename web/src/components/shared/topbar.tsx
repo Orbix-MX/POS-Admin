@@ -31,6 +31,8 @@ const MODULE_META: Record<ModuleId, { label: string; breadcrumb: string[] }> = {
   'caja-restaurante': { label: "Caja Restaurante", breadcrumb: ["Negocio", "Caja Restaurante"] },
   insumos: { label: "Insumos", breadcrumb: ["Negocio", "Insumos"] },
   kitchen: { label: "Cocina", breadcrumb: ["Negocio", "Cocina"] },
+  'dining-areas': { label: "Áreas del restaurante", breadcrumb: ["Negocio", "Áreas del restaurante"] },
+  'restaurant-tables': { label: "Mesas", breadcrumb: ["Negocio", "Mesas"] },
 }
 
 const ACTION_LABELS: Partial<Record<ModuleId, string>> = {
@@ -67,6 +69,8 @@ const PATH_TO_MODULE: Record<string, ModuleId> = {
   '/caja-restaurante': 'caja-restaurante',
   '/insumos': 'insumos',
   '/kitchen': 'kitchen',
+  '/dining-areas': 'dining-areas',
+  '/restaurant-tables': 'restaurant-tables',
 }
 
 export { MODULE_META }

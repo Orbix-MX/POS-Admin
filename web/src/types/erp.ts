@@ -228,3 +228,5 @@ export type ModuleId =
   | 'caja-restaurante'
   | 'insumos'
   | 'kitchen'
+  | 'dining-areas'
+  | 'restaurant-tables'

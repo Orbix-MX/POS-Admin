@@ -35,6 +35,7 @@ export interface Operator {
   role: { id: string; name: string } | null;
   permissions: string[];
   branchId: string | null;
+  availableBranches: DeviceBranch[];
 }
 
 export async function validateDevice(deviceId: string, appVersion?: string): Promise<ValidateResponse> {

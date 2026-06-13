@@ -5,9 +5,9 @@
 import { useShallow } from 'zustand/react/shallow';
 import { useDeviceStore } from '@/store/device-store';
 
-// Stable fallback: a fresh [] per snapshot defeats useShallow's equality check
-// (Object.is on the array ref) and triggers an infinite re-render loop.
+// Stable fallbacks: fresh [] per snapshot defeats useShallow's equality check.
 const NO_PERMISSIONS: string[] = [];
+const NO_BRANCHES: import('@/services/device-service').DeviceBranch[] = [];
 
 export function useDeviceSession() {
   return useDeviceStore(
@@ -18,6 +18,8 @@ export function useDeviceSession() {
       hasOperator: s.phase === 'ready',
       tenant: s.tenant,
       branch: s.branch,
+      activeBranch: s.activeBranch,
+      availableBranches: s.availableBranches.length > 0 ? s.availableBranches : NO_BRANCHES,
       licenseStatus: s.licenseStatus,
       operator: s.operator,
       permissions: s.operator?.permissions ?? NO_PERMISSIONS,

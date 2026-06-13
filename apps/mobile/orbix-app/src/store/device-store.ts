@@ -9,6 +9,7 @@
  *
  * The deviceToken is the durable principal (SecureStore); the operator (employee
  * + permissions) is in-memory only and cleared on sign-out.
+ * `activeBranch` is persisted separately so it survives PIN logout.
  */
 import { create } from 'zustand';
 import {
@@ -37,10 +38,15 @@ interface DeviceState {
   licenseStatus: LicenseStatus | null;
   operator: Operator | null;
 
+  // Multi-branch session
+  activeBranch: DeviceBranch | null;
+  availableBranches: DeviceBranch[];
+
   bootstrap: () => Promise<void>;
   activateWithToken: (activationToken: string) => Promise<boolean>;
   activateWithLicenseKey: (licenseKey: string) => Promise<boolean>;
   pinLogin: (pin: string) => Promise<boolean>;
+  switchBranch: (branch: DeviceBranch) => Promise<void>;
   signOutOperator: () => void;
   unlinkDevice: () => Promise<void>;
   clearError: () => void;
@@ -55,6 +61,8 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
   branch: null,
   licenseStatus: null,
   operator: null,
+  activeBranch: null,
+  availableBranches: [],
 
   bootstrap: async () => {
     set({ phase: 'booting', error: null });
@@ -64,11 +72,16 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
       if (res.registered && res.deviceToken) {
         setDeviceAuthToken(res.deviceToken);
         await deviceStorage.saveCredentials(res.deviceToken, res.tenant ?? null, res.branch ?? null);
+
+        // Restore persisted active branch; validate it's still valid after full login
+        const persistedBranch = await deviceStorage.getActiveBranch();
+
         set({
           deviceToken: res.deviceToken,
           tenant: res.tenant ?? null,
           branch: res.branch ?? null,
           licenseStatus: res.licenseStatus ?? null,
+          activeBranch: persistedBranch ?? res.branch ?? null,
           phase: 'locked',
         });
       } else {
@@ -78,9 +91,13 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
       // Offline fallback: boot from cached credentials if we have them.
       const cachedToken = await deviceStorage.getDeviceToken();
       if (cachedToken) {
-        const [tenant, branch] = await Promise.all([deviceStorage.getTenant(), deviceStorage.getBranch()]);
+        const [tenant, branch, activeBranch] = await Promise.all([
+          deviceStorage.getTenant(),
+          deviceStorage.getBranch(),
+          deviceStorage.getActiveBranch(),
+        ]);
         setDeviceAuthToken(cachedToken);
-        set({ deviceToken: cachedToken, tenant, branch, licenseStatus: null, phase: 'locked' });
+        set({ deviceToken: cachedToken, tenant, branch, licenseStatus: null, activeBranch: activeBranch ?? branch, phase: 'locked' });
       } else {
         set({ phase: 'unregistered', error: getApiErrorMessage(e, 'No se pudo validar el dispositivo') });
       }
@@ -96,7 +113,24 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const operator = await pinLoginApi(deviceToken, pin);
-      set({ operator, phase: 'ready', loading: false });
+      const { availableBranches, branchId } = operator;
+
+      // Restore last active branch if still in the available list; otherwise use default
+      const persisted = await deviceStorage.getActiveBranch();
+      const restoredBranch =
+        persisted && availableBranches.some((b) => b.id === persisted.id)
+          ? persisted
+          : availableBranches.find((b) => b.id === branchId) ?? availableBranches[0] ?? null;
+
+      if (restoredBranch) await deviceStorage.setActiveBranch(restoredBranch);
+
+      set({
+        operator,
+        availableBranches,
+        activeBranch: restoredBranch,
+        phase: 'ready',
+        loading: false,
+      });
       return true;
     } catch (e) {
       set({ error: getApiErrorMessage(e, 'PIN incorrecto'), loading: false });
@@ -104,7 +138,15 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
     }
   },
 
-  signOutOperator: () => set({ operator: null, phase: 'locked', error: null }),
+  switchBranch: async (branch) => {
+    await deviceStorage.setActiveBranch(branch);
+    set({ activeBranch: branch });
+  },
+
+  signOutOperator: () => {
+    void deviceStorage.clearActiveBranch();
+    set({ operator: null, availableBranches: [], activeBranch: null, phase: 'locked', error: null });
+  },
 
   unlinkDevice: async () => {
     setDeviceAuthToken(null);
@@ -115,6 +157,8 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
       branch: null,
       licenseStatus: null,
       operator: null,
+      activeBranch: null,
+      availableBranches: [],
       phase: 'unregistered',
       error: null,
     });
@@ -137,6 +181,7 @@ async function activate(
       deviceToken: res.deviceToken,
       tenant: res.tenant,
       branch: res.branch,
+      activeBranch: res.branch,
       licenseStatus: res.licenseStatus,
       phase: 'locked',
       loading: false,

@@ -99,6 +99,7 @@ export enum SystemModule {
   COMANDA          = 'comanda',
   CAJA_RESTAURANTE = 'caja-restaurante',
   INSUMOS          = 'insumos',
+  DINING_AREAS     = 'dining-areas',
   // Future verticals
   GYM           = 'gym',
   KITCHEN       = 'kitchen',
@@ -161,7 +162,7 @@ export function getModulesForPlan(plan: TenantPlan): SystemModule[] {
 // These are stored in Tenant.enabledModules (additive on top of plan).
 export const VERTICAL_DEFAULT_EXTRAS: Record<BusinessVertical, string[]> = {
   RETAIL:     [SystemModule.POS],
-  RESTAURANT: [SystemModule.COMANDA, SystemModule.KITCHEN],
+  RESTAURANT: [SystemModule.COMANDA, SystemModule.KITCHEN, SystemModule.DINING_AREAS],
   GYM:        [],
   SERVICES:   [],
 }
@@ -171,7 +172,7 @@ export const VERTICAL_DEFAULT_EXTRAS: Record<BusinessVertical, string[]> = {
 // Extend this map as new verticals are added — no other file needs to change.
 
 export const VERTICAL_INCOMPATIBLE_MODULES: Partial<Record<BusinessVertical, SystemModule[]>> = {
-  RETAIL:     [SystemModule.COMANDA, SystemModule.KITCHEN],
+  RETAIL:     [SystemModule.COMANDA, SystemModule.KITCHEN, SystemModule.DINING_AREAS],
   RESTAURANT: [SystemModule.POS],
 }
 

@@ -165,8 +165,10 @@ model Tenant {
   printerConfigs     PrinterConfig[]
 
   usersLastSelected User[]      @relation("UserLastTenant")
-  employees         Employee[]
-  dashboards        Dashboard[]
+  employees           Employee[]
+  diningAreas         DiningArea[]
+  restaurantTables    RestaurantTable[]
+  dashboards          Dashboard[]
   widgets           Widget[]
 
   licenses          License[]
@@ -253,6 +255,10 @@ model User {
   workOrderAssignments      WorkOrderAssignment[] @relation("WorkOrderAssignments")
   employeesCreated          Employee[]         @relation("EmployeeCreatedBy")
   employeesUpdated          Employee[]         @relation("EmployeeUpdatedBy")
+  diningAreasCreated        DiningArea[]       @relation("DiningAreaCreatedBy")
+  diningAreasUpdated        DiningArea[]       @relation("DiningAreaUpdatedBy")
+  restaurantTablesCreated   RestaurantTable[]  @relation("RestaurantTableCreatedBy")
+  restaurantTablesUpdated   RestaurantTable[]  @relation("RestaurantTableUpdatedBy")
   dashboardsCreated         Dashboard[]        @relation("DashboardCreatedBy")
   dashboardsUpdated         Dashboard[]        @relation("DashboardUpdatedBy")
   widgetsCreated            Widget[]           @relation("WidgetCreatedBy")
@@ -966,6 +972,68 @@ enum OrderOrigin {
   ONLINE
 }
 
+// ============= Restaurant: Dining Areas =============
+
+model DiningArea {
+  id           String  @id @default(uuid())
+  tenantId     String
+  branchId     String
+  name         String
+  description  String?
+  displayOrder Int     @default(0)
+  isActive     Boolean @default(true)
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch    Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  createdBy User?   @relation("DiningAreaCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User?   @relation("DiningAreaUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  tables    RestaurantTable[]
+
+  @@unique([branchId, name])
+  @@index([tenantId, branchId, isActive])
+  @@map("dining_areas")
+}
+
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+  BLOCKED
+}
+
+model RestaurantTable {
+  id           String      @id @default(uuid())
+  tenantId     String
+  branchId     String
+  areaId       String
+  name         String
+  capacity     Int         @default(4)
+  displayOrder Int         @default(0)
+  isActive     Boolean     @default(true)
+  status       TableStatus @default(AVAILABLE)
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch    Branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  area      DiningArea  @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  createdBy User?       @relation("RestaurantTableCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User?       @relation("RestaurantTableUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([branchId, name])
+  @@index([tenantId, branchId, areaId, isActive])
+  @@map("restaurant_tables")
+}
+
 model Order {
   id             String        @id @default(uuid())
   tenantId       String
@@ -1093,6 +1161,9 @@ model Branch {
   supplyMovements    SupplyMovement[]   @relation("BranchSupplyMovements")
   printerConfigs     PrinterConfig[]
   devices            Device[]
+  employeeBranches   EmployeeBranch[]
+  diningAreas        DiningArea[]
+  restaurantTables   RestaurantTable[]
 
   usersLastSelected User[] @relation("UserLastBranch")
 
@@ -1507,15 +1578,29 @@ model Employee {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  role      Role?  @relation("EmployeeRole", fields: [roleId], references: [id], onDelete: SetNull)
-  createdBy User?  @relation("EmployeeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  updatedBy User?  @relation("EmployeeUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role      Role?            @relation("EmployeeRole", fields: [roleId], references: [id], onDelete: SetNull)
+  branches  EmployeeBranch[]
+  createdBy User?            @relation("EmployeeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User?            @relation("EmployeeUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, employeeNumber])
   @@unique([tenantId, email])
   @@unique([tenantId, pinHash])
   @@map("employees")
+}
+
+model EmployeeBranch {
+  employeeId String   @map("employee_id")
+  branchId   String   @map("branch_id")
+  isPrimary  Boolean  @default(false) @map("is_primary")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  branch   Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@id([employeeId, branchId])
+  @@map("employee_branches")
 }
 
 // ============= Work Orders =============

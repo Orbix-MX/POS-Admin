@@ -25,9 +25,9 @@ export interface DeviceMeta {
 export function getDeviceMeta(): DeviceMeta {
   const os = [Device.osName, Device.osVersion].filter(Boolean).join(' ');
   return {
-    name: Device.deviceName ?? Device.modelName ?? 'Dispositivo',
-    model: Device.modelName ?? undefined,
-    os: os || undefined,
+    name: (Device.deviceName ?? Device.modelName ?? 'Dispositivo').slice(0, 120),
+    model: Device.modelName?.slice(0, 120) ?? undefined,
+    os: os ? os.slice(0, 200) : undefined,
     appVersion: Application.nativeApplicationVersion ?? undefined,
   };
 }

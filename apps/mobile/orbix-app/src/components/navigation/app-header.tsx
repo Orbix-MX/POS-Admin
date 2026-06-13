@@ -3,8 +3,10 @@
  * trailing icon actions. Presentational; wiring (branch switch, notifications)
  * comes later.
  */
-import { View, Pressable } from 'react-native';
+import { View, Pressable, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/providers/theme-provider';
+import { useResponsive } from '@/hooks/use-responsive';
 import { Text, Icon, SearchBar, type IconName } from '@/components/ui';
 
 export interface AppHeaderProps {
@@ -25,6 +27,10 @@ export function AppHeader({
   onPressAction,
 }: AppHeaderProps) {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  const { isTablet } = useResponsive();
+  // En tablet Android activamos immersive mode (status bar oculta) — no agregar inset top
+  const topInset = isTablet && Platform.OS === 'android' ? 0 : insets.top;
 
   return (
     <View
@@ -33,7 +39,8 @@ export function AppHeader({
         alignItems: 'center',
         gap: theme.spacing.md,
         paddingHorizontal: theme.spacing.xl,
-        paddingVertical: theme.spacing.lg,
+        paddingTop: topInset + theme.spacing.lg,
+        paddingBottom: theme.spacing.lg,
         backgroundColor: theme.colors.card,
         borderBottomWidth: 1,
         borderBottomColor: theme.colors.border,
@@ -55,7 +62,7 @@ export function AppHeader({
       >
         <Icon name="location" size={16} color={theme.colors.primary} />
         <Text variant="label">{branchName}</Text>
-        <Icon name="chevronDown" size={14} color={theme.colors.textMuted} />
+        {onPressBranch && <Icon name="chevronDown" size={14} color={theme.colors.textMuted} />}
       </Pressable>
 
       {showSearch && (

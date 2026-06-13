@@ -12,6 +12,7 @@ const KEYS = {
   deviceToken: 'orbix_device_token',
   tenant: 'orbix_device_tenant',
   branch: 'orbix_device_branch',
+  activeBranch: 'orbix_active_branch',
 } as const;
 
 const isWeb = Platform.OS === 'web';
@@ -55,8 +56,24 @@ export const deviceStorage = {
     else await deleteItem(KEYS.branch);
   },
 
+  async getActiveBranch(): Promise<CachedBranch | null> {
+    const raw = await getItem(KEYS.activeBranch);
+    return raw ? (JSON.parse(raw) as CachedBranch) : null;
+  },
+  async setActiveBranch(branch: CachedBranch): Promise<void> {
+    await setItem(KEYS.activeBranch, JSON.stringify(branch));
+  },
+  async clearActiveBranch(): Promise<void> {
+    await deleteItem(KEYS.activeBranch);
+  },
+
   /** Unlink the device (keeps the stable deviceId so re-activation reuses it). */
   async clearCredentials(): Promise<void> {
-    await Promise.all([deleteItem(KEYS.deviceToken), deleteItem(KEYS.tenant), deleteItem(KEYS.branch)]);
+    await Promise.all([
+      deleteItem(KEYS.deviceToken),
+      deleteItem(KEYS.tenant),
+      deleteItem(KEYS.branch),
+      deleteItem(KEYS.activeBranch),
+    ]);
   },
 } as const;

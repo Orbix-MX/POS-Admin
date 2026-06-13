@@ -1,10 +1,12 @@
 import { ScrollView, View } from 'react-native';
 
 import { Screen, Card, Text, Grid } from '@/components/ui';
-import { AppHeader } from '@/components/navigation';
+import { AppHeader, BranchSelectorModal } from '@/components/navigation';
 import { StatCard, TableCard, OrderCard } from '@/components/domain';
 import { useTheme } from '@/providers/theme-provider';
 import { useResponsive } from '@/hooks/use-responsive';
+import { useBranchSelector } from '@/hooks/use-branch-selector';
+import { useDeviceSession } from '@/hooks/use-device-session';
 import type { StatusKey } from '@/constants/theme';
 
 // Static placeholder data — UI foundation only (no data layer yet).
@@ -33,17 +35,31 @@ export default function HomeScreen() {
   const { select } = useResponsive();
   const statCols = select({ phone: 2, tablet: 4 });
   const tableCols = select({ phone: 2, tablet: 3 });
+  const { operator } = useDeviceSession();
+  const { modalVisible, activeBranch, availableBranches, openSelector, closeSelector, handleSelect, canSwitch } = useBranchSelector();
+
+  const firstName = operator?.employee.firstName ?? '';
 
   return (
-    <Screen>
-      <AppHeader branchName="Sucursal Centro" />
+    <Screen edges={[]}>
+      <AppHeader
+        branchName={activeBranch?.name ?? 'Sucursal'}
+        onPressBranch={canSwitch ? openSelector : undefined}
+      />
+      <BranchSelectorModal
+        visible={modalVisible}
+        branches={availableBranches}
+        activeBranchId={activeBranch?.id ?? null}
+        onSelect={handleSelect}
+        onClose={closeSelector}
+      />
       <ScrollView contentContainerStyle={{ padding: theme.spacing.xl, gap: theme.spacing.xl }}>
         <View>
           <Text variant="caption" tone="muted">
             Martes · 21:14
           </Text>
           <Text variant="h1" style={{ marginTop: 4 }}>
-            Buenas noches, Carlos
+            {firstName ? `Hola, ${firstName}` : 'Bienvenido'}
           </Text>
         </View>
 

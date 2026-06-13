@@ -1,9 +1,12 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, Platform } from 'react-native';
+import * as NavigationBar from 'expo-navigation-bar';
+import { useEffect } from 'react';
 
 import { AppProviders, useDeviceSession } from '@/providers';
+import { useResponsive } from '@/hooks/use-responsive';
 
 export default function RootLayout() {
   return (
@@ -13,24 +16,22 @@ export default function RootLayout() {
   );
 }
 
-/**
- * Device-first boot routing:
- *   unregistered          → (activation)  — scan QR / enter license key
- *   registered, no operator → (auth)      — PIN login
- *   operator signed in    → (app)         — comandera
- *
- * While booting we render nothing and keep the native splash up (DeviceProvider
- * hides it once validation resolves).
- */
 function RootNavigator() {
   const { isBooting, isRegistered, hasOperator } = useDeviceSession();
   const colorScheme = useColorScheme();
+  const { isTablet } = useResponsive();
+
+  useEffect(() => {
+    if (Platform.OS !== 'android' || !isTablet) return;
+    NavigationBar.setVisibilityAsync('hidden');
+    NavigationBar.setBehaviorAsync('inset-swipe');
+  }, [isTablet]);
 
   if (isBooting) return null;
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <StatusBar style="auto" />
+      <StatusBar hidden={isTablet} style="auto" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Protected guard={!isRegistered}>
           <Stack.Screen name="(activation)" />

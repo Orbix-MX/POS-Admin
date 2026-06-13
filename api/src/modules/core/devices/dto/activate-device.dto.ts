@@ -39,7 +39,7 @@ export class ActivateDeviceDto {
   @ApiPropertyOptional({ description: 'OS + version (e.g. "iOS 18.2").' })
   @IsOptional()
   @IsString()
-  @MaxLength(80)
+  @MaxLength(200)
   os?: string;
 
   @ApiPropertyOptional({ description: 'App version (e.g. "1.0.0").' })

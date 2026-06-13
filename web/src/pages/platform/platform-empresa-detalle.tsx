@@ -45,7 +45,7 @@ const MODULE_LABELS: Record<string, string> = {
   cxc: 'CxC', cxp: 'CxP', caja: 'Caja', reportes: 'Reportes',
   usuarios: 'Usuarios', roles: 'Roles', configuracion: 'Configuración',
   branches: 'Sucursales', empleados: 'Empleados', comanda: 'Comandas',
-  insumos: 'Insumos', gym: 'Gym', kitchen: 'Kitchen', delivery: 'Delivery',
+  insumos: 'Insumos', 'dining-areas': 'Áreas Restaurante', gym: 'Gym', kitchen: 'Kitchen', delivery: 'Delivery',
   memberships: 'Membresías', 'access-control': 'Control Acceso',
 }
 
@@ -463,14 +463,15 @@ export function PlatformEmpresaDetalle() {
   }, [id, newPlan, load, flash])
 
   const handleModulesSave = useCallback(async () => {
-    if (!id) return
+    if (!id || !tenant) return
     setSaving(true); setSaveError(null)
     try {
-      await updateTenantModules(id, selectedModules)
+      const compatible = selectedModules.filter(m => isCompatibleWithVertical(m, tenant.businessVertical))
+      await updateTenantModules(id, compatible)
       await load(); flash(true)
     } catch (e) { setSaveError(errMessage(e)) }
     finally { setSaving(false) }
-  }, [id, selectedModules, load, flash])
+  }, [id, tenant, selectedModules, load, flash])
 
   const handleLimitsSave = useCallback(async () => {
     if (!id) return

@@ -24,15 +24,16 @@ export class StaffService {
     return createHash('sha256').update(`${tenantId}:${pin}:${pepper}`).digest('hex');
   }
 
-  /** Device-principal PIN login. Returns the operator identity + permissions. */
+  /** Device-principal PIN login. Returns operator identity, permissions, and available branches. */
   async pinLogin(deviceToken: string, pin: string) {
     // Gate: device + tenant + branch + license must all be active/valid.
-    const { tenantId, branchId } = await this.devicesService.authorizeByToken(deviceToken);
+    const { device, tenantId, branchId } = await this.devicesService.authorizeByToken(deviceToken);
 
     const employee = await this.prisma.employee.findFirst({
       where: { tenantId, pinHash: this.hashPin(tenantId, pin), status: 'ACTIVE' },
       include: {
         role: { include: { permissions: { include: { permission: true } } } },
+        branches: { include: { branch: { select: { id: true, name: true, status: true } } } },
       },
     });
 
@@ -41,6 +42,29 @@ export class StaffService {
     }
 
     const permissions = employee.role?.permissions.map((rp) => rp.permission.key) ?? [];
+
+    // Compute available branches: intersection of device scope and employee assignments.
+    // If the employee has no explicit branch assignments, they inherit all tenant branches
+    // (bounded by the device's branch if the device is pinned to one).
+    const employeeBranchIds = employee.branches.map((eb) => eb.branchId);
+    const hasExplicitBranches = employeeBranchIds.length > 0;
+
+    const availableBranches = await this.prisma.branch.findMany({
+      where: {
+        tenantId,
+        status: 'ACTIVE',
+        // Device scope: if device is pinned to a branch, restrict to that branch only
+        ...(device.branchId ? { id: device.branchId } : {}),
+        // Employee scope: if employee has explicit assignments, filter to those
+        ...(hasExplicitBranches ? { id: { in: employeeBranchIds } } : {}),
+      },
+      select: { id: true, name: true },
+      orderBy: { isMain: 'desc' },
+    });
+
+    // Default branch: employee's primary > device branch > first available
+    const primaryBranchId = employee.branches.find((eb) => eb.isPrimary)?.branchId;
+    const defaultBranchId = primaryBranchId ?? branchId ?? availableBranches[0]?.id ?? null;
 
     return {
       employee: {
@@ -51,7 +75,8 @@ export class StaffService {
       },
       role: employee.role ? { id: employee.role.id, name: employee.role.name } : null,
       permissions,
-      branchId,
+      branchId: defaultBranchId,
+      availableBranches,
     };
   }
 

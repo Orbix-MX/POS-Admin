@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 
 import { Screen, Card, Text, Button, SegmentedControl, StatusBadge } from '@/components/ui';
-import { AppHeader } from '@/components/navigation';
+import { AppHeader, BranchSelectorModal } from '@/components/navigation';
 import { useTheme } from '@/providers/theme-provider';
+import { useBranchSelector } from '@/hooks/use-branch-selector';
 
 const TIP_OPTIONS = [
   { value: '10', label: '10%' },
@@ -28,10 +29,22 @@ const TOTALS = [
 export default function BillScreen() {
   const theme = useTheme();
   const [tip, setTip] = useState('15');
+  const { modalVisible, activeBranch, availableBranches, openSelector, closeSelector, handleSelect, canSwitch } = useBranchSelector();
 
   return (
-    <Screen>
-      <AppHeader branchName="Sucursal Centro" showSearch={false} />
+    <Screen edges={[]}>
+      <AppHeader
+        branchName={activeBranch?.name ?? 'Sucursal'}
+        showSearch={false}
+        onPressBranch={canSwitch ? openSelector : undefined}
+      />
+      <BranchSelectorModal
+        visible={modalVisible}
+        branches={availableBranches}
+        activeBranchId={activeBranch?.id ?? null}
+        onSelect={handleSelect}
+        onClose={closeSelector}
+      />
       <ScrollView contentContainerStyle={{ padding: theme.spacing.xl, gap: theme.spacing.lg }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md }}>
           <Text variant="h2">Cuenta · Mesa 2</Text>

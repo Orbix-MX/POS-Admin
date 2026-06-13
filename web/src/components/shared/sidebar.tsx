@@ -4,7 +4,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   LayoutDashboard, ShoppingBag, ShoppingCart, Package,
   Users, Truck, FileText, Settings, Shield,
-  ChevronDown, LogOut, Landmark, Receipt, TrendingUp, Wrench, UserCheck, MapPin, CreditCard, FlaskConical, ChefHat,
+  ChevronDown, LogOut, Landmark, Receipt, TrendingUp, Wrench, UserCheck, MapPin, CreditCard, FlaskConical, ChefHat, LayoutGrid, Grid3x3,
 } from 'lucide-react'
 
 type NavItem = {
@@ -70,6 +70,8 @@ const ALL_NAV: NavGroup[] = [
       { module: 'ordenes-trabajo', label: 'Órdenes de Trabajo', icon: Wrench, path: '/ordenes-trabajo' },
       { module: 'empleados', label: 'Capital Humano', icon: UserCheck, path: '/empleados' },
       { module: 'caja-restaurante', label: 'Caja Restaurante', icon: CreditCard, path: '/caja-restaurante' },
+      { module: 'dining-areas', label: 'Áreas del restaurante', icon: LayoutGrid, path: '/dining-areas', verticalGuard: (hasVertical: (v: BusinessVertical) => boolean) => hasVertical('RESTAURANT') },
+      { module: 'comanda', label: 'Mesas', icon: Grid3x3, path: '/restaurant-tables', verticalGuard: (hasVertical: (v: BusinessVertical) => boolean) => hasVertical('RESTAURANT') },
       {
         module: 'kitchen',
         label: 'Cocina',

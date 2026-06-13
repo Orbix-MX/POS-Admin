@@ -1,7 +1,7 @@
 /**
- * Proxy HTTP → HTTPS para desarrollo
+ * Proxy HTTP → HTTP/HTTPS para desarrollo
  * Ejecutar: node scripts/proxy.js
- * Luego usar: http://10.0.2.2:3001/api en tu .env
+ * Luego usar: http://<TU_IP_LAN>:3002/api en tu .env
  */
 
 const http = require("http");
@@ -11,8 +11,9 @@ const url = require("url");
 // Configuración
 const PROXY_PORT = 3002;
 const TARGET_HOST = "localhost";
-const TARGET_PORT = 44350;
+const TARGET_PORT = 3001;
 const TARGET_BASE_PATH = "/api";
+const TARGET_HTTPS = false; // cambiar a true si el backend usa HTTPS
 
 const server = http.createServer((req, res) => {
   // Configurar CORS
@@ -46,10 +47,11 @@ const server = http.createServer((req, res) => {
       ...req.headers,
       host: `${TARGET_HOST}:${TARGET_PORT}`,
     },
-    rejectUnauthorized: false, // Ignorar certificado SSL
+    ...(TARGET_HTTPS && { rejectUnauthorized: false }),
   };
 
-  const proxyReq = https.request(options, (proxyRes) => {
+  const requester = TARGET_HTTPS ? https : http;
+  const proxyReq = requester.request(options, (proxyRes) => {
     console.log(`✅ ${proxyRes.statusCode} ${targetPath}`);
 
     res.writeHead(proxyRes.statusCode, proxyRes.headers);
@@ -68,7 +70,7 @@ const server = http.createServer((req, res) => {
 server.listen(PROXY_PORT, "0.0.0.0", () => {
   console.log(`\n🚀 Proxy corriendo en http://0.0.0.0:${PROXY_PORT}`);
   console.log(
-    `📍 Redirigiendo a https://${TARGET_HOST}:${TARGET_PORT}${TARGET_BASE_PATH}`,
+    `📍 Redirigiendo a ${TARGET_HTTPS ? "https" : "http"}://${TARGET_HOST}:${TARGET_PORT}${TARGET_BASE_PATH}`,
   );
   console.log(`\n📱 En tu .env usa:`);
   console.log(`   EXPO_PUBLIC_API_URL=http://10.0.2.2:${PROXY_PORT}/api\n`);
