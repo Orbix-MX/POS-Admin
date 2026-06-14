@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useTheme } from '@/providers/theme-provider';
 import { Text, Icon, FloatingActionButton } from '@/components/ui';
+import { useNavRoutes } from '@/hooks/use-nav-routes';
 import { TAB_ROUTES, FAB_TARGET_ROUTE } from '@/constants/navigation';
 
 export function BottomNav({ state, navigation }: BottomTabBarProps) {
@@ -15,21 +16,22 @@ export function BottomNav({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const activeRoute = state.routes[state.index]?.name;
 
-  const items = TAB_ROUTES.filter((r) => r.inBottomNav);
+  const items = useNavRoutes().filter((r) => r.inBottomNav);
   const mid = Math.ceil(items.length / 2);
   const left = items.slice(0, mid);
   const right = items.slice(mid);
 
   const renderItem = (item: (typeof TAB_ROUTES)[number]) => {
     const active = item.name === activeRoute;
+    const tint = active ? theme.colors.primary : theme.colors.textMuted;
     return (
       <Pressable
         key={item.name}
         onPress={() => navigation.navigate(item.name)}
         style={{ flex: 1, alignItems: 'center', gap: 3 }}
       >
-        <Icon name={item.icon} size={22} color={active ? theme.colors.primary : theme.colors.textMuted} />
-        <Text variant="caption" style={{ fontSize: 9 }} color={active ? theme.colors.primary : theme.colors.textMuted}>
+        <Icon name={item.icon} size={22} color={tint} />
+        <Text variant="caption" style={{ fontSize: 9 }} color={tint}>
           {item.label}
         </Text>
       </Pressable>

@@ -127,8 +127,24 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
 
       if (restoredBranch) await deviceStorage.setActiveBranch(restoredBranch);
 
+      // Refresh tenant config on each operator login: restaurantServiceMode and
+      // kitchenEnabled may have changed in admin since the device last validated.
+      // Best-effort — keep the cached tenant if revalidation fails (offline).
+      let tenant = get().tenant;
+      try {
+        const deviceId = await getOrCreateDeviceId();
+        const res = await validateDevice(deviceId, getAppVersion());
+        if (res.tenant) {
+          tenant = res.tenant;
+          await deviceStorage.saveCredentials(deviceToken, res.tenant, res.branch ?? get().branch);
+        }
+      } catch {
+        // offline: keep cached tenant
+      }
+
       set({
         operator,
+        tenant,
         availableBranches,
         activeBranch: restoredBranch,
         phase: 'ready',

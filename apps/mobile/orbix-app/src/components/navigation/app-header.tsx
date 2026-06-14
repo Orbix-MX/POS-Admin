@@ -8,12 +8,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/providers/theme-provider';
 import { useResponsive } from '@/hooks/use-responsive';
 import { Text, Icon, SearchBar, type IconName } from '@/components/ui';
+import { SyncStatusBadge } from '@/components/feedback';
 
 export interface AppHeaderProps {
   branchName?: string;
   showSearch?: boolean;
   searchPlaceholder?: string;
   actions?: IconName[];
+  showSyncStatus?: boolean;
   onPressBranch?: () => void;
   onPressAction?: (action: IconName) => void;
 }
@@ -23,6 +25,7 @@ export function AppHeader({
   showSearch = true,
   searchPlaceholder = 'Buscar mesa, comanda…',
   actions = ['bell', 'settings'],
+  showSyncStatus = true,
   onPressBranch,
   onPressAction,
 }: AppHeaderProps) {
@@ -71,7 +74,8 @@ export function AppHeader({
         </View>
       )}
 
-      <View style={{ marginLeft: 'auto', flexDirection: 'row', gap: theme.spacing.md }}>
+      <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md }}>
+        {showSyncStatus && <SyncStatusBadge compact={!isTablet} />}
         {actions.map((action) => (
           <Pressable
             key={action}

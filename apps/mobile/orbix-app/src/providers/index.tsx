@@ -10,6 +10,7 @@ import { QueryProvider } from './query-provider';
 import { NetworkProvider } from './network-provider';
 import { DeviceProvider } from './device-provider';
 import { ThemeProvider } from './theme-provider';
+import { SyncManager } from './sync-provider';
 
 export function AppProviders({ children }: PropsWithChildren) {
   return (
@@ -18,7 +19,10 @@ export function AppProviders({ children }: PropsWithChildren) {
         <ThemeProvider>
           <QueryProvider>
             <NetworkProvider>
-              <DeviceProvider>{children}</DeviceProvider>
+              <DeviceProvider>
+                <SyncManager />
+                {children}
+              </DeviceProvider>
             </NetworkProvider>
           </QueryProvider>
         </ThemeProvider>

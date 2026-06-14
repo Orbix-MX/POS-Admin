@@ -31,7 +31,7 @@ async function deleteItem(key: string): Promise<void> {
 }
 
 import type { RestaurantServiceMode } from './device-service';
-export interface CachedTenant { id: string; name: string; slug: string; restaurantServiceMode?: RestaurantServiceMode }
+export interface CachedTenant { id: string; name: string; slug: string; restaurantServiceMode?: RestaurantServiceMode; kitchenEnabled?: boolean; modules?: string[] }
 export interface CachedBranch { id: string; name: string }
 
 export const deviceStorage = {

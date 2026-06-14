@@ -2,6 +2,8 @@ import { Redirect, Tabs } from 'expo-router';
 
 import { useDeviceSession } from '@/hooks/use-device-session';
 import { useResponsive } from '@/hooks/use-responsive';
+import { useCapabilities } from '@/hooks/use-nav-routes';
+import { primaryRoute } from '@/lib/capabilities';
 import { AppTabBar } from '@/components/navigation';
 import { TAB_ROUTES } from '@/constants/navigation';
 
@@ -14,12 +16,16 @@ import { TAB_ROUTES } from '@/constants/navigation';
 export default function AppLayout() {
   const { isBooting, hasOperator } = useDeviceSession();
   const { isTablet } = useResponsive();
+  const capabilities = useCapabilities();
 
   if (isBooting) return null;
   if (!hasOperator) return <Redirect href="/pin-login" />;
 
+  // Primary landing adapts to the tenant: Mesas when tables are active,
+  // otherwise Comandas (counter / no-tables tenants).
   return (
     <Tabs
+      initialRouteName={primaryRoute(capabilities)}
       tabBar={(props) => <AppTabBar {...props} />}
       screenOptions={{
         headerShown: false,

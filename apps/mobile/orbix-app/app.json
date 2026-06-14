@@ -41,7 +41,8 @@
         {
           "cameraPermission": "Orbix usa la cámara para escanear el código de activación del dispositivo."
         }
-      ]
+      ],
+      "expo-sqlite"
     ],
     "experiments": {
       "typedRoutes": true,

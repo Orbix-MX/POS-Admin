@@ -1,6 +1,6 @@
-import { IsString, IsNotEmpty, IsEnum, IsOptional, IsNumber, Min, ValidateIf } from 'class-validator';
+import { IsString, IsNotEmpty, IsEnum, IsOptional, IsNumber, Min, MaxLength, ValidateIf } from 'class-validator';
 import { Type } from 'class-transformer';
-import { DiningServiceType } from '@prisma/client';
+import { DiningServiceType, DiningOrderStatus } from '@prisma/client';
 
 export class OpenDiningOrderDto {
   @IsEnum(DiningServiceType)
@@ -11,6 +11,13 @@ export class OpenDiningOrderDto {
   @IsString()
   @IsNotEmpty()
   tableId?: string;
+
+  // Etiqueta libre para órdenes sin mesa (Mostrador, Para Llevar, Cliente Juan).
+  // En órdenes DINE_IN se genera automáticamente desde el nombre de la mesa.
+  @IsString()
+  @IsOptional()
+  @MaxLength(80)
+  reference?: string;
 }
 
 export class AddDiningItemDto {
@@ -42,4 +49,18 @@ export class UpdateDiningItemDto {
   @Min(1)
   @Type(() => Number)
   quantity!: number;
+}
+
+export class ChangeDiningStatusDto {
+  @IsEnum(DiningOrderStatus)
+  status!: DiningOrderStatus;
+}
+
+export class CleanupEmptyOrdersDto {
+  // Only purge empty OPEN orders older than this many minutes (default 120).
+  @IsNumber()
+  @IsOptional()
+  @Min(1)
+  @Type(() => Number)
+  olderThanMinutes?: number;
 }

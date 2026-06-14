@@ -19,6 +19,13 @@ export interface DeviceTenant {
   name: string;
   slug: string;
   restaurantServiceMode?: RestaurantServiceMode;
+  kitchenEnabled?: boolean;
+  /**
+   * Effective module list (plan ∪ enabled) from the API. All navigation/flow
+   * decisions derive from this — never hardcode tenant checks. May be undefined
+   * when booting from a stale offline cache (see deriveModules in capabilities).
+   */
+  modules?: string[];
 }
 export interface DeviceBranch { id: string; name: string }
 

@@ -1011,6 +1011,15 @@ enum TableStatus {
 
 enum DiningOrderStatus {
   OPEN
+  // Kitchen flow (module KITCHEN enabled)
+  SENT_TO_KITCHEN
+  IN_PREPARATION
+  READY
+  DELIVERED
+  // No-kitchen flow (module KITCHEN disabled)
+  READY_FOR_PAYMENT
+  // Terminal
+  PAID
   CLOSED
   CANCELLED
 }
@@ -1061,6 +1070,7 @@ model DiningOrder {
   tableId     String?
   waiterId    String
   serviceType DiningServiceType @default(DINE_IN)  @map("service_type")
+  reference   String?
   status      DiningOrderStatus @default(OPEN)
   openedAt    DateTime          @default(now())
   closedAt    DateTime?

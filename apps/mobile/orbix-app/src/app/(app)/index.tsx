@@ -7,6 +7,8 @@ import { useTheme } from '@/providers/theme-provider';
 import { useResponsive } from '@/hooks/use-responsive';
 import { useBranchSelector } from '@/hooks/use-branch-selector';
 import { useDeviceSession } from '@/hooks/use-device-session';
+import { useCapabilities } from '@/hooks/use-nav-routes';
+import { hasTables } from '@/lib/capabilities';
 import type { StatusKey } from '@/constants/theme';
 
 // Static placeholder data — UI foundation only (no data layer yet).
@@ -37,6 +39,8 @@ export default function HomeScreen() {
   const tableCols = select({ phone: 2, tablet: 3 });
   const { operator } = useDeviceSession();
   const { modalVisible, activeBranch, availableBranches, openSelector, closeSelector, handleSelect, canSwitch } = useBranchSelector();
+  const capabilities = useCapabilities();
+  const showTables = hasTables(capabilities);
 
   const firstName = operator?.employee.firstName ?? '';
 
@@ -65,15 +69,17 @@ export default function HomeScreen() {
 
         <Grid data={STATS} columns={statCols} renderItem={(s) => <StatCard {...s} />} />
 
-        <Card elevated>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.spacing.lg }}>
-            <Text variant="subtitle">Mis mesas</Text>
-            <Text variant="label" tone="primary">
-              Ver todas →
-            </Text>
-          </View>
-          <Grid data={MY_TABLES} columns={tableCols} keyExtractor={(t) => t.code} renderItem={(t) => <TableCard {...t} />} />
-        </Card>
+        {showTables && (
+          <Card elevated>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.spacing.lg }}>
+              <Text variant="subtitle">Mis mesas</Text>
+              <Text variant="label" tone="primary">
+                Ver todas →
+              </Text>
+            </View>
+            <Grid data={MY_TABLES} columns={tableCols} keyExtractor={(t) => t.code} renderItem={(t) => <TableCard {...t} />} />
+          </Card>
+        )}
 
         <Card elevated>
           <Text variant="subtitle" style={{ marginBottom: theme.spacing.lg }}>

@@ -8,7 +8,7 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useTheme } from '@/providers/theme-provider';
 import { useDeviceSession } from '@/hooks/use-device-session';
 import { Text, Icon } from '@/components/ui';
-import { TAB_ROUTES } from '@/constants/navigation';
+import { useNavRoutes } from '@/hooks/use-nav-routes';
 
 function getInitials(first?: string, last?: string): string {
   return `${first?.[0] ?? ''}${last?.[0] ?? ''}`.toUpperCase() || '?';
@@ -18,7 +18,7 @@ export function SideRail({ state, navigation }: BottomTabBarProps) {
   const theme = useTheme();
   const { operator } = useDeviceSession();
   const activeRoute = state.routes[state.index]?.name;
-  const railItems = TAB_ROUTES.filter((r) => r.inRail);
+  const railItems = useNavRoutes().filter((r) => r.inRail);
   const isPerfilActive = activeRoute === 'perfil';
   const initials = getInitials(operator?.employee.firstName, operator?.employee.lastName);
 
@@ -47,6 +47,7 @@ export function SideRail({ state, navigation }: BottomTabBarProps) {
 
       {railItems.map((item) => {
         const active = item.name === activeRoute;
+        const tint = active ? theme.colors.primary : theme.colors.textMuted;
         return (
           <Pressable
             key={item.name}
@@ -60,8 +61,8 @@ export function SideRail({ state, navigation }: BottomTabBarProps) {
               backgroundColor: active ? theme.colors.primarySoft : 'transparent',
             }}
           >
-            <Icon name={item.icon} size={22} color={active ? theme.colors.primary : theme.colors.textMuted} />
-            <Text variant="caption" style={{ fontSize: 9 }} color={active ? theme.colors.primary : theme.colors.textMuted}>
+            <Icon name={item.icon} size={22} color={tint} />
+            <Text variant="caption" style={{ fontSize: 9 }} color={tint}>
               {item.label}
             </Text>
           </Pressable>

@@ -38,10 +38,22 @@ export interface DiningOrderItem {
   createdAt: string;
 }
 
+export type DiningOrderStatus =
+  | 'OPEN'
+  | 'SENT_TO_KITCHEN'
+  | 'IN_PREPARATION'
+  | 'READY'
+  | 'DELIVERED'
+  | 'READY_FOR_PAYMENT'
+  | 'PAID'
+  | 'CLOSED'
+  | 'CANCELLED';
+
 export interface DiningOrder {
   id: string;
-  status: string;
+  status: DiningOrderStatus;
   serviceType: string;
+  reference: string | null;
   openedAt: string;
   tableId: string | null;
   branchId: string;
@@ -81,10 +93,26 @@ export type DiningServiceType = 'DINE_IN' | 'COUNTER';
 
 export async function openDiningOrder(
   branchId: string,
-  options: { serviceType: 'DINE_IN'; tableId: string } | { serviceType: 'COUNTER' },
+  options:
+    | { serviceType: 'DINE_IN'; tableId: string }
+    | { serviceType: 'COUNTER'; reference?: string },
 ): Promise<DiningOrder> {
   const { data } = await apiClient.post<DiningOrder>(`/branches/${branchId}/dining-orders`, options);
   return data;
+}
+
+/**
+ * Discard an abandoned empty draft order, releasing its table. Safe to call only
+ * for OPEN orders with no items (the API rejects non-empty / non-draft orders).
+ */
+export async function discardOrder(branchId: string, orderId: string): Promise<{ discarded: boolean }> {
+  const { data } = await apiClient.delete<{ discarded: boolean }>(`/branches/${branchId}/dining-orders/${orderId}`);
+  return data;
+}
+
+export async function fetchActiveOrders(branchId: string): Promise<DiningOrder[]> {
+  const { data } = await apiClient.get<DiningOrder[]>(`/branches/${branchId}/dining-orders`);
+  return Array.isArray(data) ? data : [];
 }
 
 export async function fetchOrder(branchId: string, orderId: string): Promise<DiningOrder> {
@@ -123,6 +151,18 @@ export async function removeOrderItem(
   itemId: string,
 ): Promise<void> {
   await apiClient.delete(`/branches/${branchId}/dining-orders/${orderId}/items/${itemId}`);
+}
+
+export async function changeOrderStatus(
+  branchId: string,
+  orderId: string,
+  status: DiningOrderStatus,
+): Promise<DiningOrder> {
+  const { data } = await apiClient.patch<DiningOrder>(
+    `/branches/${branchId}/dining-orders/${orderId}/status`,
+    { status },
+  );
+  return data;
 }
 
 interface RawProduct {

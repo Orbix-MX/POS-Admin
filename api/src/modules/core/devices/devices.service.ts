@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import type { Device } from '@prisma/client';
+import { getModulesForPlan, SystemModule } from '@orbix/types';
 import { PrismaService } from '../../../database/prisma.service';
 import { LicenseService } from '../../../common/services/license.service';
 import { AuthService } from '../auth/auth.service';
@@ -11,6 +12,13 @@ export interface TenantSummary {
   name: string;
   slug: string;
   restaurantServiceMode: string;
+  kitchenEnabled: boolean;
+  /**
+   * Effective module list (plan modules ∪ tenant.enabledModules). The comandera
+   * drives all navigation/flow decisions off this — never off hardcoded tenant
+   * checks. See SystemModule for the canonical keys.
+   */
+  modules: string[];
 }
 export interface BranchSummary { id: string; name: string }
 
@@ -34,10 +42,21 @@ export class DevicesService {
   }
 
   private async tenantSummary(tenantId: string): Promise<TenantSummary | null> {
-    return this.prisma.tenant.findUnique({
+    const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { id: true, name: true, slug: true, restaurantServiceMode: true },
+      select: { id: true, name: true, slug: true, restaurantServiceMode: true, plan: true, enabledModules: true },
     });
+    if (!tenant) return null;
+    const planModules = getModulesForPlan(tenant.plan) as unknown as string[];
+    const effective = new Set([...planModules, ...tenant.enabledModules]);
+    return {
+      id: tenant.id,
+      name: tenant.name,
+      slug: tenant.slug,
+      restaurantServiceMode: tenant.restaurantServiceMode,
+      kitchenEnabled: effective.has(SystemModule.KITCHEN),
+      modules: [...effective],
+    };
   }
 
   private async branchSummary(branchId: string | null): Promise<BranchSummary | null> {

@@ -7,6 +7,8 @@ import { useEffect } from 'react';
 
 import { AppProviders, useDeviceSession } from '@/providers';
 import { useResponsive } from '@/hooks/use-responsive';
+import { NetworkIndicator } from '@/components/feedback';
+import { initDatabase } from '@/db';
 
 export default function RootLayout() {
   return (
@@ -20,6 +22,9 @@ function RootNavigator() {
   const { isBooting, isRegistered, hasOperator } = useDeviceSession();
   const colorScheme = useColorScheme();
   const { isTablet } = useResponsive();
+
+  // Open + migrate the local SQLite database once at startup.
+  useEffect(() => { void initDatabase(); }, []);
 
   useEffect(() => {
     if (Platform.OS !== 'android' || !isTablet) return;
@@ -43,6 +48,8 @@ function RootNavigator() {
           <Stack.Screen name="(app)" />
         </Stack.Protected>
       </Stack>
+      {/* Global connectivity banner — overlays every screen. */}
+      <NetworkIndicator />
     </ThemeProvider>
   );
 }

@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Patch, Delete, Body, Param, ParseUUIDPipe } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { DiningOrdersService } from './dining-orders.service';
-import { OpenDiningOrderDto, AddDiningItemDto, UpdateDiningItemDto } from './dto/dining-order.dto';
+import { OpenDiningOrderDto, AddDiningItemDto, UpdateDiningItemDto, ChangeDiningStatusDto, CleanupEmptyOrdersDto } from './dto/dining-order.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
 import { RequireModule } from '../../../common/guards/require-module.guard';
 
@@ -39,6 +39,16 @@ export class DiningOrdersController {
     return this.service.open(branchId, dto);
   }
 
+  @Post('cleanup-empty')
+  @RequirePermissions('comanda:manage')
+  @ApiOperation({ summary: 'Purge abandoned empty OPEN orders (admin / future cron)' })
+  cleanupEmpty(
+    @Param('branchId', ParseUUIDPipe) branchId: string,
+    @Body() dto: CleanupEmptyOrdersDto,
+  ) {
+    return this.service.cleanupEmptyOrders(branchId, dto.olderThanMinutes);
+  }
+
   @Get(':orderId')
   @RequirePermissions('comanda:view')
   @ApiOperation({ summary: 'Get a single dining order with its items' })
@@ -70,6 +80,27 @@ export class DiningOrdersController {
     @Body() dto: UpdateDiningItemDto,
   ) {
     return this.service.updateItem(branchId, orderId, itemId, dto);
+  }
+
+  @Patch(':orderId/status')
+  @RequirePermissions('comanda:view')
+  @ApiOperation({ summary: 'Advance order status (kitchen flow if KITCHEN enabled, else direct-to-payment)' })
+  changeStatus(
+    @Param('branchId', ParseUUIDPipe) branchId: string,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Body() dto: ChangeDiningStatusDto,
+  ) {
+    return this.service.changeStatus(branchId, orderId, dto.status);
+  }
+
+  @Delete(':orderId')
+  @RequirePermissions('comanda:view')
+  @ApiOperation({ summary: 'Discard an empty OPEN order (abandoned capture); releases the table' })
+  discard(
+    @Param('branchId', ParseUUIDPipe) branchId: string,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+  ) {
+    return this.service.discardIfEmpty(branchId, orderId);
   }
 
   @Delete(':orderId/items/:itemId')
