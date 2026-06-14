@@ -21,7 +21,7 @@ import {
   type LicenseStatus,
   type Operator,
 } from '@/services/device-service';
-import { setDeviceAuthToken, getApiErrorMessage } from '@/services/api-client';
+import { setDeviceAuthToken, persistTokens, clearTokens, getApiErrorMessage } from '@/services/api-client';
 import { deviceStorage } from '@/services/device-storage';
 import { getOrCreateDeviceId, getAppVersion } from '@/utils/device-info';
 
@@ -113,7 +113,10 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const operator = await pinLoginApi(deviceToken, pin);
-      const { availableBranches, branchId } = operator;
+      const { accessToken, availableBranches, branchId } = operator;
+
+      // Cache operator JWT so apiClient sends it as Bearer on subsequent requests.
+      await persistTokens(accessToken);
 
       // Restore last active branch if still in the available list; otherwise use default
       const persisted = await deviceStorage.getActiveBranch();
@@ -145,6 +148,7 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
 
   signOutOperator: () => {
     void deviceStorage.clearActiveBranch();
+    void clearTokens();
     set({ operator: null, availableBranches: [], activeBranch: null, phase: 'locked', error: null });
   },
 

@@ -6,7 +6,12 @@ import { LicenseService } from '../../../common/services/license.service';
 import { AuthService } from '../auth/auth.service';
 import { ActivateDeviceDto } from './dto/activate-device.dto';
 
-export interface TenantSummary { id: string; name: string; slug: string }
+export interface TenantSummary {
+  id: string;
+  name: string;
+  slug: string;
+  restaurantServiceMode: string;
+}
 export interface BranchSummary { id: string; name: string }
 
 /**
@@ -29,7 +34,10 @@ export class DevicesService {
   }
 
   private async tenantSummary(tenantId: string): Promise<TenantSummary | null> {
-    return this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true, name: true, slug: true } });
+    return this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, name: true, slug: true, restaurantServiceMode: true },
+    });
   }
 
   private async branchSummary(branchId: string | null): Promise<BranchSummary | null> {

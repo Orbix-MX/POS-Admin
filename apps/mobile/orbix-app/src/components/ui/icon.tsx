@@ -29,6 +29,7 @@ const ICONS = {
   star: 'star',
   alert: 'alert-circle',
   logout: 'log-out',
+  trash: 'trash-2',
 } as const;
 
 export type IconName = keyof typeof ICONS;

@@ -7,11 +7,13 @@ import {
 import { DashboardsTab } from './platform-dashboards-tab'
 import {
   fetchTenant, fetchTenantAudit, updateTenantPlan, updateTenantModules, updateTenantLimits,
+  updateTenantVertical,
   fetchTenantBranches, createTenantBranch, updateTenantBranchStatus, updateTenantBranchLimits,
 } from '@/services/platform/platform-tenants-service'
 import type {
   PlatformTenant, TenantPlan, PlatformAuditLog,
   PlatformBranch, BranchCapacity, BranchStatus, CreateBranchInput,
+  BusinessVertical, PosOperationMode,
 } from '@/services/platform/platform-tenants-service'
 import {
   fetchTenantLicense, createTenantLicense, renewTenantLicense,
@@ -30,7 +32,7 @@ type FullTenant = PlatformTenant & {
 const PLANS: TenantPlan[] = ['FREE', 'STARTER', 'PRO', 'PLUS', 'ENTERPRISE']
 
 const VERTICAL_INCOMPATIBLE: Partial<Record<string, string[]>> = {
-  RETAIL:     ['comanda', 'kitchen'],
+  RETAIL:     ['comanda', 'restaurant-tables', 'kitchen'],
   RESTAURANT: ['pos'],
 }
 
@@ -45,7 +47,7 @@ const MODULE_LABELS: Record<string, string> = {
   cxc: 'CxC', cxp: 'CxP', caja: 'Caja', reportes: 'Reportes',
   usuarios: 'Usuarios', roles: 'Roles', configuracion: 'Configuración',
   branches: 'Sucursales', empleados: 'Empleados', comanda: 'Comandas',
-  insumos: 'Insumos', 'dining-areas': 'Áreas Restaurante', gym: 'Gym', kitchen: 'Kitchen', delivery: 'Delivery',
+  insumos: 'Insumos', 'dining-areas': 'Áreas Restaurante', 'restaurant-tables': 'Mesas', gym: 'Gym', kitchen: 'Kitchen', delivery: 'Delivery',
   memberships: 'Membresías', 'access-control': 'Control Acceso',
 }
 
@@ -405,6 +407,10 @@ export function PlatformEmpresaDetalle() {
   // Plan change state
   const [newPlan, setNewPlan] = useState<TenantPlan | ''>('')
 
+  // Vertical state
+  const [newVertical, setNewVertical]   = useState<BusinessVertical>('RETAIL')
+  const [newPosMode, setNewPosMode]     = useState<PosOperationMode>('QUICK_SALE')
+
   // Modules state
   const [selectedModules, setSelectedModules] = useState<string[]>([])
 
@@ -420,6 +426,8 @@ export function PlatformEmpresaDetalle() {
       setTenant(t)
       setAudit(a.data)
       setNewPlan(t.plan)
+      setNewVertical(t.businessVertical)
+      setNewPosMode(t.posOperationMode ?? 'QUICK_SALE')
       setSelectedModules(t.enabledModules)
       setUserLimit(t.userLimitOverride ?? '')
     } finally {
@@ -461,6 +469,29 @@ export function PlatformEmpresaDetalle() {
     } catch (e) { setSaveError(errMessage(e)) }
     finally { setSaving(false) }
   }, [id, newPlan, load, flash])
+
+  const handleVerticalSave = useCallback(async () => {
+    if (!id || !tenant) return
+    setSaving(true); setSaveError(null)
+    try {
+      // Apply vertical-specific module extras automatically
+      const VERTICAL_EXTRAS: Record<string, string[]> = {
+        RETAIL:     ['pos'],
+        RESTAURANT: ['comanda', 'restaurant-tables', 'kitchen', 'dining-areas', 'caja-restaurante'],
+        GYM:        [],
+        SERVICES:   [],
+      }
+      const extras = VERTICAL_EXTRAS[newVertical] ?? []
+      // Merge with existing enabled modules, remove old vertical's extras, add new ones
+      const oldExtras = new Set(Object.values(VERTICAL_EXTRAS).flat())
+      const kept = tenant.enabledModules.filter(m => !oldExtras.has(m))
+      const merged = [...new Set([...kept, ...extras])]
+      await updateTenantVertical(id, newVertical, newPosMode, [])
+      await updateTenantModules(id, merged)
+      await load(); flash(true)
+    } catch (e) { setSaveError(errMessage(e)) }
+    finally { setSaving(false) }
+  }, [id, tenant, newVertical, newPosMode, load, flash])
 
   const handleModulesSave = useCallback(async () => {
     if (!id || !tenant) return
@@ -940,6 +971,42 @@ export function PlatformEmpresaDetalle() {
 
         return (
           <div className="bg-zinc-800/60 border border-zinc-700/50 rounded-xl p-6">
+            {/* Vertical selector */}
+            <div className="flex items-end gap-3 mb-6 pb-5 border-b border-zinc-700/50">
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider">Vertical</label>
+                <select
+                  value={newVertical}
+                  onChange={e => setNewVertical(e.target.value as BusinessVertical)}
+                  className="px-2.5 py-1.5 bg-zinc-700 border border-zinc-600 rounded-lg text-[13px] text-zinc-200 outline-none focus:border-indigo-500"
+                >
+                  <option value="RETAIL">RETAIL</option>
+                  <option value="RESTAURANT">RESTAURANT</option>
+                  <option value="GYM">GYM</option>
+                  <option value="SERVICES">SERVICES</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider">Modo POS</label>
+                <select
+                  value={newPosMode}
+                  onChange={e => setNewPosMode(e.target.value as PosOperationMode)}
+                  className="px-2.5 py-1.5 bg-zinc-700 border border-zinc-600 rounded-lg text-[13px] text-zinc-200 outline-none focus:border-indigo-500"
+                >
+                  <option value="QUICK_SALE">QUICK_SALE</option>
+                  <option value="TABLE_SERVICE">TABLE_SERVICE</option>
+                </select>
+              </div>
+              <button
+                onClick={handleVerticalSave}
+                disabled={saving || (newVertical === tenant.businessVertical && newPosMode === (tenant.posOperationMode ?? 'QUICK_SALE'))}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[12px] font-semibold rounded-lg border border-indigo-500/50 cursor-pointer disabled:opacity-40"
+              >
+                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                Guardar vertical
+              </button>
+            </div>
+
             <div className="flex items-center justify-between mb-1">
               <div className="text-[13px] font-bold text-zinc-300">Módulos del tenant</div>
               <div className="flex items-center gap-3 text-[12px]">

@@ -7,7 +7,7 @@ import {
 import { fetchUsuarios, type Usuario } from '@/services/core/users-service'
 import {
   fetchTenantInfo, updateTenantInfo, uploadTenantLogo, uploadTenantBanner,
-  deleteTenantLogo, deleteTenantBanner, type TenantInfo,
+  deleteTenantLogo, deleteTenantBanner, type TenantInfo, type RestaurantServiceMode,
 } from '@/services/core/tenant-service'
 import {
   fetchBranches, createBranch, updateBranch, deleteBranch, setMainBranch,
@@ -1177,17 +1177,105 @@ function LicenciaSection({ canManage }: { canManage: boolean }) {
   )
 }
 
+// ─── RESTAURANTE SECTION ─────────────────────────────────────────────────────
+
+const SERVICE_MODE_OPTIONS: { value: RestaurantServiceMode; label: string; desc: string }[] = [
+  { value: 'TABLE_SERVICE',   label: 'Servicio por mesas',   desc: 'Solo órdenes ligadas a una mesa (meseros).' },
+  { value: 'COUNTER_SERVICE', label: 'Servicio mostrador',   desc: 'Solo órdenes de mostrador, sin mesas.' },
+  { value: 'HYBRID',          label: 'Híbrido',              desc: 'Mesas + mostrador en la misma sucursal.' },
+]
+
+function RestauranteSection({ canEdit }: { canEdit: boolean }) {
+  const [mode, setMode] = useState<RestaurantServiceMode>('TABLE_SERVICE')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLoading(true)
+    fetchTenantInfo()
+      .then(info => setMode(info.restaurantServiceMode ?? 'TABLE_SERVICE'))
+      .catch(() => setError('Error al cargar configuración'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function handleSave() {
+    setSaving(true); setError(null); setSaved(false)
+    try {
+      await updateTenantInfo({ restaurantServiceMode: mode })
+      setSaved(true); setTimeout(() => setSaved(false), 2500)
+    } catch {
+      setError('Error al guardar')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div>
+      <div className="text-base font-bold text-foreground mb-1">Restaurante</div>
+      <div className="text-xs text-muted-foreground mb-6">Configura el modo de servicio para la comandera móvil.</div>
+
+      {loading ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Cargando…</div>
+      ) : (
+        <div className="max-w-lg flex flex-col gap-5">
+          <div>
+            <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-3">Modo de servicio</div>
+            <div className="flex flex-col gap-2">
+              {SERVICE_MODE_OPTIONS.map(opt => (
+                <label key={opt.value}
+                  className={`flex items-start gap-3 px-4 py-3.5 border rounded-xl cursor-pointer transition-all
+                    ${mode === opt.value
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border hover:border-primary/40 hover:bg-muted/30'
+                    } ${!canEdit ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="serviceMode"
+                    value={opt.value}
+                    checked={mode === opt.value}
+                    onChange={() => canEdit && setMode(opt.value)}
+                    className="mt-0.5 accent-primary"
+                    disabled={!canEdit}
+                  />
+                  <div>
+                    <div className="text-[13px] font-semibold text-foreground">{opt.label}</div>
+                    <div className="text-[11px] text-muted-foreground mt-0.5">{opt.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {error && <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
+
+          {canEdit && (
+            <button onClick={handleSave} disabled={saving}
+              className="self-start px-5 py-2 bg-primary text-primary-foreground border-none rounded-lg text-[13px] font-semibold cursor-pointer disabled:opacity-60 flex items-center gap-2">
+              {saving ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Guardando…</> : saved ? '✓ Guardado' : 'Guardar cambios'}
+            </button>
+          )}
+          {!canEdit && <p className="text-xs text-muted-foreground">Sin permiso para editar configuración de restaurante.</p>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 
 export function Configuracion() {
   const { enabledModules } = useAuthStore()
-  const showBranches = enabledModules.includes('branches')
+  const showBranches   = enabledModules.includes('branches')
+  const showRestaurant = enabledModules.includes('dining-areas') || enabledModules.includes('restaurant')
 
   const [activeSection, setActiveSection] = useState("empresa")
   const sections = [
     { id: "empresa",        label: "Empresa" },
     { id: "pos",            label: "POS / Caja" },
-    ...(showBranches ? [{ id: "sucursales", label: "Sucursales" }] : []),
+    ...(showBranches    ? [{ id: "sucursales",  label: "Sucursales" }] : []),
+    ...(showRestaurant  ? [{ id: "restaurante", label: "Restaurante" }] : []),
     { id: "impresoras",     label: "Impresoras" },
     { id: "licencia",       label: "Licencia y dispositivos" },
     { id: "facturacion",    label: "Facturación" },
@@ -1451,6 +1539,11 @@ export function Configuracion() {
         {/* ── SUCURSALES ───────────────────────────────────────────────────── */}
         {activeSection === "sucursales" && showBranches && (
           <SucursalesSection plan={plan ?? 'PRO'} />
+        )}
+
+        {/* ── RESTAURANTE ──────────────────────────────────────────────────── */}
+        {activeSection === "restaurante" && showRestaurant && (
+          <RestauranteSection canEdit={canEdit} />
         )}
 
         {/* ── IMPRESORAS ───────────────────────────────────────────────────── */}

@@ -10,6 +10,15 @@ const TABLE_SELECT = {
   isActive: true, status: true, areaId: true, branchId: true,
   createdAt: true, updatedAt: true,
   area: { select: { id: true, name: true } },
+  diningOrders: {
+    where: { status: 'OPEN' as const },
+    take: 1,
+    select: {
+      id: true,
+      openedAt: true,
+      waiter: { select: { id: true, firstName: true, lastName: true } },
+    },
+  },
 } as const;
 
 @Injectable()

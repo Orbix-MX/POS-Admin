@@ -1,9 +1,11 @@
 import { Injectable, UnauthorizedException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { DevicesService } from '../devices/devices.service';
+import { getModulesForPlan, getAllowedModulesForVertical } from '@orbix/types';
 
 /**
  * Operative PIN login. The DEVICE is the principal (validated via deviceToken);
@@ -17,6 +19,7 @@ export class StaffService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly devicesService: DevicesService,
+    private readonly jwtService: JwtService,
   ) {}
 
   private hashPin(tenantId: string, pin: string): string {
@@ -66,7 +69,32 @@ export class StaffService {
     const primaryBranchId = employee.branches.find((eb) => eb.isPrimary)?.branchId;
     const defaultBranchId = primaryBranchId ?? branchId ?? availableBranches[0]?.id ?? null;
 
+    // Compute tenant modules so the operator JWT carries them (needed for RequireModuleGuard).
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { plan: true, enabledModules: true, businessVertical: true },
+    });
+    const planModules = tenant ? (getModulesForPlan(tenant.plan) as unknown as string[]) : [];
+    const allModules = tenant ? [...new Set([...planModules, ...tenant.enabledModules])] : planModules;
+    const enabledModules = tenant
+      ? getAllowedModulesForVertical(allModules, tenant.businessVertical)
+      : allModules;
+
+    const accessToken = this.jwtService.sign(
+      {
+        sub: employee.id,
+        typ: 'operator',
+        tenantId,
+        branchId: defaultBranchId,
+        plan: tenant?.plan ?? 'FREE',
+        enabledModules,
+        permissions,
+      },
+      { expiresIn: '12h' },
+    );
+
     return {
+      accessToken,
       employee: {
         id: employee.id,
         firstName: employee.firstName,

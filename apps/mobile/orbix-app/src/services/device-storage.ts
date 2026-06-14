@@ -30,7 +30,8 @@ async function deleteItem(key: string): Promise<void> {
   await SecureStore.deleteItemAsync(key);
 }
 
-export interface CachedTenant { id: string; name: string; slug: string }
+import type { RestaurantServiceMode } from './device-service';
+export interface CachedTenant { id: string; name: string; slug: string; restaurantServiceMode?: RestaurantServiceMode }
 export interface CachedBranch { id: string; name: string }
 
 export const deviceStorage = {

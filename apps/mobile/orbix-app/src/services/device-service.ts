@@ -12,7 +12,14 @@ export interface LicenseStatus {
   status?: string;
   expiresAt?: string | null;
 }
-export interface DeviceTenant { id: string; name: string; slug: string }
+export type RestaurantServiceMode = 'TABLE_SERVICE' | 'COUNTER_SERVICE' | 'HYBRID';
+
+export interface DeviceTenant {
+  id: string;
+  name: string;
+  slug: string;
+  restaurantServiceMode?: RestaurantServiceMode;
+}
 export interface DeviceBranch { id: string; name: string }
 
 export interface ValidateResponse {
@@ -31,6 +38,7 @@ export interface ActivateResponse {
 }
 
 export interface Operator {
+  accessToken: string;
   employee: { id: string; firstName: string; lastName: string; employeeNumber: string };
   role: { id: string; name: string } | null;
   permissions: string[];

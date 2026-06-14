@@ -69,6 +69,7 @@ const PATH_TO_MODULE: Record<string, ModuleId> = {
   '/insumos': 'insumos',
   '/dining-areas': 'dining-areas',
   '/restaurant-tables': 'restaurant-tables',
+  '/comanda': 'comanda',
 }
 
 function ModuleRoute({ module, children }: { module: string; children: ReactNode }) {
@@ -147,7 +148,8 @@ function AppLayout() {
             <Route path="/insumos" element={<ModuleRoute module="insumos"><Insumos /></ModuleRoute>} />
             <Route path="/kitchen" element={<ModuleRoute module="kitchen"><Kitchen /></ModuleRoute>} />
             <Route path="/dining-areas" element={<ModuleRoute module="dining-areas"><DiningAreasPage /></ModuleRoute>} />
-            <Route path="/restaurant-tables" element={<ModuleRoute module="comanda"><RestaurantTablesPage /></ModuleRoute>} />
+            <Route path="/restaurant-tables" element={<ModuleRoute module="restaurant-tables"><RestaurantTablesPage /></ModuleRoute>} />
+            <Route path="/comanda" element={<ModuleRoute module="comanda"><Comanda /></ModuleRoute>} />
           </Routes>
         </div>
       </div>
