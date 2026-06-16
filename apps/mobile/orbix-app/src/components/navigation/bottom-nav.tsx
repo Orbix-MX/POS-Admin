@@ -16,10 +16,12 @@ export function BottomNav({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const activeRoute = state.routes[state.index]?.name;
 
+  // Fixed 5-column grid: 2 slots | FAB | 2 slots. The FAB stays dead-center
+  // regardless of how many tabs are visible — empty sides render spacers.
+  const SIDE_SLOTS = 2;
   const items = useNavRoutes().filter((r) => r.inBottomNav);
-  const mid = Math.ceil(items.length / 2);
-  const left = items.slice(0, mid);
-  const right = items.slice(mid);
+  const left = items.slice(0, SIDE_SLOTS);
+  const right = items.slice(SIDE_SLOTS, SIDE_SLOTS * 2);
 
   const renderItem = (item: (typeof TAB_ROUTES)[number]) => {
     const active = item.name === activeRoute;
@@ -38,6 +40,12 @@ export function BottomNav({ state, navigation }: BottomTabBarProps) {
     );
   };
 
+  // Pad each side to SIDE_SLOTS so the FAB column never shifts off-center.
+  const renderSide = (side: typeof left, keyPrefix: string) =>
+    Array.from({ length: SIDE_SLOTS }, (_, i) =>
+      side[i] ? renderItem(side[i]) : <View key={`${keyPrefix}-${i}`} style={{ flex: 1 }} />,
+    );
+
   return (
     <View
       style={{
@@ -51,13 +59,13 @@ export function BottomNav({ state, navigation }: BottomTabBarProps) {
         paddingHorizontal: theme.spacing.sm,
       }}
     >
-      {left.map(renderItem)}
+      {renderSide(left, 'left')}
       <View style={{ width: 64, alignItems: 'center' }}>
         <View style={{ transform: [{ translateY: -20 }] }}>
           <FloatingActionButton icon="plus" size={52} onPress={() => navigation.navigate(FAB_TARGET_ROUTE)} />
         </View>
       </View>
-      {right.map(renderItem)}
+      {renderSide(right, 'right')}
     </View>
   );
 }
