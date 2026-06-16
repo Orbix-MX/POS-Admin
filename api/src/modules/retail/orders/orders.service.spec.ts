@@ -3,6 +3,10 @@ import { NotFoundException } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { PrismaService } from '../../../database/prisma.service';
 import { CouponsService } from '../coupons/coupons.service';
+import { AuditContextService } from '../../../common/context/audit-context.service';
+import { TenantContextService } from '../../../common/context/tenant-context.service';
+import { AuditService } from '../../../common/services/audit.service';
+import { InventoryConsumptionEngine } from '../inventory/inventory-consumption.engine';
 
 describe('OrdersService', () => {
   let service: OrdersService;
@@ -31,6 +35,22 @@ describe('OrdersService', () => {
         OrdersService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: CouponsService, useValue: mockCouponsService },
+        {
+          provide: AuditContextService,
+          useValue: { getUserId: jest.fn().mockReturnValue('user-1') },
+        },
+        {
+          provide: TenantContextService,
+          useValue: {
+            requireTenantId: jest.fn().mockReturnValue('tenant-1'),
+            getBranchId: jest.fn().mockReturnValue(null),
+          },
+        },
+        { provide: AuditService, useValue: { log: jest.fn() } },
+        {
+          provide: InventoryConsumptionEngine,
+          useValue: { consume: jest.fn(), restore: jest.fn(), validate: jest.fn() },
+        },
       ],
     }).compile();
 

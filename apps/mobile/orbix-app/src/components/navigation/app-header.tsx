@@ -16,6 +16,9 @@ export interface AppHeaderProps {
   searchPlaceholder?: string;
   actions?: IconName[];
   showSyncStatus?: boolean;
+  /** Compact layout: less vertical padding and shorter controls. Maximizes the
+   *  work area on dense list screens (e.g. Comandas). */
+  dense?: boolean;
   onPressBranch?: () => void;
   onPressAction?: (action: IconName) => void;
 }
@@ -26,6 +29,7 @@ export function AppHeader({
   searchPlaceholder = 'Buscar mesa, comanda…',
   actions = ['bell', 'settings'],
   showSyncStatus = true,
+  dense = false,
   onPressBranch,
   onPressAction,
 }: AppHeaderProps) {
@@ -35,6 +39,9 @@ export function AppHeader({
   // En tablet Android activamos immersive mode (status bar oculta) — no agregar inset top
   const topInset = isTablet && Platform.OS === 'android' ? 0 : insets.top;
 
+  const vPad = dense ? theme.spacing.sm : theme.spacing.lg;
+  const controlH = dense ? 36 : 42;
+
   return (
     <View
       style={{
@@ -42,8 +49,8 @@ export function AppHeader({
         alignItems: 'center',
         gap: theme.spacing.md,
         paddingHorizontal: theme.spacing.xl,
-        paddingTop: topInset + theme.spacing.lg,
-        paddingBottom: theme.spacing.lg,
+        paddingTop: topInset + vPad,
+        paddingBottom: vPad,
         backgroundColor: theme.colors.card,
         borderBottomWidth: 1,
         borderBottomColor: theme.colors.border,
@@ -60,13 +67,17 @@ export function AppHeader({
           borderColor: theme.colors.border,
           borderRadius: theme.radius.md,
           paddingHorizontal: theme.spacing.md,
-          height: 42,
+          height: controlH,
         }}
       >
         <Icon name="location" size={16} color={theme.colors.primary} />
         <Text variant="label">{branchName}</Text>
         {onPressBranch && <Icon name="chevronDown" size={14} color={theme.colors.textMuted} />}
       </Pressable>
+
+      {/* In dense mode the sync badge sits right next to the branch so both stay
+          visible but low-key, freeing the list area below. */}
+      {dense && showSyncStatus && <SyncStatusBadge compact />}
 
       {showSearch && (
         <View style={{ flex: 1, maxWidth: 320 }}>
@@ -75,14 +86,14 @@ export function AppHeader({
       )}
 
       <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md }}>
-        {showSyncStatus && <SyncStatusBadge compact={!isTablet} />}
+        {!dense && showSyncStatus && <SyncStatusBadge compact={!isTablet} />}
         {actions.map((action) => (
           <Pressable
             key={action}
             onPress={() => onPressAction?.(action)}
             style={{
-              width: 42,
-              height: 42,
+              width: controlH,
+              height: controlH,
               borderRadius: theme.radius.md,
               backgroundColor: theme.colors.surfaceMuted,
               borderWidth: 1,

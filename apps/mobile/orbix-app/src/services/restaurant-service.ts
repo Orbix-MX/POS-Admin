@@ -60,6 +60,8 @@ export interface DiningOrder {
   table: { id: string; name: string; capacity: number } | null;
   waiter: { id: string; firstName: string; lastName: string };
   items: DiningOrderItem[];
+  /** True for orders created/edited offline that haven't reached the server. */
+  pendingSync?: boolean;
 }
 
 export type ProductKind = 'SIMPLE' | 'RECIPE' | 'COMBO' | 'SERVICE';
@@ -161,6 +163,40 @@ export async function changeOrderStatus(
   const { data } = await apiClient.patch<DiningOrder>(
     `/branches/${branchId}/dining-orders/${orderId}/status`,
     { status },
+  );
+  return data;
+}
+
+export type DiningPaymentMethod = 'CASH' | 'CARD' | 'TRANSFER';
+
+export interface DiningPaymentSplit {
+  paymentMethod: DiningPaymentMethod;
+  amount: number;
+  amountReceived?: number;
+  changeGiven?: number;
+}
+
+export interface CheckoutResult {
+  id: string;
+  orderNumber: string;
+  status: string;
+  paymentStatus: string;
+}
+
+/**
+ * Charge a dining order. Generates the financial Order server-side (inventory +
+ * payment + cash movement) and links it to the dining order. Mirrors POS and
+ * Restaurant Web checkout — this is what replaces the old changeStatus(PAID).
+ */
+export async function checkoutDiningOrder(
+  branchId: string,
+  orderId: string,
+  payments: DiningPaymentSplit[],
+  customerId?: string,
+): Promise<CheckoutResult> {
+  const { data } = await apiClient.post<CheckoutResult>(
+    `/branches/${branchId}/dining-orders/${orderId}/checkout`,
+    { payments, ...(customerId ? { customerId } : {}) },
   );
   return data;
 }

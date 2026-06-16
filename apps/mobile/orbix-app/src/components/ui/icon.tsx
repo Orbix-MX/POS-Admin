@@ -30,6 +30,10 @@ const ICONS = {
   alert: 'alert-circle',
   logout: 'log-out',
   trash: 'trash-2',
+  clock: 'clock',
+  bag: 'shopping-bag',
+  package: 'package',
+  truck: 'truck',
 } as const;
 
 export type IconName = keyof typeof ICONS;

@@ -86,6 +86,11 @@ export function hasKitchen(c: Capabilities): boolean {
   return hasModule(c, SystemModule.KITCHEN);
 }
 
+/** Tenant runs both table and counter operations → order-type selector needed. */
+export function isHybrid(c: Capabilities): boolean {
+  return hasTables(c) && c.serviceMode === 'HYBRID';
+}
+
 /** Comandas (orders) — the operational core when COMANDA is enabled. */
 export function hasOrders(c: Capabilities): boolean {
   return hasModule(c, SystemModule.COMANDA) && hasPermission(c, PERMISSION.ordersView);

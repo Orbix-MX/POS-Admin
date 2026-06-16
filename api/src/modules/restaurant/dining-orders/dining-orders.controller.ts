@@ -2,6 +2,7 @@ import { Controller, Get, Post, Patch, Delete, Body, Param, ParseUUIDPipe } from
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { DiningOrdersService } from './dining-orders.service';
 import { OpenDiningOrderDto, AddDiningItemDto, UpdateDiningItemDto, ChangeDiningStatusDto, CleanupEmptyOrdersDto } from './dto/dining-order.dto';
+import { CheckoutDiningOrderDto } from './dto/checkout-dining-order.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
 import { RequireModule } from '../../../common/guards/require-module.guard';
 
@@ -91,6 +92,17 @@ export class DiningOrdersController {
     @Body() dto: ChangeDiningStatusDto,
   ) {
     return this.service.changeStatus(branchId, orderId, dto.status);
+  }
+
+  @Post(':orderId/checkout')
+  @RequirePermissions('orders:create')
+  @ApiOperation({ summary: 'Charge the dining order: generate Order, consume inventory, record payment, release table' })
+  checkout(
+    @Param('branchId', ParseUUIDPipe) branchId: string,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Body() dto: CheckoutDiningOrderDto,
+  ) {
+    return this.service.checkout(branchId, orderId, dto);
   }
 
   @Delete(':orderId')

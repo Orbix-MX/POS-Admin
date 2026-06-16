@@ -1075,6 +1075,11 @@ model DiningOrder {
   openedAt    DateTime          @default(now())
   closedAt    DateTime?
 
+  // Financial bridge: set when the dining order is checked out and converted
+  // into a financial Order. Nullable (open/operational orders have none) and
+  // unique (a dining order maps to at most one Order). No lifecycle logic yet.
+  orderId String? @unique
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1082,6 +1087,7 @@ model DiningOrder {
   branch Branch           @relation(fields: [branchId], references: [id], onDelete: Cascade)
   table  RestaurantTable? @relation(fields: [tableId], references: [id], onDelete: Cascade)
   waiter Employee         @relation("DiningOrderWaiter", fields: [waiterId], references: [id])
+  order  Order?           @relation(fields: [orderId], references: [id], onDelete: SetNull)
   items  DiningOrderItem[]
 
   @@index([tenantId, branchId, status])
@@ -1164,6 +1170,7 @@ model Order {
   payments          Payment[]
   accountReceivable AccountReceivable?
   refunds           OrderRefund[]
+  diningOrder       DiningOrder?
   createdBy         User?              @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy         User?              @relation("OrderUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   cancelledBy       User?              @relation("OrderCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
@@ -1192,6 +1199,7 @@ model OrderItem {
   order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product? @relation(fields: [productId], references: [id])
   service Service? @relation(fields: [serviceId], references: [id])
+  refundItems OrderRefundItem[]
 
   @@map("order_items")
 }
@@ -1319,9 +1327,30 @@ model OrderRefund {
   tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   order     Order  @relation(fields: [orderId], references: [id])
   createdBy User?  @relation("RefundCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  items     OrderRefundItem[]
 
   @@index([tenantId, orderId])
   @@map("order_refunds")
+}
+
+// Per-line breakdown of an item-level refund. Its presence on a refund is what
+// drives inventory restoration; money-only refunds carry no items. Cumulative
+// quantity per orderItem (summed across refunds) must never exceed the quantity
+// originally sold — that invariant is what stops a line being restored twice.
+model OrderRefundItem {
+  id          String  @id @default(uuid())
+  refundId    String
+  orderItemId String
+  productId   String?
+  quantity    Int
+  createdAt   DateTime @default(now())
+
+  refund    OrderRefund @relation(fields: [refundId], references: [id], onDelete: Cascade)
+  orderItem OrderItem   @relation(fields: [orderItemId], references: [id])
+
+  @@index([orderItemId])
+  @@index([refundId])
+  @@map("order_refund_items")
 }
 
 // ============= Accounts Receivable (CxC) =============

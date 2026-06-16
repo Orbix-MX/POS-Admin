@@ -17,7 +17,7 @@ import {
   calculateTax,
   convertMoney,
 } from '../../../common/utils/money.util';
-import { safeConvertUnits } from '../../../common/helpers/unit-conversion';
+import { InventoryConsumptionEngine } from '../inventory/inventory-consumption.engine';
 
 @Injectable()
 export class OrdersService {
@@ -27,6 +27,7 @@ export class OrdersService {
     private tenantContext: TenantContextService,
     private couponsService: CouponsService,
     private audit: AuditService,
+    private inventory: InventoryConsumptionEngine,
   ) { }
 
   async create(dto: CreateOrderDto): Promise<Order> {
@@ -76,31 +77,8 @@ export class OrdersService {
       throw new NotFoundException(`Productos no encontrados: ${missing.join(', ')}`);
     }
 
-    // Pre-validate supply stock for RECIPE products
-    for (const item of productItems) {
-      const product = products.find((p) => p.id === item.productId)!;
-      if ((product as any).type !== 'RECIPE') continue;
-      const recipe = (product as any).recipe;
-      if (!recipe?.items?.length) {
-        throw new BadRequestException(
-          `El producto "${product.name}" es de tipo receta pero no tiene ingredientes configurados`,
-        );
-      }
-      for (const ri of recipe.items) {
-        // neededInStockUnit = quantity in the same unit as supply.stock (baseUnit when configured)
-        const stockUnit = (ri.supply as any).baseUnit?.symbol ?? ri.supply.unit;
-        const neededInStockUnit = ri.normalizedQuantity != null
-          ? Number(ri.normalizedQuantity) * item.quantity
-          : safeConvertUnits(Number(ri.quantity) * item.quantity, ri.unit, stockUnit);
-        if (Number(ri.supply.stock) < neededInStockUnit) {
-          const displayUnit = (ri.supply as any).inventoryUnit?.symbol ?? ri.supply.unit;
-          throw new BadRequestException(
-            `Stock insuficiente del insumo "${ri.supply.name}". ` +
-            `Disponible: ${ri.supply.stock} ${stockUnit}, necesario: ${neededInStockUnit.toFixed(3)} ${stockUnit}`,
-          );
-        }
-      }
-    }
+    // Stock availability (SIMPLE / RECIPE / COMBO) is validated and applied
+    // atomically by InventoryConsumptionEngine inside the transaction below.
 
     // Optionally validate services from catalog
     const catalogServiceIds = [...new Set(serviceItems.map((i) => i.serviceId).filter(Boolean) as string[])];
@@ -301,83 +279,17 @@ export class OrdersService {
         });
       }
 
-      // Decrement stock only for SIMPLE product items — guarded against negative stock.
-      // updateMany with stock>=qty is atomic at row level; count===0 means the
-      // product is untracked-with-insufficient or a concurrent sale drained it.
-      for (const item of productItems) {
-        const product = productMap.get(item.productId!)!;
-        if ((product as any).type === 'RECIPE') {
-          // Consume recipe supply ingredients
-          const recipe = (product as any).recipe;
-          if (recipe?.items?.length) {
-            for (const ri of recipe.items) {
-              const stockUnit = (ri.supply as any).baseUnit?.symbol ?? ri.supply.unit;
-              const needed = ri.normalizedQuantity != null
-                ? Number(ri.normalizedQuantity) * item.quantity
-                : safeConvertUnits(Number(ri.quantity) * item.quantity, ri.unit, stockUnit);
-              const res = await tx.supply.updateMany({
-                where: { id: ri.supplyId, stock: { gte: needed } },
-                data: { stock: { decrement: needed } },
-              });
-              if (res.count === 0) {
-                throw new BadRequestException(
-                  `Stock insuficiente del insumo "${ri.supply.name}" al procesar venta`,
-                );
-              }
-              const convNote = ri.normalizedQuantity != null && ri.unit !== stockUnit
-                ? `Consumo receta: ${product.name} (${Number(ri.quantity)} ${ri.unit} → ${needed.toFixed(3)} ${stockUnit})`
-                : `Consumo receta: ${product.name}`;
-              await tx.supplyMovement.create({
-                data: {
-                  tenantId,
-                  supplyId: ri.supplyId,
-                  type: 'RECIPE_CONSUMPTION',
-                  quantity: needed,
-                  referenceId: newOrder.id,
-                  notes: convNote,
-                  ...(branchId && { branchId }),
-                  ...(createdById && { createdById }),
-                },
-              });
-            }
-          }
-          continue;
-        }
-
-        // SIMPLE product stock decrement
-        if (product.trackInventory) {
-          const res = await tx.product.updateMany({
-            where: { id: item.productId!, stock: { gte: item.quantity } },
-            data: { stock: { decrement: item.quantity } },
-          });
-          if (res.count === 0) {
-            throw new BadRequestException(
-              `Stock insuficiente para "${product.name}". Disponible: ${product.stock}, solicitado: ${item.quantity}`,
-            );
-          }
-        }
-      }
-
-      // Decrement branch inventory only for SIMPLE items with trackInventory
-      if (branchId) {
-        for (const item of productItems) {
-          const product = productMap.get(item.productId!)!;
-          if ((product as any).type !== 'SIMPLE' || !product.trackInventory) continue;
-          const updatedProduct = await tx.product.findUnique({
-            where: { id: item.productId! },
-            select: { stock: true },
-          });
-          await tx.branchInventory.upsert({
-            where: { branchId_productId: { branchId, productId: item.productId! } },
-            update: { stock: { decrement: item.quantity } },
-            create: {
-              branchId,
-              productId: item.productId!,
-              stock: updatedProduct?.stock ?? 0,
-            },
-          });
-        }
-      }
+      // Single inventory engine: SIMPLE / RECIPE / COMBO consumption + branch
+      // inventory + movements, guarded against negative stock atomically.
+      await this.inventory.consume(
+        tx,
+        productItems.map((i) => ({
+          productId: i.productId ?? null,
+          quantity: i.quantity,
+          itemType: 'PRODUCT' as const,
+        })),
+        { tenantId, branchId: branchId ?? null, userId: createdById ?? null, referenceId: newOrder.id, referenceType: 'ORDER' },
+      );
 
       const paymentStatus = initialPaymentStatus as any;
       const paymentConcept = dto.isLayaway ? 'LAYAWAY_DEPOSIT' : 'SALE';
@@ -653,49 +565,23 @@ export class OrdersService {
     const before = { status: order.status, paymentStatus: order.paymentStatus };
 
     return this.prisma.$transaction(async (tx) => {
-      // 1. Restore stock for product items
-      for (const it of order.items) {
-        if (it.itemType !== 'PRODUCT' || !it.productId) continue;
-        const prod = await tx.product.findUnique({
-          where: { id: it.productId },
-          select: { trackInventory: true },
-        });
-        if (!prod?.trackInventory) continue;
-
-        await tx.product.update({
-          where: { id: it.productId },
-          data: { stock: { increment: it.quantity } },
-        });
-        if (order.branchId) {
-          await tx.branchInventory.upsert({
-            where: {
-              branchId_productId: {
-                branchId: order.branchId,
-                productId: it.productId,
-              },
-            },
-            update: { stock: { increment: it.quantity } },
-            create: {
-              branchId: order.branchId,
-              productId: it.productId,
-              stock: it.quantity,
-            },
-          });
-        }
-        await tx.inventoryMovement.create({
-          data: {
-            tenantId,
-            type: 'DEVOLUCION',
-            productId: it.productId,
-            branchId: order.branchId ?? null,
-            quantity: it.quantity,
-            referenceId: order.id,
-            referenceType: 'ORDER',
-            notes: `Reversa por ${mode}`,
-            createdById: userId,
-          },
-        });
-      }
+      // 1. Restore stock symmetrically (SIMPLE / RECIPE / COMBO) via the engine.
+      await this.inventory.restore(
+        tx,
+        order.items.map((it) => ({
+          productId: it.productId,
+          quantity: it.quantity,
+          itemType: it.itemType,
+        })),
+        {
+          tenantId,
+          branchId: order.branchId ?? null,
+          userId,
+          referenceId: order.id,
+          referenceType: 'ORDER',
+          note: `Reversa por ${mode}`,
+        },
+      );
 
       // 2. Reverse cash movements tied to this order
       const activeSession = await tx.cashSession.findFirst({
@@ -934,7 +820,7 @@ export class OrdersService {
       include: {
         payments: true,
         items: true,
-        refunds: true,
+        refunds: { include: { items: true } },
         accountReceivable: true,
       },
     });
@@ -950,7 +836,55 @@ export class OrdersService {
     const previouslyRefunded = order.refunds.reduce((s, r) => s + Number(r.amount), 0);
     const maxRefundable = totalCollected - previouslyRefunded;
 
-    const refundAmount = dto.amount;
+    // Resolve the refund as money-only or item-level. Item-level refunds derive
+    // their amount from the lines and drive inventory restoration; the cumulative
+    // quantity already refunded per line is what prevents restoring it twice.
+    const itemMap = new Map(order.items.map((i) => [i.id, i]));
+    const alreadyRefundedQty = new Map<string, number>();
+    for (const r of order.refunds) {
+      for (const ri of r.items) {
+        alreadyRefundedQty.set(ri.orderItemId, (alreadyRefundedQty.get(ri.orderItemId) ?? 0) + ri.quantity);
+      }
+    }
+
+    const refundLines: { orderItem: (typeof order.items)[number]; quantity: number }[] = [];
+    let refundAmount: number;
+
+    if (dto.items?.length) {
+      for (const line of dto.items) {
+        const orderItem = itemMap.get(line.orderItemId);
+        if (!orderItem) {
+          throw new BadRequestException(`La línea ${line.orderItemId} no pertenece a esta orden`);
+        }
+        const refundedQty = alreadyRefundedQty.get(orderItem.id) ?? 0;
+        const remaining = orderItem.quantity - refundedQty;
+        if (line.quantity > remaining) {
+          throw new BadRequestException(
+            `No se pueden reembolsar ${line.quantity} de "${orderItem.name}": ` +
+              `disponibles ${remaining} (vendidas ${orderItem.quantity}, ya reembolsadas ${refundedQty})`,
+          );
+        }
+        refundLines.push({ orderItem, quantity: line.quantity });
+      }
+      const linesAmount = roundMoney(
+        refundLines.reduce(
+          (s, l) => s + (Number(l.orderItem.total) / l.orderItem.quantity) * l.quantity,
+          0,
+        ),
+      );
+      if (dto.amount != null && Math.abs(dto.amount - linesAmount) > 0.01) {
+        throw new BadRequestException(
+          `El monto indicado ($${dto.amount}) no coincide con la suma de las líneas ($${linesAmount.toFixed(2)})`,
+        );
+      }
+      refundAmount = dto.amount ?? linesAmount;
+    } else {
+      if (dto.amount == null) {
+        throw new BadRequestException('Debes indicar un monto a reembolsar o las líneas a devolver');
+      }
+      refundAmount = dto.amount;
+    }
+
     if (refundAmount > maxRefundable + 0.001) {
       throw new BadRequestException(
         `El monto a reembolsar ($${refundAmount}) supera el máximo reembolsable ($${maxRefundable.toFixed(2)})`,
@@ -1016,8 +950,9 @@ export class OrdersService {
         },
       });
 
-      // 3. OrderRefund record
-      await tx.orderRefund.create({
+      // 3. OrderRefund record. Item-level refunds always restore inventory.
+      const restoresInventory = refundLines.length > 0;
+      const refund = await tx.orderRefund.create({
         data: {
           tenantId,
           orderId: order.id,
@@ -1026,7 +961,7 @@ export class OrdersService {
           refundMethod: dto.refundMethod,
           originalMethod: originalMethod ?? undefined,
           reason: dto.reason,
-          restoreInventory: dto.restoreInventory ?? false,
+          restoreInventory: restoresInventory,
           windowOverride: dto.windowOverride ?? false,
           notes: dto.notes ?? null,
           cashMovementId: cashMov.id,
@@ -1034,40 +969,36 @@ export class OrdersService {
         },
       });
 
-      // 4. If restoreInventory, credit stock back for product items
-      if (dto.restoreInventory) {
-        for (const it of order.items) {
-          if (it.itemType !== 'PRODUCT' || !it.productId) continue;
-          const prod = await tx.product.findUnique({
-            where: { id: it.productId },
-            select: { trackInventory: true },
-          });
-          if (!prod?.trackInventory) continue;
-          await tx.product.update({
-            where: { id: it.productId },
-            data: { stock: { increment: it.quantity } },
-          });
-          if (order.branchId) {
-            await tx.branchInventory.upsert({
-              where: { branchId_productId: { branchId: order.branchId, productId: it.productId } },
-              update: { stock: { increment: it.quantity } },
-              create: { branchId: order.branchId, productId: it.productId, stock: it.quantity },
-            });
-          }
-          await tx.inventoryMovement.create({
+      // 4. Item-level refund: persist the refunded lines (cumulative cap already
+      // enforced above) and restore stock for exactly those quantities. Money-only
+      // refunds (no lines) never touch inventory.
+      if (restoresInventory) {
+        for (const line of refundLines) {
+          await tx.orderRefundItem.create({
             data: {
-              tenantId,
-              type: 'DEVOLUCION',
-              productId: it.productId,
-              branchId: order.branchId ?? null,
-              quantity: it.quantity,
-              referenceId: order.id,
-              referenceType: 'REFUND',
-              notes: `Reembolso: ${dto.reason}`,
-              createdById: userId,
+              refundId: refund.id,
+              orderItemId: line.orderItem.id,
+              productId: line.orderItem.productId ?? null,
+              quantity: line.quantity,
             },
           });
         }
+        await this.inventory.restore(
+          tx,
+          refundLines.map((l) => ({
+            productId: l.orderItem.productId,
+            quantity: l.quantity,
+            itemType: l.orderItem.itemType,
+          })),
+          {
+            tenantId,
+            branchId: order.branchId ?? null,
+            userId,
+            referenceId: order.id,
+            referenceType: 'REFUND',
+            note: `Reembolso: ${dto.reason}`,
+          },
+        );
       }
 
       // 5. Recompute payment status
