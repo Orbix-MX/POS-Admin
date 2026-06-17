@@ -12,7 +12,7 @@ export interface ComandaItem {
 export interface CreateComandaInput {
   tableNumber: string
   employeeNumber?: string
-  guestCount: number
+  guestCount?: number
   items: ComandaItem[]
 }
 
@@ -54,8 +54,14 @@ export async function addItemsToComanda(
   return data
 }
 
-export async function checkoutComanda(orderId: string, paymentMethod: string): Promise<void> {
-  await api.post(`/restaurant/orders/${orderId}/checkout`, { paymentMethod })
+export async function checkoutComanda(
+  orderId: string,
+  paymentMethod: string,
+  amount: number,
+): Promise<void> {
+  await api.post(`/restaurant/orders/${orderId}/checkout`, {
+    payments: [{ paymentMethod, amount }],
+  })
 }
 
 export interface DirectCheckoutItem {
