@@ -74,13 +74,15 @@ const ALL_NAV: NavGroup[] = [
       { module: 'restaurant-tables', label: 'Mesas',   icon: Grid3x3,    path: '/restaurant-tables', verticalGuard: (hasVertical: (v: BusinessVertical) => boolean) => hasVertical('RESTAURANT') },
       { module: 'comanda',           label: 'Comanda', icon: ChefHat,    path: '/comanda',            verticalGuard: (hasVertical: (v: BusinessVertical) => boolean) => hasVertical('RESTAURANT') },
       {
+        // El gate autoritativo es enabledModules.includes('kitchen') (se enciende
+        // al habilitar el módulo). No usar featureGuard('KITCHEN'): 'KITCHEN' es un
+        // TenantFeature (Tenant.enabledFeatures) distinto del módulo y se desincroniza.
         module: 'kitchen',
         label: 'Cocina',
         icon: ChefHat,
         path: '/kitchen',
         permission: 'kitchen:view',
-        featureGuard: (hasFeature: (f: string) => boolean) => hasFeature('KITCHEN'),
-        verticalGuard: (hasVertical: (v: string) => boolean) => hasVertical('RESTAURANT'),
+        verticalGuard: (hasVertical: (v: BusinessVertical) => boolean) => hasVertical('RESTAURANT'),
       },
     ],
   },

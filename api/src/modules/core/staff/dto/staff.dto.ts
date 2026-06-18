@@ -12,6 +12,13 @@ export class PinLoginDto {
   pin: string;
 }
 
+export class VerifyPinDto {
+  @ApiProperty({ example: '1234', description: 'Operative PIN (4-6 digits).' })
+  @IsString()
+  @Matches(/^\d{4,6}$/, { message: 'El PIN debe tener entre 4 y 6 dígitos.' })
+  pin: string;
+}
+
 export class AssignPinDto {
   @ApiProperty({ example: '1234' })
   @IsString()

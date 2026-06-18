@@ -488,7 +488,10 @@ export class AuthService {
     tenantId?: string,
   ): Promise<CapabilitiesResponseDto> {
     const planModules = getModulesForPlan(plan) as unknown as string[];
-    const effectiveModules = [...new Set([...planModules, ...enabledModules])];
+    // Los módulos extra (enabledModules) del JWT pueden estar desactualizados si se
+    // habilitó/deshabilitó un módulo después de iniciar sesión. Se leen de la BD
+    // cuando hay tenant para que el sidebar refleje el estado real sin re-login.
+    let effectiveEnabledModules = enabledModules;
 
     let maxUsers: number | null = null;
     let activeUsers = 0;
@@ -502,7 +505,7 @@ export class AuthService {
         this.planLimits.getCapacity(tenantId),
         this.prisma.tenant.findUnique({
           where: { id: tenantId },
-          select: { businessVertical: true, posOperationMode: true, enabledFeatures: true },
+          select: { businessVertical: true, posOperationMode: true, enabledFeatures: true, enabledModules: true },
         }),
       ]);
       maxUsers = cap.maxUsers;
@@ -512,10 +515,13 @@ export class AuthService {
         businessVertical = tenant.businessVertical;
         posOperationMode = tenant.posOperationMode;
         enabledFeatures = tenant.enabledFeatures;
+        effectiveEnabledModules = tenant.enabledModules;
       }
     }
 
-    return { plan, enabledModules, effectiveModules, maxUsers, activeUsers, overUserLimit, businessVertical, posOperationMode, enabledFeatures };
+    const effectiveModules = [...new Set([...planModules, ...effectiveEnabledModules])];
+
+    return { plan, enabledModules: effectiveEnabledModules, effectiveModules, maxUsers, activeUsers, overUserLimit, businessVertical, posOperationMode, enabledFeatures };
   }
 
   private generateToken(payload: JwtPayload): string {

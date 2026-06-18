@@ -1480,7 +1480,7 @@ function MesasAbiertasPanel({ onClose }: { onClose: () => void }) {
     setPaying(true)
     setPayError(null)
     try {
-      await checkoutComanda(selectedTable.id, payMethod)
+      await checkoutComanda(selectedTable.id, payMethod, Number(selectedTable.total))
       setPaySuccess(`Mesa ${selectedTable.tableNumber} cobrada`)
       setSelectedTable(null)
       await loadTables()

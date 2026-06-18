@@ -86,7 +86,9 @@ export class DiningOrdersService {
 
   async open(branchId: string, dto: OpenDiningOrderDto) {
     const tenantId = this.tenantContext.requireTenantId();
-    const waiterId = this.auditContext.getUserId();
+    // Web (sesión usuario) envía el waiter explícito tras autorizarlo por PIN;
+    // la app móvil (token operator) lo deriva de la identidad del token.
+    const waiterId = dto.waiterId ?? this.auditContext.getUserId();
     const serviceType = dto.serviceType ?? 'DINE_IN';
 
     if (!waiterId) throw new ConflictException('No se pudo identificar al mesero.');

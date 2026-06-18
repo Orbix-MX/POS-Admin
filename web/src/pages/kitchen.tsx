@@ -1,4 +1,4 @@
-import { RefreshCw, ChefHat, Play, Pause, CheckCheck, X, Clock, Loader2, Truck, RotateCcw, AlertTriangle, FlaskConical, Layers, User } from 'lucide-react'
+import { RefreshCw, ChefHat, Play, CheckCheck, X, Clock, Loader2, Truck, AlertTriangle, FlaskConical, Layers, User } from 'lucide-react'
 import { useKitchen, elapsedMinutes, priorityLevel } from '@/hooks/use-kitchen'
 import type { KitchenOrder, KitchenOrderItem, KitchenProduct } from '@/services/retail/kitchen-service'
 
@@ -14,6 +14,14 @@ function fmtElapsed(createdAt: string): string {
 
 function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+}
+
+function orderLabel(o: KitchenOrder): string {
+  return o.table?.name ?? o.reference ?? '—'
+}
+
+function waiterLabel(o: KitchenOrder): string {
+  return o.waiter ? `${o.waiter.firstName} ${o.waiter.lastName}`.trim() : '—'
 }
 
 const PRIORITY_BORDER: Record<string, string> = {
@@ -66,15 +74,15 @@ function OrderItemDetail({ item }: { item: KitchenOrderItem }) {
         <div className="flex items-center gap-2 min-w-0">
           {isRecipe && <FlaskConical className="w-3.5 h-3.5 text-violet-400 shrink-0 mt-0.5" />}
           {isCombo  && <Layers       className="w-3.5 h-3.5 text-blue-400   shrink-0 mt-0.5" />}
-          <span className="text-[13px] font-semibold text-zinc-100 leading-tight">{item.name}</span>
+          <span className="text-[13px] font-semibold text-zinc-100 leading-tight">{item.productName}</span>
         </div>
         <span className="text-[12px] font-bold text-amber-400 shrink-0">{item.quantity}×</span>
       </div>
 
       {/* Modifier / comment */}
-      {item.description && (
+      {item.notes && (
         <div className="text-[11px] text-amber-300 font-medium px-1">
-          ⚠ {item.description}
+          ⚠ {item.notes}
         </div>
       )}
 
@@ -115,21 +123,15 @@ function OrderItemDetail({ item }: { item: KitchenOrderItem }) {
 
 type CardActions = {
   onStart:   (o: KitchenOrder) => void
-  onPause:   (o: KitchenOrder) => void
-  onResume:  (o: KitchenOrder) => void
   onReady:   (o: KitchenOrder) => void
   onDeliver: (o: KitchenOrder) => void
-  onReject:  (o: KitchenOrder) => void
   onOpen:    (o: KitchenOrder) => void
   busy:      boolean
 }
 
 function KitchenCard({ order, actions }: { order: KitchenOrder; actions: CardActions }) {
-  const mins    = elapsedMinutes(order.createdAt)
-  const prio    = priorityLevel(mins)
-  const waiter  = order.createdBy
-    ? `${order.createdBy.firstName} ${order.createdBy.lastName}`
-    : order.employeeNumber ?? '—'
+  const mins = elapsedMinutes(order.openedAt)
+  const prio = priorityLevel(mins)
 
   return (
     <div
@@ -142,33 +144,28 @@ function KitchenCard({ order, actions }: { order: KitchenOrder; actions: CardAct
         ${prio === 'critical' ? 'animate-pulse-slow' : ''}
       `}
     >
-      {/* Mesa + folio */}
+      {/* Mesa / referencia */}
       <div className="px-3.5 pt-3 pb-2 border-b border-zinc-800/60">
         <div className="flex items-start justify-between">
-          <div>
-            <div className="text-[28px] font-black text-zinc-50 leading-none tracking-tight">
-              {order.tableNumber ?? '—'}
+          <div className="min-w-0">
+            <div className="text-[24px] font-black text-zinc-50 leading-none tracking-tight truncate">
+              {orderLabel(order)}
             </div>
-            <div className="text-[10px] text-zinc-500 font-mono mt-0.5 uppercase tracking-wider">
-              {order.orderNumber}
+            <div className="flex items-center gap-1 mt-1.5 text-[11px] text-zinc-500">
+              <User className="w-3 h-3" />
+              <span className="truncate">{waiterLabel(order)}</span>
             </div>
           </div>
           {/* Elapsed time */}
-          <div className={`flex flex-col items-end gap-0.5 ${PRIORITY_BADGE_BG[prio]} px-2 py-1.5 rounded-lg`}>
+          <div className={`flex flex-col items-end gap-0.5 ${PRIORITY_BADGE_BG[prio]} px-2 py-1.5 rounded-lg shrink-0`}>
             <div className={`font-mono font-bold text-[22px] leading-none ${PRIORITY_TIMER[prio]}`}>
-              {fmtElapsed(order.createdAt)}
+              {fmtElapsed(order.openedAt)}
             </div>
             <div className="flex items-center gap-1 text-[9px] text-zinc-500 uppercase tracking-wider">
               <Clock className="w-2.5 h-2.5" />
-              {fmtTime(order.createdAt)}
+              {fmtTime(order.openedAt)}
             </div>
           </div>
-        </div>
-
-        {/* Waiter */}
-        <div className="flex items-center gap-1 mt-1.5 text-[11px] text-zinc-500">
-          <User className="w-3 h-3" />
-          <span>{waiter}</span>
         </div>
       </div>
 
@@ -177,7 +174,7 @@ function KitchenCard({ order, actions }: { order: KitchenOrder; actions: CardAct
         {order.items.slice(0, 5).map(item => (
           <div key={item.id} className="flex items-center gap-2 text-[12px]">
             <span className="text-amber-500 font-bold tabular-nums w-5 text-right">{item.quantity}×</span>
-            <span className="text-zinc-200 truncate">{item.name}</span>
+            <span className="text-zinc-200 truncate">{item.productName}</span>
             {item.product?.type === 'RECIPE' && <FlaskConical className="w-3 h-3 text-violet-500 shrink-0" />}
             {item.product?.type === 'COMBO'  && <Layers       className="w-3 h-3 text-blue-400 shrink-0" />}
           </div>
@@ -189,52 +186,22 @@ function KitchenCard({ order, actions }: { order: KitchenOrder; actions: CardAct
         )}
       </div>
 
-      {/* Notes */}
-      {order.notes && (
-        <div className="px-3.5 py-2 border-b border-zinc-800/60 flex items-start gap-1.5">
-          <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0 mt-0.5" />
-          <span className="text-[11px] text-amber-300">{order.notes}</span>
-        </div>
-      )}
-
       {/* Actions */}
       <div
         className="px-3 pb-3 pt-2.5 flex gap-2"
         onClick={e => e.stopPropagation()}
       >
-        {order.kitchenStatus === 'PENDING' && (
-          <>
-            <ActionBtn color="emerald" icon={<Play className="w-3.5 h-3.5" />} label="Iniciar"
-              onClick={() => actions.onStart(order)} busy={actions.busy} />
-            <ActionBtn color="red" icon={<X className="w-3.5 h-3.5" />} label="Rechazar"
-              onClick={() => actions.onReject(order)} busy={actions.busy} compact />
-          </>
+        {order.status === 'SENT_TO_KITCHEN' && (
+          <ActionBtn color="emerald" icon={<Play className="w-3.5 h-3.5" />} label="Iniciar"
+            onClick={() => actions.onStart(order)} busy={actions.busy} />
         )}
-        {order.kitchenStatus === 'IN_PROGRESS' && (
-          <>
-            <ActionBtn color="amber" icon={<Pause className="w-3.5 h-3.5" />} label="Pausar"
-              onClick={() => actions.onPause(order)} busy={actions.busy} />
-            <ActionBtn color="emerald" icon={<CheckCheck className="w-3.5 h-3.5" />} label="Listo"
-              onClick={() => actions.onReady(order)} busy={actions.busy} />
-            <ActionBtn color="red" icon={<X className="w-3.5 h-3.5" />} label=""
-              onClick={() => actions.onReject(order)} busy={actions.busy} compact />
-          </>
+        {order.status === 'IN_PREPARATION' && (
+          <ActionBtn color="emerald" icon={<CheckCheck className="w-3.5 h-3.5" />} label="Listo"
+            onClick={() => actions.onReady(order)} busy={actions.busy} />
         )}
-        {order.kitchenStatus === 'PAUSED' && (
-          <>
-            <ActionBtn color="amber" icon={<RotateCcw className="w-3.5 h-3.5" />} label="Reanudar"
-              onClick={() => actions.onResume(order)} busy={actions.busy} />
-            <ActionBtn color="red" icon={<X className="w-3.5 h-3.5" />} label="Rechazar"
-              onClick={() => actions.onReject(order)} busy={actions.busy} compact />
-          </>
-        )}
-        {order.kitchenStatus === 'READY' && (
-          <>
-            <ActionBtn color="blue" icon={<Truck className="w-3.5 h-3.5" />} label="Entregar"
-              onClick={() => actions.onDeliver(order)} busy={actions.busy} />
-            <ActionBtn color="zinc" icon={<RotateCcw className="w-3.5 h-3.5" />} label=""
-              onClick={() => actions.onResume(order)} busy={actions.busy} compact />
-          </>
+        {order.status === 'READY' && (
+          <ActionBtn color="blue" icon={<Truck className="w-3.5 h-3.5" />} label="Entregar"
+            onClick={() => actions.onDeliver(order)} busy={actions.busy} />
         )}
       </div>
     </div>
@@ -278,10 +245,9 @@ function ActionBtn({
 // ─── Column ───────────────────────────────────────────────────────────────────
 
 const COLUMN_META: Record<string, { label: string; dot: string; emptyMsg: string }> = {
-  PENDING:     { label: 'Pendientes', dot: 'bg-zinc-400',    emptyMsg: 'Sin órdenes pendientes' },
-  IN_PROGRESS: { label: 'Preparando', dot: 'bg-amber-400',   emptyMsg: 'Nada en preparación' },
-  PAUSED:      { label: 'Pausadas',   dot: 'bg-orange-400',  emptyMsg: 'Sin pausas activas' },
-  READY:       { label: 'Listas',     dot: 'bg-emerald-400', emptyMsg: 'Sin órdenes listas' },
+  SENT_TO_KITCHEN: { label: 'En cola',    dot: 'bg-zinc-400',    emptyMsg: 'Sin órdenes en cola' },
+  IN_PREPARATION:  { label: 'Preparando', dot: 'bg-amber-400',   emptyMsg: 'Nada en preparación' },
+  READY:           { label: 'Listas',     dot: 'bg-emerald-400', emptyMsg: 'Sin órdenes listas' },
 }
 
 function KitchenColumn({
@@ -320,7 +286,7 @@ function KitchenColumn({
           <KitchenCard
             key={order.id}
             order={order}
-            actions={{ ...actions, busy: !!actions.busy }}
+            actions={actions}
           />
         ))
       )}
@@ -337,11 +303,8 @@ function DetailModal({
   onClose: () => void
   actions: Omit<CardActions, 'onOpen' | 'busy'> & { busy: boolean }
 }) {
-  const mins   = elapsedMinutes(order.createdAt)
-  const prio   = priorityLevel(mins)
-  const waiter = order.createdBy
-    ? `${order.createdBy.firstName} ${order.createdBy.lastName}`
-    : order.employeeNumber ?? '—'
+  const mins = elapsedMinutes(order.openedAt)
+  const prio = priorityLevel(mins)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -350,45 +313,36 @@ function DetailModal({
         {/* Header */}
         <div className={`px-5 py-4 border-b border-zinc-800 border-l-4 ${PRIORITY_BORDER[prio]} rounded-tl-2xl`}>
           <div className="flex items-start justify-between">
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="text-[32px] font-black text-zinc-50 leading-none">
-                  {order.tableNumber ?? '—'}
+                <span className="text-[28px] font-black text-zinc-50 leading-none truncate">
+                  {orderLabel(order)}
                 </span>
-                <div className={`${PRIORITY_BADGE_BG[prio]} px-2.5 py-1.5 rounded-lg`}>
+                <div className={`${PRIORITY_BADGE_BG[prio]} px-2.5 py-1.5 rounded-lg shrink-0`}>
                   <span className={`font-mono font-bold text-[20px] leading-none ${PRIORITY_TIMER[prio]}`}>
-                    {fmtElapsed(order.createdAt)}
+                    {fmtElapsed(order.openedAt)}
                   </span>
                 </div>
               </div>
               <div className="flex items-center gap-3 mt-2 text-[11px] text-zinc-500">
-                <span className="font-mono">{order.orderNumber}</span>
-                <span>·</span>
                 <div className="flex items-center gap-1">
                   <User className="w-3 h-3" />
-                  <span>{waiter}</span>
+                  <span>{waiterLabel(order)}</span>
                 </div>
                 <span>·</span>
                 <div className="flex items-center gap-1">
                   <Clock className="w-3 h-3" />
-                  <span>{fmtTime(order.createdAt)}</span>
+                  <span>{fmtTime(order.openedAt)}</span>
                 </div>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="text-zinc-600 hover:text-zinc-300 transition-colors p-1 rounded-lg hover:bg-zinc-800"
+              className="text-zinc-600 hover:text-zinc-300 transition-colors p-1 rounded-lg hover:bg-zinc-800 shrink-0"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
-
-          {order.notes && (
-            <div className="mt-2.5 flex items-start gap-2 bg-amber-950/40 border border-amber-900/40 rounded-lg px-3 py-2">
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
-              <span className="text-[12px] text-amber-300">{order.notes}</span>
-            </div>
-          )}
         </div>
 
         {/* Items */}
@@ -403,36 +357,17 @@ function DetailModal({
 
         {/* Actions */}
         <div className="px-5 pb-5 pt-3 border-t border-zinc-800 flex gap-2" onClick={e => e.stopPropagation()}>
-          {order.kitchenStatus === 'PENDING' && (
-            <>
-              <ModalBtn color="emerald" icon={<Play className="w-4 h-4" />} label="Iniciar"
-                onClick={() => actions.onStart(order)} busy={actions.busy} />
-              <ModalBtn color="red" icon={<X className="w-4 h-4" />} label="Rechazar"
-                onClick={() => actions.onReject(order)} busy={actions.busy} />
-            </>
+          {order.status === 'SENT_TO_KITCHEN' && (
+            <ModalBtn color="emerald" icon={<Play className="w-4 h-4" />} label="Iniciar"
+              onClick={() => actions.onStart(order)} busy={actions.busy} />
           )}
-          {order.kitchenStatus === 'IN_PROGRESS' && (
-            <>
-              <ModalBtn color="amber"   icon={<Pause     className="w-4 h-4" />} label="Pausar"   onClick={() => actions.onPause(order)}   busy={actions.busy} />
-              <ModalBtn color="emerald" icon={<CheckCheck className="w-4 h-4" />} label="Listo"    onClick={() => actions.onReady(order)}   busy={actions.busy} />
-              <ModalBtn color="red"     icon={<X          className="w-4 h-4" />} label="Rechazar" onClick={() => actions.onReject(order)}  busy={actions.busy} />
-            </>
+          {order.status === 'IN_PREPARATION' && (
+            <ModalBtn color="emerald" icon={<CheckCheck className="w-4 h-4" />} label="Listo"
+              onClick={() => actions.onReady(order)} busy={actions.busy} />
           )}
-          {order.kitchenStatus === 'PAUSED' && (
-            <>
-              <ModalBtn color="amber" icon={<RotateCcw className="w-4 h-4" />} label="Reanudar"
-                onClick={() => actions.onResume(order)} busy={actions.busy} />
-              <ModalBtn color="red" icon={<X className="w-4 h-4" />} label="Rechazar"
-                onClick={() => actions.onReject(order)} busy={actions.busy} />
-            </>
-          )}
-          {order.kitchenStatus === 'READY' && (
-            <>
-              <ModalBtn color="blue" icon={<Truck className="w-4 h-4" />} label="Marcar entregada"
-                onClick={() => actions.onDeliver(order)} busy={actions.busy} />
-              <ModalBtn color="zinc" icon={<RotateCcw className="w-4 h-4" />} label="Regresar a cocina"
-                onClick={() => actions.onResume(order)} busy={actions.busy} />
-            </>
+          {order.status === 'READY' && (
+            <ModalBtn color="blue" icon={<Truck className="w-4 h-4" />} label="Marcar entregada"
+              onClick={() => actions.onDeliver(order)} busy={actions.busy} />
           )}
         </div>
       </div>
@@ -473,116 +408,25 @@ function ModalBtn({
   )
 }
 
-// ─── Reject modal ─────────────────────────────────────────────────────────────
-
-function RejectModal({
-  order, comment, onCommentChange, error, onConfirm, onCancel, busy,
-}: {
-  order: KitchenOrder
-  comment: string
-  onCommentChange: (v: string) => void
-  error: string
-  onConfirm: () => void
-  onCancel: () => void
-  busy: boolean
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onCancel} />
-      <div className="relative z-10 w-full max-w-sm bg-zinc-950 border border-red-900/60 rounded-2xl shadow-2xl">
-        <div className="px-5 py-4 border-b border-zinc-800">
-          <div className="flex items-center gap-2 text-red-400 mb-1">
-            <X className="w-4 h-4" />
-            <span className="font-bold text-[14px]">Rechazar orden</span>
-          </div>
-          <p className="text-[12px] text-zinc-400">
-            Mesa {order.tableNumber} · {order.orderNumber}
-          </p>
-        </div>
-
-        <div className="px-5 py-4 space-y-3">
-          <div>
-            <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1.5">
-              Motivo de rechazo *
-            </label>
-            {/* Quick reason chips */}
-            <div className="flex flex-wrap gap-1.5 mb-2.5">
-              {['Falta ingrediente', 'Cocina saturada', 'Producto agotado', 'Error en pedido'].map(r => (
-                <button
-                  key={r}
-                  onClick={() => onCommentChange(r)}
-                  className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors
-                    ${comment === r
-                      ? 'bg-red-500/20 border-red-500/50 text-red-300'
-                      : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600'
-                    }`}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
-            <textarea
-              value={comment}
-              onChange={e => onCommentChange(e.target.value)}
-              placeholder="Describe el motivo del rechazo…"
-              rows={3}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-[12px] text-zinc-200
-                placeholder:text-zinc-600 outline-none focus:border-red-700 resize-none"
-            />
-            {error && (
-              <p className="text-[11px] text-red-400 mt-1">{error}</p>
-            )}
-          </div>
-        </div>
-
-        <div className="px-5 pb-5 flex gap-2">
-          <button
-            onClick={onCancel}
-            className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-[13px] font-semibold
-              hover:bg-zinc-800 transition-colors"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={busy}
-            className="flex-1 py-2.5 rounded-xl bg-red-500/15 border border-red-500/30 text-red-400
-              text-[13px] font-semibold hover:bg-red-500/25 transition-colors
-              disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
-            Rechazar
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function Kitchen() {
   const {
     columns, loading, error, lastRefresh, updating,
     selectedOrder, setSelectedOrder,
-    rejectTarget, rejectComment, setRejectComment, rejectError,
-    handleStart, handlePause, handleResume, handleReady, handleDeliver,
-    openReject, confirmReject, cancelReject,
+    handleStart, handleReady, handleDeliver,
     refresh,
   } = useKitchen()
 
-  const totalActive = columns.PENDING.length + columns.IN_PROGRESS.length + columns.PAUSED.length + columns.READY.length
+  const totalActive = columns.SENT_TO_KITCHEN.length + columns.IN_PREPARATION.length + columns.READY.length
 
-  const actions = (order: KitchenOrder): CardActions => ({
+  const cardActions: CardActions = {
     onStart:   handleStart,
-    onPause:   handlePause,
-    onResume:  handleResume,
     onReady:   handleReady,
     onDeliver: handleDeliver,
-    onReject:  openReject,
     onOpen:    setSelectedOrder,
-    busy:      !!updating[order.id],
-  })
+    busy:      false,
+  }
 
   return (
     <div className="h-screen bg-[#0c0a09] flex flex-col overflow-hidden">
@@ -609,9 +453,8 @@ export function Kitchen() {
         <div className="flex items-center gap-3">
           {/* Stats */}
           <div className="hidden sm:flex items-center gap-4 text-[11px] text-zinc-500">
-            <span><span className="text-zinc-300 font-semibold">{columns.PENDING.length}</span> pendientes</span>
-            <span><span className="text-amber-400 font-semibold">{columns.IN_PROGRESS.length}</span> preparando</span>
-            <span><span className="text-orange-400 font-semibold">{columns.PAUSED.length}</span> pausadas</span>
+            <span><span className="text-zinc-300 font-semibold">{columns.SENT_TO_KITCHEN.length}</span> en cola</span>
+            <span><span className="text-amber-400 font-semibold">{columns.IN_PREPARATION.length}</span> preparando</span>
             <span><span className="text-emerald-400 font-semibold">{columns.READY.length}</span> listas</span>
           </div>
 
@@ -655,22 +498,13 @@ export function Kitchen() {
       {/* Kanban board — always show after first load (empty columns = valid state) */}
       {(!loading || totalActive > 0) && (
         <div className="flex-1 overflow-y-auto px-4 py-4">
-          <div className="grid grid-cols-4 gap-3 items-start">
-            {(['PENDING', 'IN_PROGRESS', 'PAUSED', 'READY'] as const).map(status => (
+          <div className="grid grid-cols-3 gap-3 items-start">
+            {(['SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] as const).map(status => (
               <KitchenColumn
                 key={status}
                 status={status}
                 orders={columns[status]}
-                actions={{
-                  onStart:   handleStart,
-                  onPause:   handlePause,
-                  onResume:  handleResume,
-                  onReady:   handleReady,
-                  onDeliver: handleDeliver,
-                  onReject:  openReject,
-                  onOpen:    setSelectedOrder,
-                  busy:      false,
-                }}
+                actions={cardActions}
               />
             ))}
           </div>
@@ -684,26 +518,10 @@ export function Kitchen() {
           onClose={() => setSelectedOrder(null)}
           actions={{
             onStart:   (o) => { handleStart(o);   setSelectedOrder(null) },
-            onPause:   (o) => { handlePause(o);   setSelectedOrder(null) },
-            onResume:  (o) => { handleResume(o);  setSelectedOrder(null) },
             onReady:   (o) => { handleReady(o);   setSelectedOrder(null) },
             onDeliver: (o) => { handleDeliver(o); setSelectedOrder(null) },
-            onReject:  (o) => { setSelectedOrder(null); openReject(o) },
             busy: !!updating[selectedOrder.id],
           }}
-        />
-      )}
-
-      {/* Reject modal */}
-      {rejectTarget && (
-        <RejectModal
-          order={rejectTarget}
-          comment={rejectComment}
-          onCommentChange={setRejectComment}
-          error={rejectError}
-          onConfirm={confirmReject}
-          onCancel={cancelReject}
-          busy={!!updating[rejectTarget.id]}
         />
       )}
     </div>

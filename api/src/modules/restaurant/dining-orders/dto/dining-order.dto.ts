@@ -18,6 +18,14 @@ export class OpenDiningOrderDto {
   @IsOptional()
   @MaxLength(80)
   reference?: string;
+
+  // Mesero (Employee) al que se atribuye la cuenta. Lo usa la comanda web, que
+  // opera con sesión de usuario y autoriza al mesero por PIN (no por token
+  // operator). Si se omite, se toma la identidad de empleado del token operator
+  // (flujo de la app móvil).
+  @IsString()
+  @IsOptional()
+  waiterId?: string;
 }
 
 export class AddDiningItemDto {

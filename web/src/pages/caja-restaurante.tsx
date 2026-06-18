@@ -5,13 +5,18 @@ import {
   Clock, ShoppingBag, AlertCircle, ChevronRight, PackagePlus, Lock, Trash2,
 } from 'lucide-react'
 import {
-  getOpenTables, checkoutComanda, directCheckout, createComanda, fmtComandaMoney,
-  type OpenTable, type DirectCheckoutItem,
+  directCheckout, createComanda, fmtComandaMoney,
+  type DirectCheckoutItem,
 } from '@/services/retail/comanda-service'
+import {
+  getActiveDiningOrders, checkoutDiningOrder, isPayableDiningOrder, diningOrderTotal,
+  type DiningOrder,
+} from '@/services/restaurant/dining-orders-service'
 import { fetchProducts, type Product } from '@/services/retail/product-service'
 import { fetchSupplies, type Supply } from '@/services/retail/supplies-service'
 import { withdrawForSupplies } from '@/services/core/caja-service'
 import { printOrder } from '@/services/core/print-service'
+import { useAuthStore } from '@/store/auth-store'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,23 +51,30 @@ const PAYMENT_OPTIONS: { value: PaymentMethod; label: string; icon: typeof Bankn
 
 // ─── Left panel: table card ───────────────────────────────────────────────────
 
-function isNumericTable(t: string) { return /^\d+$/.test(t.trim()) }
+function isDineIn(o: DiningOrder) { return o.serviceType === 'DINE_IN' || o.tableId != null }
+
+function diningLabel(o: DiningOrder): string {
+  return o.table?.name ?? o.reference ?? 'Cuenta'
+}
+
+function waiterLabel(o: DiningOrder): string | null {
+  const name = `${o.waiter?.firstName ?? ''} ${o.waiter?.lastName ?? ''}`.trim()
+  return name || null
+}
 
 function TableCard({
-  table,
+  order,
   selected,
   onClick,
 }: {
-  table: OpenTable
+  order: DiningOrder
   selected: boolean
   onClick: () => void
 }) {
-  const total = Number(table.total)
-  const isTable = isNumericTable(table.tableNumber)
-  const label = isTable ? `Mesa ${table.tableNumber}` : table.tableNumber
-  const sublabel = isTable
-    ? table.employeeNumber ? `Emp. ${table.employeeNumber}` : null
-    : table.employeeNumber ? `Emp. ${table.employeeNumber}` : 'Pedido directo'
+  const total = diningOrderTotal(order)
+  const dineIn = isDineIn(order)
+  const label = diningLabel(order)
+  const sublabel = waiterLabel(order) ?? (dineIn ? null : 'Mostrador')
 
   return (
     <button
@@ -77,7 +89,7 @@ function TableCard({
         <div className="flex items-center gap-2 min-w-0">
           <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0
             ${selected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
-            {isTable ? <UtensilsCrossed className="w-4 h-4" /> : <ShoppingBag className="w-4 h-4" />}
+            {dineIn ? <UtensilsCrossed className="w-4 h-4" /> : <ShoppingBag className="w-4 h-4" />}
           </div>
           <div className="min-w-0">
             <div className="text-[14px] font-extrabold text-foreground truncate">{label}</div>
@@ -87,12 +99,12 @@ function TableCard({
         <div className="text-right shrink-0">
           <div className="text-[15px] font-extrabold text-foreground">{fmtComandaMoney(total)}</div>
           <div className="text-[10px] text-muted-foreground flex items-center justify-end gap-1 mt-0.5">
-            <Clock className="w-3 h-3" />{timeAgo(table.createdAt)}
+            <Clock className="w-3 h-3" />{timeAgo(order.openedAt)}
           </div>
         </div>
       </div>
       <div className="mt-2 text-[11px] text-muted-foreground">
-        {table.items.length} artículo{table.items.length !== 1 ? 's' : ''}
+        {order.items.length} artículo{order.items.length !== 1 ? 's' : ''}
       </div>
     </button>
   )
@@ -101,10 +113,12 @@ function TableCard({
 // ─── Right panel: order detail + checkout ────────────────────────────────────
 
 function TableCheckoutPanel({
-  table,
+  branchId,
+  order,
   onSuccess,
 }: {
-  table: OpenTable
+  branchId: string
+  order: DiningOrder
   onSuccess: () => void
 }) {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH')
@@ -112,14 +126,21 @@ function TableCheckoutPanel({
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
 
-  const total = Number(table.total)
+  const total = diningOrderTotal(order)
+  const dineIn = isDineIn(order)
+  const headerLabel = diningLabel(order)
 
   const handleCobrar = async () => {
     setLoading(true)
     setError(null)
     try {
-      await checkoutComanda(table.id, paymentMethod, total)
-      printOrder(table.id)
+      // Flujo financiero único (igual que la app móvil): el backend genera el
+      // Order, consume inventario, registra Payment + CashMovement y retorna el
+      // Order. El ticket se imprime desde el Order retornado, no del DiningOrder.
+      const result = await checkoutDiningOrder(branchId, order.id, [
+        { paymentMethod, amount: total },
+      ])
+      printOrder(result.id)
       setDone(true)
       setTimeout(onSuccess, 1500)
     } catch (e: unknown) {
@@ -138,7 +159,7 @@ function TableCheckoutPanel({
         </div>
         <div className="text-center">
           <div className="text-xl font-extrabold text-foreground">¡Cobrado!</div>
-          <div className="text-sm text-muted-foreground mt-1">Mesa {table.tableNumber}</div>
+          <div className="text-sm text-muted-foreground mt-1">{headerLabel}</div>
         </div>
       </div>
     )
@@ -150,18 +171,18 @@ function TableCheckoutPanel({
       <div className="px-6 py-4 border-b border-border shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
-            {isNumericTable(table.tableNumber)
+            {dineIn
               ? <UtensilsCrossed className="w-4 h-4 text-primary" />
               : <ShoppingBag className="w-4 h-4 text-primary" />
             }
           </div>
           <div>
             <div className="text-[15px] font-extrabold text-foreground">
-              {isNumericTable(table.tableNumber) ? `Mesa ${table.tableNumber}` : table.tableNumber}
+              {headerLabel}
             </div>
             <div className="text-[11px] text-muted-foreground flex items-center gap-1">
-              <Clock className="w-3 h-3" />{timeAgo(table.createdAt)}
-              {table.employeeNumber && <> · Emp. {table.employeeNumber}</>}
+              <Clock className="w-3 h-3" />{timeAgo(order.openedAt)}
+              {waiterLabel(order) && <> · {waiterLabel(order)}</>}
             </div>
           </div>
         </div>
@@ -172,19 +193,19 @@ function TableCheckoutPanel({
         <div className="px-6 py-3 text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-border">
           Detalle del pedido
         </div>
-        {table.items.map(item => (
+        {order.items.map(item => (
           <div key={item.id} className="flex items-center justify-between px-6 py-3 border-b border-border/50 hover:bg-muted/20 transition-colors">
             <div className="flex items-center gap-3 min-w-0">
               <div className="w-6 h-6 rounded-md bg-muted flex items-center justify-center text-[11px] font-bold text-muted-foreground shrink-0">
                 {item.quantity}
               </div>
               <div className="min-w-0">
-                <div className="text-[13px] font-semibold text-foreground truncate">{item.name}</div>
-                {item.sku && <div className="text-[10px] text-muted-foreground font-mono">{item.sku}</div>}
+                <div className="text-[13px] font-semibold text-foreground truncate">{item.productName}</div>
+                {item.notes && <div className="text-[10px] text-muted-foreground">{item.notes}</div>}
               </div>
             </div>
             <div className="text-[13px] font-bold text-foreground shrink-0 ml-4">
-              {fmtComandaMoney(item.total)}
+              {fmtComandaMoney(Number(item.unitPrice) * item.quantity)}
             </div>
           </div>
         ))}
@@ -781,28 +802,32 @@ function SupplyWithdrawalModal({ onClose, onDone }: { onClose: () => void; onDon
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function CajaRestaurante() {
-  const [tables, setTables] = useState<OpenTable[]>([])
+  const branchId = useAuthStore((s) => s.currentBranch?.id ?? null)
+  const [tables, setTables] = useState<DiningOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [panelMode, setPanelMode] = useState<PanelMode>('empty')
-  const [selectedTable, setSelectedTable] = useState<OpenTable | null>(null)
+  const [selectedTable, setSelectedTable] = useState<DiningOrder | null>(null)
   const [withdrawalOpen, setWithdrawalOpen] = useState(false)
   const [withdrawalToast, setWithdrawalToast] = useState<string | null>(null)
 
   const loadTables = useCallback(async () => {
+    if (!branchId) { setTables([]); setLoading(false); return }
     setLoading(true)
     try {
-      const data = await getOpenTables()
-      setTables(data)
+      // Cuentas del branch listas para cobrar (DELIVERED / READY_FOR_PAYMENT).
+      // La caja ve TODAS las cuentas, sin filtrar por mesero.
+      const data = await getActiveDiningOrders(branchId)
+      setTables(data.filter(isPayableDiningOrder))
     } catch {
       // silent
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [branchId])
 
   useEffect(() => { loadTables() }, [loadTables])
 
-  const selectTable = (table: OpenTable) => {
+  const selectTable = (table: DiningOrder) => {
     setSelectedTable(table)
     setPanelMode('table')
   }
@@ -890,7 +915,7 @@ export function CajaRestaurante() {
             tables.map(table => (
               <TableCard
                 key={table.id}
-                table={table}
+                order={table}
                 selected={panelMode === 'table' && selectedTable?.id === table.id}
                 onClick={() => selectTable(table)}
               />
@@ -902,10 +927,11 @@ export function CajaRestaurante() {
       {/* ── Right: action panel ── */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {panelMode === 'empty' && <EmptyState />}
-        {panelMode === 'table' && selectedTable && (
+        {panelMode === 'table' && selectedTable && branchId && (
           <TableCheckoutPanel
             key={selectedTable.id}
-            table={selectedTable}
+            branchId={branchId}
+            order={selectedTable}
             onSuccess={handleTableSuccess}
           />
         )}

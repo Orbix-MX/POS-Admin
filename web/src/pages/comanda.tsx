@@ -1,14 +1,17 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Search, X, Check, Loader2, Plus, Minus, ShoppingCart,
-  ChevronRight, UtensilsCrossed, Clock, ArrowLeft,
+  ChevronRight, UtensilsCrossed, Clock, ArrowLeft, LayoutGrid, Store, Delete,
 } from 'lucide-react'
 import { fetchProducts, type Product } from '@/services/retail/product-service'
-import { printOrder } from '@/services/core/print-service'
 import {
-  createComanda, addItemsToComanda, getOpenTables, fmtComandaMoney,
-  type OpenTable,
-} from '@/services/retail/comanda-service'
+  getActiveDiningOrders, openDiningOrder, addDiningOrderItem, changeDiningOrderStatus,
+  diningOrderTotal, fmtDiningMoney,
+  type DiningOrder,
+} from '@/services/restaurant/dining-orders-service'
+import { fetchTables, type RestaurantTable } from '@/services/restaurant/tables-service'
+import { verifyWaiterPin, waiterFullName, type VerifiedWaiter } from '@/services/restaurant/waiter-auth-service'
+import { useAuthStore } from '@/store/auth-store'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,6 +27,11 @@ interface LocalCartItem {
 
 type ComandaStage = 'login' | 'open-orders' | 'ordering' | 'success'
 
+// Destino de captura para una cuenta nueva (aún no persistida).
+type CaptureTarget =
+  | { kind: 'dine-in'; tableId: string; label: string }
+  | { kind: 'counter'; reference: string; label: string }
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function timeAgo(dateStr: string): string {
@@ -31,6 +39,10 @@ function timeAgo(dateStr: string): string {
   if (diff < 1) return 'ahora'
   if (diff < 60) return `${diff} min`
   return `${Math.floor(diff / 60)} h`
+}
+
+function orderLabel(o: DiningOrder): string {
+  return o.table?.name ?? o.reference ?? 'Cuenta'
 }
 
 // ─── Product Card ─────────────────────────────────────────────────────────────
@@ -58,7 +70,7 @@ function ComandaProductCard({
       )}
       <div className="text-sm font-bold text-foreground leading-snug mt-2 line-clamp-2 flex-1">{p.name}</div>
       <div className="text-[10px] text-muted-foreground font-mono">{p.sku}</div>
-      <div className="text-base font-extrabold text-primary mt-1">{fmtComandaMoney(p.price)}</div>
+      <div className="text-base font-extrabold text-primary mt-1">{fmtDiningMoney(p.price)}</div>
     </button>
   )
 }
@@ -83,7 +95,7 @@ function CartItemRow({
             <span className="text-[10px] font-bold text-muted-foreground/60 shrink-0">#{lineNumber}</span>
             <div className="text-[13px] font-bold text-foreground truncate">{item.name}</div>
           </div>
-          <div className="text-[11px] text-muted-foreground">{fmtComandaMoney(item.price)} c/u</div>
+          <div className="text-[11px] text-muted-foreground">{fmtDiningMoney(item.price)} c/u</div>
         </div>
         <div className="flex items-center border border-border rounded-xl overflow-hidden shrink-0">
           <button onClick={onMinus}
@@ -97,7 +109,7 @@ function CartItemRow({
           </button>
         </div>
         <div className="text-sm font-extrabold text-foreground w-[62px] text-right shrink-0">
-          {fmtComandaMoney(item.price * item.qty)}
+          {fmtDiningMoney(item.price * item.qty)}
         </div>
       </div>
 
@@ -116,37 +128,33 @@ function CartItemRow({
 // ─── Open Order Card ──────────────────────────────────────────────────────────
 
 function OpenOrderCard({
-  order, onContinue, loading,
-}: { order: OpenTable; onContinue: () => void; loading: boolean }) {
+  order, onContinue,
+}: { order: DiningOrder; onContinue: () => void }) {
+  const total = diningOrderTotal(order)
   return (
     <div className="bg-card border border-border rounded-2xl p-4 flex flex-col gap-3">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <div className="text-[15px] font-extrabold text-foreground">Mesa {order.tableNumber}</div>
-          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-            {order.guestCount != null && (
-              <span className="text-[11px] text-muted-foreground">
-                👤 {order.guestCount} persona{order.guestCount !== 1 ? 's' : ''}
-              </span>
-            )}
-            <span className="text-[11px] text-muted-foreground font-mono">{order.orderNumber}</span>
+          <div className="text-[15px] font-extrabold text-foreground">{orderLabel(order)}</div>
+          <div className="text-[11px] text-muted-foreground mt-0.5">
+            {order.items.length} producto{order.items.length !== 1 ? 's' : ''}
           </div>
         </div>
         <div className="flex items-center gap-1 text-[11px] text-muted-foreground shrink-0">
           <Clock className="w-3 h-3" />
-          {timeAgo(order.createdAt)}
+          {timeAgo(order.openedAt)}
         </div>
       </div>
 
       {/* Items summary */}
       <div className="flex flex-col gap-1">
-        {order.items.slice(0, 4).map((item, i) => (
-          <div key={i} className="flex items-center gap-2 text-[12px]">
+        {order.items.slice(0, 4).map((item) => (
+          <div key={item.id} className="flex items-center gap-2 text-[12px]">
             <span className="w-5 h-5 rounded-lg bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground shrink-0">
               {item.quantity}
             </span>
-            <span className="flex-1 text-foreground truncate">{item.name}</span>
-            <span className="text-muted-foreground shrink-0">{fmtComandaMoney(item.price)}</span>
+            <span className="flex-1 text-foreground truncate">{item.productName}</span>
+            <span className="text-muted-foreground shrink-0">{fmtDiningMoney(item.unitPrice)}</span>
           </div>
         ))}
         {order.items.length > 4 && (
@@ -158,14 +166,13 @@ function OpenOrderCard({
 
       <div className="flex items-center justify-between pt-1 border-t border-border">
         <div className="text-[13px] font-bold text-foreground">
-          Total: {fmtComandaMoney(order.total)}
+          Total: {fmtDiningMoney(total)}
         </div>
         <button
           onClick={onContinue}
-          disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground rounded-xl text-[12px] font-bold cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground rounded-xl text-[12px] font-bold cursor-pointer hover:opacity-90 transition-opacity"
         >
-          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+          <Plus className="w-3.5 h-3.5" />
           Agregar productos
         </button>
       </div>
@@ -176,34 +183,43 @@ function OpenOrderCard({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function Comanda() {
+  const branchId = useAuthStore((s) => s.currentBranch?.id ?? null)
+  // Cocina se determina por el MÓDULO habilitado (enabledModules incluye 'kitchen'),
+  // igual que el backend DiningOrdersService.isKitchenEnabled. No usar el feature
+  // 'KITCHEN' (Tenant.enabledFeatures) — es un campo distinto y desincroniza el flujo.
+  const kitchenEnabled = useAuthStore((s) => s.enabledModules.includes('kitchen'))
+
   const [stage, setStage] = useState<ComandaStage>('login')
 
-  // Login fields
-  const [employeeNumber, setEmployeeNumber] = useState('')
-  const [loginError, setLoginError]         = useState('')
-  const [loginLoading, setLoginLoading]     = useState(false)
+  // Login (autorización de mesero por PIN — no emite token)
+  const [pin, setPin] = useState('')
+  const [loginError, setLoginError] = useState('')
+  const [loginLoading, setLoginLoading] = useState(false)
+  const [waiter, setWaiter] = useState<VerifiedWaiter | null>(null)
 
-  // Open orders
-  const [openOrders, setOpenOrders]       = useState<OpenTable[]>([])
-  const [newTableInput, setNewTableInput] = useState('')
-  const [guestCount, setGuestCount]       = useState('')
-  const [tableError, setTableError]       = useState('')
+  // Open orders + tables
+  const [openOrders, setOpenOrders] = useState<DiningOrder[]>([])
+  const [tables, setTables] = useState<RestaurantTable[]>([])
+  const [counterRef, setCounterRef] = useState('')
+  const [boardLoading, setBoardLoading] = useState(false)
+  const [boardError, setBoardError] = useState('')
 
   // Ordering state
-  const [activeOrderId, setActiveOrderId]         = useState<string | null>(null)
-  const [activeOrder, setActiveOrder]             = useState<OpenTable | null>(null)
-  const [activeTable, setActiveTable]             = useState('')
-  const [products, setProducts]                   = useState<Product[]>([])
-  const [categories, setCategories]               = useState<{ id: string; name: string }[]>([])
+  const [target, setTarget] = useState<CaptureTarget | null>(null) // cuenta nueva
+  const [activeOrderId, setActiveOrderId] = useState<string | null>(null) // cuenta existente (OPEN)
+  const [activeOrder, setActiveOrder] = useState<DiningOrder | null>(null)
+  const [activeLabel, setActiveLabel] = useState('')
+  const [products, setProducts] = useState<Product[]>([])
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([])
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
-  const [catalogLoading, setCatalogLoading]       = useState(false)
-  const [search, setSearch]                       = useState('')
-  const [cart, setCart]                           = useState<LocalCartItem[]>([])
-  const [sending, setSending]                     = useState(false)
-  const [sendError, setSendError]                 = useState<string | null>(null)
+  const [catalogLoading, setCatalogLoading] = useState(false)
+  const [search, setSearch] = useState('')
+  const [cart, setCart] = useState<LocalCartItem[]>([])
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
 
   // Success
-  const [successTable, setSuccessTable] = useState('')
+  const [successLabel, setSuccessLabel] = useState('')
 
   // ── Product loader ──────────────────────────────────────────────────────────
 
@@ -234,71 +250,110 @@ export function Comanda() {
     if (stage === 'ordering') loadProducts()
   }, [stage, loadProducts])
 
+  // ── Tablero: mesas + mis cuentas abiertas ─────────────────────────────────────
+
+  const loadBoard = useCallback(async (w: VerifiedWaiter | null) => {
+    if (!branchId || !w) return
+    setBoardLoading(true)
+    setBoardError('')
+    try {
+      const [allTables, orders] = await Promise.all([
+        fetchTables(branchId),
+        getActiveDiningOrders(branchId),
+      ])
+      setTables(allTables.filter(t => t.isActive))
+      // Mis cuentas en captura (OPEN) — son a las que puedo seguir agregando.
+      setOpenOrders(orders.filter(o => o.status === 'OPEN' && o.waiter?.id === w.id))
+    } catch {
+      setBoardError('Error al cargar mesas y cuentas. Intenta de nuevo.')
+    } finally {
+      setBoardLoading(false)
+    }
+  }, [branchId])
+
   // ── Auto-return after success ────────────────────────────────────────────────
 
   useEffect(() => {
     if (stage !== 'success') return
     const t = setTimeout(() => {
-      setStage('login')
-      setEmployeeNumber(''); setLoginError('')
-      setOpenOrders([]); setNewTableInput(''); setGuestCount(''); setTableError('')
-      setActiveOrderId(null); setActiveOrder(null); setActiveTable('')
+      setStage('open-orders')
+      setTarget(null); setActiveOrderId(null); setActiveOrder(null); setActiveLabel('')
       setCart([]); setSendError(null); setSearch(''); setSelectedCategoryId(null)
-    }, 2500)
+      setCounterRef('')
+      void loadBoard(waiter)
+    }, 2200)
     return () => clearTimeout(t)
-  }, [stage])
+  }, [stage, waiter, loadBoard])
 
-  // ── Login ────────────────────────────────────────────────────────────────────
+  // ── Login (PIN → autoriza mesero) ──────────────────────────────────────────────
 
-  const handleLogin = async () => {
-    if (!employeeNumber.trim()) {
-      setLoginError('Por favor ingresa tu número de empleado.')
+  const handleLogin = useCallback(async (value: string) => {
+    if (!/^\d{4,6}$/.test(value)) {
+      setLoginError('El PIN debe tener entre 4 y 6 dígitos.')
       return
     }
     setLoginError('')
     setLoginLoading(true)
     try {
-      const all = await getOpenTables()
-      const mine = all.filter(
-        o => o.employeeNumber?.toLowerCase() === employeeNumber.trim().toLowerCase(),
-      )
-      setOpenOrders(mine)
+      const w = await verifyWaiterPin(value)
+      setWaiter(w)
       setStage('open-orders')
-    } catch {
-      setLoginError('Error al cargar pedidos. Intenta de nuevo.')
+      await loadBoard(w)
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } }; message?: string }
+      setLoginError(err?.response?.data?.message ?? 'PIN incorrecto.')
+      setPin('')
     } finally {
       setLoginLoading(false)
     }
+  }, [loadBoard])
+
+  const pressPinKey = (key: string) => {
+    setLoginError('')
+    setPin(prev => {
+      const next = (prev + key).slice(0, 6)
+      if (next.length >= 4 && key !== '') { /* allow explicit submit */ }
+      return next
+    })
   }
 
-  // ── Open orders → ordering ────────────────────────────────────────────────────
+  const logoutWaiter = () => {
+    setWaiter(null); setPin(''); setLoginError('')
+    setOpenOrders([]); setTables([])
+    setStage('login')
+  }
 
-  const handleContinueOrder = (order: OpenTable) => {
+  // ── Abrir / continuar cuenta → ordering ────────────────────────────────────────
+
+  const startDineIn = (t: RestaurantTable) => {
+    setTarget({ kind: 'dine-in', tableId: t.id, label: t.name })
+    setActiveOrderId(null); setActiveOrder(null)
+    setActiveLabel(t.name)
+    resetOrderingState()
+    setStage('ordering')
+  }
+
+  const startCounter = () => {
+    const ref = counterRef.trim()
+    const label = ref || 'Mostrador'
+    setTarget({ kind: 'counter', reference: ref, label })
+    setActiveOrderId(null); setActiveOrder(null)
+    setActiveLabel(label)
+    resetOrderingState()
+    setStage('ordering')
+  }
+
+  const handleContinueOrder = (order: DiningOrder) => {
+    setTarget(null)
     setActiveOrderId(order.id)
     setActiveOrder(order)
-    setActiveTable(order.tableNumber)
-    setCart([])
-    setSendError(null)
-    setSearch('')
-    setSelectedCategoryId(null)
+    setActiveLabel(orderLabel(order))
+    resetOrderingState()
     setStage('ordering')
   }
 
-  const handleNewOrder = () => {
-    const t = newTableInput.trim()
-    const g = parseInt(guestCount, 10)
-    if (!t && !g) { setTableError('Ingresa la mesa y el número de personas.'); return }
-    if (!t) { setTableError('Ingresa el número o nombre de mesa.'); return }
-    if (!guestCount.trim() || isNaN(g) || g < 1) { setTableError('Ingresa el número de personas (mínimo 1).'); return }
-    setTableError('')
-    setActiveOrderId(null)
-    setActiveOrder(null)
-    setActiveTable(t)
-    setCart([])
-    setSendError(null)
-    setSearch('')
-    setSelectedCategoryId(null)
-    setStage('ordering')
+  const resetOrderingState = () => {
+    setCart([]); setSendError(null); setSearch(''); setSelectedCategoryId(null)
   }
 
   // ── Cart handlers ─────────────────────────────────────────────────────────────
@@ -325,35 +380,36 @@ export function Comanda() {
   const cartTotal = cart.reduce((acc, i) => acc + i.price * i.qty, 0)
 
   // ── Send ──────────────────────────────────────────────────────────────────────
+  // Flujo único (igual que la app): crea/usa el DiningOrder, guarda items y avanza
+  // el estado a cocina (SENT_TO_KITCHEN) o a caja (READY_FOR_PAYMENT). No imprime:
+  // la cocina recibe la comanda por estado/KDS y el ticket se genera al cobrar.
 
   const handleSend = async () => {
-    if (cart.length === 0) return
+    if (cart.length === 0 || !branchId || !waiter) return
     setSending(true); setSendError(null)
     try {
-      const items = cart.map(i => ({
-        itemType: 'PRODUCT' as const,
-        productId: i.id,
-        name: i.name,
-        quantity: i.qty,
-        price: i.price,
-        ...(i.comment.trim() && { notes: i.comment.trim() }),
-      }))
-
-      let orderId: string
-      if (activeOrderId) {
-        const updated = await addItemsToComanda(activeOrderId, items)
-        orderId = updated.id
-      } else {
-        const created = await createComanda({
-          tableNumber: activeTable,
-          employeeNumber: employeeNumber.trim(),
-          guestCount: parseInt(guestCount, 10),
-          items,
-        })
+      let orderId = activeOrderId
+      if (!orderId) {
+        const created = target?.kind === 'dine-in'
+          ? await openDiningOrder(branchId, { serviceType: 'DINE_IN', tableId: target.tableId, waiterId: waiter.id })
+          : await openDiningOrder(branchId, { serviceType: 'COUNTER', reference: target?.kind === 'counter' ? target.reference || undefined : undefined, waiterId: waiter.id })
         orderId = created.id
       }
-      printOrder(orderId, 'TICKET')
-      setSuccessTable(activeTable)
+
+      for (const i of cart) {
+        await addDiningOrderItem(branchId, orderId, {
+          productId: i.id,
+          productName: i.name,
+          unitPrice: i.price,
+          quantity: i.qty,
+          ...(i.comment.trim() && { notes: i.comment.trim() }),
+        })
+      }
+
+      const next = kitchenEnabled ? 'SENT_TO_KITCHEN' : 'READY_FOR_PAYMENT'
+      await changeDiningOrderStatus(branchId, orderId, next)
+
+      setSuccessLabel(activeLabel)
       setStage('success')
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } }; message?: string }
@@ -369,9 +425,10 @@ export function Comanda() {
     return matchesCat && matchesSearch
   })
 
-  // ══ Stage: login ══════════════════════════════════════════════════════════════
+  // ══ Stage: login (PIN pad) ══════════════════════════════════════════════════════
 
   if (stage === 'login') {
+    const PIN_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
     return (
       <div className="flex-1 flex items-center justify-center min-h-screen p-6 bg-background">
         <div className="w-full max-w-sm bg-card border border-border rounded-2xl shadow-xl p-8 space-y-6">
@@ -380,40 +437,57 @@ export function Comanda() {
               <UtensilsCrossed className="w-7 h-7 text-primary" />
             </div>
             <h1 className="text-2xl font-extrabold text-foreground">Captura de Comanda</h1>
-            <p className="text-sm text-muted-foreground">Ingresa tus datos para continuar</p>
+            <p className="text-sm text-muted-foreground">Ingresa tu PIN de empleado</p>
           </div>
 
-          <div className="space-y-4">
-            <div>
-              <label className="text-[12px] font-semibold text-muted-foreground block mb-1.5">
-                Número de empleado
-              </label>
-              <input
-                type="text"
-                value={employeeNumber}
-                onChange={e => setEmployeeNumber(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleLogin() }}
-                placeholder="Ej. EMP-001"
-                autoFocus
-                className="w-full px-4 py-3 border border-border rounded-xl text-[14px] bg-muted text-foreground outline-none focus:border-primary focus:bg-card transition-colors"
+          {/* PIN dots */}
+          <div className="flex items-center justify-center gap-3">
+            {Array.from({ length: Math.max(4, pin.length) }).map((_, i) => (
+              <div
+                key={i}
+                className={`w-3.5 h-3.5 rounded-full transition-all ${i < pin.length ? 'bg-primary' : 'border-2 border-border'}`}
               />
+            ))}
+          </div>
+
+          {loginError && (
+            <div className="text-[12px] text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 text-center">
+              {loginError}
             </div>
+          )}
 
-            {loginError && (
-              <div className="text-[12px] text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
-                {loginError}
-              </div>
-            )}
-
+          {/* Keypad */}
+          <div className="grid grid-cols-3 gap-3">
+            {PIN_KEYS.map(k => (
+              <button
+                key={k}
+                onClick={() => pressPinKey(k)}
+                disabled={loginLoading}
+                className="py-4 rounded-xl bg-muted text-foreground text-xl font-bold cursor-pointer hover:bg-muted/70 active:scale-95 transition-all disabled:opacity-50"
+              >
+                {k}
+              </button>
+            ))}
             <button
-              onClick={handleLogin}
-              disabled={loginLoading || !employeeNumber.trim()}
-              className="w-full py-3.5 bg-primary text-primary-foreground rounded-xl text-[15px] font-bold cursor-pointer hover:opacity-90 transition-opacity flex items-center justify-center gap-2 disabled:opacity-50"
+              onClick={() => setPin(p => p.slice(0, -1))}
+              disabled={loginLoading || pin.length === 0}
+              className="py-4 rounded-xl bg-muted text-muted-foreground flex items-center justify-center cursor-pointer hover:bg-muted/70 active:scale-95 transition-all disabled:opacity-40"
             >
-              {loginLoading
-                ? <><Loader2 className="w-4 h-4 animate-spin" /> Cargando…</>
-                : <>Ver mis mesas <ChevronRight className="w-4 h-4" /></>
-              }
+              <Delete className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => pressPinKey('0')}
+              disabled={loginLoading}
+              className="py-4 rounded-xl bg-muted text-foreground text-xl font-bold cursor-pointer hover:bg-muted/70 active:scale-95 transition-all disabled:opacity-50"
+            >
+              0
+            </button>
+            <button
+              onClick={() => handleLogin(pin)}
+              disabled={loginLoading || pin.length < 4}
+              className="py-4 rounded-xl bg-primary text-primary-foreground flex items-center justify-center cursor-pointer hover:opacity-90 active:scale-95 transition-all disabled:opacity-50"
+            >
+              {loginLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ChevronRight className="w-5 h-5" />}
             </button>
           </div>
         </div>
@@ -421,72 +495,68 @@ export function Comanda() {
     )
   }
 
-  // ══ Stage: open-orders ════════════════════════════════════════════════════════
+  // ══ Stage: open-orders (tablero) ══════════════════════════════════════════════
 
   if (stage === 'open-orders') {
+    const availableTables = tables.filter(t => t.status === 'AVAILABLE')
     return (
       <div className="flex-1 flex flex-col min-h-screen bg-background">
         {/* Header */}
         <div className="px-6 py-4 border-b border-border bg-card shrink-0 flex items-center gap-3">
           <button
-            onClick={() => setStage('login')}
+            onClick={logoutWaiter}
             className="p-2 rounded-xl hover:bg-muted cursor-pointer border-none bg-transparent transition-colors"
+            title="Cambiar empleado"
           >
             <ArrowLeft className="w-5 h-5 text-muted-foreground" />
           </button>
-          <div>
+          <div className="flex-1">
             <div className="text-[15px] font-extrabold text-foreground">
-              Empleado {employeeNumber}
+              {waiter ? waiterFullName(waiter) : 'Mesero'}
             </div>
             <div className="text-[11px] text-muted-foreground">
               {openOrders.length > 0
-                ? `${openOrders.length} pedido${openOrders.length !== 1 ? 's' : ''} abierto${openOrders.length !== 1 ? 's' : ''}`
-                : 'Sin pedidos abiertos'}
+                ? `${openOrders.length} cuenta${openOrders.length !== 1 ? 's' : ''} en captura`
+                : 'Sin cuentas en captura'}
             </div>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-5">
-          {/* ── Abrir mesa (arriba del grid) ──────────────────────────────── */}
+        <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-6">
+          {boardError && (
+            <div className="text-[12px] text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
+              {boardError}
+            </div>
+          )}
+
+          {/* ── Mostrador / Para llevar (COUNTER) ─────────────────────────────── */}
           <div className="bg-card border border-border rounded-2xl p-4 flex flex-col gap-3">
             <div className="text-[13px] font-bold text-foreground flex items-center gap-2">
-              <Plus className="w-4 h-4 text-primary" /> Abrir mesa
+              <Store className="w-4 h-4 text-primary" /> Mostrador / Para llevar
             </div>
             <div className="flex gap-2">
               <input
                 type="text"
-                value={newTableInput}
-                onChange={e => { setNewTableInput(e.target.value); setTableError('') }}
-                onKeyDown={e => { if (e.key === 'Enter') handleNewOrder() }}
-                placeholder="Mesa / Número…"
+                value={counterRef}
+                onChange={e => setCounterRef(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') startCounter() }}
+                placeholder="Referencia (opcional): Cliente, Para llevar…"
                 className="flex-1 min-w-0 px-3.5 py-2.5 border border-border rounded-xl text-[13px] bg-muted text-foreground outline-none focus:border-primary focus:bg-card transition-colors"
               />
-              <input
-                type="number"
-                min={1}
-                value={guestCount}
-                onChange={e => { setGuestCount(e.target.value); setTableError('') }}
-                onKeyDown={e => { if (e.key === 'Enter') handleNewOrder() }}
-                placeholder="Personas *"
-                className="w-28 shrink-0 px-3.5 py-2.5 border border-border rounded-xl text-[13px] bg-muted text-foreground outline-none focus:border-primary focus:bg-card transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
-              />
               <button
-                onClick={handleNewOrder}
+                onClick={startCounter}
                 className="px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-[13px] font-bold cursor-pointer hover:opacity-90 transition-opacity flex items-center gap-1.5 shrink-0"
               >
                 <Plus className="w-3.5 h-3.5" /> Abrir
               </button>
             </div>
-            {tableError && (
-              <div className="text-[12px] text-red-600 -mt-1">{tableError}</div>
-            )}
           </div>
 
-          {/* ── Grid de mesas abiertas ─────────────────────────────────────── */}
-          {openOrders.length > 0 ? (
+          {/* ── Mis cuentas en captura (OPEN) ─────────────────────────────────── */}
+          {openOrders.length > 0 && (
             <div>
               <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest mb-3 px-0.5">
-                Mesas abiertas · {openOrders.length}
+                Mis cuentas en captura · {openOrders.length}
               </div>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
                 {openOrders.map(order => (
@@ -494,18 +564,45 @@ export function Comanda() {
                     key={order.id}
                     order={order}
                     onContinue={() => handleContinueOrder(order)}
-                    loading={false}
                   />
                 ))}
               </div>
             </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-16 text-center gap-2">
-              <UtensilsCrossed className="w-10 h-10 text-muted-foreground/30" />
-              <div className="text-[13px] font-semibold text-muted-foreground">Sin mesas abiertas</div>
-              <div className="text-[11px] text-muted-foreground/60">Abre una mesa para comenzar a tomar pedidos</div>
-            </div>
           )}
+
+          {/* ── Mesas disponibles (DINE_IN) ───────────────────────────────────── */}
+          <div>
+            <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest mb-3 px-0.5 flex items-center gap-2">
+              <LayoutGrid className="w-3.5 h-3.5" /> Mesas disponibles
+              {availableTables.length > 0 && <span>· {availableTables.length}</span>}
+            </div>
+            {boardLoading ? (
+              <div className="flex items-center justify-center py-16 gap-2 text-muted-foreground">
+                <Loader2 className="w-5 h-5 animate-spin" /><span className="text-sm">Cargando mesas…</span>
+              </div>
+            ) : availableTables.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center gap-2">
+                <UtensilsCrossed className="w-10 h-10 text-muted-foreground/30" />
+                <div className="text-[13px] font-semibold text-muted-foreground">No hay mesas disponibles</div>
+                <div className="text-[11px] text-muted-foreground/60">Usa Mostrador o libera una mesa al cobrar</div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-3">
+                {availableTables.map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => startDineIn(t)}
+                    className="bg-card border-2 border-border rounded-2xl p-4 flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:-translate-y-0.5 hover:shadow-lg hover:border-primary active:scale-95 transition-all"
+                    style={{ minHeight: '110px' }}
+                  >
+                    <UtensilsCrossed className="w-5 h-5 text-primary" />
+                    <div className="text-[14px] font-extrabold text-foreground text-center leading-tight">{t.name}</div>
+                    <div className="text-[10px] text-muted-foreground">{t.area?.name} · {t.capacity}p</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     )
@@ -522,9 +619,9 @@ export function Comanda() {
           </div>
           <div>
             <h2 className="text-2xl font-extrabold text-foreground">
-              {activeOrderId ? '¡Productos agregados!' : '¡Comanda enviada!'}
+              {kitchenEnabled ? '¡Enviada a cocina!' : '¡Lista para cobro!'}
             </h2>
-            <p className="text-muted-foreground mt-1 text-base">Mesa {successTable}</p>
+            <p className="text-muted-foreground mt-1 text-base">{successLabel}</p>
           </div>
           <p className="text-sm text-muted-foreground">Regresando en unos segundos…</p>
         </div>
@@ -550,8 +647,8 @@ export function Comanda() {
           </div>
           <div className="min-w-0">
             <div className="text-[15px] font-extrabold text-foreground truncate">
-              Mesa {activeTable} · Empleado {employeeNumber}
-              {activeOrderId && <span className="ml-2 text-[11px] font-normal text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">Agregando a pedido existente</span>}
+              {activeLabel}{waiter && <span className="ml-2 text-[11px] font-normal text-muted-foreground">· {waiterFullName(waiter)}</span>}
+              {activeOrderId && <span className="ml-2 text-[11px] font-normal text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">Agregando a cuenta existente</span>}
             </div>
             <div className="text-[11px] text-muted-foreground">
               {cart.length} producto{cart.length !== 1 ? 's' : ''} nuevo{cart.length !== 1 ? 's' : ''}
@@ -642,7 +739,7 @@ export function Comanda() {
           <div className="px-4 py-3 border-b border-border shrink-0">
             <div className="text-[13px] font-extrabold text-foreground flex items-center gap-2">
               <ShoppingCart className="w-4 h-4" />
-              {activeOrderId ? 'Agregando a pedido' : 'Pedido nuevo'}
+              {activeOrderId ? 'Agregando a cuenta' : 'Cuenta nueva'}
             </div>
           </div>
 
@@ -655,14 +752,14 @@ export function Comanda() {
                 </span>
               </div>
               <div className="divide-y divide-border/50 max-h-[140px] overflow-y-auto">
-                {activeOrder.items.map((item, i) => (
-                  <div key={i} className="flex items-center gap-2 px-4 py-2 opacity-60">
+                {activeOrder.items.map((item) => (
+                  <div key={item.id} className="flex items-center gap-2 px-4 py-2 opacity-60">
                     <span className="text-[11px] font-bold text-muted-foreground w-5 text-center shrink-0">
                       {item.quantity}
                     </span>
-                    <span className="flex-1 text-[12px] text-foreground truncate">{item.name}</span>
+                    <span className="flex-1 text-[12px] text-foreground truncate">{item.productName}</span>
                     <span className="text-[11px] text-muted-foreground shrink-0">
-                      {fmtComandaMoney(item.price)}
+                      {fmtDiningMoney(item.unitPrice)}
                     </span>
                   </div>
                 ))}
@@ -676,7 +773,7 @@ export function Comanda() {
               <div className="flex flex-col items-center justify-center h-36 gap-2 text-muted-foreground">
                 <ShoppingCart className="w-8 h-8 opacity-25" />
                 <span className="text-xs text-center px-4">
-                  {activeOrderId ? 'Toca un producto para agregarlo' : 'Toca un producto para agregarlo al pedido'}
+                  Toca un producto para agregarlo a la cuenta
                 </span>
               </div>
             ) : (
@@ -700,7 +797,7 @@ export function Comanda() {
                 <span className="text-sm font-semibold text-muted-foreground">
                   {activeOrderId ? 'Agrega' : 'Total'}
                 </span>
-                <span className="text-xl font-extrabold text-foreground">{fmtComandaMoney(cartTotal)}</span>
+                <span className="text-xl font-extrabold text-foreground">{fmtDiningMoney(cartTotal)}</span>
               </div>
             )}
 
@@ -717,10 +814,10 @@ export function Comanda() {
             >
               {sending ? (
                 <><Loader2 className="w-4 h-4 animate-spin" /> Enviando…</>
-              ) : activeOrderId ? (
-                <><Plus className="w-4 h-4" /> Agregar al pedido</>
+              ) : kitchenEnabled ? (
+                <><Check className="w-4 h-4" /> Enviar a cocina</>
               ) : (
-                <><Check className="w-4 h-4" /> Enviar pedido</>
+                <><Check className="w-4 h-4" /> Enviar a caja</>
               )}
             </button>
           </div>
