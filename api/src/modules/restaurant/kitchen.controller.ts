@@ -21,6 +21,6 @@ export class KitchenController {
   @RequirePermissions('kitchen:manage')
   @ApiOperation({ summary: 'Actualizar estado cocina de una orden' })
   updateKitchenStatus(@Param('id') id: string, @Body() dto: UpdateKitchenStatusDto) {
-    return this.kitchenService.updateKitchenStatus(id, dto);
+    return this.kitchenService.updateKitchenStatus(id, dto.status);
   }
 }

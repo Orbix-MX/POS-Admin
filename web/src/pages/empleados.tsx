@@ -1,11 +1,12 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { AvatarInitials } from '@/components/shared/avatar-initials'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { DataTable, Pagination, type Column } from '@/components/shared/data-table'
 import { FormModal, FormField } from '@/components/shared/form-modal'
-import { Search, Plus, Loader2 } from 'lucide-react'
+import { Search, Plus, Loader2, KeyRound } from 'lucide-react'
 import { useEmpleados } from '@/hooks/core/use-empleados'
 import type { Empleado } from '@/hooks/core/use-empleados'
+import { EmployeePinModal } from '@/components/empleados/employee-pin-modal'
 
 const CONTRACT_OPTIONS = [
   { value: 'FULL_TIME',  label: 'Tiempo completo' },
@@ -35,6 +36,8 @@ export function Empleados() {
     handleOpenEdit, handleCloseEdit, handleUpdate, handleDelete,
     loadEmpleados,
   } = useEmpleados()
+
+  const [pinEmployee, setPinEmployee] = useState<Empleado | null>(null)
 
   const columns: Column<Empleado>[] = useMemo(() => [
     {
@@ -153,6 +156,7 @@ export function Empleados() {
                 { label: 'Salario',      value: selected.salario },
                 { label: 'RFC',          value: selected.rfc || '—' },
                 { label: 'CURP',         value: selected.curp || '—' },
+                { label: 'Acceso comandera', value: selected.hasPin ? 'PIN asignado ✓' : 'Sin PIN' },
                 { label: 'Notas',        value: selected.notes || '—' },
               ].map((f, i) => (
                 <div key={i} className="bg-muted rounded-lg p-3">
@@ -161,12 +165,16 @@ export function Empleados() {
                 </div>
               ))}
             </div>
-            <div className="flex gap-2.5 justify-end">
+            <div className="flex gap-2.5 justify-end flex-wrap">
               <button onClick={() => setSelected(null)} className="px-4.5 py-2 border border-border rounded-lg bg-card text-[13px] cursor-pointer text-muted-foreground">Cerrar</button>
               <button
                 onClick={() => { if (window.confirm('¿Dar de baja a este empleado?')) handleDelete(selected.id) }}
                 className="px-4.5 py-2 bg-red-500 text-white border-none rounded-lg text-[13px] font-semibold cursor-pointer"
               >Dar de baja</button>
+              <button
+                onClick={() => { setPinEmployee(selected); setSelected(null) }}
+                className="flex items-center gap-1.5 px-4.5 py-2 border border-border rounded-lg bg-card text-[13px] font-semibold cursor-pointer text-foreground hover:border-primary/50"
+              ><KeyRound className="w-3.5 h-3.5" /> PIN comandera</button>
               <button
                 onClick={() => handleOpenEdit(selected)}
                 className="px-4.5 py-2 bg-primary text-primary-foreground border-none rounded-lg text-[13px] font-semibold cursor-pointer"
@@ -259,6 +267,15 @@ export function Empleados() {
           </button>
         </div>
       </FormModal>
+
+      {/* PIN de comandera */}
+      {pinEmployee && (
+        <EmployeePinModal
+          empleado={pinEmployee}
+          onClose={() => setPinEmployee(null)}
+          onSaved={async () => { await loadEmpleados(); setPinEmployee(null) }}
+        />
+      )}
     </div>
   )
 }

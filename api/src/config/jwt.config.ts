@@ -13,5 +13,7 @@ export default registerAs('jwt', () => {
     secret,
     platformSecret,
     expiresIn: process.env.JWT_EXPIRES_IN || '1d',
+    // Opaque refresh-token lifetime in days (mobile clients). Default 30d.
+    refreshExpiresInDays: Number(process.env.REFRESH_TOKEN_EXPIRES_IN_DAYS) || 30,
   };
 });

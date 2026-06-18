@@ -1,0 +1,423 @@
+import { Injectable, BadRequestException } from '@nestjs/common';
+import { Prisma, ProductType } from '@prisma/client';
+import { safeConvertUnits } from '../../../common/helpers/unit-conversion';
+
+/**
+ * InventoryConsumptionEngine — single source of truth for stock movement caused
+ * by sales and their reversals (cancel / return / refund). Operates on SIMPLE,
+ * RECIPE and COMBO products and guarantees symmetry: whatever `consume` removes,
+ * `restore` puts back, walking the exact same expansion tree.
+ *
+ * Design:
+ *  - Always runs inside a caller-provided transaction (`Prisma.TransactionClient`).
+ *    It never opens its own `$transaction`, so payment / cash / order writes stay
+ *    in the same atomic unit owned by the caller.
+ *  - Pure resolution (`resolveEffects`) is shared by consume, restore and
+ *    validate, which is what makes consumption and reversal provably symmetric.
+ *  - COMBO products expand recursively into their children; each leaf is either a
+ *    SIMPLE product (decrements product stock) or a RECIPE product (decrements
+ *    supplies). A COMBO that is itself a child is expanded again.
+ */
+
+/** One line of a sale/return. SERVICE lines and null products are ignored. */
+export interface InventoryLineItem {
+  productId: string | null;
+  quantity: number;
+  itemType?: 'PRODUCT' | 'SERVICE' | null;
+}
+
+export interface InventoryContext {
+  tenantId: string;
+  branchId: string | null;
+  userId: string | null;
+  /** The order id (or other origin) these movements reference. */
+  referenceId: string;
+  /** Defaults to 'ORDER'. */
+  referenceType?: string;
+  /** Free-text suffix appended to movement notes (e.g. reason). */
+  note?: string;
+}
+
+interface ProductStockEffect {
+  productId: string;
+  productName: string;
+  quantity: number;
+}
+
+interface SupplyStockEffect {
+  supplyId: string;
+  supplyName: string;
+  /** Amount in the supply's stock unit (baseUnit when configured). */
+  quantity: number;
+}
+
+interface ResolvedEffects {
+  products: Map<string, ProductStockEffect>;
+  supplies: Map<string, SupplyStockEffect>;
+}
+
+interface LoadedRecipeItem {
+  supplyId: string;
+  quantity: Prisma.Decimal;
+  unit: string;
+  normalizedQuantity: Prisma.Decimal | null;
+  supply: {
+    id: string;
+    name: string;
+    unit: string;
+    stock: Prisma.Decimal;
+    baseUnit: { symbol: string } | null;
+  };
+}
+
+interface LoadedProduct {
+  id: string;
+  name: string;
+  type: ProductType;
+  trackInventory: boolean;
+  stock: number;
+  recipe: { items: LoadedRecipeItem[] } | null;
+  comboItems: { childProductId: string; quantity: number }[];
+}
+
+const PRODUCT_LOAD_SELECT = {
+  id: true,
+  name: true,
+  type: true,
+  trackInventory: true,
+  stock: true,
+  recipe: {
+    select: {
+      items: {
+        select: {
+          supplyId: true,
+          quantity: true,
+          unit: true,
+          normalizedQuantity: true,
+          supply: {
+            select: {
+              id: true,
+              name: true,
+              unit: true,
+              stock: true,
+              baseUnit: { select: { symbol: true } },
+            },
+          },
+        },
+      },
+    },
+  },
+  comboItems: { select: { childProductId: true, quantity: true } },
+} as const;
+
+const MAX_COMBO_DEPTH = 8;
+
+@Injectable()
+export class InventoryConsumptionEngine {
+  /**
+   * Apply stock consumption for a set of sale lines. Decrements product stock
+   * (SIMPLE), supply stock (RECIPE) and branch inventory, guarded against going
+   * negative, and writes the corresponding VENTA / RECIPE_CONSUMPTION movements.
+   * Throws BadRequestException on insufficient stock.
+   */
+  async consume(
+    tx: Prisma.TransactionClient,
+    items: InventoryLineItem[],
+    ctx: InventoryContext,
+  ): Promise<void> {
+    const effects = await this.resolveEffects(tx, items);
+
+    for (const effect of effects.products.values()) {
+      const res = await tx.product.updateMany({
+        where: { id: effect.productId, stock: { gte: effect.quantity } },
+        data: { stock: { decrement: effect.quantity } },
+      });
+      if (res.count === 0) {
+        throw new BadRequestException(
+          `Stock insuficiente para "${effect.productName}" al procesar la venta`,
+        );
+      }
+      await this.applyBranchInventoryDelta(tx, ctx, effect.productId, -effect.quantity);
+      await tx.inventoryMovement.create({
+        data: {
+          tenantId: ctx.tenantId,
+          type: 'VENTA',
+          productId: effect.productId,
+          branchId: ctx.branchId,
+          quantity: effect.quantity,
+          referenceId: ctx.referenceId,
+          referenceType: ctx.referenceType ?? 'ORDER',
+          notes: this.note('Venta', ctx),
+          createdById: ctx.userId,
+        },
+      });
+    }
+
+    for (const effect of effects.supplies.values()) {
+      const res = await tx.supply.updateMany({
+        where: { id: effect.supplyId, stock: { gte: effect.quantity } },
+        data: { stock: { decrement: effect.quantity } },
+      });
+      if (res.count === 0) {
+        throw new BadRequestException(
+          `Stock insuficiente del insumo "${effect.supplyName}" al procesar la venta`,
+        );
+      }
+      await tx.supplyMovement.create({
+        data: {
+          tenantId: ctx.tenantId,
+          supplyId: effect.supplyId,
+          type: 'RECIPE_CONSUMPTION',
+          quantity: effect.quantity,
+          branchId: ctx.branchId,
+          referenceId: ctx.referenceId,
+          notes: this.note('Consumo receta', ctx),
+          createdById: ctx.userId,
+        },
+      });
+    }
+  }
+
+  /**
+   * Reverse a previous consumption for the same lines. Increments the exact same
+   * product/supply/branch quantities and writes DEVOLUCION / ADJUSTMENT
+   * movements. No stock guard — restoration never fails on availability.
+   */
+  async restore(
+    tx: Prisma.TransactionClient,
+    items: InventoryLineItem[],
+    ctx: InventoryContext,
+  ): Promise<void> {
+    const effects = await this.resolveEffects(tx, items);
+
+    for (const effect of effects.products.values()) {
+      await tx.product.update({
+        where: { id: effect.productId },
+        data: { stock: { increment: effect.quantity } },
+      });
+      await this.applyBranchInventoryDelta(tx, ctx, effect.productId, effect.quantity);
+      await tx.inventoryMovement.create({
+        data: {
+          tenantId: ctx.tenantId,
+          type: 'DEVOLUCION',
+          productId: effect.productId,
+          branchId: ctx.branchId,
+          quantity: effect.quantity,
+          referenceId: ctx.referenceId,
+          referenceType: ctx.referenceType ?? 'ORDER',
+          notes: this.note('Reversa', ctx),
+          createdById: ctx.userId,
+        },
+      });
+    }
+
+    for (const effect of effects.supplies.values()) {
+      await tx.supply.update({
+        where: { id: effect.supplyId },
+        data: { stock: { increment: effect.quantity } },
+      });
+      await tx.supplyMovement.create({
+        data: {
+          tenantId: ctx.tenantId,
+          supplyId: effect.supplyId,
+          type: 'ADJUSTMENT',
+          quantity: effect.quantity,
+          branchId: ctx.branchId,
+          referenceId: ctx.referenceId,
+          notes: this.note('Reversa consumo receta', ctx),
+          createdById: ctx.userId,
+        },
+      });
+    }
+  }
+
+  /**
+   * Pre-flight availability check without mutating anything. Resolves the full
+   * tree and verifies each aggregated product/supply has enough stock. Useful
+   * for surfacing clear errors before the financial part of a transaction runs.
+   */
+  async validate(tx: Prisma.TransactionClient, items: InventoryLineItem[]): Promise<void> {
+    const effects = await this.resolveEffects(tx, items);
+
+    for (const effect of effects.products.values()) {
+      const product = await tx.product.findUnique({
+        where: { id: effect.productId },
+        select: { stock: true },
+      });
+      if (product != null && Number(product.stock) < effect.quantity) {
+        throw new BadRequestException(
+          `Stock insuficiente para "${effect.productName}". ` +
+            `Disponible: ${product.stock}, necesario: ${effect.quantity}`,
+        );
+      }
+    }
+
+    for (const effect of effects.supplies.values()) {
+      const supply = await tx.supply.findUnique({
+        where: { id: effect.supplyId },
+        select: { stock: true },
+      });
+      if (supply != null && Number(supply.stock) < effect.quantity) {
+        throw new BadRequestException(
+          `Stock insuficiente del insumo "${effect.supplyName}". ` +
+            `Disponible: ${supply.stock}, necesario: ${effect.quantity.toFixed(3)}`,
+        );
+      }
+    }
+  }
+
+  /**
+   * Expand all lines into aggregated leaf effects. Aggregation by product/supply
+   * id means a sale that uses the same supply through several lines or combos
+   * produces a single, consistent movement — and the same aggregation is reused
+   * on restore, which is what guarantees symmetry.
+   */
+  private async resolveEffects(
+    tx: Prisma.TransactionClient,
+    items: InventoryLineItem[],
+  ): Promise<ResolvedEffects> {
+    const cache = new Map<string, LoadedProduct | null>();
+    const effects: ResolvedEffects = { products: new Map(), supplies: new Map() };
+
+    for (const item of items) {
+      if (item.itemType === 'SERVICE' || !item.productId) continue;
+      if (!Number.isFinite(item.quantity) || item.quantity <= 0) continue;
+      await this.expand(tx, item.productId, item.quantity, effects, cache, 0);
+    }
+
+    return effects;
+  }
+
+  private async expand(
+    tx: Prisma.TransactionClient,
+    productId: string,
+    multiplier: number,
+    effects: ResolvedEffects,
+    cache: Map<string, LoadedProduct | null>,
+    depth: number,
+  ): Promise<void> {
+    if (depth > MAX_COMBO_DEPTH) {
+      throw new BadRequestException(
+        'Combo demasiado anidado o con referencia circular; no se puede calcular el inventario',
+      );
+    }
+
+    const product = await this.loadProduct(tx, productId, cache);
+    if (!product) return;
+
+    switch (product.type) {
+      case ProductType.SIMPLE: {
+        if (!product.trackInventory) return;
+        const current = effects.products.get(product.id);
+        if (current) {
+          current.quantity += multiplier;
+        } else {
+          effects.products.set(product.id, {
+            productId: product.id,
+            productName: product.name,
+            quantity: multiplier,
+          });
+        }
+        return;
+      }
+
+      case ProductType.RECIPE: {
+        const recipeItems = product.recipe?.items ?? [];
+        if (recipeItems.length === 0) {
+          throw new BadRequestException(
+            `El producto "${product.name}" es de tipo receta pero no tiene ingredientes configurados`,
+          );
+        }
+        for (const ri of recipeItems) {
+          const stockUnit = ri.supply.baseUnit?.symbol ?? ri.supply.unit;
+          const needed =
+            ri.normalizedQuantity != null
+              ? Number(ri.normalizedQuantity) * multiplier
+              : safeConvertUnits(Number(ri.quantity) * multiplier, ri.unit, stockUnit);
+          const current = effects.supplies.get(ri.supply.id);
+          if (current) {
+            current.quantity += needed;
+          } else {
+            effects.supplies.set(ri.supply.id, {
+              supplyId: ri.supply.id,
+              supplyName: ri.supply.name,
+              quantity: needed,
+            });
+          }
+        }
+        return;
+      }
+
+      case ProductType.COMBO: {
+        for (const child of product.comboItems) {
+          await this.expand(
+            tx,
+            child.childProductId,
+            multiplier * child.quantity,
+            effects,
+            cache,
+            depth + 1,
+          );
+        }
+        return;
+      }
+
+      // SERVICE products carry no inventory.
+      default:
+        return;
+    }
+  }
+
+  private async loadProduct(
+    tx: Prisma.TransactionClient,
+    productId: string,
+    cache: Map<string, LoadedProduct | null>,
+  ): Promise<LoadedProduct | null> {
+    const cached = cache.get(productId);
+    if (cached !== undefined) return cached;
+
+    const product = (await tx.product.findUnique({
+      where: { id: productId },
+      select: PRODUCT_LOAD_SELECT,
+    })) as LoadedProduct | null;
+
+    cache.set(productId, product);
+    return product;
+  }
+
+  /**
+   * Decrement (delta < 0) or increment (delta > 0) per-branch inventory. Mirrors
+   * the legacy upsert behaviour: when no branch row exists yet it seeds from the
+   * product's current global stock so the branch figure stays consistent.
+   */
+  private async applyBranchInventoryDelta(
+    tx: Prisma.TransactionClient,
+    ctx: InventoryContext,
+    productId: string,
+    delta: number,
+  ): Promise<void> {
+    if (!ctx.branchId) return;
+
+    const updated = await tx.branchInventory.updateMany({
+      where: { branchId: ctx.branchId, productId },
+      data: { stock: { increment: delta } },
+    });
+    if (updated.count > 0) return;
+
+    const product = await tx.product.findUnique({
+      where: { id: productId },
+      select: { stock: true },
+    });
+    await tx.branchInventory.create({
+      data: {
+        branchId: ctx.branchId,
+        productId,
+        stock: product?.stock ?? 0,
+      },
+    });
+  }
+
+  private note(prefix: string, ctx: InventoryContext): string {
+    return ctx.note ? `${prefix}: ${ctx.note}` : prefix;
+  }
+}

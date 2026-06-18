@@ -95,6 +95,14 @@ export const ALL_PERMISSIONS: PermissionDef[] = [
   // comanda (restaurante)
   { key: 'comanda:view',   name: 'Acceder a Comandas',  description: 'Acceder al módulo de captura de comandas de restaurante', module: 'comanda', action: 'view'   },
   { key: 'comanda:manage', name: 'Administrar Comandas', description: 'Ver y gestionar todas las comandas del restaurante',       module: 'comanda', action: 'manage' },
+  // restaurant areas
+  { key: 'restaurant.areas:view',   name: 'Ver áreas de restaurante',   description: 'Ver listado de áreas (salón, terraza, etc.)', module: 'comanda', action: 'view'   },
+  { key: 'restaurant.areas:create', name: 'Crear áreas de restaurante', description: 'Crear nuevas áreas en el restaurante',        module: 'comanda', action: 'create' },
+  { key: 'restaurant.areas:update', name: 'Editar áreas de restaurante', description: 'Editar y activar/desactivar áreas',          module: 'comanda', action: 'update' },
+  // restaurant tables
+  { key: 'restaurant.tables:view',   name: 'Ver mesas',   description: 'Ver listado y estado de mesas', module: 'comanda', action: 'view'   },
+  { key: 'restaurant.tables:create', name: 'Crear mesas', description: 'Agregar nuevas mesas',          module: 'comanda', action: 'create' },
+  { key: 'restaurant.tables:update', name: 'Editar mesas', description: 'Editar mesas y cambiar estado', module: 'comanda', action: 'update' },
   // reports
   { key: 'reports:view', name: 'Ver reportes', module: 'reports', action: 'view' },
   // settings

@@ -8,6 +8,9 @@ import {
 
 const POLL_INTERVAL_MS = 15_000
 
+// Estados activos en el tablero de cocina (DiningOrder).
+const ACTIVE_STATUSES: KitchenOrderStatus[] = ['SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY']
+
 function beep() {
   try {
     const ctx = new AudioContext()
@@ -42,9 +45,6 @@ export function useKitchen() {
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const [updating, setUpdating] = useState<Record<string, boolean>>({})
   const [selectedOrder, setSelectedOrder] = useState<KitchenOrder | null>(null)
-  const [rejectTarget, setRejectTarget] = useState<KitchenOrder | null>(null)
-  const [rejectComment, setRejectComment] = useState('')
-  const [rejectError, setRejectError] = useState('')
   const knownIds = useRef<Set<string>>(new Set())
   const [tick, setTick] = useState(0)
 
@@ -92,30 +92,26 @@ export function useKitchen() {
   void tick
 
   const columns = useMemo(() => ({
-    PENDING:    orders.filter(o => o.kitchenStatus === 'PENDING'),
-    IN_PROGRESS:orders.filter(o => o.kitchenStatus === 'IN_PROGRESS'),
-    PAUSED:     orders.filter(o => o.kitchenStatus === 'PAUSED'),
-    READY:      orders.filter(o => o.kitchenStatus === 'READY'),
+    SENT_TO_KITCHEN: orders.filter(o => o.status === 'SENT_TO_KITCHEN'),
+    IN_PREPARATION:  orders.filter(o => o.status === 'IN_PREPARATION'),
+    READY:           orders.filter(o => o.status === 'READY'),
   }), [orders])
 
   const applyStatus = useCallback(async (
     order: KitchenOrder,
     status: KitchenOrderStatus,
-    comment?: string,
   ) => {
     setUpdating(p => ({ ...p, [order.id]: true }))
     try {
-      const updated = await updateKitchenStatus(order.id, status, comment)
+      const updated = await updateKitchenStatus(order.id, status)
       setOrders(prev => {
         const filtered = prev.filter(o => o.id !== updated.id)
-        const active: KitchenOrderStatus[] = ['PENDING', 'IN_PROGRESS', 'PAUSED', 'READY']
-        return active.includes(updated.kitchenStatus)
+        return ACTIVE_STATUSES.includes(updated.status)
           ? [...filtered, updated]
           : filtered
       })
       if (selectedOrder?.id === order.id) {
-        const active: KitchenOrderStatus[] = ['PENDING', 'IN_PROGRESS', 'PAUSED', 'READY']
-        setSelectedOrder(active.includes(updated.kitchenStatus) ? updated : null)
+        setSelectedOrder(ACTIVE_STATUSES.includes(updated.status) ? updated : null)
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Error al actualizar estado'
@@ -125,39 +121,15 @@ export function useKitchen() {
     }
   }, [selectedOrder])
 
-  const handleStart    = useCallback((o: KitchenOrder) => applyStatus(o, 'IN_PROGRESS'), [applyStatus])
-  const handlePause    = useCallback((o: KitchenOrder) => applyStatus(o, 'PAUSED'), [applyStatus])
-  const handleResume   = useCallback((o: KitchenOrder) => applyStatus(o, 'IN_PROGRESS'), [applyStatus])
-  const handleReady    = useCallback((o: KitchenOrder) => applyStatus(o, 'READY'), [applyStatus])
-  const handleDeliver  = useCallback((o: KitchenOrder) => applyStatus(o, 'DELIVERED'), [applyStatus])
-
-  const openReject = useCallback((o: KitchenOrder) => {
-    setRejectTarget(o)
-    setRejectComment('')
-    setRejectError('')
-  }, [])
-
-  const confirmReject = useCallback(async () => {
-    if (!rejectTarget) return
-    if (!rejectComment.trim()) { setRejectError('El comentario es obligatorio'); return }
-    await applyStatus(rejectTarget, 'REJECTED', rejectComment.trim())
-    setRejectTarget(null)
-    setRejectComment('')
-    setRejectError('')
-  }, [rejectTarget, rejectComment, applyStatus])
-
-  const cancelReject = useCallback(() => {
-    setRejectTarget(null)
-    setRejectComment('')
-    setRejectError('')
-  }, [])
+  const handleStart   = useCallback((o: KitchenOrder) => applyStatus(o, 'IN_PREPARATION'), [applyStatus])
+  const handleReady   = useCallback((o: KitchenOrder) => applyStatus(o, 'READY'), [applyStatus])
+  // Cocina entrega directo a caja: READY → READY_FOR_PAYMENT (sale del KDS, cobrable).
+  const handleDeliver = useCallback((o: KitchenOrder) => applyStatus(o, 'READY_FOR_PAYMENT'), [applyStatus])
 
   return {
     orders, columns, loading, error, lastRefresh, updating,
     selectedOrder, setSelectedOrder,
-    rejectTarget, rejectComment, setRejectComment, rejectError,
-    handleStart, handlePause, handleResume, handleReady, handleDeliver,
-    openReject, confirmReject, cancelReject,
+    handleStart, handleReady, handleDeliver,
     refresh: () => load(),
   }
 }
