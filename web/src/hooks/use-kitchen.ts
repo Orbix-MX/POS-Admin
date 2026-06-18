@@ -123,7 +123,8 @@ export function useKitchen() {
 
   const handleStart   = useCallback((o: KitchenOrder) => applyStatus(o, 'IN_PREPARATION'), [applyStatus])
   const handleReady   = useCallback((o: KitchenOrder) => applyStatus(o, 'READY'), [applyStatus])
-  const handleDeliver = useCallback((o: KitchenOrder) => applyStatus(o, 'DELIVERED'), [applyStatus])
+  // Cocina entrega directo a caja: READY → READY_FOR_PAYMENT (sale del KDS, cobrable).
+  const handleDeliver = useCallback((o: KitchenOrder) => applyStatus(o, 'READY_FOR_PAYMENT'), [applyStatus])
 
   return {
     orders, columns, loading, error, lastRefresh, updating,

@@ -200,7 +200,7 @@ function KitchenCard({ order, actions }: { order: KitchenOrder; actions: CardAct
             onClick={() => actions.onReady(order)} busy={actions.busy} />
         )}
         {order.status === 'READY' && (
-          <ActionBtn color="blue" icon={<Truck className="w-3.5 h-3.5" />} label="Entregar"
+          <ActionBtn color="blue" icon={<Truck className="w-3.5 h-3.5" />} label="Enviar a caja"
             onClick={() => actions.onDeliver(order)} busy={actions.busy} />
         )}
       </div>
@@ -366,7 +366,7 @@ function DetailModal({
               onClick={() => actions.onReady(order)} busy={actions.busy} />
           )}
           {order.status === 'READY' && (
-            <ModalBtn color="blue" icon={<Truck className="w-4 h-4" />} label="Marcar entregada"
+            <ModalBtn color="blue" icon={<Truck className="w-4 h-4" />} label="Enviar a caja"
               onClick={() => actions.onDeliver(order)} busy={actions.busy} />
           )}
         </div>

@@ -6,7 +6,7 @@ export type KitchenOrderStatus =
   | 'SENT_TO_KITCHEN'
   | 'IN_PREPARATION'
   | 'READY'
-  | 'DELIVERED'
+  | 'READY_FOR_PAYMENT'
 
 export interface KitchenSupply {
   id: string

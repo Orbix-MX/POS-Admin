@@ -18,8 +18,9 @@ const KITCHEN_FLOW: Record<string, DiningOrderStatus[]> = {
   OPEN: ['SENT_TO_KITCHEN', 'CANCELLED'],
   SENT_TO_KITCHEN: ['IN_PREPARATION', 'CANCELLED'],
   IN_PREPARATION: ['READY', 'CANCELLED'],
-  READY: ['DELIVERED'],
-  DELIVERED: [],
+  // Cocina entrega directo a caja: READY → READY_FOR_PAYMENT (no pasa por DELIVERED).
+  READY: ['READY_FOR_PAYMENT'],
+  READY_FOR_PAYMENT: [],
 };
 
 const NO_KITCHEN_FLOW: Record<string, DiningOrderStatus[]> = {
