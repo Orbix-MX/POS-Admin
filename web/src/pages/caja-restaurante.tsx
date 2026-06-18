@@ -2,13 +2,15 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   RefreshCw, CreditCard, Banknote, ArrowLeftRight,
   Search, X, Plus, Minus, Loader2, Check, UtensilsCrossed,
-  Clock, ShoppingBag, AlertCircle, ChevronRight,
+  Clock, ShoppingBag, AlertCircle, ChevronRight, PackagePlus, Lock, Trash2,
 } from 'lucide-react'
 import {
   getOpenTables, checkoutComanda, directCheckout, createComanda, fmtComandaMoney,
   type OpenTable, type DirectCheckoutItem,
 } from '@/services/retail/comanda-service'
 import { fetchProducts, type Product } from '@/services/retail/product-service'
+import { fetchSupplies, type Supply } from '@/services/retail/supplies-service'
+import { withdrawForSupplies } from '@/services/core/caja-service'
 import { printOrder } from '@/services/core/print-service'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -116,7 +118,7 @@ function TableCheckoutPanel({
     setLoading(true)
     setError(null)
     try {
-      await checkoutComanda(table.id, paymentMethod)
+      await checkoutComanda(table.id, paymentMethod, total)
       printOrder(table.id)
       setDone(true)
       setTimeout(onSuccess, 1500)
@@ -564,6 +566,218 @@ function EmptyState() {
   )
 }
 
+// ─── Retiro para insumos (con autorización admin) ──────────────────────────────
+
+interface WithdrawalLine {
+  key: string
+  supplyId: string
+  quantity: string
+  unitCost: string
+}
+
+function supplyUnitLabel(s: Supply): string {
+  return s.inventoryUnit?.symbol ?? s.unit
+}
+
+function newLine(): WithdrawalLine {
+  return { key: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, supplyId: '', quantity: '', unitCost: '' }
+}
+
+function SupplyWithdrawalModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [supplies, setSupplies] = useState<Supply[]>([])
+  const [loadingSupplies, setLoadingSupplies] = useState(true)
+  const [lines, setLines] = useState<WithdrawalLine[]>([newLine()])
+  const [notes, setNotes] = useState('')
+  const [authEmail, setAuthEmail] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchSupplies()
+      .then(res => setSupplies((res.data ?? []).filter(s => s.status === 'ACTIVE')))
+      .catch(() => setError('No se pudieron cargar los insumos'))
+      .finally(() => setLoadingSupplies(false))
+  }, [])
+
+  const setLine = (key: string, patch: Partial<WithdrawalLine>) =>
+    setLines(prev => prev.map(l => (l.key === key ? { ...l, ...patch } : l)))
+  const addLine = () => setLines(prev => [...prev, newLine()])
+  const removeLine = (key: string) => setLines(prev => (prev.length > 1 ? prev.filter(l => l.key !== key) : prev))
+
+  const lineTotal = (l: WithdrawalLine) => (Number(l.quantity) || 0) * (Number(l.unitCost) || 0)
+  const grandTotal = lines.reduce((acc, l) => acc + lineTotal(l), 0)
+
+  const handleSubmit = async () => {
+    setError(null)
+    const items = lines
+      .filter(l => l.supplyId && Number(l.quantity) > 0)
+      .map(l => ({ supplyId: l.supplyId, quantity: Number(l.quantity), lineCost: lineTotal(l) }))
+
+    if (items.length === 0) { setError('Agrega al menos un insumo con cantidad.'); return }
+    if (grandTotal <= 0) { setError('El monto del retiro debe ser mayor a 0.'); return }
+    if (!authEmail.trim() || !authPassword.trim()) { setError('Ingresa el correo y contraseña del administrador.'); return }
+
+    setSubmitting(true)
+    try {
+      await withdrawForSupplies({ items, notes: notes.trim() || undefined, authEmail: authEmail.trim(), authPassword })
+      onDone()
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string | string[] } }; message?: string }
+      const msg = err?.response?.data?.message
+      setError(Array.isArray(msg) ? msg.join(' ') : msg ?? err?.message ?? 'Error al registrar el retiro')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        className="bg-card border border-border rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden shadow-xl"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-border flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+              <PackagePlus className="w-5 h-5 text-orange-500" />
+            </div>
+            <div>
+              <div className="text-[15px] font-extrabold text-foreground">Retiro para insumos</div>
+              <div className="text-[11px] text-muted-foreground">Sale efectivo de caja y se suma al stock</div>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg border-none bg-transparent cursor-pointer text-muted-foreground hover:bg-muted">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+          {loadingSupplies ? (
+            <div className="flex items-center justify-center h-24 gap-2 text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" /><span className="text-sm">Cargando insumos…</span>
+            </div>
+          ) : (
+            <>
+              {lines.map(l => {
+                const supply = supplies.find(s => s.id === l.supplyId)
+                return (
+                  <div key={l.key} className="border border-border rounded-xl p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={l.supplyId}
+                        onChange={e => setLine(l.key, { supplyId: e.target.value })}
+                        className="flex-1 min-w-0 px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
+                      >
+                        <option value="">Selecciona un insumo…</option>
+                        {supplies.map(s => (
+                          <option key={s.id} value={s.id}>{s.name} ({supplyUnitLabel(s)})</option>
+                        ))}
+                      </select>
+                      {lines.length > 1 && (
+                        <button onClick={() => removeLine(l.key)} className="p-1.5 rounded-lg border-none bg-transparent cursor-pointer text-muted-foreground hover:text-red-500 hover:bg-muted shrink-0">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                          Cantidad {supply ? `(${supplyUnitLabel(supply)})` : ''}
+                        </label>
+                        <input
+                          type="number" min={0} step="any" value={l.quantity}
+                          onChange={e => setLine(l.key, { quantity: e.target.value })}
+                          placeholder="0"
+                          className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                          Costo unitario
+                        </label>
+                        <input
+                          type="number" min={0} step="any" value={l.unitCost}
+                          onChange={e => setLine(l.key, { unitCost: e.target.value })}
+                          placeholder="0.00"
+                          className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                      </div>
+                    </div>
+                    <div className="text-right text-[12px] text-muted-foreground">
+                      Subtotal: <span className="font-bold text-foreground">{fmtComandaMoney(lineTotal(l))}</span>
+                    </div>
+                  </div>
+                )
+              })}
+
+              <button
+                onClick={addLine}
+                className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border-2 border-dashed border-border text-[12px] font-semibold text-muted-foreground hover:border-primary/50 hover:text-foreground cursor-pointer transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" /> Agregar otro insumo
+              </button>
+
+              <div>
+                <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                  Notas / proveedor (opcional)
+                </label>
+                <input
+                  type="text" value={notes} onChange={e => setNotes(e.target.value)}
+                  placeholder="Ej. Verdulería La Central"
+                  className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
+                />
+              </div>
+
+              {/* Authorization */}
+              <div className="border border-orange-200 dark:border-orange-900/40 bg-orange-50/50 dark:bg-orange-900/10 rounded-xl p-3 space-y-2">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-orange-600 dark:text-orange-400">
+                  <Lock className="w-3.5 h-3.5" /> Autorización de administrador
+                </div>
+                <input
+                  type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)}
+                  placeholder="Correo del administrador" autoComplete="off"
+                  className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
+                />
+                <input
+                  type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)}
+                  placeholder="Contraseña" autoComplete="new-password"
+                  className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
+                />
+              </div>
+
+              {error && (
+                <div className="flex items-start gap-2 text-red-600 text-[12px] bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" /> {error}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-border shrink-0 space-y-3">
+          <div className="flex justify-between items-center">
+            <span className="text-[12px] font-semibold text-muted-foreground">Total a retirar</span>
+            <span className="text-xl font-extrabold text-orange-500">{fmtComandaMoney(grandTotal)}</span>
+          </div>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting || loadingSupplies}
+            className="w-full flex items-center justify-center gap-2 py-3 bg-orange-500 text-white rounded-xl text-[14px] font-bold cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            {submitting
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> Registrando…</>
+              : <><Banknote className="w-4 h-4" /> Retirar {fmtComandaMoney(grandTotal)}</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function CajaRestaurante() {
@@ -571,6 +785,8 @@ export function CajaRestaurante() {
   const [loading, setLoading] = useState(true)
   const [panelMode, setPanelMode] = useState<PanelMode>('empty')
   const [selectedTable, setSelectedTable] = useState<OpenTable | null>(null)
+  const [withdrawalOpen, setWithdrawalOpen] = useState(false)
+  const [withdrawalToast, setWithdrawalToast] = useState<string | null>(null)
 
   const loadTables = useCallback(async () => {
     setLoading(true)
@@ -620,14 +836,23 @@ export function CajaRestaurante() {
               </span>
             )}
           </div>
-          <button
-            onClick={loadTables}
-            disabled={loading}
-            title="Actualizar"
-            className="p-1.5 rounded-lg border-none bg-transparent cursor-pointer text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-40"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setWithdrawalOpen(true)}
+              title="Retiro para insumos (requiere autorización de administrador)"
+              className="p-1.5 rounded-lg border-none bg-transparent cursor-pointer text-muted-foreground hover:bg-orange-50 dark:hover:bg-orange-900/20 hover:text-orange-500 transition-colors"
+            >
+              <PackagePlus className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={loadTables}
+              disabled={loading}
+              title="Actualizar"
+              className="p-1.5 rounded-lg border-none bg-transparent cursor-pointer text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-40"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
         </div>
 
         {/* Cobro directo button */}
@@ -688,6 +913,25 @@ export function CajaRestaurante() {
           <DirectCheckoutPanel onSuccess={handleDirectSuccess} />
         )}
       </div>
+
+      {/* Retiro para insumos modal */}
+      {withdrawalOpen && (
+        <SupplyWithdrawalModal
+          onClose={() => setWithdrawalOpen(false)}
+          onDone={() => {
+            setWithdrawalOpen(false)
+            setWithdrawalToast('Retiro registrado: efectivo descontado de caja y stock actualizado.')
+            setTimeout(() => setWithdrawalToast(null), 4000)
+          }}
+        />
+      )}
+
+      {/* Toast de éxito */}
+      {withdrawalToast && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-green-600 text-white px-4 py-3 rounded-xl shadow-lg text-[13px] font-semibold">
+          <Check className="w-4 h-4" /> {withdrawalToast}
+        </div>
+      )}
     </div>
   )
 }

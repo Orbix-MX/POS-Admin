@@ -66,3 +66,15 @@ export async function printReceiptForOrder(
   )
   return data
 }
+
+/** Certificado público para firmar peticiones de QZ Tray. `configured=false` → no hay firma en el servidor. */
+export async function fetchQzCertificate(): Promise<{ certificate: string; configured: boolean }> {
+  const { data } = await api.get<{ certificate: string; configured: boolean }>('/printer-configs/qz/certificate')
+  return data
+}
+
+/** Pide al servidor la firma RSA-SHA512 (base64) de la petición de QZ Tray. */
+export async function signQzRequest(request: string): Promise<string> {
+  const { data } = await api.post<{ signature: string }>('/printer-configs/qz/sign', { request })
+  return data.signature
+}

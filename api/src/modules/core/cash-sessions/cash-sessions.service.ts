@@ -9,7 +9,9 @@ import { OpenCashSessionDto } from './dto/open-session.dto';
 import { CloseCashSessionDto } from './dto/close-session.dto';
 import { CloseWithAuthDto } from './dto/close-with-auth.dto';
 import { QueryCashSessionsDto } from './dto/query-sessions.dto';
+import { WithdrawForSuppliesDto } from './dto/withdraw-supplies.dto';
 import { roundMoney } from '../../../common/utils/money.util';
+import { convertToBaseUnit } from '../../../common/helpers/unit-conversion';
 
 const CASH_INCOME_TYPES = ['SALE', 'CXC_PAYMENT', 'INCOME'] as const;
 const CASH_EXPENSE_TYPES = ['SUPPLIER_PAYMENT', 'EXPENSE'] as const;
@@ -299,6 +301,140 @@ export class CashSessionsService {
         authorizedBy: { select: { id: true, email: true } },
         movements: true,
       },
+    });
+  }
+
+  /**
+   * Verifica credenciales de un autorizador (admin): email + password + que
+   * pertenezca al tenant y tenga el permiso requerido (SUPER_ADMIN lo omite).
+   * Devuelve el usuario autorizador.
+   */
+  private async verifyAuthorizer(
+    tenantId: string,
+    authEmail: string,
+    authPassword: string,
+    requiredPermission: string,
+  ) {
+    const user = await this.prisma.user.findFirst({ where: { email: authEmail } });
+    if (!user) throw new UnauthorizedException('Credenciales incorrectas');
+
+    const passwordValid = await bcrypt.compare(authPassword, user.password);
+    if (!passwordValid) throw new UnauthorizedException('Credenciales incorrectas');
+
+    const membership = await this.prisma.tenantMembership.findFirst({
+      where: { userId: user.id, tenantId },
+    });
+    if (!membership) {
+      throw new UnauthorizedException('El usuario autorizador no pertenece a esta organización');
+    }
+
+    if (user.role !== 'SUPER_ADMIN') {
+      const perms = await this.getEffectivePermissions(user.id, tenantId);
+      if (!perms.includes(requiredPermission)) {
+        throw new ForbiddenException('El usuario autorizador no tiene permiso para autorizar esta operación');
+      }
+    }
+
+    return user;
+  }
+
+  /**
+   * Retiro de efectivo de la caja para compra de insumos, con autorización de
+   * administrador (mismo permiso que el cierre: pos.cash:close). Registra un
+   * egreso (EXPENSE) y suma el stock comprado a cada insumo con su movimiento
+   * de tipo PURCHASE. Todo en una transacción.
+   */
+  async withdrawForSupplies(dto: WithdrawForSuppliesDto) {
+    const tenantId = this.tenantContext.requireTenantId();
+    const userId = this.auditContext.getUserId() ?? null;
+    const branchId = this.tenantContext.getBranchId() ?? null;
+
+    // 1. Autorización del administrador
+    const authorizer = await this.verifyAuthorizer(
+      tenantId,
+      dto.authEmail,
+      dto.authPassword,
+      'pos.cash:close',
+    );
+
+    // 2. Debe existir sesión de caja abierta
+    const session = await this.prisma.cashSession.findFirst({
+      where: { tenantId, branchId: branchId ?? undefined, status: 'ABIERTA' },
+      include: { movements: true },
+    });
+    if (!session) {
+      throw new BadRequestException('No hay sesión de caja activa. Abre la caja antes de retirar efectivo.');
+    }
+
+    // 3. Cargar y validar insumos
+    const supplyIds = [...new Set(dto.items.map((i) => i.supplyId))];
+    const supplies = await this.prisma.supply.findMany({
+      where: { id: { in: supplyIds }, tenantId },
+    });
+    if (supplies.length !== supplyIds.length) {
+      throw new NotFoundException('Uno o más insumos no existen');
+    }
+    const supplyMap = new Map(supplies.map((s) => [s.id, s]));
+
+    const total = roundMoney(dto.items.reduce((sum, i) => sum + i.lineCost, 0));
+    if (total <= 0) throw new BadRequestException('El monto del retiro debe ser mayor a 0');
+
+    // 4. Validar efectivo disponible (MXN) en la caja
+    const movements = session.movements as unknown as MovementLike[];
+    const expectedCashMxn = this.calculateExpectedCash(Number(session.openingAmount), movements, 'MXN');
+    if (total > expectedCashMxn) {
+      throw new BadRequestException(
+        `Efectivo insuficiente en caja. Disponible: $${expectedCashMxn.toFixed(2)}, retiro solicitado: $${total.toFixed(2)}`,
+      );
+    }
+
+    // 5. Transacción: egreso + alta de stock de insumos
+    return this.prisma.$transaction(async (tx) => {
+      const cashMovement = await tx.cashMovement.create({
+        data: {
+          tenantId,
+          cashSessionId: session.id,
+          type: 'EXPENSE',
+          currency: 'MXN',
+          amount: total,
+          paymentMethod: 'CASH',
+          referenceType: 'SUPPLY_PURCHASE',
+          notes: `Compra de insumos — autorizado por ${authorizer.email}${dto.notes ? ` — ${dto.notes}` : ''}`,
+          createdById: userId,
+        },
+      });
+
+      for (const line of dto.items) {
+        const supply = supplyMap.get(line.supplyId)!;
+        const convFactor = Number(supply.conversionFactor) || 1;
+        // La cantidad se captura en la unidad de inventario; el stock se guarda en unidad base
+        const quantityInBase = supply.baseUnitId
+          ? convertToBaseUnit(line.quantity, convFactor)
+          : line.quantity;
+
+        await tx.supply.update({
+          where: { id: supply.id },
+          data: {
+            stock: { increment: quantityInBase },
+            updatedById: userId,
+          },
+        });
+
+        await tx.supplyMovement.create({
+          data: {
+            tenantId,
+            supplyId: supply.id,
+            type: 'PURCHASE',
+            quantity: quantityInBase,
+            referenceId: cashMovement.id,
+            notes: `Compra desde caja (${line.quantity} ${supply.unit}, $${roundMoney(line.lineCost).toFixed(2)})`,
+            ...(branchId && { branchId }),
+            ...(userId && { createdById: userId }),
+          },
+        });
+      }
+
+      return { cashMovement, total, itemsCount: dto.items.length };
     });
   }
 
