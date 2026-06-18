@@ -1,23 +1,12 @@
-import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsEnum } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { DiningOrderStatus } from '@prisma/client';
 
-export enum KitchenOrderStatus {
-  PENDING    = 'PENDING',
-  IN_PROGRESS = 'IN_PROGRESS',
-  PAUSED     = 'PAUSED',
-  READY      = 'READY',
-  REJECTED   = 'REJECTED',
-  DELIVERED  = 'DELIVERED',
-}
-
+// El KDS opera sobre DiningOrder (fuente única de cocina). Los estados válidos
+// los valida DiningOrdersService.changeStatus contra el flujo de cocina:
+// SENT_TO_KITCHEN → IN_PREPARATION → READY → DELIVERED.
 export class UpdateKitchenStatusDto {
-  @ApiProperty({ enum: KitchenOrderStatus })
-  @IsEnum(KitchenOrderStatus)
-  status: KitchenOrderStatus;
-
-  @ApiPropertyOptional({ maxLength: 500, description: 'Obligatorio si status=REJECTED' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  rejectionComment?: string;
+  @ApiProperty({ enum: DiningOrderStatus })
+  @IsEnum(DiningOrderStatus)
+  status: DiningOrderStatus;
 }

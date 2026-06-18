@@ -4,6 +4,8 @@ import { RestaurantService } from './restaurant.service';
 import { PrismaService } from '../../database/prisma.service';
 import { TenantContextService } from '../../common/context/tenant-context.service';
 import { AuditContextService } from '../../common/context/audit-context.service';
+import { InventoryConsumptionEngine } from '../retail/inventory/inventory-consumption.engine';
+import { OrderCheckoutEngine } from '../retail/checkout/order-checkout.engine';
 
 const TENANT_ID = 'tenant-abc';
 const BRANCH_ID = 'branch-xyz';
@@ -47,6 +49,18 @@ const mockAuditContext = {
   getUserId: jest.fn().mockReturnValue(USER_ID),
 };
 
+const mockInventory = {
+  consume: jest.fn(),
+  restore: jest.fn(),
+  validate: jest.fn(),
+};
+
+const mockCheckout = {
+  resolveActiveCashSession: jest.fn().mockResolvedValue({ id: 'session-1' }),
+  createPayments: jest.fn(),
+  createCashMovements: jest.fn(),
+};
+
 function makeComandaDto(overrides: Record<string, unknown> = {}) {
   return {
     tableNumber:    '5',
@@ -87,6 +101,8 @@ describe('RestaurantService', () => {
         { provide: PrismaService,        useValue: mockPrismaService  },
         { provide: TenantContextService, useValue: mockTenantContext  },
         { provide: AuditContextService,  useValue: mockAuditContext   },
+        { provide: InventoryConsumptionEngine, useValue: mockInventory },
+        { provide: OrderCheckoutEngine, useValue: mockCheckout },
       ],
     }).compile();
 
@@ -96,6 +112,7 @@ describe('RestaurantService', () => {
     mockTenantContext.requireTenantId.mockReturnValue(TENANT_ID);
     mockTenantContext.getBranchId.mockReturnValue(BRANCH_ID);
     mockAuditContext.getUserId.mockReturnValue(USER_ID);
+    mockCheckout.resolveActiveCashSession.mockResolvedValue({ id: 'session-1' });
     mockPrismaService.$transaction.mockImplementation(
       (cb: (tx: object) => Promise<unknown>) => cb(txMock),
     );
@@ -230,7 +247,8 @@ describe('RestaurantService', () => {
   // ─── checkoutComanda ─────────────────────────────────────────────────────────
 
   describe('checkoutComanda', () => {
-    const dto = { paymentMethod: 'CASH' as const };
+    // Multi-payment dto matching CheckoutComandaDto; total order is 200.
+    const dto = { payments: [{ paymentMethod: 'CASH', amount: 200 }] };
 
     it('throws NotFoundException when order not found', async () => {
       mockPrismaService.order.findFirst.mockResolvedValue(null);
@@ -254,36 +272,43 @@ describe('RestaurantService', () => {
 
     it('throws BadRequestException when no active cash session', async () => {
       mockPrismaService.order.findFirst.mockResolvedValue(makeOrder({ items: [] }));
-      mockPrismaService.cashSession.findFirst.mockResolvedValue(null);
+      mockCheckout.resolveActiveCashSession.mockRejectedValue(new BadRequestException('no session'));
 
       await expect(service.checkoutComanda(ORDER_ID, dto)).rejects.toThrow(BadRequestException);
     });
 
-    it('throws BadRequestException when insufficient stock for tracked product', async () => {
-      const order = makeOrder({
-        items: [{ id: 'item-1', itemType: 'PRODUCT', productId: 'prod-1', quantity: 5, name: 'Burger' }],
-      });
+    it('throws BadRequestException when payment is insufficient', async () => {
+      mockPrismaService.order.findFirst.mockResolvedValue(makeOrder({ items: [] }));
+
+      await expect(
+        service.checkoutComanda(ORDER_ID, { payments: [{ paymentMethod: 'CASH', amount: 50 }] }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('delegates inventory consumption to the engine on checkout', async () => {
+      const items = [{ id: 'item-1', itemType: 'PRODUCT', productId: 'prod-1', quantity: 2, name: 'Burger' }];
+      const order = makeOrder({ items });
       mockPrismaService.order.findFirst.mockResolvedValue(order);
-      mockPrismaService.cashSession.findFirst.mockResolvedValue({ id: 'session-1' });
-      txMock.product.findUnique.mockResolvedValue({ trackInventory: true, stock: 2, name: 'Burger' });
-      txMock.product.updateMany.mockResolvedValue({ count: 0 }); // count=0 → insufficient
+      txMock.order.update.mockResolvedValue(makeOrder({ status: 'DELIVERED', paymentStatus: 'PAID' }));
 
-      await expect(service.checkoutComanda(ORDER_ID, dto)).rejects.toThrow(BadRequestException);
+      await service.checkoutComanda(ORDER_ID, dto);
+
+      expect(mockInventory.consume).toHaveBeenCalledTimes(1);
+      const [, lines, ctx] = mockInventory.consume.mock.calls[0];
+      expect(lines).toEqual([{ productId: 'prod-1', quantity: 2, itemType: 'PRODUCT' }]);
+      expect(ctx).toEqual(expect.objectContaining({ referenceId: ORDER_ID, referenceType: 'ORDER' }));
     });
 
-    it('completes checkout: creates payment, cashMovement, updates order to DELIVERED+PAID', async () => {
+    it('completes checkout: delegates payment to engine, updates order to DELIVERED+PAID', async () => {
       const order = makeOrder({ items: [] });
       mockPrismaService.order.findFirst.mockResolvedValue(order);
-      mockPrismaService.cashSession.findFirst.mockResolvedValue({ id: 'session-1' });
-      txMock.payment.create.mockResolvedValue({});
-      txMock.cashMovement.create.mockResolvedValue({});
       const finalOrder = makeOrder({ status: 'DELIVERED', paymentStatus: 'PAID' });
       txMock.order.update.mockResolvedValue(finalOrder);
 
       const result = await service.checkoutComanda(ORDER_ID, dto);
 
-      expect(txMock.payment.create).toHaveBeenCalledTimes(1);
-      expect(txMock.cashMovement.create).toHaveBeenCalledTimes(1);
+      expect(mockCheckout.createPayments).toHaveBeenCalledTimes(1);
+      expect(mockCheckout.createCashMovements).toHaveBeenCalledTimes(1);
       expect(txMock.order.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ status: 'DELIVERED', paymentStatus: 'PAID' }),
@@ -291,37 +316,6 @@ describe('RestaurantService', () => {
       );
       expect(result.status).toBe('DELIVERED');
       expect(result.paymentStatus).toBe('PAID');
-    });
-
-    it('skips stock decrement for non-tracked products', async () => {
-      const order = makeOrder({
-        items: [{ id: 'item-1', itemType: 'PRODUCT', productId: 'prod-1', quantity: 10, name: 'Agua' }],
-      });
-      mockPrismaService.order.findFirst.mockResolvedValue(order);
-      mockPrismaService.cashSession.findFirst.mockResolvedValue({ id: 'session-1' });
-      txMock.product.findUnique.mockResolvedValue({ trackInventory: false, stock: 0, name: 'Agua' });
-      txMock.payment.create.mockResolvedValue({});
-      txMock.cashMovement.create.mockResolvedValue({});
-      txMock.order.update.mockResolvedValue(makeOrder({ status: 'DELIVERED', paymentStatus: 'PAID' }));
-
-      await service.checkoutComanda(ORDER_ID, dto);
-
-      expect(txMock.product.updateMany).not.toHaveBeenCalled();
-    });
-
-    it('skips product lookup for SERVICE items', async () => {
-      const order = makeOrder({
-        items: [{ id: 'item-1', itemType: 'SERVICE', productId: null, quantity: 1, name: 'Mesero' }],
-      });
-      mockPrismaService.order.findFirst.mockResolvedValue(order);
-      mockPrismaService.cashSession.findFirst.mockResolvedValue({ id: 'session-1' });
-      txMock.payment.create.mockResolvedValue({});
-      txMock.cashMovement.create.mockResolvedValue({});
-      txMock.order.update.mockResolvedValue(makeOrder({ status: 'DELIVERED', paymentStatus: 'PAID' }));
-
-      await service.checkoutComanda(ORDER_ID, dto);
-
-      expect(txMock.product.findUnique).not.toHaveBeenCalled();
     });
   });
 });

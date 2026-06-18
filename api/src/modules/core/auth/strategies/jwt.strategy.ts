@@ -10,13 +10,16 @@ const ALLOWED_TENANT_STATUSES = ['ACTIVE', 'TRIAL'] as const;
 
 export interface JwtPayload {
   sub: string;
-  email: string;
+  email?: string;
   jti?: string;
   tenantId?: string;
   tenantRole?: TenantRole;
   branchId?: string;
   plan?: TenantPlan;
   enabledModules?: string[];
+  permissions?: string[];
+  /** Token kind. 'enroll' = exchange-only. 'operator' = device employee session. */
+  typ?: 'enroll' | 'operator';
   exp?: number;
 }
 
@@ -35,6 +38,24 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload) {
+    // Enrollment tokens are exchange-only — never authenticate requests.
+    if (payload.typ === 'enroll') {
+      throw new UnauthorizedException('Invalid token type');
+    }
+
+    // Operator tokens (device PIN session) carry employee identity, not user identity.
+    if (payload.typ === 'operator') {
+      return {
+        id: payload.sub,
+        role: 'DEVICE_OPERATOR' as const,
+        tenantId: payload.tenantId,
+        branchId: payload.branchId,
+        plan: payload.plan,
+        enabledModules: payload.enabledModules ?? [],
+        permissions: payload.permissions ?? [],
+      };
+    }
+
     if (payload.jti && this.tokenBlacklist.isRevoked(payload.jti)) {
       throw new UnauthorizedException('Token has been revoked');
     }

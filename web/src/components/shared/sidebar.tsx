@@ -4,7 +4,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   LayoutDashboard, ShoppingBag, ShoppingCart, Package,
   Users, Truck, FileText, Settings, Shield,
-  ChevronDown, LogOut, Landmark, Receipt, TrendingUp, Wrench, UserCheck, MapPin, CreditCard, FlaskConical, ChefHat,
+  ChevronDown, LogOut, Landmark, Receipt, TrendingUp, Wrench, UserCheck, MapPin, CreditCard, FlaskConical, ChefHat, LayoutGrid, Grid3x3,
 } from 'lucide-react'
 
 type NavItem = {
@@ -70,14 +70,19 @@ const ALL_NAV: NavGroup[] = [
       { module: 'ordenes-trabajo', label: 'Órdenes de Trabajo', icon: Wrench, path: '/ordenes-trabajo' },
       { module: 'empleados', label: 'Capital Humano', icon: UserCheck, path: '/empleados' },
       { module: 'caja-restaurante', label: 'Caja Restaurante', icon: CreditCard, path: '/caja-restaurante' },
+      { module: 'dining-areas',      label: 'Áreas',   icon: LayoutGrid, path: '/dining-areas',      verticalGuard: (hasVertical: (v: BusinessVertical) => boolean) => hasVertical('RESTAURANT') },
+      { module: 'restaurant-tables', label: 'Mesas',   icon: Grid3x3,    path: '/restaurant-tables', verticalGuard: (hasVertical: (v: BusinessVertical) => boolean) => hasVertical('RESTAURANT') },
+      { module: 'comanda',           label: 'Comanda', icon: ChefHat,    path: '/comanda',            verticalGuard: (hasVertical: (v: BusinessVertical) => boolean) => hasVertical('RESTAURANT') },
       {
+        // El gate autoritativo es enabledModules.includes('kitchen') (se enciende
+        // al habilitar el módulo). No usar featureGuard('KITCHEN'): 'KITCHEN' es un
+        // TenantFeature (Tenant.enabledFeatures) distinto del módulo y se desincroniza.
         module: 'kitchen',
         label: 'Cocina',
         icon: ChefHat,
         path: '/kitchen',
         permission: 'kitchen:view',
-        featureGuard: (hasFeature: (f: string) => boolean) => hasFeature('KITCHEN'),
-        verticalGuard: (hasVertical: (v: string) => boolean) => hasVertical('RESTAURANT'),
+        verticalGuard: (hasVertical: (v: BusinessVertical) => boolean) => hasVertical('RESTAURANT'),
       },
     ],
   },

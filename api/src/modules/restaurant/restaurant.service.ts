@@ -9,6 +9,8 @@ import { CreateComandaDto } from './dto/create-comanda.dto';
 import { AddItemsToComandaDto } from './dto/add-items-to-comanda.dto';
 import { CheckoutComandaDto } from './dto/checkout-comanda.dto';
 import { DirectCheckoutDto } from './dto/direct-checkout.dto';
+import { InventoryConsumptionEngine } from '../retail/inventory/inventory-consumption.engine';
+import { OrderCheckoutEngine } from '../retail/checkout/order-checkout.engine';
 
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
@@ -20,6 +22,8 @@ export class RestaurantService {
     private prisma: PrismaService,
     private auditContext: AuditContextService,
     private tenantContext: TenantContextService,
+    private inventory: InventoryConsumptionEngine,
+    private checkout: OrderCheckoutEngine,
   ) {}
 
   async createComanda(dto: CreateComandaDto) {
@@ -168,13 +172,7 @@ export class RestaurantService {
       throw new BadRequestException('La comanda ya fue cobrada o no está pendiente de pago');
     }
 
-    const session = await this.prisma.cashSession.findFirst({
-      where: { tenantId, branchId: branchId ?? undefined, status: 'ABIERTA' },
-      select: { id: true },
-    });
-    if (!session) {
-      throw new BadRequestException('No hay sesión de caja activa. Abre la caja antes de cobrar.');
-    }
+    const session = await this.checkout.resolveActiveCashSession(tenantId, branchId);
 
     const netAmount = roundMoney(Number(order.total));
     const totalPagado = roundMoney(dto.payments.reduce((s, p) => s + p.amount, 0));
@@ -255,13 +253,7 @@ export class RestaurantService {
     const userId = this.auditContext.getUserId() ?? null;
 
     // Verify active cash session before entering the transaction
-    const session = await this.prisma.cashSession.findFirst({
-      where: { tenantId, branchId: branchId ?? undefined, status: 'ABIERTA' },
-      select: { id: true },
-    });
-    if (!session) {
-      throw new BadRequestException('No hay sesión de caja activa. Abre la caja antes de cobrar.');
-    }
+    const session = await this.checkout.resolveActiveCashSession(tenantId, branchId);
 
     const subtotal = roundMoney(
       dto.items.reduce((sum, item) => sum + item.price * item.quantity, 0),
