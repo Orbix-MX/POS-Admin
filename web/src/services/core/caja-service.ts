@@ -142,6 +142,30 @@ export async function createManualMovement(input: ManualMovementInput): Promise<
   return data
 }
 
+export interface SupplyPurchaseLine {
+  supplyId: string
+  quantity: number
+  lineCost: number
+}
+
+export interface WithdrawForSuppliesInput {
+  items: SupplyPurchaseLine[]
+  notes?: string
+  authEmail: string
+  authPassword: string
+}
+
+/** Retiro de efectivo de la caja para compra de insumos. Requiere password admin. */
+export async function withdrawForSupplies(
+  input: WithdrawForSuppliesInput,
+): Promise<{ total: number; itemsCount: number }> {
+  const { data } = await api.post<{ total: number; itemsCount: number }>(
+    '/cash-sessions/active/withdraw-supplies',
+    input,
+  )
+  return data
+}
+
 // ---- helpers ----
 
 export const MOVEMENT_TYPE_LABELS: Record<CashMovementType, string> = {

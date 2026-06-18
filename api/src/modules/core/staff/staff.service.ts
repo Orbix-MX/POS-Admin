@@ -108,6 +108,24 @@ export class StaffService {
     };
   }
 
+  /**
+   * Authorize an employee by PIN under an existing (user) session. Unlike
+   * `pinLogin`, this does NOT mint a JWT and does NOT require a device — it only
+   * resolves which active employee owns the PIN within the current tenant, so the
+   * web comanda can attribute dining orders to a waiter (Employee). The caller is
+   * already authenticated as a user; the PIN just selects the operating waiter.
+   */
+  async verifyPin(tenantId: string, pin: string) {
+    const employee = await this.prisma.employee.findFirst({
+      where: { tenantId, pinHash: this.hashPin(tenantId, pin), status: 'ACTIVE' },
+      select: { id: true, firstName: true, lastName: true, employeeNumber: true },
+    });
+    if (!employee) {
+      throw new UnauthorizedException({ code: 'PIN_INVALID', message: 'PIN incorrecto.' });
+    }
+    return { employee };
+  }
+
   /** Admin: set/replace an employee's PIN (and optional operative role). */
   async assignPin(tenantId: string, employeeId: string, pin: string, roleId?: string) {
     if (!/^\d{4,6}$/.test(pin)) {

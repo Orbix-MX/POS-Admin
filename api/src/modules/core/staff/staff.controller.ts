@@ -2,7 +2,7 @@ import { Controller, Post, Patch, Delete, Body, Param, UseGuards } from '@nestjs
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 import { StaffService } from './staff.service';
-import { PinLoginDto, AssignPinDto } from './dto/staff.dto';
+import { PinLoginDto, AssignPinDto, VerifyPinDto } from './dto/staff.dto';
 import { Public } from '../../../common/decorators/public.decorator';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 
@@ -22,6 +22,17 @@ export class StaffController {
   @ApiOperation({ summary: 'Operative PIN login (device authorized) — returns operator + permissions' })
   pinLogin(@Body() dto: PinLoginDto) {
     return this.staffService.pinLogin(dto.deviceToken, dto.pin);
+  }
+
+  // Authorize a waiter by PIN under the current (user) session — no JWT minted.
+  // Used by the web comanda to attribute dining orders to an Employee.
+  @ApiBearerAuth()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('pin-verify')
+  @ApiOperation({ summary: 'Verify an operative PIN and return the employee (no token)' })
+  verifyPin(@Body() dto: VerifyPinDto) {
+    return this.staffService.verifyPin(this.tenantContext.requireTenantId(), dto.pin);
   }
 
   // ── Admin (web): manage employee PINs ────────────────────────────────────────

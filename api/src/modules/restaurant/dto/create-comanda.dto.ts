@@ -63,11 +63,12 @@ export class CreateComandaDto {
   @MaxLength(50)
   employeeNumber?: string;
 
-  @ApiProperty({ description: 'Número de personas en la mesa', minimum: 1 })
+  @ApiPropertyOptional({ description: 'Número de personas en la mesa (omitir en ventas de mostrador)', minimum: 1 })
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  guestCount: number;
+  guestCount?: number;
 
   @ApiProperty({ type: [ComandaItemDto] })
   @IsArray()

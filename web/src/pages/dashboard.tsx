@@ -86,8 +86,8 @@ function DynamicDashboard({
           cols={{ lg: 12, md: 6, sm: 2, xs: 2 }}
           rowHeight={60}
           margin={[16, 16] as [number, number]}
-          isDraggable={false}
-          isResizable={false}
+          dragConfig={{ enabled: false }}
+          resizeConfig={{ enabled: false }}
         >
           {widgets.map(widget => (
             <div key={widget.id} className="h-full">

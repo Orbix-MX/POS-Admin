@@ -86,3 +86,9 @@ export class PrintReceiptDto {
   @IsEnum(PrinterType)
   printerType?: PrinterType;
 }
+
+export class QzSignDto {
+  @IsString()
+  @IsNotEmpty()
+  request: string;
+}

@@ -8,5 +8,6 @@ import { CheckoutModule } from '../../retail/checkout/checkout.module';
   imports: [InventoryModule, CheckoutModule],
   controllers: [DiningOrdersController],
   providers: [DiningOrdersService],
+  exports: [DiningOrdersService],
 })
 export class DiningOrdersModule {}

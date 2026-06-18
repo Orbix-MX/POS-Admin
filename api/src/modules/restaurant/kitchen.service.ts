@@ -1,54 +1,62 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
+import { DiningOrderStatus } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
-import { AuditContextService } from '../../common/context/audit-context.service';
 import { TenantContextService } from '../../common/context/tenant-context.service';
-import { UpdateKitchenStatusDto, KitchenOrderStatus } from './dto/update-kitchen-status.dto';
+import { DiningOrdersService } from './dining-orders/dining-orders.service';
 
-const ACTIVE_KITCHEN_STATUSES: KitchenOrderStatus[] = [
-  KitchenOrderStatus.PENDING,
-  KitchenOrderStatus.IN_PROGRESS,
-  KitchenOrderStatus.PAUSED,
-  KitchenOrderStatus.READY,
+/**
+ * KDS sobre DiningOrder — fuente única de verdad de cocina para Web y Mobile.
+ * Ya no depende de Order.kitchenStatus: lee las DiningOrder activas en cocina y
+ * delega las transiciones en DiningOrdersService.changeStatus (mismo flujo que
+ * usa la app y la comanda web): SENT_TO_KITCHEN → IN_PREPARATION → READY →
+ * DELIVERED.
+ */
+
+// Estados que la cocina ve como trabajo activo.
+const KITCHEN_ACTIVE_STATUSES: DiningOrderStatus[] = [
+  'SENT_TO_KITCHEN',
+  'IN_PREPARATION',
+  'READY',
 ];
 
-const VALID_TRANSITIONS: Record<KitchenOrderStatus, KitchenOrderStatus[]> = {
-  [KitchenOrderStatus.PENDING]:    [KitchenOrderStatus.IN_PROGRESS, KitchenOrderStatus.REJECTED],
-  [KitchenOrderStatus.IN_PROGRESS]:[KitchenOrderStatus.PAUSED, KitchenOrderStatus.READY, KitchenOrderStatus.REJECTED],
-  [KitchenOrderStatus.PAUSED]:     [KitchenOrderStatus.IN_PROGRESS, KitchenOrderStatus.REJECTED],
-  [KitchenOrderStatus.READY]:      [KitchenOrderStatus.DELIVERED, KitchenOrderStatus.IN_PROGRESS],
-  [KitchenOrderStatus.REJECTED]:   [],
-  [KitchenOrderStatus.DELIVERED]:  [],
-};
-
-const KITCHEN_INCLUDE = {
-  items: {
-    include: {
-      product: {
-        include: {
+// Producto con receta/combo para que el KDS muestre los insumos a preparar.
+const KITCHEN_PRODUCT_SELECT = {
+  id: true,
+  name: true,
+  type: true,
+  recipe: {
+    select: {
+      id: true,
+      items: {
+        select: {
+          id: true,
+          quantity: true,
+          unit: true,
+          supply: { select: { id: true, name: true } },
+          measurementUnit: { select: { id: true, name: true, symbol: true } },
+        },
+      },
+    },
+  },
+  comboItems: {
+    select: {
+      id: true,
+      quantity: true,
+      child: {
+        select: {
+          id: true,
+          name: true,
+          type: true,
           recipe: {
-            include: {
+            select: {
+              id: true,
               items: {
-                include: {
+                select: {
+                  id: true,
+                  quantity: true,
+                  unit: true,
                   supply: { select: { id: true, name: true } },
                   measurementUnit: { select: { id: true, name: true, symbol: true } },
-                },
-              },
-            },
-          },
-          comboItems: {
-            include: {
-              child: {
-                include: {
-                  recipe: {
-                    include: {
-                      items: {
-                        include: {
-                          supply: { select: { id: true, name: true } },
-                          measurementUnit: { select: { id: true, name: true, symbol: true } },
-                        },
-                      },
-                    },
-                  },
                 },
               },
             },
@@ -57,81 +65,79 @@ const KITCHEN_INCLUDE = {
       },
     },
   },
-  createdBy: {
-    select: { id: true, firstName: true, lastName: true },
-  },
-};
+} as const;
 
 @Injectable()
 export class KitchenService {
   constructor(
     private prisma: PrismaService,
-    private auditContext: AuditContextService,
     private tenantContext: TenantContextService,
+    private diningOrders: DiningOrdersService,
   ) {}
 
   async getKitchenOrders() {
     const tenantId = this.tenantContext.requireTenantId();
     const branchId = this.tenantContext.getBranchId() ?? null;
 
-    return this.prisma.order.findMany({
+    const orders = await this.prisma.diningOrder.findMany({
       where: {
         tenantId,
         ...(branchId != null && { branchId }),
-        kitchenStatus: { in: ACTIVE_KITCHEN_STATUSES },
+        status: { in: KITCHEN_ACTIVE_STATUSES },
       },
-      orderBy: { createdAt: 'asc' },
-      include: KITCHEN_INCLUDE,
+      orderBy: { openedAt: 'asc' },
+      select: {
+        id: true,
+        reference: true,
+        status: true,
+        serviceType: true,
+        openedAt: true,
+        table: { select: { id: true, name: true } },
+        waiter: { select: { id: true, firstName: true, lastName: true } },
+        items: {
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            productId: true,
+            productName: true,
+            quantity: true,
+            notes: true,
+          },
+        },
+      },
     });
+
+    // DiningOrderItem no tiene relación directa a Product; se resuelven aparte
+    // los productos (receta/combo) para mostrar insumos sin migrar el esquema.
+    const productIds = [
+      ...new Set(
+        orders.flatMap((o) => o.items.map((i) => i.productId).filter((id): id is string => id != null)),
+      ),
+    ];
+    const products = productIds.length
+      ? await this.prisma.product.findMany({
+          where: { id: { in: productIds }, tenantId },
+          select: KITCHEN_PRODUCT_SELECT,
+        })
+      : [];
+    const productMap = new Map(products.map((p) => [p.id, p]));
+
+    return orders.map((o) => ({
+      ...o,
+      items: o.items.map((i) => ({
+        ...i,
+        product: i.productId ? productMap.get(i.productId) ?? null : null,
+      })),
+    }));
   }
 
-  async updateKitchenStatus(orderId: string, dto: UpdateKitchenStatusDto) {
-    const tenantId = this.tenantContext.requireTenantId();
+  async updateKitchenStatus(orderId: string, status: DiningOrderStatus) {
     const branchId = this.tenantContext.getBranchId() ?? null;
-    const userId = this.auditContext.getUserId() ?? null;
-
-    const order = await this.prisma.order.findFirst({
-      where: { id: orderId, tenantId, ...(branchId != null && { branchId }) },
-    });
-
-    if (!order) throw new NotFoundException('Orden no encontrada');
-
-    const current = (order.kitchenStatus as KitchenOrderStatus | null) ?? KitchenOrderStatus.PENDING;
-    const allowed = VALID_TRANSITIONS[current] ?? [];
-
-    if (!allowed.includes(dto.status)) {
-      throw new BadRequestException(
-        `Transición inválida: ${current} → ${dto.status}. Permitidas: ${allowed.join(', ') || 'ninguna'}`,
-      );
+    if (!branchId) {
+      throw new BadRequestException('No hay sucursal seleccionada para la cocina.');
     }
-
-    if (dto.status === KitchenOrderStatus.REJECTED && !dto.rejectionComment?.trim()) {
-      throw new BadRequestException('El comentario de rechazo es obligatorio');
-    }
-
-    const now = new Date();
-
-    return this.prisma.order.update({
-      where: { id: orderId },
-      data: {
-        kitchenStatus: dto.status,
-        updatedById: userId,
-        ...(dto.status === KitchenOrderStatus.IN_PROGRESS && {
-          kitchenStartedAt: (order.kitchenStartedAt as Date | null) ?? now,
-        }),
-        ...(dto.status === KitchenOrderStatus.PAUSED && { kitchenPausedAt: now }),
-        ...(dto.status === KitchenOrderStatus.READY  && { kitchenReadyAt: now }),
-        ...(dto.status === KitchenOrderStatus.REJECTED && {
-          kitchenRejectedAt: now,
-          kitchenRejectedById: userId,
-          kitchenRejectionComment: dto.rejectionComment,
-        }),
-        ...(dto.status === KitchenOrderStatus.DELIVERED && {
-          deliveryStatus: 'DELIVERED',
-          deliveredAt: now,
-        }),
-      },
-      include: KITCHEN_INCLUDE,
-    });
+    // La validación de transición (SENT_TO_KITCHEN → IN_PREPARATION → READY →
+    // DELIVERED) vive en DiningOrdersService.changeStatus (flujo de cocina).
+    return this.diningOrders.changeStatus(branchId, orderId, status);
   }
 }

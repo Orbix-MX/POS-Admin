@@ -4,14 +4,18 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PrinterConfigsService } from './printer-configs.service';
-import { CreatePrinterConfigDto, PrintReceiptDto, UpdatePrinterConfigDto } from './dto/printer-config.dto';
+import { QzSigningService } from './qz-signing.service';
+import { CreatePrinterConfigDto, PrintReceiptDto, QzSignDto, UpdatePrinterConfigDto } from './dto/printer-config.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
 
 @ApiTags('Printer Configs')
 @ApiBearerAuth()
 @Controller('printer-configs')
 export class PrinterConfigsController {
-  constructor(private readonly printerConfigsService: PrinterConfigsService) {}
+  constructor(
+    private readonly printerConfigsService: PrinterConfigsService,
+    private readonly qzSigning: QzSigningService,
+  ) {}
 
   @Get()
   @RequirePermissions('settings:view')
@@ -56,5 +60,24 @@ export class PrinterConfigsController {
   @ApiOperation({ summary: 'Obtiene bytes ESC/POS para imprimir en cliente via QZ Tray' })
   getReceiptData(@Body() body: PrintReceiptDto) {
     return this.printerConfigsService.getReceiptData(body.orderId, body.printerType);
+  }
+
+  @Get('qz/certificate')
+  @RequirePermissions('settings:view|orders:create|comanda:view')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Certificado público para firmar peticiones de QZ Tray' })
+  qzCertificate() {
+    return {
+      certificate: this.qzSigning.getCertificate(),
+      configured: this.qzSigning.isConfigured(),
+    };
+  }
+
+  @Post('qz/sign')
+  @RequirePermissions('settings:view|orders:create|comanda:view')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Firma una petición de QZ Tray con la llave privada (RSA-SHA512)' })
+  qzSign(@Body() body: QzSignDto) {
+    return { signature: this.qzSigning.sign(body.request) };
   }
 }
