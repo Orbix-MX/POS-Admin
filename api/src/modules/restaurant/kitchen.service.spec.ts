@@ -1,22 +1,17 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { KitchenService } from './kitchen.service';
 import { PrismaService } from '../../database/prisma.service';
 import { TenantContextService } from '../../common/context/tenant-context.service';
-import { AuditContextService } from '../../common/context/audit-context.service';
-import { KitchenOrderStatus } from './dto/update-kitchen-status.dto';
+import { DiningOrdersService } from './dining-orders/dining-orders.service';
 
 const TENANT_ID = 'tenant-abc';
 const BRANCH_ID = 'branch-xyz';
-const USER_ID   = 'user-111';
-const ORDER_ID  = 'order-001';
+const ORDER_ID = 'order-001';
 
 const mockPrismaService = {
-  order: {
-    findMany: jest.fn(),
-    findFirst: jest.fn(),
-    update: jest.fn(),
-  },
+  diningOrder: { findMany: jest.fn() },
+  product: { findMany: jest.fn() },
 };
 
 const mockTenantContext = {
@@ -24,43 +19,34 @@ const mockTenantContext = {
   getBranchId: jest.fn().mockReturnValue(BRANCH_ID),
 };
 
-const mockAuditContext = {
-  getUserId: jest.fn().mockReturnValue(USER_ID),
+const mockDiningOrders = {
+  changeStatus: jest.fn(),
 };
 
 function makeOrder(overrides: Record<string, unknown> = {}) {
   return {
     id: ORDER_ID,
-    orderNumber: 'C-001',
-    tenantId: TENANT_ID,
-    branchId: BRANCH_ID,
-    tableNumber: '5',
-    employeeNumber: 'E01',
-    kitchenStatus: KitchenOrderStatus.PENDING,
-    kitchenStartedAt: null,
-    kitchenReadyAt: null,
-    kitchenPausedAt: null,
-    kitchenRejectedAt: null,
-    kitchenRejectedById: null,
-    kitchenRejectionComment: null,
-    notes: null,
-    createdAt: new Date().toISOString(),
+    reference: 'Mesa 5',
+    status: 'SENT_TO_KITCHEN',
+    serviceType: 'DINE_IN',
+    openedAt: new Date().toISOString(),
+    table: { id: 'table-1', name: 'Mesa 5' },
+    waiter: { id: 'emp-1', firstName: 'Ana', lastName: 'Lopez' },
     items: [],
-    createdBy: null,
     ...overrides,
   };
 }
 
-describe('KitchenService', () => {
+describe('KitchenService (DiningOrder KDS)', () => {
   let service: KitchenService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         KitchenService,
-        { provide: PrismaService,        useValue: mockPrismaService   },
-        { provide: TenantContextService, useValue: mockTenantContext   },
-        { provide: AuditContextService,  useValue: mockAuditContext    },
+        { provide: PrismaService, useValue: mockPrismaService },
+        { provide: TenantContextService, useValue: mockTenantContext },
+        { provide: DiningOrdersService, useValue: mockDiningOrders },
       ],
     }).compile();
 
@@ -68,234 +54,97 @@ describe('KitchenService', () => {
     jest.clearAllMocks();
     mockTenantContext.requireTenantId.mockReturnValue(TENANT_ID);
     mockTenantContext.getBranchId.mockReturnValue(BRANCH_ID);
-    mockAuditContext.getUserId.mockReturnValue(USER_ID);
   });
 
   it('should be defined', () => {
     expect(service).toBeDefined();
   });
 
-  // ─── getKitchenOrders ────────────────────────────────────────────────────────
-
   describe('getKitchenOrders', () => {
-    it('returns active orders scoped to tenant + branch', async () => {
-      const orders = [makeOrder(), makeOrder({ id: 'order-002', kitchenStatus: KitchenOrderStatus.IN_PROGRESS })];
-      mockPrismaService.order.findMany.mockResolvedValue(orders);
+    it('reads DiningOrder scoped to tenant + branch, only active kitchen statuses', async () => {
+      mockPrismaService.diningOrder.findMany.mockResolvedValue([]);
+      mockPrismaService.product.findMany.mockResolvedValue([]);
 
-      const result = await service.getKitchenOrders();
+      await service.getKitchenOrders();
 
-      expect(mockPrismaService.order.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            tenantId: TENANT_ID,
-            branchId: BRANCH_ID,
-            kitchenStatus: { in: expect.arrayContaining(['PENDING', 'IN_PROGRESS', 'PAUSED', 'READY']) },
-          }),
-        }),
-      );
-      expect(result).toHaveLength(2);
-    });
-
-    it('returns empty array when no active kitchen orders exist', async () => {
-      mockPrismaService.order.findMany.mockResolvedValue([]);
-
-      const result = await service.getKitchenOrders();
-
-      expect(result).toEqual([]);
-      expect(result).toHaveLength(0);
+      const call = mockPrismaService.diningOrder.findMany.mock.calls[0][0];
+      expect(call.where.tenantId).toBe(TENANT_ID);
+      expect(call.where.branchId).toBe(BRANCH_ID);
+      const statuses: string[] = call.where.status.in;
+      expect(statuses).toContain('SENT_TO_KITCHEN');
+      expect(statuses).toContain('IN_PREPARATION');
+      expect(statuses).toContain('READY');
+      expect(statuses).not.toContain('OPEN');
+      expect(statuses).not.toContain('DELIVERED');
     });
 
     it('omits branchId filter when no branch selected', async () => {
       mockTenantContext.getBranchId.mockReturnValue(null);
-      mockPrismaService.order.findMany.mockResolvedValue([]);
+      mockPrismaService.diningOrder.findMany.mockResolvedValue([]);
+      mockPrismaService.product.findMany.mockResolvedValue([]);
 
       await service.getKitchenOrders();
 
-      const call = mockPrismaService.order.findMany.mock.calls[0][0];
+      const call = mockPrismaService.diningOrder.findMany.mock.calls[0][0];
       expect(call.where).not.toHaveProperty('branchId');
     });
 
-    it('filters only active statuses (not REJECTED or DELIVERED)', async () => {
-      mockPrismaService.order.findMany.mockResolvedValue([]);
+    it('attaches resolved product (recipe/combo) to each item by productId', async () => {
+      const order = makeOrder({
+        items: [{ id: 'it-1', productId: 'prod-1', productName: 'Tacos', quantity: 2, notes: null }],
+      });
+      mockPrismaService.diningOrder.findMany.mockResolvedValue([order]);
+      mockPrismaService.product.findMany.mockResolvedValue([
+        { id: 'prod-1', name: 'Tacos', type: 'RECIPE', recipe: { id: 'r1', items: [] }, comboItems: [] },
+      ]);
 
-      await service.getKitchenOrders();
+      const result = await service.getKitchenOrders();
 
-      const call = mockPrismaService.order.findMany.mock.calls[0][0];
-      const statuses: string[] = call.where.kitchenStatus.in;
-      expect(statuses).toContain('PENDING');
-      expect(statuses).toContain('IN_PROGRESS');
-      expect(statuses).toContain('PAUSED');
-      expect(statuses).toContain('READY');
-      expect(statuses).not.toContain('REJECTED');
-      expect(statuses).not.toContain('DELIVERED');
+      expect(mockPrismaService.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ id: { in: ['prod-1'] }, tenantId: TENANT_ID }) }),
+      );
+      expect(result[0].items[0].product).toMatchObject({ id: 'prod-1', type: 'RECIPE' });
     });
 
-    it('orders results by createdAt ascending', async () => {
-      mockPrismaService.order.findMany.mockResolvedValue([]);
+    it('skips product lookup when there are no product items', async () => {
+      const order = makeOrder({
+        items: [{ id: 'it-1', productId: null, productName: 'Nota libre', quantity: 1, notes: null }],
+      });
+      mockPrismaService.diningOrder.findMany.mockResolvedValue([order]);
+
+      const result = await service.getKitchenOrders();
+
+      expect(mockPrismaService.product.findMany).not.toHaveBeenCalled();
+      expect(result[0].items[0].product).toBeNull();
+    });
+
+    it('orders results by openedAt ascending', async () => {
+      mockPrismaService.diningOrder.findMany.mockResolvedValue([]);
+      mockPrismaService.product.findMany.mockResolvedValue([]);
 
       await service.getKitchenOrders();
 
-      const call = mockPrismaService.order.findMany.mock.calls[0][0];
-      expect(call.orderBy).toEqual({ createdAt: 'asc' });
+      const call = mockPrismaService.diningOrder.findMany.mock.calls[0][0];
+      expect(call.orderBy).toEqual({ openedAt: 'asc' });
     });
   });
 
-  // ─── updateKitchenStatus ─────────────────────────────────────────────────────
-
   describe('updateKitchenStatus', () => {
-    it('throws NotFoundException when order not found', async () => {
-      mockPrismaService.order.findFirst.mockResolvedValue(null);
+    it('delegates transition to DiningOrdersService.changeStatus with branch from context', async () => {
+      mockDiningOrders.changeStatus.mockResolvedValue({ id: ORDER_ID, status: 'IN_PREPARATION' });
 
-      await expect(
-        service.updateKitchenStatus(ORDER_ID, { status: KitchenOrderStatus.IN_PROGRESS }),
-      ).rejects.toThrow(NotFoundException);
+      await service.updateKitchenStatus(ORDER_ID, 'IN_PREPARATION' as never);
+
+      expect(mockDiningOrders.changeStatus).toHaveBeenCalledWith(BRANCH_ID, ORDER_ID, 'IN_PREPARATION');
     });
 
-    it('throws BadRequestException for invalid transition (PENDING → READY)', async () => {
-      mockPrismaService.order.findFirst.mockResolvedValue(makeOrder());
+    it('throws BadRequestException when no branch selected', async () => {
+      mockTenantContext.getBranchId.mockReturnValue(null);
 
       await expect(
-        service.updateKitchenStatus(ORDER_ID, { status: KitchenOrderStatus.READY }),
+        service.updateKitchenStatus(ORDER_ID, 'IN_PREPARATION' as never),
       ).rejects.toThrow(BadRequestException);
-    });
-
-    it('throws BadRequestException for invalid transition (DELIVERED → anything)', async () => {
-      mockPrismaService.order.findFirst.mockResolvedValue(
-        makeOrder({ kitchenStatus: KitchenOrderStatus.DELIVERED }),
-      );
-
-      await expect(
-        service.updateKitchenStatus(ORDER_ID, { status: KitchenOrderStatus.IN_PROGRESS }),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('throws BadRequestException when rejecting without comment', async () => {
-      mockPrismaService.order.findFirst.mockResolvedValue(makeOrder());
-
-      await expect(
-        service.updateKitchenStatus(ORDER_ID, { status: KitchenOrderStatus.REJECTED }),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('throws BadRequestException when rejecting with blank comment', async () => {
-      mockPrismaService.order.findFirst.mockResolvedValue(makeOrder());
-
-      await expect(
-        service.updateKitchenStatus(ORDER_ID, {
-          status: KitchenOrderStatus.REJECTED,
-          rejectionComment: '   ',
-        }),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('PENDING → IN_PROGRESS sets kitchenStartedAt', async () => {
-      const order = makeOrder();
-      mockPrismaService.order.findFirst.mockResolvedValue(order);
-      mockPrismaService.order.update.mockResolvedValue({
-        ...order,
-        kitchenStatus: KitchenOrderStatus.IN_PROGRESS,
-      });
-
-      await service.updateKitchenStatus(ORDER_ID, { status: KitchenOrderStatus.IN_PROGRESS });
-
-      const updateCall = mockPrismaService.order.update.mock.calls[0][0];
-      expect(updateCall.data.kitchenStatus).toBe(KitchenOrderStatus.IN_PROGRESS);
-      expect(updateCall.data.kitchenStartedAt).toBeInstanceOf(Date);
-    });
-
-    it('does not overwrite kitchenStartedAt when already set (resume from pause)', async () => {
-      const existingStart = new Date('2026-01-01T10:00:00Z');
-      const order = makeOrder({
-        kitchenStatus: KitchenOrderStatus.PAUSED,
-        kitchenStartedAt: existingStart,
-      });
-      mockPrismaService.order.findFirst.mockResolvedValue(order);
-      mockPrismaService.order.update.mockResolvedValue({
-        ...order,
-        kitchenStatus: KitchenOrderStatus.IN_PROGRESS,
-      });
-
-      await service.updateKitchenStatus(ORDER_ID, { status: KitchenOrderStatus.IN_PROGRESS });
-
-      const updateCall = mockPrismaService.order.update.mock.calls[0][0];
-      expect(updateCall.data.kitchenStartedAt).toEqual(existingStart);
-    });
-
-    it('IN_PROGRESS → PAUSED sets kitchenPausedAt', async () => {
-      const order = makeOrder({ kitchenStatus: KitchenOrderStatus.IN_PROGRESS });
-      mockPrismaService.order.findFirst.mockResolvedValue(order);
-      mockPrismaService.order.update.mockResolvedValue({ ...order, kitchenStatus: KitchenOrderStatus.PAUSED });
-
-      await service.updateKitchenStatus(ORDER_ID, { status: KitchenOrderStatus.PAUSED });
-
-      const updateCall = mockPrismaService.order.update.mock.calls[0][0];
-      expect(updateCall.data.kitchenPausedAt).toBeInstanceOf(Date);
-    });
-
-    it('IN_PROGRESS → READY sets kitchenReadyAt', async () => {
-      const order = makeOrder({ kitchenStatus: KitchenOrderStatus.IN_PROGRESS });
-      mockPrismaService.order.findFirst.mockResolvedValue(order);
-      mockPrismaService.order.update.mockResolvedValue({ ...order, kitchenStatus: KitchenOrderStatus.READY });
-
-      await service.updateKitchenStatus(ORDER_ID, { status: KitchenOrderStatus.READY });
-
-      const updateCall = mockPrismaService.order.update.mock.calls[0][0];
-      expect(updateCall.data.kitchenReadyAt).toBeInstanceOf(Date);
-    });
-
-    it('PENDING → REJECTED saves comment + timestamps + rejectedById', async () => {
-      const order = makeOrder();
-      mockPrismaService.order.findFirst.mockResolvedValue(order);
-      mockPrismaService.order.update.mockResolvedValue({ ...order, kitchenStatus: KitchenOrderStatus.REJECTED });
-
-      await service.updateKitchenStatus(ORDER_ID, {
-        status: KitchenOrderStatus.REJECTED,
-        rejectionComment: 'Falta ingrediente',
-      });
-
-      const updateCall = mockPrismaService.order.update.mock.calls[0][0];
-      expect(updateCall.data.kitchenStatus).toBe(KitchenOrderStatus.REJECTED);
-      expect(updateCall.data.kitchenRejectedAt).toBeInstanceOf(Date);
-      expect(updateCall.data.kitchenRejectedById).toBe(USER_ID);
-      expect(updateCall.data.kitchenRejectionComment).toBe('Falta ingrediente');
-    });
-
-    it('READY → DELIVERED sets deliveryStatus and deliveredAt', async () => {
-      const order = makeOrder({ kitchenStatus: KitchenOrderStatus.READY });
-      mockPrismaService.order.findFirst.mockResolvedValue(order);
-      mockPrismaService.order.update.mockResolvedValue({ ...order, kitchenStatus: KitchenOrderStatus.DELIVERED });
-
-      await service.updateKitchenStatus(ORDER_ID, { status: KitchenOrderStatus.DELIVERED });
-
-      const updateCall = mockPrismaService.order.update.mock.calls[0][0];
-      expect(updateCall.data.kitchenStatus).toBe(KitchenOrderStatus.DELIVERED);
-      expect(updateCall.data.deliveryStatus).toBe('DELIVERED');
-      expect(updateCall.data.deliveredAt).toBeInstanceOf(Date);
-    });
-
-    it('always scopes findFirst to tenantId + branchId', async () => {
-      mockPrismaService.order.findFirst.mockResolvedValue(null);
-
-      try {
-        await service.updateKitchenStatus(ORDER_ID, { status: KitchenOrderStatus.IN_PROGRESS });
-      } catch {
-        // NotFoundException expected
-      }
-
-      const findCall = mockPrismaService.order.findFirst.mock.calls[0][0];
-      expect(findCall.where.tenantId).toBe(TENANT_ID);
-      expect(findCall.where.branchId).toBe(BRANCH_ID);
-    });
-
-    it('sets updatedById from audit context on every update', async () => {
-      const order = makeOrder();
-      mockPrismaService.order.findFirst.mockResolvedValue(order);
-      mockPrismaService.order.update.mockResolvedValue({ ...order, kitchenStatus: KitchenOrderStatus.IN_PROGRESS });
-
-      await service.updateKitchenStatus(ORDER_ID, { status: KitchenOrderStatus.IN_PROGRESS });
-
-      const updateCall = mockPrismaService.order.update.mock.calls[0][0];
-      expect(updateCall.data.updatedById).toBe(USER_ID);
+      expect(mockDiningOrders.changeStatus).not.toHaveBeenCalled();
     });
   });
 });

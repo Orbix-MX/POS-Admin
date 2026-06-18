@@ -20,6 +20,8 @@ interface ApiEmployee {
   status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'ON_LEAVE'
   notes?: string | null
   createdAt: string
+  hasPin?: boolean
+  roleId?: string | null
 }
 
 interface PaginatedResponse<T> {
@@ -69,6 +71,8 @@ function mapEmployee(e: ApiEmployee): Empleado {
     rfc: e.rfc,
     notes: e.notes,
     salaryRaw: salary,
+    hasPin: e.hasPin ?? false,
+    roleId: e.roleId ?? null,
   }
 }
 

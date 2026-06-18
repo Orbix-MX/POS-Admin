@@ -7,7 +7,7 @@ import {
 import { fetchUsuarios, type Usuario } from '@/services/core/users-service'
 import {
   fetchTenantInfo, updateTenantInfo, uploadTenantLogo, uploadTenantBanner,
-  deleteTenantLogo, deleteTenantBanner, type TenantInfo,
+  deleteTenantLogo, deleteTenantBanner, type TenantInfo, type RestaurantServiceMode,
 } from '@/services/core/tenant-service'
 import {
   fetchBranches, createBranch, updateBranch, deleteBranch, setMainBranch,
@@ -25,7 +25,13 @@ import {
   Loader2, Upload, Trash2, Building2, MapPin, Plus, Pencil,
   CheckCircle, XCircle, Star, UserPlus, UserMinus, Users, X,
   Printer, Wifi, Usb, Bluetooth, Monitor, Check,
+  KeyRound, Smartphone, RefreshCw, ShieldCheck, QrCode, AlertTriangle,
 } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
+import {
+  fetchMyLicense, createEnrollmentToken, fetchDevices, revokeDevice,
+  type LicenseOverview, type LicenseStatus, type Device, type DeviceType,
+} from '@/services/core/license-service'
 
 // ─── BRANCH STATUS ────────────────────────────────────────────────────────────
 
@@ -882,18 +888,396 @@ function PrintersSection({ branches }: { branches: { id: string; name: string }[
   )
 }
 
+// ─── LICENSE & DEVICES SECTION ──────────────────────────────────────────────
+
+const LICENSE_STATUS_META: Record<LicenseStatus, { label: string; cls: string }> = {
+  TRIAL:     { label: 'Prueba',     cls: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' },
+  ACTIVE:    { label: 'Activa',     cls: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' },
+  EXPIRED:   { label: 'Expirada',   cls: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' },
+  SUSPENDED: { label: 'Suspendida', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' },
+  CANCELLED: { label: 'Cancelada',  cls: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' },
+}
+
+const DEVICE_TYPE_META: Record<DeviceType, { label: string; icon: React.ReactNode }> = {
+  MOBILE_COMANDERA: { label: 'Comandera móvil', icon: <Smartphone className="w-4 h-4" /> },
+  POS_DESKTOP:      { label: 'POS escritorio',  icon: <Monitor className="w-4 h-4" /> },
+  WEB:              { label: 'Web',             icon: <Monitor className="w-4 h-4" /> },
+  OTHER:            { label: 'Otro',            icon: <Smartphone className="w-4 h-4" /> },
+}
+
+function fmtDate(d: string | null | undefined) {
+  return d ? new Date(d).toLocaleDateString('es-MX') : '—'
+}
+
+// QR modal: shows a short-lived enrollment code the comandera app scans to
+// register the device. The QR carries a tenant-scoped, single-use token — never
+// a session — so it's safe even if briefly visible.
+function EnrollDeviceModal({ onClose, onEnrolled }: { onClose: () => void; onEnrolled: () => void }) {
+  const [token, setToken] = useState<string | null>(null)
+  const [secondsLeft, setSecondsLeft] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const apiUrl = (import.meta.env.VITE_API_URL as string) ?? ''
+
+  const generate = useCallback(async () => {
+    setLoading(true); setError(null)
+    try {
+      const t = await createEnrollmentToken()
+      setToken(t.token)
+      setSecondsLeft(t.expiresInSeconds)
+    } catch (e: any) {
+      setError(e?.response?.data?.message ?? 'No se pudo generar el código')
+    } finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { generate() }, [generate])
+
+  useEffect(() => {
+    if (secondsLeft <= 0) return
+    const id = setInterval(() => setSecondsLeft(s => Math.max(0, s - 1)), 1000)
+    return () => clearInterval(id)
+  }, [secondsLeft])
+
+  const expired = token !== null && secondsLeft === 0
+  const payload = token ? JSON.stringify({ v: 1, type: 'orbix-enroll', apiUrl, token }) : ''
+  const mm = String(Math.floor(secondsLeft / 60)).padStart(2, '0')
+  const ss = String(secondsLeft % 60).padStart(2, '0')
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <h2 className="text-[15px] font-semibold text-foreground flex items-center gap-2">
+            <QrCode className="w-4 h-4 text-primary" /> Registrar dispositivo
+          </h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted"><X className="w-4 h-4 text-muted-foreground" /></button>
+        </div>
+
+        <div className="px-5 py-5 flex flex-col items-center gap-4">
+          <p className="text-[12px] text-muted-foreground text-center">
+            Abre la app <strong>Orbix Comandera</strong> en el dispositivo y escanea este código para vincularlo a tu empresa.
+          </p>
+
+          {error && (
+            <div className="flex items-center gap-2 text-red-500 text-[12px] bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg w-full">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {error}
+            </div>
+          )}
+
+          <div className="relative w-[232px] h-[232px] flex items-center justify-center rounded-xl border border-border bg-white p-3">
+            {loading ? (
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            ) : token && !expired ? (
+              <QRCodeSVG value={payload} size={208} level="M" includeMargin={false} />
+            ) : (
+              <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                <QrCode className="w-10 h-10 opacity-30" />
+                <span className="text-[12px]">Código expirado</span>
+              </div>
+            )}
+          </div>
+
+          {token && !expired && (
+            <div className="text-[12px] text-muted-foreground">
+              Válido por <span className="font-mono font-semibold text-foreground">{mm}:{ss}</span>
+            </div>
+          )}
+
+          <button
+            onClick={generate}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-4 py-2 border border-border rounded-lg text-[13px] text-foreground hover:bg-muted/50 disabled:opacity-60 cursor-pointer"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Generar nuevo código
+          </button>
+
+          <div className="text-[11px] text-muted-foreground text-center leading-relaxed border-t border-border pt-3 w-full">
+            El código es de un solo uso y caduca pronto. Tras vincular, podrás revocar el dispositivo en cualquier momento.
+          </div>
+
+          <button
+            onClick={onEnrolled}
+            className="text-[12px] text-primary font-semibold hover:underline cursor-pointer bg-transparent border-none"
+          >
+            Ya registré el dispositivo — actualizar lista
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function LicenciaSection({ canManage }: { canManage: boolean }) {
+  const [overview, setOverview] = useState<LicenseOverview | null>(null)
+  const [devices, setDevices] = useState<Device[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [showEnroll, setShowEnroll] = useState(false)
+  const [revoking, setRevoking] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true); setError(null)
+    try {
+      const [ov, devs] = await Promise.all([fetchMyLicense(), fetchDevices().catch(() => [])])
+      setOverview(ov)
+      setDevices(devs)
+    } catch {
+      setError('Error al cargar la licencia')
+    } finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  async function handleRevoke(d: Device) {
+    if (!confirm(`¿Revocar el dispositivo "${d.name ?? d.deviceId}"? Dejará de tener acceso.`)) return
+    setRevoking(d.id)
+    try { await revokeDevice(d.id); await load() }
+    catch (e: any) { alert(e?.response?.data?.message ?? 'Error al revocar') }
+    finally { setRevoking(null) }
+  }
+
+  if (loading) {
+    return <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Cargando…</div>
+  }
+  if (error) {
+    return <div className="text-[12px] text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>
+  }
+
+  const lic = overview?.license
+  const valid = overview?.validation.valid
+  const activeDevices = devices.filter(d => d.status === 'ACTIVE')
+
+  return (
+    <div className="flex flex-col gap-6 max-w-3xl">
+      <div>
+        <div className="text-base font-bold text-foreground mb-1 flex items-center gap-2">
+          <ShieldCheck className="w-4 h-4 text-primary" /> Licencia
+        </div>
+        <div className="text-xs text-muted-foreground">Estado de la licencia de tu empresa y dispositivos vinculados.</div>
+      </div>
+
+      {/* License card */}
+      {!lic ? (
+        <div className="border border-dashed border-border rounded-xl py-10 flex flex-col items-center gap-2 text-muted-foreground">
+          <KeyRound className="w-8 h-8 opacity-30" />
+          <span className="text-[13px]">Tu empresa no tiene una licencia registrada.</span>
+        </div>
+      ) : (
+        <div className="border border-border rounded-xl p-5 flex flex-col gap-4">
+          {/* validation banner */}
+          <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] ${
+            valid ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300'
+                  : 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400'
+          }`}>
+            {valid ? <CheckCircle className="w-3.5 h-3.5 shrink-0" /> : <AlertTriangle className="w-3.5 h-3.5 shrink-0" />}
+            {valid ? 'Licencia vigente' : `Licencia no vigente${overview?.validation.reason ? ` · ${overview.validation.reason}` : ''}`}
+          </div>
+
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2.5">
+              <span className="font-mono text-[13px] text-foreground">{lic.keyMasked}</span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${LICENSE_STATUS_META[lic.status].cls}`}>
+                {LICENSE_STATUS_META[lic.status].label}
+              </span>
+            </div>
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">{lic.plan}</span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3">
+            {[
+              ['Inicia', fmtDate(lic.startsAt)],
+              ['Vence', lic.expiresAt ? fmtDate(lic.expiresAt) : 'Perpetua'],
+              ['Plan', lic.plan],
+              ['Máx. usuarios', lic.maxUsers ?? 'Plan'],
+              ['Máx. sucursales', lic.maxBranches ?? 'Plan'],
+              ['Máx. dispositivos', lic.maxDevices ?? '∞'],
+            ].map(([k, v]) => (
+              <div key={k as string} className="flex flex-col">
+                <span className="text-[11px] text-muted-foreground">{k}</span>
+                <span className="text-[13px] font-semibold text-foreground">{v}</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground border-t border-border pt-3">
+            La gestión y renovación de la licencia la realiza el administrador de la plataforma Orbix.
+          </p>
+        </div>
+      )}
+
+      {/* Devices */}
+      <div className="border border-border rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div>
+            <div className="text-[14px] font-bold text-foreground flex items-center gap-2">
+              <Smartphone className="w-4 h-4 text-primary" /> Dispositivos
+            </div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">
+              {activeDevices.length} / {overview?.devices.max ?? '∞'} activos · La comandera se vincula escaneando un QR.
+            </div>
+          </div>
+          {canManage && (
+            <button
+              onClick={() => setShowEnroll(true)}
+              disabled={overview?.devices.max != null && activeDevices.length >= overview.devices.max}
+              title={overview?.devices.max != null && activeDevices.length >= overview.devices.max ? 'Alcanzaste el máximo de dispositivos de tu licencia' : undefined}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-primary text-primary-foreground rounded-lg text-[13px] font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              <QrCode className="w-3.5 h-3.5" /> Registrar dispositivo
+            </button>
+          )}
+        </div>
+
+        {devices.length === 0 ? (
+          <div className="flex flex-col items-center py-10 text-muted-foreground">
+            <Smartphone className="w-8 h-8 mb-2 opacity-25" />
+            <span className="text-[13px]">Sin dispositivos vinculados</span>
+          </div>
+        ) : (
+          <div className="divide-y divide-border">
+            {devices.map(d => (
+              <div key={d.id} className={`flex items-center gap-3 px-5 py-3 ${d.status !== 'ACTIVE' ? 'opacity-50' : ''}`}>
+                <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                  {DEVICE_TYPE_META[d.type].icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[13px] font-semibold text-foreground">{d.name ?? 'Dispositivo'}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{DEVICE_TYPE_META[d.type].label}</span>
+                    {d.status !== 'ACTIVE' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400">Revocado</span>}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5 font-mono truncate">
+                    {d.deviceId} · visto {d.lastSeenAt ? new Date(d.lastSeenAt).toLocaleString('es-MX') : '—'}
+                  </div>
+                </div>
+                {canManage && d.status === 'ACTIVE' && (
+                  <button
+                    onClick={() => handleRevoke(d)}
+                    disabled={revoking === d.id}
+                    className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-500 disabled:opacity-40 cursor-pointer"
+                    title="Revocar dispositivo"
+                  >
+                    {revoking === d.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {showEnroll && (
+        <EnrollDeviceModal
+          onClose={() => setShowEnroll(false)}
+          onEnrolled={async () => { setShowEnroll(false); await load() }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── RESTAURANTE SECTION ─────────────────────────────────────────────────────
+
+const SERVICE_MODE_OPTIONS: { value: RestaurantServiceMode; label: string; desc: string }[] = [
+  { value: 'TABLE_SERVICE',   label: 'Servicio por mesas',   desc: 'Solo órdenes ligadas a una mesa (meseros).' },
+  { value: 'COUNTER_SERVICE', label: 'Servicio mostrador',   desc: 'Solo órdenes de mostrador, sin mesas.' },
+  { value: 'HYBRID',          label: 'Híbrido',              desc: 'Mesas + mostrador en la misma sucursal.' },
+]
+
+function RestauranteSection({ canEdit }: { canEdit: boolean }) {
+  const [mode, setMode] = useState<RestaurantServiceMode>('TABLE_SERVICE')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLoading(true)
+    fetchTenantInfo()
+      .then(info => setMode(info.restaurantServiceMode ?? 'TABLE_SERVICE'))
+      .catch(() => setError('Error al cargar configuración'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function handleSave() {
+    setSaving(true); setError(null); setSaved(false)
+    try {
+      await updateTenantInfo({ restaurantServiceMode: mode })
+      setSaved(true); setTimeout(() => setSaved(false), 2500)
+    } catch {
+      setError('Error al guardar')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div>
+      <div className="text-base font-bold text-foreground mb-1">Restaurante</div>
+      <div className="text-xs text-muted-foreground mb-6">Configura el modo de servicio para la comandera móvil.</div>
+
+      {loading ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Cargando…</div>
+      ) : (
+        <div className="max-w-lg flex flex-col gap-5">
+          <div>
+            <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-3">Modo de servicio</div>
+            <div className="flex flex-col gap-2">
+              {SERVICE_MODE_OPTIONS.map(opt => (
+                <label key={opt.value}
+                  className={`flex items-start gap-3 px-4 py-3.5 border rounded-xl cursor-pointer transition-all
+                    ${mode === opt.value
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border hover:border-primary/40 hover:bg-muted/30'
+                    } ${!canEdit ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="serviceMode"
+                    value={opt.value}
+                    checked={mode === opt.value}
+                    onChange={() => canEdit && setMode(opt.value)}
+                    className="mt-0.5 accent-primary"
+                    disabled={!canEdit}
+                  />
+                  <div>
+                    <div className="text-[13px] font-semibold text-foreground">{opt.label}</div>
+                    <div className="text-[11px] text-muted-foreground mt-0.5">{opt.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {error && <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
+
+          {canEdit && (
+            <button onClick={handleSave} disabled={saving}
+              className="self-start px-5 py-2 bg-primary text-primary-foreground border-none rounded-lg text-[13px] font-semibold cursor-pointer disabled:opacity-60 flex items-center gap-2">
+              {saving ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Guardando…</> : saved ? '✓ Guardado' : 'Guardar cambios'}
+            </button>
+          )}
+          {!canEdit && <p className="text-xs text-muted-foreground">Sin permiso para editar configuración de restaurante.</p>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 
 export function Configuracion() {
   const { enabledModules } = useAuthStore()
-  const showBranches = enabledModules.includes('branches')
+  const showBranches   = enabledModules.includes('branches')
+  const showRestaurant = enabledModules.includes('dining-areas') || enabledModules.includes('restaurant')
 
   const [activeSection, setActiveSection] = useState("empresa")
   const sections = [
     { id: "empresa",        label: "Empresa" },
     { id: "pos",            label: "POS / Caja" },
-    ...(showBranches ? [{ id: "sucursales", label: "Sucursales" }] : []),
+    ...(showBranches    ? [{ id: "sucursales",  label: "Sucursales" }] : []),
+    ...(showRestaurant  ? [{ id: "restaurante", label: "Restaurante" }] : []),
     { id: "impresoras",     label: "Impresoras" },
+    { id: "licencia",       label: "Licencia y dispositivos" },
     { id: "facturacion",    label: "Facturación" },
     { id: "notificaciones", label: "Notificaciones" },
   ]
@@ -1157,9 +1541,19 @@ export function Configuracion() {
           <SucursalesSection plan={plan ?? 'PRO'} />
         )}
 
+        {/* ── RESTAURANTE ──────────────────────────────────────────────────── */}
+        {activeSection === "restaurante" && showRestaurant && (
+          <RestauranteSection canEdit={canEdit} />
+        )}
+
         {/* ── IMPRESORAS ───────────────────────────────────────────────────── */}
         {activeSection === "impresoras" && (
           <PrintersSection branches={branchList} />
+        )}
+
+        {/* ── LICENCIA Y DISPOSITIVOS ──────────────────────────────────────── */}
+        {activeSection === "licencia" && (
+          <LicenciaSection canManage={canEdit} />
         )}
 
         {(activeSection === "facturacion" || activeSection === "notificaciones") && (
