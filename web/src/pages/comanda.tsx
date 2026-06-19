@@ -12,6 +12,7 @@ import {
 import { fetchTables, type RestaurantTable } from '@/services/restaurant/tables-service'
 import { verifyWaiterPin, waiterFullName, type VerifiedWaiter } from '@/services/restaurant/waiter-auth-service'
 import { useAuthStore } from '@/store/auth-store'
+import { useWaiterStore } from '@/store/waiter-store'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -196,6 +197,10 @@ export function Comanda() {
   const [loginError, setLoginError] = useState('')
   const [loginLoading, setLoginLoading] = useState(false)
   const [waiter, setWaiter] = useState<VerifiedWaiter | null>(null)
+  // Mesero persistente entre operaciones/páginas (comanda ↔ caja). Un PIN basta.
+  const storeWaiter = useWaiterStore((s) => s.waiter)
+  const setStoreWaiter = useWaiterStore((s) => s.setWaiter)
+  const clearStoreWaiter = useWaiterStore((s) => s.clearWaiter)
 
   // Open orders + tables
   const [openOrders, setOpenOrders] = useState<DiningOrder[]>([])
@@ -297,6 +302,7 @@ export function Comanda() {
     try {
       const w = await verifyWaiterPin(value)
       setWaiter(w)
+      setStoreWaiter(w)
       setStage('open-orders')
       await loadBoard(w)
     } catch (e: unknown) {
@@ -306,7 +312,16 @@ export function Comanda() {
     } finally {
       setLoginLoading(false)
     }
-  }, [loadBoard])
+  }, [loadBoard, setStoreWaiter])
+
+  // Mesero ya identificado en una operación previa (p. ej. caja) → saltar el PIN.
+  useEffect(() => {
+    if (stage === 'login' && !waiter && storeWaiter) {
+      setWaiter(storeWaiter)
+      setStage('open-orders')
+      void loadBoard(storeWaiter)
+    }
+  }, [stage, waiter, storeWaiter, loadBoard])
 
   const pressPinKey = (key: string) => {
     setLoginError('')
@@ -318,7 +333,7 @@ export function Comanda() {
   }
 
   const logoutWaiter = () => {
-    setWaiter(null); setPin(''); setLoginError('')
+    setWaiter(null); clearStoreWaiter(); setPin(''); setLoginError('')
     setOpenOrders([]); setTables([])
     setStage('login')
   }

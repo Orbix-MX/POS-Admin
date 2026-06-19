@@ -3,7 +3,19 @@ import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { AuditContextService } from '../../../common/context/audit-context.service';
 import { CreateRestaurantTableDto, UpdateRestaurantTableDto } from './dto/restaurant-table.dto';
-import { Prisma } from '@prisma/client';
+import { Prisma, DiningOrderStatus } from '@prisma/client';
+
+// Order is "active" (table still occupied) until it reaches a terminal state.
+// Filtering only by OPEN dropped orders advanced to kitchen / ready-for-payment,
+// leaving an occupied table with no order so "Ver cuenta" had nothing to open.
+const ACTIVE_ORDER_STATUSES: DiningOrderStatus[] = [
+  DiningOrderStatus.OPEN,
+  DiningOrderStatus.SENT_TO_KITCHEN,
+  DiningOrderStatus.IN_PREPARATION,
+  DiningOrderStatus.READY,
+  DiningOrderStatus.DELIVERED,
+  DiningOrderStatus.READY_FOR_PAYMENT,
+];
 
 const TABLE_SELECT = {
   id: true, name: true, capacity: true, displayOrder: true,
@@ -11,7 +23,8 @@ const TABLE_SELECT = {
   createdAt: true, updatedAt: true,
   area: { select: { id: true, name: true } },
   diningOrders: {
-    where: { status: 'OPEN' as const },
+    where: { status: { in: ACTIVE_ORDER_STATUSES } },
+    orderBy: { openedAt: 'desc' as const },
     take: 1,
     select: {
       id: true,

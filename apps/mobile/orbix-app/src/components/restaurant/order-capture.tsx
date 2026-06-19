@@ -24,6 +24,7 @@ import { Text, Icon, SearchBar } from '@/components/ui';
 import { useTheme } from '@/providers/theme-provider';
 import { useResponsive } from '@/hooks/use-responsive';
 import { useNetwork } from '@/hooks/use-network';
+import { useDeviceStore } from '@/store/device-store';
 import { localOrderService, refreshSyncPending } from '@/db';
 import {
   fetchOrder, addOrderItem, updateOrderItem, removeOrderItem,
@@ -136,9 +137,12 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
     if (!target || target.kind !== 'draft') return null;
     if (createInFlight.current) return createInFlight.current;
 
+    // Mesero = empleado del operator (token PIN). Se manda explícito para no
+    // depender del fallback del backend y atribuir la cuenta al operador actual.
+    const waiterId = useDeviceStore.getState().operator?.employee.id;
     const options = target.serviceType === 'DINE_IN'
-      ? { serviceType: 'DINE_IN' as const, tableId: target.tableId }
-      : { serviceType: 'COUNTER' as const, reference: target.reference };
+      ? { serviceType: 'DINE_IN' as const, tableId: target.tableId, waiterId }
+      : { serviceType: 'COUNTER' as const, reference: target.reference, waiterId };
 
     const promise = openDiningOrder(branchId, options)
       .then((created) => {

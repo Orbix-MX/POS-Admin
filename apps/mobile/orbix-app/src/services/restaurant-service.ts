@@ -96,8 +96,8 @@ export type DiningServiceType = 'DINE_IN' | 'COUNTER';
 export async function openDiningOrder(
   branchId: string,
   options:
-    | { serviceType: 'DINE_IN'; tableId: string }
-    | { serviceType: 'COUNTER'; reference?: string },
+    | { serviceType: 'DINE_IN'; tableId: string; waiterId?: string }
+    | { serviceType: 'COUNTER'; reference?: string; waiterId?: string },
 ): Promise<DiningOrder> {
   const { data } = await apiClient.post<DiningOrder>(`/branches/${branchId}/dining-orders`, options);
   return data;

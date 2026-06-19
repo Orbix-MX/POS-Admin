@@ -19,6 +19,7 @@ import {
 } from '@/services/restaurant-service';
 import { getApiErrorMessage } from '@/services/api-client';
 import { useSyncStore } from '@/store/sync-store';
+import { useDeviceStore } from '@/store/device-store';
 
 // In-process guard so overlapping triggers don't double-process.
 let running = false;
@@ -89,9 +90,12 @@ async function createOrder(entry: SyncQueueEntry): Promise<void> {
   if (!local) return;            // row gone — nothing to sync
   if (local.serverId) return;    // already created on a previous run
 
+  // Mesero = operador actual (mismo dispositivo). Explícito para no depender del
+  // fallback del backend al sincronizar órdenes creadas offline.
+  const waiterId = useDeviceStore.getState().operator?.employee.id;
   const options = local.serviceType === 'DINE_IN'
-    ? { serviceType: 'DINE_IN' as const, tableId: local.tableId ?? '' }
-    : { serviceType: 'COUNTER' as const, reference: local.reference ?? undefined };
+    ? { serviceType: 'DINE_IN' as const, tableId: local.tableId ?? '', waiterId }
+    : { serviceType: 'COUNTER' as const, reference: local.reference ?? undefined, waiterId };
 
   const created = await openDiningOrder(local.branchId, options);
   // localId → serverId + SYNCED

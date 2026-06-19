@@ -4,19 +4,19 @@ import {
   Search, X, Plus, Minus, Loader2, Check, UtensilsCrossed,
   Clock, ShoppingBag, AlertCircle, ChevronRight, PackagePlus, Lock, Trash2,
 } from 'lucide-react'
-import {
-  directCheckout, createComanda, fmtComandaMoney,
-  type DirectCheckoutItem,
-} from '@/services/retail/comanda-service'
+import { fmtComandaMoney } from '@/services/retail/comanda-service'
 import {
   getActiveDiningOrders, checkoutDiningOrder, isPayableDiningOrder, diningOrderTotal,
+  openDiningOrder, addDiningOrderItem, changeDiningOrderStatus,
   type DiningOrder,
 } from '@/services/restaurant/dining-orders-service'
 import { fetchProducts, type Product } from '@/services/retail/product-service'
 import { fetchSupplies, type Supply } from '@/services/retail/supplies-service'
 import { withdrawForSupplies } from '@/services/core/caja-service'
 import { printOrder } from '@/services/core/print-service'
+import { verifyWaiterPin, waiterFullName } from '@/services/restaurant/waiter-auth-service'
 import { useAuthStore } from '@/store/auth-store'
+import { useWaiterStore } from '@/store/waiter-store'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -270,7 +270,7 @@ function TableCheckoutPanel({
 
 type DirectAction = 'cobrar' | 'guardar'
 
-function DirectCheckoutPanel({ onSuccess }: { onSuccess: () => void }) {
+function DirectCheckoutPanel({ branchId, kitchenEnabled, onSuccess }: { branchId: string; kitchenEnabled: boolean; onSuccess: () => void }) {
   const [products, setProducts] = useState<Product[]>([])
   const [catalogLoading, setCatalogLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -280,6 +280,30 @@ function DirectCheckoutPanel({ onSuccess }: { onSuccess: () => void }) {
   const [loading, setLoading] = useState<DirectAction | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [doneAction, setDoneAction] = useState<DirectAction | null>(null)
+
+  // Mesero por PIN (compartido con la comanda). Si ya se ingresó en otra
+  // operación, basta y no se vuelve a pedir; aquí solo se identifica si falta.
+  const waiter = useWaiterStore((s) => s.waiter)
+  const setStoreWaiter = useWaiterStore((s) => s.setWaiter)
+  const [pin, setPin] = useState('')
+  const [pinError, setPinError] = useState<string | null>(null)
+  const [verifying, setVerifying] = useState(false)
+
+  const handleVerifyPin = async () => {
+    if (!/^\d{4,6}$/.test(pin)) { setPinError('El PIN debe tener entre 4 y 6 dígitos.'); return }
+    setPinError(null)
+    setVerifying(true)
+    try {
+      const w = await verifyWaiterPin(pin)
+      setStoreWaiter(w)
+      setPin('')
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } }; message?: string }
+      setPinError(err?.response?.data?.message ?? 'PIN incorrecto.')
+    } finally {
+      setVerifying(false)
+    }
+  }
 
   useEffect(() => {
     fetchProducts()
@@ -311,23 +335,31 @@ function DirectCheckoutPanel({ onSuccess }: { onSuccess: () => void }) {
     p.sku.toLowerCase().includes(search.toLowerCase())
   )
 
+  const resetAfterDone = () => {
+    setDoneAction(null)
+    setCart([])
+    setClientName('')
+    setSearch('')
+    onSuccess()
+  }
+
+  // Flujo único sobre DiningOrder (igual que Comanda web y la app): abre una
+  // cuenta COUNTER, guarda los items y avanza el estado. Con cocina va a
+  // SENT_TO_KITCHEN; sin cocina queda READY_FOR_PAYMENT (lista para cobro).
   const handleGuardar = async () => {
-    if (cart.length === 0 || !clientName.trim()) return
+    if (cart.length === 0 || !clientName.trim() || !branchId || !waiter) return
     setLoading('guardar')
     setError(null)
     try {
-      await createComanda({
-        tableNumber: clientName.trim(),
-        items: cart.map(i => ({ itemType: 'PRODUCT', productId: i.id, name: i.name, price: i.price, quantity: i.qty })),
-      })
+      const created = await openDiningOrder(branchId, { serviceType: 'COUNTER', reference: clientName.trim(), waiterId: waiter.id })
+      for (const i of cart) {
+        await addDiningOrderItem(branchId, created.id, {
+          productId: i.id, productName: i.name, unitPrice: i.price, quantity: i.qty,
+        })
+      }
+      await changeDiningOrderStatus(branchId, created.id, kitchenEnabled ? 'SENT_TO_KITCHEN' : 'READY_FOR_PAYMENT')
       setDoneAction('guardar')
-      setTimeout(() => {
-        setDoneAction(null)
-        setCart([])
-        setClientName('')
-        setSearch('')
-        onSuccess()
-      }, 1500)
+      setTimeout(resetAfterDone, 1500)
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } }; message?: string }
       setError(err?.response?.data?.message ?? err?.message ?? 'Error al guardar')
@@ -336,27 +368,27 @@ function DirectCheckoutPanel({ onSuccess }: { onSuccess: () => void }) {
     }
   }
 
+  // Cobro directo de mostrador (solo sin cocina): abre la cuenta, la marca
+  // READY_FOR_PAYMENT y la cobra con DiningOrder.checkout (mismo footprint
+  // financiero: Order + Payment + CashMovement + ticket). Con cocina este
+  // botón se oculta: la cuenta debe pasar por el flujo de cocina antes de cobrar.
   const handleCobrar = async () => {
-    if (cart.length === 0) return
+    if (cart.length === 0 || !branchId || !waiter) return
     setLoading('cobrar')
     setError(null)
     try {
-      const items: DirectCheckoutItem[] = cart.map(i => ({
-        productId: i.id,
-        name: i.name,
-        price: i.price,
-        quantity: i.qty,
-      }))
-      const created = await directCheckout(items, paymentMethod)
-      printOrder(created.id)
+      const reference = clientName.trim() || 'Mostrador'
+      const created = await openDiningOrder(branchId, { serviceType: 'COUNTER', reference, waiterId: waiter.id })
+      for (const i of cart) {
+        await addDiningOrderItem(branchId, created.id, {
+          productId: i.id, productName: i.name, unitPrice: i.price, quantity: i.qty,
+        })
+      }
+      await changeDiningOrderStatus(branchId, created.id, 'READY_FOR_PAYMENT')
+      const result = await checkoutDiningOrder(branchId, created.id, [{ paymentMethod, amount: cartTotal }])
+      printOrder(result.id)
       setDoneAction('cobrar')
-      setTimeout(() => {
-        setDoneAction(null)
-        setCart([])
-        setClientName('')
-        setSearch('')
-        onSuccess()
-      }, 1500)
+      setTimeout(resetAfterDone, 1500)
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } }; message?: string }
       setError(err?.response?.data?.message ?? err?.message ?? 'Error al cobrar')
@@ -538,29 +570,65 @@ function DirectCheckoutPanel({ onSuccess }: { onSuccess: () => void }) {
             </div>
           )}
 
-          {/* Guardar pedido */}
+          {/* Mesero: chip si ya está identificado; PIN si falta. El PIN persiste
+              entre operaciones (comanda/caja), así no se vuelve a pedir. */}
+          {waiter ? (
+            <div className="flex items-center justify-between gap-2 text-[11px] bg-muted/40 border border-border rounded-lg px-2.5 py-1.5">
+              <span className="text-muted-foreground truncate">Mesero: <span className="font-semibold text-foreground">{waiterFullName(waiter)}</span></span>
+            </div>
+          ) : (
+            <div className="space-y-1.5 bg-muted/30 border border-border rounded-lg p-2.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
+                Identifica al mesero (PIN)
+              </label>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  value={pin}
+                  onChange={e => { setPin(e.target.value.replace(/\D/g, '').slice(0, 6)); setPinError(null) }}
+                  onKeyDown={e => { if (e.key === 'Enter') handleVerifyPin() }}
+                  placeholder="••••"
+                  className="flex-1 min-w-0 px-3 py-2 border border-border rounded-lg text-[13px] tracking-widest bg-card text-foreground outline-none focus:border-primary"
+                />
+                <button
+                  onClick={handleVerifyPin}
+                  disabled={verifying || pin.length < 4}
+                  className="px-3 py-2 bg-primary text-primary-foreground rounded-lg text-[12px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                >
+                  {verifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Validar'}
+                </button>
+              </div>
+              {pinError && <div className="text-[11px] text-red-600">{pinError}</div>}
+            </div>
+          )}
+
+          {/* Guardar pedido / Enviar a cocina */}
           <button
             onClick={handleGuardar}
-            disabled={cart.length === 0 || !clientName.trim() || loading !== null}
+            disabled={cart.length === 0 || !clientName.trim() || !waiter || loading !== null}
             className="w-full py-2.5 bg-muted border border-border text-foreground rounded-xl text-[12px] font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted/80 transition-colors flex items-center justify-center gap-2"
           >
             {loading === 'guardar'
-              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Guardando…</>
-              : <>Guardar pedido {clientName.trim() ? `· ${clientName.trim()}` : ''}</>
+              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />{kitchenEnabled ? 'Enviando…' : 'Guardando…'}</>
+              : <>{kitchenEnabled ? 'Enviar a cocina' : 'Guardar pedido'} {clientName.trim() ? `· ${clientName.trim()}` : ''}</>
             }
           </button>
 
-          {/* Cobrar ahora */}
-          <button
-            onClick={handleCobrar}
-            disabled={cart.length === 0 || loading !== null}
-            className="w-full py-3.5 bg-primary text-primary-foreground rounded-xl text-[13px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
-          >
-            {loading === 'cobrar'
-              ? <><Loader2 className="w-4 h-4 animate-spin" />Procesando…</>
-              : <><Check className="w-4 h-4" />Cobrar {fmtComandaMoney(cartTotal)}</>
-            }
-          </button>
+          {/* Cobro directo: solo sin cocina. Con cocina la cuenta debe pasar por
+              el flujo de preparación antes de poder cobrarse. */}
+          {!kitchenEnabled && (
+            <button
+              onClick={handleCobrar}
+              disabled={cart.length === 0 || !waiter || loading !== null}
+              className="w-full py-3.5 bg-primary text-primary-foreground rounded-xl text-[13px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+            >
+              {loading === 'cobrar'
+                ? <><Loader2 className="w-4 h-4 animate-spin" />Procesando…</>
+                : <><Check className="w-4 h-4" />Cobrar {fmtComandaMoney(cartTotal)}</>
+              }
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -803,6 +871,8 @@ function SupplyWithdrawalModal({ onClose, onDone }: { onClose: () => void; onDon
 
 export function CajaRestaurante() {
   const branchId = useAuthStore((s) => s.currentBranch?.id ?? null)
+  // Cocina por MÓDULO habilitado (mismo criterio que el backend y Comanda web).
+  const kitchenEnabled = useAuthStore((s) => s.enabledModules.includes('kitchen'))
   const [tables, setTables] = useState<DiningOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [panelMode, setPanelMode] = useState<PanelMode>('empty')
@@ -935,8 +1005,8 @@ export function CajaRestaurante() {
             onSuccess={handleTableSuccess}
           />
         )}
-        {panelMode === 'direct' && (
-          <DirectCheckoutPanel onSuccess={handleDirectSuccess} />
+        {panelMode === 'direct' && branchId && (
+          <DirectCheckoutPanel branchId={branchId} kitchenEnabled={kitchenEnabled} onSuccess={handleDirectSuccess} />
         )}
       </div>
 
