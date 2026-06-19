@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { PasswordUtil } from '../../../common/utils/password.util';
+import { LicenseService } from '../../../common/services/license.service';
 import { ProvisionTenantDto } from './dto/provision-tenant.dto';
 import {
   UpdateTenantStatusDto,
@@ -28,7 +29,10 @@ type PlatformActor = { id: string };
 
 @Injectable()
 export class PlatformTenantsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private licenseService: LicenseService,
+  ) {}
 
   async findAll(query: PlatformTenantsQueryDto) {
     const { status, plan, search, page = 1, limit = 20 } = query;
@@ -223,6 +227,17 @@ export class PlatformTenantsService {
         notes: dto.notes,
       },
     });
+
+    // 9. Issue the tenant's initial license (every tenant operates under one).
+    //    Trials inherit trialDays; otherwise a perpetual license the platform
+    //    admin can later bound/renew. No billing is involved yet.
+    await this.licenseService.createLicense(
+      result.tenant.id,
+      dto.trialDays
+        ? { plan: result.tenant.plan, trialDays: dto.trialDays, notes: dto.notes }
+        : { plan: result.tenant.plan, status: 'ACTIVE', notes: dto.notes },
+      actor.id,
+    );
 
     return {
       tenant: result.tenant,

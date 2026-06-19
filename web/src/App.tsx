@@ -28,6 +28,8 @@ import { Servicios } from '@/pages/servicios'
 import { Cotizaciones } from '@/pages/cotizaciones'
 import { OrdenesTrabajo } from '@/pages/ordenes-trabajo'
 import { Empleados } from '@/pages/empleados'
+import DiningAreasPage from '@/pages/dining-areas'
+import RestaurantTablesPage from '@/pages/restaurant-tables'
 import { Comanda } from '@/pages/comanda'
 import { ComandaLogin } from '@/pages/comanda-login'
 import { CajaRestaurante } from '@/pages/caja-restaurante'
@@ -65,6 +67,9 @@ const PATH_TO_MODULE: Record<string, ModuleId> = {
   '/pos': 'pos',
   '/caja-restaurante': 'caja-restaurante',
   '/insumos': 'insumos',
+  '/dining-areas': 'dining-areas',
+  '/restaurant-tables': 'restaurant-tables',
+  '/comanda': 'comanda',
 }
 
 function ModuleRoute({ module, children }: { module: string; children: ReactNode }) {
@@ -142,6 +147,9 @@ function AppLayout() {
             <Route path="/caja-restaurante" element={<ModuleRoute module="caja-restaurante"><CajaRestaurante /></ModuleRoute>} />
             <Route path="/insumos" element={<ModuleRoute module="insumos"><Insumos /></ModuleRoute>} />
             <Route path="/kitchen" element={<ModuleRoute module="kitchen"><Kitchen /></ModuleRoute>} />
+            <Route path="/dining-areas" element={<ModuleRoute module="dining-areas"><DiningAreasPage /></ModuleRoute>} />
+            <Route path="/restaurant-tables" element={<ModuleRoute module="restaurant-tables"><RestaurantTablesPage /></ModuleRoute>} />
+            <Route path="/comanda" element={<ModuleRoute module="comanda"><Comanda /></ModuleRoute>} />
           </Routes>
         </div>
       </div>

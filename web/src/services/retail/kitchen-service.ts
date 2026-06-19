@@ -1,12 +1,12 @@
 import { api } from '@/lib/api-client'
 
+// KDS sobre DiningOrder (fuente única de cocina, igual que la app móvil).
+// Estados activos en cocina: SENT_TO_KITCHEN → IN_PREPARATION → READY.
 export type KitchenOrderStatus =
-  | 'PENDING'
-  | 'IN_PROGRESS'
-  | 'PAUSED'
+  | 'SENT_TO_KITCHEN'
+  | 'IN_PREPARATION'
   | 'READY'
-  | 'REJECTED'
-  | 'DELIVERED'
+  | 'READY_FOR_PAYMENT'
 
 export interface KitchenSupply {
   id: string
@@ -55,13 +55,14 @@ export interface KitchenProduct {
 
 export interface KitchenOrderItem {
   id: string
-  name: string
-  description: string | null
+  productId: string | null
+  productName: string
   quantity: number
+  notes: string | null
   product: KitchenProduct | null
 }
 
-export interface KitchenCreatedBy {
+export interface KitchenWaiter {
   id: string
   firstName: string
   lastName: string
@@ -69,21 +70,13 @@ export interface KitchenCreatedBy {
 
 export interface KitchenOrder {
   id: string
-  orderNumber: string
-  tableNumber: string | null
-  employeeNumber: string | null
-  notes: string | null
-  kitchenStatus: KitchenOrderStatus
-  kitchenStartedAt: string | null
-  kitchenReadyAt: string | null
-  kitchenPausedAt: string | null
-  kitchenRejectedAt: string | null
-  kitchenRejectedById: string | null
-  kitchenRejectionComment: string | null
-  createdAt: string
-  updatedAt: string
+  reference: string | null
+  status: KitchenOrderStatus
+  serviceType: string
+  openedAt: string
+  table: { id: string; name: string } | null
+  waiter: KitchenWaiter | null
   items: KitchenOrderItem[]
-  createdBy: KitchenCreatedBy | null
 }
 
 export async function getKitchenOrders(): Promise<KitchenOrder[]> {
@@ -94,11 +87,10 @@ export async function getKitchenOrders(): Promise<KitchenOrder[]> {
 export async function updateKitchenStatus(
   orderId: string,
   status: KitchenOrderStatus,
-  rejectionComment?: string,
 ): Promise<KitchenOrder> {
   const { data } = await api.patch<KitchenOrder>(
     `/restaurant/kitchen/orders/${orderId}/status`,
-    { status, ...(rejectionComment ? { rejectionComment } : {}) },
+    { status },
   )
   return data
 }

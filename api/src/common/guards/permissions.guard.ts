@@ -43,6 +43,15 @@ export class PermissionsGuard implements CanActivate {
       return true;
     }
 
+    // DEVICE_OPERATOR: permissions come directly from the JWT payload (employee role).
+    if (user.role === 'DEVICE_OPERATOR') {
+      const operatorPerms: string[] = user.permissions ?? [];
+      return requiredPermissions.every((permOrGroup) => {
+        const options = permOrGroup.split('|');
+        return options.some((perm) => operatorPerms.includes(perm));
+      });
+    }
+
     // tenantId comes from the JWT (set by JwtStrategy)
     const tenantId: string | undefined = user.tenantId;
     if (!tenantId) {

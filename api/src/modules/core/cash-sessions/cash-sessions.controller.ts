@@ -9,6 +9,7 @@ import { QueryCashSessionsDto } from './dto/query-sessions.dto';
 import { CreateManualMovementDto } from './dto/create-movement.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
 import { VerifyAuthDto } from './dto/verify-auth.dto';
+import { WithdrawForSuppliesDto } from './dto/withdraw-supplies.dto';
 
 @ApiTags('Cash Sessions')
 @ApiBearerAuth()
@@ -30,6 +31,13 @@ export class CashSessionsController {
   @ApiOperation({ summary: 'Registrar movimiento manual de efectivo (ingreso/egreso)' })
   createManualMovement(@Body() dto: CreateManualMovementDto) {
     return this.cashSessionsService.createManualMovement(dto);
+  }
+
+  @Post('active/withdraw-supplies')
+  @RequirePermissions('pos:access')
+  @ApiOperation({ summary: 'Retiro de efectivo para compra de insumos (requiere autorización admin)' })
+  withdrawForSupplies(@Body() dto: WithdrawForSuppliesDto) {
+    return this.cashSessionsService.withdrawForSupplies(dto);
   }
 
   @Get()

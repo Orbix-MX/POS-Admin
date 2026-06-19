@@ -21,9 +21,17 @@ export class TenantSummaryDto {
 
 export class AuthResponseDto {
   @ApiProperty() accessToken: string;
+  @ApiPropertyOptional({ description: 'Opaque rotating refresh token (mobile clients).' })
+  refreshToken?: string;
   @ApiProperty({ type: UserResponseDto }) user: UserResponseDto;
   @ApiPropertyOptional({ type: TenantSummaryDto }) tenant?: TenantSummaryDto;
   @ApiPropertyOptional({ type: [TenantSummaryDto] }) availableTenants?: TenantSummaryDto[];
+}
+
+export class RefreshResponseDto {
+  @ApiProperty() accessToken: string;
+  @ApiProperty({ description: 'A new refresh token; the presented one is now revoked.' })
+  refreshToken: string;
 }
 
 export class UserRoleDto {
