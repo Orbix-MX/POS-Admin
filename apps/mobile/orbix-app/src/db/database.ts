@@ -6,7 +6,7 @@
  */
 import * as SQLite from 'expo-sqlite';
 
-import { SCHEMA_SQL, SCHEMA_VERSION } from './schema';
+import { SCHEMA_SQL, SCHEMA_VERSION, MIGRATIONS } from './schema';
 
 const DATABASE_NAME = 'orbix.db';
 
@@ -21,7 +21,18 @@ async function open(): Promise<SQLite.SQLiteDatabase> {
 
 /** Apply the schema and record the version via `user_version`. Idempotent. */
 async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
-  await db.execAsync(SCHEMA_SQL);
+  const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
+  const currentVersion = row?.user_version ?? 0;
+
+  if (currentVersion === 0) {
+    await db.execAsync(SCHEMA_SQL);
+  } else {
+    for (const [ver, sql] of Object.entries(MIGRATIONS)) {
+      if (currentVersion < Number(ver)) {
+        await db.execAsync(sql);
+      }
+    }
+  }
   await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION};`);
 }
 

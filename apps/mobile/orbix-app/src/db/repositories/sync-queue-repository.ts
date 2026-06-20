@@ -36,6 +36,7 @@ function mapRow(row: SyncQueueRow): SyncQueueEntry {
     status: row.status,
     attempts: row.attempts,
     lastError: row.last_error,
+    lastAttemptAt: row.last_attempt_at,
     createdAt: row.created_at,
   };
 }
@@ -53,15 +54,16 @@ export class SyncQueueRepository {
       status: 'PENDING',
       attempts: 0,
       lastError: null,
+      lastAttemptAt: null,
       createdAt: nowIso(),
     };
     await db.runAsync(
       `INSERT INTO ${TABLES.syncQueue}
-        (id, entity_type, entity_id, operation, payload, status, attempts, last_error, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, entity_type, entity_id, operation, payload, status, attempts, last_error, last_attempt_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         entry.id, entry.entityType, entry.localId, entry.operationType, entry.payload,
-        entry.status, entry.attempts, entry.lastError, entry.createdAt,
+        entry.status, entry.attempts, entry.lastError, entry.lastAttemptAt, entry.createdAt,
       ],
     );
     return entry;
@@ -94,7 +96,9 @@ export class SyncQueueRepository {
   async incrementAttempts(id: string): Promise<void> {
     const db = await getDatabase();
     await db.runAsync(
-      `UPDATE ${TABLES.syncQueue} SET attempts = attempts + 1 WHERE id = ?`, [id]);
+      `UPDATE ${TABLES.syncQueue} SET attempts = attempts + 1, last_attempt_at = ? WHERE id = ?`,
+      [nowIso(), id],
+    );
   }
 
   async delete(id: string): Promise<void> {
@@ -113,6 +117,47 @@ export class SyncQueueRepository {
     const row = await db.getFirstAsync<{ c: number }>(
       `SELECT COUNT(*) AS c FROM ${TABLES.syncQueue} WHERE status = 'PENDING'`);
     return row?.c ?? 0;
+  }
+
+  async failedCount(): Promise<number> {
+    const db = await getDatabase();
+    const row = await db.getFirstAsync<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM ${TABLES.syncQueue} WHERE status = 'FAILED'`);
+    return row?.c ?? 0;
+  }
+
+  async findFailed(): Promise<SyncQueueEntry[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<SyncQueueRow>(
+      `SELECT * FROM ${TABLES.syncQueue} WHERE status = 'FAILED' ORDER BY created_at ASC`);
+    return rows.map(mapRow);
+  }
+
+  /** Vuelve a poner una entrada FAILED en PENDING para que el worker la reintente. */
+  async retryEntry(id: string): Promise<void> {
+    const db = await getDatabase();
+    await db.runAsync(
+      `UPDATE ${TABLES.syncQueue} SET status = 'PENDING', attempts = 0, last_error = NULL, last_attempt_at = NULL WHERE id = ?`,
+      [id],
+    );
+  }
+
+  /** Elimina permanentemente una entrada FAILED. */
+  async discardEntry(id: string): Promise<void> {
+    const db = await getDatabase();
+    await db.runAsync(`DELETE FROM ${TABLES.syncQueue} WHERE id = ? AND status = 'FAILED'`, [id]);
+  }
+
+  async retryAll(): Promise<void> {
+    const db = await getDatabase();
+    await db.runAsync(
+      `UPDATE ${TABLES.syncQueue} SET status = 'PENDING', attempts = 0, last_error = NULL, last_attempt_at = NULL WHERE status = 'FAILED'`,
+    );
+  }
+
+  async discardAll(): Promise<void> {
+    const db = await getDatabase();
+    await db.runAsync(`DELETE FROM ${TABLES.syncQueue} WHERE status = 'FAILED'`);
   }
 }
 

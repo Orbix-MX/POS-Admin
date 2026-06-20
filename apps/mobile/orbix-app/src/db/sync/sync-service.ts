@@ -29,17 +29,22 @@ import { useDeviceStore } from '@/store/device-store';
 let running = false;
 
 // Tras N intentos una entrada pasa a FAILED (dead-letter) para no bloquear la cola.
-const MAX_SYNC_ATTEMPTS = 6;
+const MAX_SYNC_ATTEMPTS = 5;
 
 export interface SyncResult {
   processed: number;
   remaining: number;
 }
 
-/** Refresh the observable pending count (e.g. after enqueuing offline ops). */
+/** Refresh the observable pending + failed counts (e.g. after enqueuing offline ops). */
 export async function refreshSyncPending(): Promise<number> {
-  const count = await syncQueueRepository.pendingCount();
-  useSyncStore.getState().setPending(count);
+  const [count, failed] = await Promise.all([
+    syncQueueRepository.pendingCount(),
+    syncQueueRepository.failedCount(),
+  ]);
+  const store = useSyncStore.getState();
+  store.setPending(count);
+  store.setFailed(failed);
   return count;
 }
 

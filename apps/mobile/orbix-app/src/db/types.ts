@@ -73,6 +73,7 @@ export interface SyncQueueEntry {
   status: SyncStatus;
   attempts: number;
   lastError: string | null;
+  lastAttemptAt: string | null;
   createdAt: string;
 }
 
@@ -112,5 +113,6 @@ export interface SyncQueueRow {
   status: SyncStatus;
   attempts: number;
   last_error: string | null;
+  last_attempt_at: string | null;
   created_at: string;
 }

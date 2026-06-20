@@ -14,7 +14,7 @@ export const TABLES = {
 } as const;
 
 /** Bump when the DDL below changes; `migrate()` runs guarded steps. */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /**
  * Idempotent DDL. Executed inside a single batch on open. `IF NOT EXISTS`
@@ -57,16 +57,26 @@ CREATE TABLE IF NOT EXISTS ${TABLES.orderItems} (
 CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON ${TABLES.orderItems}(order_id);
 
 CREATE TABLE IF NOT EXISTS ${TABLES.syncQueue} (
-  id          TEXT PRIMARY KEY NOT NULL,
-  entity_type TEXT NOT NULL,
-  entity_id   TEXT NOT NULL,
-  operation   TEXT NOT NULL,
-  payload     TEXT,
-  status      TEXT NOT NULL DEFAULT 'PENDING',
-  attempts    INTEGER NOT NULL DEFAULT 0,
-  last_error  TEXT,
-  created_at  TEXT NOT NULL
+  id               TEXT PRIMARY KEY NOT NULL,
+  entity_type      TEXT NOT NULL,
+  entity_id        TEXT NOT NULL,
+  operation        TEXT NOT NULL,
+  payload          TEXT,
+  status           TEXT NOT NULL DEFAULT 'PENDING',
+  attempts         INTEGER NOT NULL DEFAULT 0,
+  last_error       TEXT,
+  last_attempt_at  TEXT,
+  created_at       TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON ${TABLES.syncQueue}(status);
 `;
+
+/**
+ * Incremental migrations indexed by target version.
+ * Each SQL runs when upgrading an existing DB from version < key.
+ * Fresh installs (user_version = 0) skip these — they get the full SCHEMA_SQL.
+ */
+export const MIGRATIONS: Record<number, string> = {
+  2: `ALTER TABLE ${TABLES.syncQueue} ADD COLUMN last_attempt_at TEXT;`,
+};

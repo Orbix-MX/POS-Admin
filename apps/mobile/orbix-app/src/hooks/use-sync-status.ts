@@ -15,6 +15,8 @@ export interface SyncStatusInfo {
   label: string;
   /** Number of operations still pending (0 when synced). */
   pendingCount: number;
+  /** Number of operations that permanently failed and need user action. */
+  failedCount: number;
 }
 
 const LABELS: Record<SyncStatus, string> = {
@@ -27,8 +29,13 @@ const LABELS: Record<SyncStatus, string> = {
 
 export function useSyncStatus(): SyncStatusInfo {
   const { connectionType } = useNetwork();
-  const { isSyncing, pendingCount, lastError } = useSyncStore(
-    useShallow((s) => ({ isSyncing: s.isSyncing, pendingCount: s.pendingCount, lastError: s.lastError })),
+  const { isSyncing, pendingCount, failedCount, lastError } = useSyncStore(
+    useShallow((s) => ({
+      isSyncing: s.isSyncing,
+      pendingCount: s.pendingCount,
+      failedCount: s.failedCount,
+      lastError: s.lastError,
+    })),
   );
 
   let status: SyncStatus;
@@ -38,5 +45,5 @@ export function useSyncStatus(): SyncStatusInfo {
   else if (pendingCount > 0) status = 'pending';
   else status = 'synced';
 
-  return { status, label: LABELS[status], pendingCount };
+  return { status, label: LABELS[status], pendingCount, failedCount };
 }
