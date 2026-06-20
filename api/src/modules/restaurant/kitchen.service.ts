@@ -95,8 +95,8 @@ export class KitchenService {
         table: { select: { id: true, name: true } },
         waiter: { select: { id: true, firstName: true, lastName: true } },
         kitchenRounds: {
-          // Solo rondas activas (no marcadas como DONE por la cocina).
-          where: { status: { not: 'DONE' } },
+          // Todas las rondas de la cuenta, ordenadas cronológicamente.
+          // La UI diferencia visualmente SENT / IN_PREPARATION / DONE.
           orderBy: { roundNumber: 'asc' },
           select: {
             id: true,

@@ -128,25 +128,24 @@ export function useKitchen() {
   const handleReady   = useCallback((o: KitchenOrder) => applyStatus(o, 'READY'), [applyStatus])
   const handleDeliver = useCallback((o: KitchenOrder) => applyStatus(o, 'READY_FOR_PAYMENT'), [applyStatus])
 
-  // Marca una ronda como DONE — la elimina del KDS sin tocar el estado de la orden.
-  const handleMarkRoundDone = useCallback(async (orderId: string, roundId: string) => {
+  // Actualiza el estado de una ronda (SENT → IN_PREPARATION → DONE).
+  // Actualización optimista: modifica la ronda en el estado local sin esperar reload.
+  const handleUpdateRoundStatus = useCallback(async (
+    orderId: string,
+    roundId: string,
+    status: KitchenRoundStatus,
+  ) => {
     setUpdatingRound(p => ({ ...p, [roundId]: true }))
     try {
-      await updateKitchenRoundStatus(roundId, 'DONE' as KitchenRoundStatus)
-      setOrders(prev =>
-        prev.map(o =>
-          o.id !== orderId
-            ? o
-            : { ...o, rounds: o.rounds.filter(r => r.id !== roundId) },
-        ),
-      )
-      setSelectedOrder(prev =>
-        prev?.id === orderId
-          ? { ...prev, rounds: prev.rounds.filter(r => r.id !== roundId) }
-          : prev,
-      )
+      const updated = await updateKitchenRoundStatus(roundId, status)
+      const patchRound = (o: KitchenOrder) =>
+        o.id !== orderId
+          ? o
+          : { ...o, rounds: o.rounds.map(r => r.id === roundId ? { ...r, status: updated.status } : r) }
+      setOrders(prev => prev.map(patchRound))
+      setSelectedOrder(prev => prev ? patchRound(prev) : prev)
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Error al marcar ronda'
+      const msg = e instanceof Error ? e.message : 'Error al actualizar ronda'
       setError(msg)
     } finally {
       setUpdatingRound(p => ({ ...p, [roundId]: false }))
@@ -156,7 +155,7 @@ export function useKitchen() {
   return {
     orders, columns, loading, error, lastRefresh, updating, updatingRound,
     selectedOrder, setSelectedOrder,
-    handleStart, handleReady, handleDeliver, handleMarkRoundDone,
+    handleStart, handleReady, handleDeliver, handleUpdateRoundStatus,
     refresh: () => load(),
   }
 }
