@@ -16,6 +16,10 @@ import { convertToBaseUnit } from '../../../common/helpers/unit-conversion';
 const CASH_INCOME_TYPES = ['SALE', 'CXC_PAYMENT', 'INCOME'] as const;
 const CASH_EXPENSE_TYPES = ['SUPPLIER_PAYMENT', 'EXPENSE'] as const;
 
+// Nombre del índice único parcial (una sesión ABIERTA por tenant+sucursal) —
+// para traducir la violación P2002 a un mensaje de negocio claro.
+const OPEN_SESSION_UNIQUE_INDEX = 'cash_sessions_one_open_per_branch_key';
+
 // Valid-format bcrypt hash used as constant-time dummy when user email is not found.
 // Prevents timing oracle that would reveal which emails exist in the system.
 const TIMING_SAFE_DUMMY_HASH = '$2b$10$abcdefghijklmnopqrstuuQfTkF.n8cXD.5EGovU1qWDzd3tpjRCC';
@@ -41,6 +45,10 @@ export class CashSessionsService {
     const userId = this.auditContext.getUserId();
     const branchId = dto.branchId ?? this.tenantContext.getBranchId() ?? null;
 
+    // Pre-chequeo amigable. No es la garantía: dos operadores concurrentes pueden
+    // cruzarlo antes de insertar. La garantía real es el índice único parcial (una
+    // ABIERTA por tenant+sucursal); su violación P2002 se traduce abajo. Check +
+    // índice = mensaje claro y cero duplicados.
     const existing = await this.prisma.cashSession.findFirst({
       where: { tenantId, branchId, status: 'ABIERTA' },
     });
@@ -48,22 +56,51 @@ export class CashSessionsService {
       throw new BadRequestException('Ya existe una sesión de caja abierta para esta sucursal');
     }
 
-    return this.prisma.cashSession.create({
-      data: {
-        tenantId,
-        branchId,
-        status: 'ABIERTA',
-        exchangeRateUsdMxn: dto.exchangeRateUsdMxn,
-        openingAmount: dto.openingAmount,
-        openingAmountUsd: dto.openingAmountUsd ?? 0,
-        notes: dto.notes ?? null,
-        openedById: userId ?? null,
-      },
-      include: {
-        branch: { select: { id: true, name: true } },
-        openedBy: { select: { id: true, email: true } },
-      },
-    });
+    try {
+      // Apertura transaccional: el insert es la operación atómica que compite por
+      // el índice único. Si dos requests llegan a la vez, solo uno persiste.
+      return await this.prisma.$transaction((tx) =>
+        tx.cashSession.create({
+          data: {
+            tenantId,
+            branchId,
+            status: 'ABIERTA',
+            exchangeRateUsdMxn: dto.exchangeRateUsdMxn,
+            openingAmount: dto.openingAmount,
+            openingAmountUsd: dto.openingAmountUsd ?? 0,
+            notes: dto.notes ?? null,
+            openedById: userId ?? null,
+          },
+          include: {
+            branch: { select: { id: true, name: true } },
+            openedBy: { select: { id: true, email: true } },
+          },
+        }),
+      );
+    } catch (e) {
+      // P2002 sobre el índice parcial = otro operador ganó la carrera y ya abrió
+      // la sesión de esta sucursal. Se reporta como conflicto de negocio.
+      if (this.isOpenSessionUniqueViolation(e)) {
+        throw new BadRequestException('Ya existe una sesión de caja abierta para esta sucursal');
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * True cuando el error es una violación del índice único parcial que protege
+   * "una sola sesión ABIERTA por tenant+sucursal" (Prisma P2002). Como el índice
+   * es por expresión (COALESCE), el target puede no traer columnas: ante un P2002
+   * en este flujo se asume dicho índice (es la única restricción única posible).
+   */
+  private isOpenSessionUniqueViolation(e: unknown): boolean {
+    if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== 'P2002') {
+      return false;
+    }
+    const target = e.meta?.target;
+    if (typeof target === 'string') return target.includes(OPEN_SESSION_UNIQUE_INDEX);
+    if (Array.isArray(target)) return target.includes(OPEN_SESSION_UNIQUE_INDEX);
+    return true;
   }
 
   async close(id: string, dto: CloseCashSessionDto) {
