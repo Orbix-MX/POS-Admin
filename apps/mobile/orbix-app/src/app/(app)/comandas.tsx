@@ -434,6 +434,7 @@ export default function ComandasScreen() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
   // Order capture (draft or existing) — drafts persist only on the first product.
   const [captureTarget, setCaptureTarget] = useState<CaptureTarget | null>(null);
@@ -549,10 +550,18 @@ export default function ComandasScreen() {
     void load(true);
   }, [load]);
 
-  const sorted = useMemo(
-    () => [...orders].sort((a, b) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime()),
-    [orders],
-  );
+  const sorted = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const matched = !q ? orders : orders.filter((o) => {
+      const w = o.waiter ? `${o.waiter.firstName} ${o.waiter.lastName}`.toLowerCase() : '';
+      // Búsqueda local: referencia, mesa, mesero y tipo (Mesa/Mostrador/…).
+      return (o.reference ?? '').toLowerCase().includes(q)
+        || (o.table?.name ?? '').toLowerCase().includes(q)
+        || w.includes(q)
+        || orderType(o).label.toLowerCase().includes(q);
+    });
+    return [...matched].sort((a, b) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime());
+  }, [orders, search]);
 
   // Top summary — how many orders sit in each operational stage right now.
   const summary = useMemo(() => {
@@ -571,7 +580,9 @@ export default function ComandasScreen() {
       <AppHeader
         dense
         branchName={activeBranch?.name ?? 'Sucursal'}
-        showSearch={false}
+        searchPlaceholder="Buscar orden, mesa o mesero"
+        searchValue={search}
+        onSearchChange={setSearch}
         actions={[]}
         onPressBranch={canSwitch ? openSelector : undefined}
       />
@@ -676,12 +687,20 @@ export default function ComandasScreen() {
           <ActivityIndicator color={theme.colors.primary} style={{ marginTop: theme.spacing.xl }} />
         ) : sorted.length === 0 ? (
           <View style={{ alignItems: 'center', paddingVertical: theme.spacing['3xl'], gap: theme.spacing.sm }}>
-            <StatusBadge status="available" label="Sin comandas abiertas" />
-            <Text variant="body" tone="secondary" style={{ textAlign: 'center' }}>
-              {counterOnly
-                ? 'Toca "+ Nueva orden" para capturar una venta con referencia.'
-                : 'Toca "+ Nueva cuenta" para abrir una cuenta por mesa.'}
-            </Text>
+            {search.trim() ? (
+              <Text variant="body" tone="secondary" style={{ textAlign: 'center' }}>
+                Sin resultados para “{search.trim()}”.
+              </Text>
+            ) : (
+              <>
+                <StatusBadge status="available" label="Sin comandas abiertas" />
+                <Text variant="body" tone="secondary" style={{ textAlign: 'center' }}>
+                  {counterOnly
+                    ? 'Toca "+ Nueva orden" para capturar una venta con referencia.'
+                    : 'Toca "+ Nueva cuenta" para abrir una cuenta por mesa.'}
+                </Text>
+              </>
+            )}
           </View>
         ) : (
           <View style={{ gap: theme.spacing.md }}>

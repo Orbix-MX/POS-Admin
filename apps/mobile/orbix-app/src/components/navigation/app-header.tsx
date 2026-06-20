@@ -14,6 +14,10 @@ export interface AppHeaderProps {
   branchName?: string;
   showSearch?: boolean;
   searchPlaceholder?: string;
+  /** Controlled search text. The bar is only functional when both this and
+   *  `onSearchChange` are provided; otherwise pass showSearch={false}. */
+  searchValue?: string;
+  onSearchChange?: (text: string) => void;
   actions?: IconName[];
   showSyncStatus?: boolean;
   /** Compact layout: less vertical padding and shorter controls. Maximizes the
@@ -27,6 +31,8 @@ export function AppHeader({
   branchName = 'Sucursal',
   showSearch = true,
   searchPlaceholder = 'Buscar mesa, comanda…',
+  searchValue,
+  onSearchChange,
   actions = ['bell', 'settings'],
   showSyncStatus = true,
   dense = false,
@@ -81,7 +87,7 @@ export function AppHeader({
 
       {showSearch && (
         <View style={{ flex: 1, maxWidth: 320 }}>
-          <SearchBar placeholder={searchPlaceholder} />
+          <SearchBar placeholder={searchPlaceholder} value={searchValue} onChangeText={onSearchChange} />
         </View>
       )}
 

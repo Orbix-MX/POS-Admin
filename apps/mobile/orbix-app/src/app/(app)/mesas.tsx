@@ -227,6 +227,7 @@ export default function TablesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [zone, setZone] = useState('todas');
+  const [search, setSearch] = useState('');
 
   // Table modal
   const [selectedTable, setSelectedTable] = useState<RestaurantTable | null>(null);
@@ -307,9 +308,18 @@ export default function TablesScreen() {
   ], [areas]);
 
   const filtered = useMemo(() => {
-    if (zone === 'todas') return tables;
-    return tables.filter((t) => t.areaId === zone);
-  }, [tables, zone]);
+    const byZone = zone === 'todas' ? tables : tables.filter((t) => t.areaId === zone);
+    const q = search.trim().toLowerCase();
+    if (!q) return byZone;
+    // Búsqueda local instantánea: nombre de mesa, área y mesero de la cuenta abierta.
+    return byZone.filter((t) => {
+      const w = t.diningOrders[0]?.waiter;
+      const waiter = w ? `${w.firstName} ${w.lastName}`.toLowerCase() : '';
+      return t.name.toLowerCase().includes(q)
+        || t.area.name.toLowerCase().includes(q)
+        || waiter.includes(q);
+    });
+  }, [tables, zone, search]);
 
   const gridData = useMemo(() =>
     filtered.map((t) => {
@@ -343,7 +353,9 @@ export default function TablesScreen() {
     <Screen edges={[]}>
       <AppHeader
         branchName={activeBranch?.name ?? 'Sucursal'}
-        showSearch={false}
+        searchPlaceholder="Buscar mesa o mesero"
+        searchValue={search}
+        onSearchChange={setSearch}
         actions={[]}
         onPressBranch={canSwitch ? openSelector : undefined}
       />
@@ -448,7 +460,7 @@ export default function TablesScreen() {
 
               {gridData.length === 0 ? (
                 <Text variant="body" tone="secondary" style={{ textAlign: 'center', marginTop: theme.spacing.xl }}>
-                  No hay mesas en esta área.
+                  {search.trim() ? `Sin resultados para “${search.trim()}”.` : 'No hay mesas en esta área.'}
                 </Text>
               ) : (
                 <Grid data={gridData} columns={cols} keyExtractor={(t) => t.code} renderItem={(t) => <TableCard {...t} />} />
