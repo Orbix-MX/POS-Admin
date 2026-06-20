@@ -55,8 +55,8 @@ function makeTx(
     productUpdate: [] as { id: string; increment: number }[],
     supplyUpdateMany: [] as { id: string; decrement: number }[],
     supplyUpdate: [] as { id: string; increment: number }[],
-    inventoryMovements: [] as { type: string; productId: string; quantity: number }[],
-    supplyMovements: [] as { type: string; supplyId: string; quantity: number }[],
+    inventoryMovements: [] as { type: string; productId: string; quantity: number; referenceId: string; referenceType: string }[],
+    supplyMovements: [] as { type: string; supplyId: string; quantity: number; referenceId: string }[],
     branchInventory: [] as { productId: string; increment: number }[],
     branchInventoryCreate: [] as { productId: string; stock: number }[],
   };
@@ -117,14 +117,19 @@ function makeTx(
       }),
     },
     inventoryMovement: {
-      create: jest.fn(({ data }: { data: { type: string; productId: string; quantity: number } }) => {
-        calls.inventoryMovements.push({ type: data.type, productId: data.productId, quantity: data.quantity });
+      create: jest.fn(({ data }: { data: { type: string; productId: string; quantity: number; referenceId: string; referenceType: string } }) => {
+        calls.inventoryMovements.push({
+          type: data.type, productId: data.productId, quantity: data.quantity,
+          referenceId: data.referenceId, referenceType: data.referenceType,
+        });
         return Promise.resolve({});
       }),
     },
     supplyMovement: {
-      create: jest.fn(({ data }: { data: { type: string; supplyId: string; quantity: number } }) => {
-        calls.supplyMovements.push({ type: data.type, supplyId: data.supplyId, quantity: data.quantity });
+      create: jest.fn(({ data }: { data: { type: string; supplyId: string; quantity: number; referenceId: string } }) => {
+        calls.supplyMovements.push({
+          type: data.type, supplyId: data.supplyId, quantity: data.quantity, referenceId: data.referenceId,
+        });
         return Promise.resolve({});
       }),
     },
@@ -159,7 +164,10 @@ describe('InventoryConsumptionEngine', () => {
       await engine.consume(tx as never, [{ productId: 'p1', quantity: 3, itemType: 'PRODUCT' }], CTX);
 
       expect(productStock.p1).toBe(7);
-      expect(calls.inventoryMovements).toEqual([{ type: 'VENTA', productId: 'p1', quantity: 3 }]);
+      expect(calls.inventoryMovements).toHaveLength(1);
+      expect(calls.inventoryMovements[0]).toMatchObject({
+        type: 'VENTA', productId: 'p1', quantity: 3, referenceType: 'ORDER', referenceId: 'order-1',
+      });
     });
 
     it('skips products with trackInventory = false', async () => {
@@ -262,6 +270,47 @@ describe('InventoryConsumptionEngine', () => {
     });
   });
 
+  describe('restore() — devoluciones', () => {
+    it('SIMPLE: incrementa stock y registra movimiento DEVOLUCION (mismo referenceId)', async () => {
+      const { tx, calls, productStock } = makeTx({ p1: simple('p1', 10) }, {});
+      await engine.restore(tx as never, [{ productId: 'p1', quantity: 3, itemType: 'PRODUCT' }], CTX);
+
+      expect(productStock.p1).toBe(13); // 10 + 3 reingresado
+      expect(calls.inventoryMovements).toHaveLength(1);
+      expect(calls.inventoryMovements[0]).toMatchObject({
+        type: 'DEVOLUCION', productId: 'p1', quantity: 3, referenceType: 'ORDER', referenceId: 'order-1',
+      });
+      // La devolución también revierte el stock de la sucursal (delta positivo).
+      expect(calls.branchInventory).toEqual([{ productId: 'p1', increment: 3 }]);
+    });
+
+    it('RECIPE: reingresa insumos y registra SupplyMovement ADJUSTMENT', async () => {
+      const products = { r1: recipe('r1', [supplyItem('s1', 5)]) };
+      const { tx, calls, supplyStock } = makeTx(products, { s1: 100 });
+      await engine.restore(tx as never, [{ productId: 'r1', quantity: 2, itemType: 'PRODUCT' }], CTX);
+
+      expect(supplyStock.s1).toBe(110); // 100 + 5*2
+      expect(calls.supplyMovements).toHaveLength(1);
+      expect(calls.supplyMovements[0]).toMatchObject({ type: 'ADJUSTMENT', supplyId: 's1', quantity: 10, referenceId: 'order-1' });
+    });
+
+    it('COMBO con RECIPE: la reversa expande hijos y reingresa los insumos de la receta', async () => {
+      const products = {
+        combo: { id: 'combo', name: 'combo', type: 'COMBO' as const, trackInventory: false, stock: 0, recipe: null,
+          comboItems: [{ childProductId: 'p1', quantity: 2 }, { childProductId: 'r1', quantity: 1 }] },
+        p1: simple('p1', 50),
+        r1: recipe('r1', [supplyItem('s1', 4)]),
+      };
+      const { tx, calls, productStock, supplyStock } = makeTx(products, { s1: 100 });
+      await engine.restore(tx as never, [{ productId: 'combo', quantity: 3, itemType: 'PRODUCT' }], CTX);
+
+      expect(productStock.p1).toBe(50 + 2 * 3);     // hoja SIMPLE reingresada
+      expect(supplyStock.s1).toBe(100 + 4 * 1 * 3); // insumo de la receta reingresado
+      expect(calls.inventoryMovements.every((m) => m.type === 'DEVOLUCION')).toBe(true);
+      expect(calls.supplyMovements.every((m) => m.type === 'ADJUSTMENT')).toBe(true);
+    });
+  });
+
   describe('symmetry: consume then restore returns to the original state', () => {
     it('SIMPLE + RECIPE + COMBO net to zero', async () => {
       const products = {
@@ -287,6 +336,52 @@ describe('InventoryConsumptionEngine', () => {
       expect(productStock.p2).toBe(p2Before);
       expect(supplyStock.s1).toBe(s1Before);
       expect(supplyStock.s2).toBe(s2Before);
+    });
+
+    it('simetría TOTAL: producto + insumo + branchInventory + movimientos balancean tras venta + reversa', async () => {
+      const products = {
+        combo: { id: 'combo', name: 'combo', type: 'COMBO' as const, trackInventory: false, stock: 0, recipe: null,
+          comboItems: [{ childProductId: 'p1', quantity: 2 }, { childProductId: 'r1', quantity: 1 }] },
+        p1: simple('p1', 50),  // SIMPLE (también hoja del combo)
+        p2: simple('p2', 30),  // SIMPLE suelto
+        r1: recipe('r1', [supplyItem('s1', 4), supplyItem('s2', 1)]), // RECIPE (suelta y dentro del combo)
+      };
+      const { tx, calls, productStock, supplyStock } = makeTx(products, { s1: 100, s2: 80 });
+      const lines = [
+        { productId: 'combo', quantity: 3, itemType: 'PRODUCT' as const }, // COMBO con RECIPE
+        { productId: 'p2', quantity: 5, itemType: 'PRODUCT' as const },     // SIMPLE
+        { productId: 'r1', quantity: 2, itemType: 'PRODUCT' as const },     // RECIPE
+      ];
+
+      const snapshot = () => ({ ...productStock });
+      const supplySnap = () => ({ ...supplyStock });
+      const before = snapshot();
+      const beforeSupply = supplySnap();
+
+      await engine.consume(tx as never, lines, CTX);
+      await engine.restore(tx as never, lines, CTX);
+
+      // 1) Stock de productos vuelve al inicial.
+      expect(snapshot()).toEqual(before);
+      // 2) Stock de insumos vuelve al inicial.
+      expect(supplySnap()).toEqual(beforeSupply);
+
+      // 3) branchInventory: la suma de deltas por producto es 0 (salida + reingreso).
+      const branchNet = new Map<string, number>();
+      for (const b of calls.branchInventory) branchNet.set(b.productId, (branchNet.get(b.productId) ?? 0) + b.increment);
+      for (const [, net] of branchNet) expect(net).toBe(0);
+
+      // 4) InventoryMovement: por producto, total VENTA == total DEVOLUCION.
+      const sumBy = (type: string, key: 'productId') =>
+        calls.inventoryMovements.filter((m) => m.type === type)
+          .reduce((acc, m) => { acc[m[key]] = (acc[m[key]] ?? 0) + m.quantity; return acc; }, {} as Record<string, number>);
+      expect(sumBy('VENTA', 'productId')).toEqual(sumBy('DEVOLUCION', 'productId'));
+
+      // 5) SupplyMovement: por insumo, total RECIPE_CONSUMPTION == total ADJUSTMENT.
+      const sumSupply = (type: string) =>
+        calls.supplyMovements.filter((m) => m.type === type)
+          .reduce((acc, m) => { acc[m.supplyId] = (acc[m.supplyId] ?? 0) + m.quantity; return acc; }, {} as Record<string, number>);
+      expect(sumSupply('RECIPE_CONSUMPTION')).toEqual(sumSupply('ADJUSTMENT'));
     });
 
     it('never increments the stock of virtual RECIPE / COMBO parents (no ghost stock)', async () => {
