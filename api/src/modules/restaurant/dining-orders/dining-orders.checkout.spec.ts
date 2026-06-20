@@ -50,6 +50,9 @@ function build() {
   const prisma = {
     diningOrder: { findFirst: jest.fn() },
     customer: { findFirst: jest.fn() },
+    // isKitchenEnabled() consulta el tenant; null ⇒ cocina deshabilitada, así el
+    // checkout no exige enviar rondas (estos casos cobran una cuenta DELIVERED).
+    tenant: { findUnique: jest.fn().mockResolvedValue(null) },
     $transaction: jest.fn((cb: (t: typeof tx) => Promise<unknown>) => cb(tx)),
   };
 

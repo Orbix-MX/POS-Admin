@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
-import { DiningOrderStatus } from '@prisma/client';
+import { DiningOrderStatus, Prisma } from '@prisma/client';
 import { getModulesForPlan, SystemModule } from '@orbix/types';
 import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
@@ -33,6 +33,16 @@ const PAYABLE_STATUSES: DiningOrderStatus[] = ['DELIVERED', 'READY_FOR_PAYMENT']
 
 // Terminal: la cuenta ya no admite edición de productos.
 const LOCKED_STATUSES: DiningOrderStatus[] = ['PAID', 'CANCELLED'];
+
+// Estados activos: una mesa con una cuenta en cualquiera de ellos NO admite otra.
+// Espejo del índice único parcial de la BD (todos menos PAID/CLOSED/CANCELLED).
+const ACTIVE_STATUSES: DiningOrderStatus[] = [
+  'OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED', 'READY_FOR_PAYMENT',
+];
+
+// Nombre del índice único parcial (una cuenta activa por mesa) — para traducir la
+// violación P2002 a un mensaje de negocio claro.
+const ACTIVE_TABLE_UNIQUE_INDEX = 'dining_orders_active_table_key';
 
 const ITEM_SELECT = {
   id: true,
@@ -84,8 +94,10 @@ export class DiningOrdersService {
 
   async findForTable(branchId: string, tableId: string) {
     const tenantId = this.tenantContext.requireTenantId();
+    // La cuenta viva de la mesa puede estar en cualquier estado activo (en cocina,
+    // por cobrar…), no solo OPEN. El índice único garantiza que haya a lo sumo una.
     const order = await this.prisma.diningOrder.findFirst({
-      where: { tenantId, branchId, tableId, status: 'OPEN' },
+      where: { tenantId, branchId, tableId, status: { in: ACTIVE_STATUSES } },
       select: ORDER_SELECT,
     });
     return order ?? null;
@@ -122,24 +134,37 @@ export class DiningOrdersService {
     });
     if (!table) throw new NotFoundException('Mesa no encontrada.');
 
+    // Pre-chequeo amigable (cualquier estado activo, no solo OPEN). No es la
+    // garantía: dos requests concurrentes pueden cruzarlo antes de insertar. La
+    // garantía real es el índice único parcial de la BD, cuya violación se traduce
+    // abajo a un ConflictException. Check + índice = mensaje claro y cero duplicados.
     const existing = await this.prisma.diningOrder.findFirst({
-      where: { tableId, status: 'OPEN' },
+      where: { tableId, status: { in: ACTIVE_STATUSES } },
       select: { id: true },
     });
-    if (existing) throw new ConflictException('La mesa ya tiene una cuenta abierta.');
+    if (existing) throw new ConflictException('La mesa ya tiene una cuenta activa.');
 
-    const [order] = await this.prisma.$transaction([
-      this.prisma.diningOrder.create({
-        // reference se genera automáticamente desde el nombre de la mesa.
-        data: { tenantId, branchId, tableId, waiterId, serviceType: 'DINE_IN', reference: table.name },
-        select: ORDER_SELECT,
-      }),
-      this.prisma.restaurantTable.update({
-        where: { id: tableId },
-        data: { status: 'OCCUPIED' },
-      }),
-    ]);
-    return order;
+    try {
+      const [order] = await this.prisma.$transaction([
+        this.prisma.diningOrder.create({
+          // reference se genera automáticamente desde el nombre de la mesa.
+          data: { tenantId, branchId, tableId, waiterId, serviceType: 'DINE_IN', reference: table.name },
+          select: ORDER_SELECT,
+        }),
+        this.prisma.restaurantTable.update({
+          where: { id: tableId },
+          data: { status: 'OCCUPIED' },
+        }),
+      ]);
+      return order;
+    } catch (e) {
+      // P2002 sobre el índice parcial = otra request ganó la carrera y ya abrió
+      // la cuenta activa de esta mesa. Se reporta como conflicto de negocio.
+      if (this.isActiveTableUniqueViolation(e)) {
+        throw new ConflictException('La mesa ya tiene una cuenta activa.');
+      }
+      throw e;
+    }
   }
 
   private async openCounter(tenantId: string, branchId: string, waiterId: string, reference?: string) {
@@ -155,6 +180,22 @@ export class DiningOrdersService {
       },
       select: ORDER_SELECT,
     });
+  }
+
+  /**
+   * True cuando el error es una violación del índice único parcial que protege
+   * "una sola cuenta activa por mesa" (Prisma P2002). El target del error trae el
+   * nombre del índice, así no se confunde con otros uniques de la tabla.
+   */
+  private isActiveTableUniqueViolation(e: unknown): boolean {
+    if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== 'P2002') {
+      return false;
+    }
+    const target = e.meta?.target;
+    if (typeof target === 'string') return target.includes(ACTIVE_TABLE_UNIQUE_INDEX);
+    if (Array.isArray(target)) return target.includes(ACTIVE_TABLE_UNIQUE_INDEX) || target.includes('tableId');
+    // Sin metadata del target: ante un P2002 en este flujo, asumir el índice de mesa.
+    return true;
   }
 
   async findOne(branchId: string, orderId: string) {
