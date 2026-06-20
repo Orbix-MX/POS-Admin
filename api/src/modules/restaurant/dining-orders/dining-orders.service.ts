@@ -9,6 +9,7 @@ import { CheckoutDiningOrderDto } from './dto/checkout-dining-order.dto';
 import { InventoryConsumptionEngine } from '../../retail/inventory/inventory-consumption.engine';
 import { OrderCheckoutEngine } from '../../retail/checkout/order-checkout.engine';
 import { roundMoney } from '../../../common/utils/money.util';
+import { assertBranchBelongs } from '../../../common/helpers/assert-branch-belongs';
 
 // Allowed status transitions per operating model. The active map is chosen at
 // runtime by whether the tenant has the KITCHEN module enabled. PAID is NOT a
@@ -82,6 +83,7 @@ export class DiningOrdersService {
 
   async findActive(branchId: string) {
     const tenantId = this.tenantContext.requireTenantId();
+    await assertBranchBelongs(this.prisma, tenantId, branchId);
     // Todas las cuentas vivas (no terminales): borradores, en cocina y por
     // cobrar. Incluir los estados de cocina permite reabrir una cuenta enviada
     // para capturar rondas adicionales.
@@ -94,6 +96,7 @@ export class DiningOrdersService {
 
   async findForTable(branchId: string, tableId: string) {
     const tenantId = this.tenantContext.requireTenantId();
+    await assertBranchBelongs(this.prisma, tenantId, branchId);
     // La cuenta viva de la mesa puede estar en cualquier estado activo (en cocina,
     // por cobrar…), no solo OPEN. El índice único garantiza que haya a lo sumo una.
     const order = await this.prisma.diningOrder.findFirst({
@@ -105,6 +108,7 @@ export class DiningOrdersService {
 
   async open(branchId: string, dto: OpenDiningOrderDto) {
     const tenantId = this.tenantContext.requireTenantId();
+    await assertBranchBelongs(this.prisma, tenantId, branchId);
     // Web (sesión usuario) envía el waiter explícito tras autorizarlo por PIN;
     // la app móvil (token operator) lo deriva de la identidad del token.
     const waiterId = dto.waiterId ?? this.auditContext.getUserId();
@@ -200,6 +204,7 @@ export class DiningOrdersService {
 
   async findOne(branchId: string, orderId: string) {
     const tenantId = this.tenantContext.requireTenantId();
+    await assertBranchBelongs(this.prisma, tenantId, branchId);
     const order = await this.prisma.diningOrder.findFirst({
       where: { id: orderId, tenantId, branchId },
       select: ORDER_SELECT,
@@ -214,6 +219,7 @@ export class DiningOrdersService {
    * ya enviadas a cocina (SENT_TO_KITCHEN/IN_PREPARATION/READY/READY_FOR_PAYMENT).
    */
   private async requireEditableOrder(tenantId: string, branchId: string, orderId: string) {
+    await assertBranchBelongs(this.prisma, tenantId, branchId);
     const order = await this.prisma.diningOrder.findFirst({
       where: { id: orderId, tenantId, branchId, status: { notIn: LOCKED_STATUSES } },
       select: { id: true, status: true },
@@ -330,6 +336,7 @@ export class DiningOrdersService {
    */
   async discardIfEmpty(branchId: string, orderId: string) {
     const tenantId = this.tenantContext.requireTenantId();
+    await assertBranchBelongs(this.prisma, tenantId, branchId);
     const order = await this.prisma.diningOrder.findFirst({
       where: { id: orderId, tenantId, branchId },
       select: { id: true, status: true, tableId: true, _count: { select: { items: true } } },
@@ -355,6 +362,7 @@ export class DiningOrdersService {
    */
   async cleanupEmptyOrders(branchId: string | undefined, olderThanMinutes = 120) {
     const tenantId = this.tenantContext.requireTenantId();
+    if (branchId) await assertBranchBelongs(this.prisma, tenantId, branchId);
     const threshold = new Date(Date.now() - olderThanMinutes * 60_000);
 
     const stale = await this.prisma.diningOrder.findMany({
@@ -406,6 +414,7 @@ export class DiningOrdersService {
    */
   async changeStatus(branchId: string, orderId: string, target: DiningOrderStatus) {
     const tenantId = this.tenantContext.requireTenantId();
+    await assertBranchBelongs(this.prisma, tenantId, branchId);
     const order = await this.prisma.diningOrder.findFirst({
       where: { id: orderId, tenantId, branchId },
       select: { id: true, status: true, tableId: true },
@@ -506,6 +515,7 @@ export class DiningOrdersService {
    */
   async checkout(branchId: string, orderId: string, dto: CheckoutDiningOrderDto) {
     const tenantId = this.tenantContext.requireTenantId();
+    await assertBranchBelongs(this.prisma, tenantId, branchId);
     const userId = this.auditContext.getUserId() ?? null;
 
     const order = await this.prisma.diningOrder.findFirst({

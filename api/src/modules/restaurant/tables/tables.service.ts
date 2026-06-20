@@ -4,6 +4,7 @@ import { TenantContextService } from '../../../common/context/tenant-context.ser
 import { AuditContextService } from '../../../common/context/audit-context.service';
 import { CreateRestaurantTableDto, UpdateRestaurantTableDto } from './dto/restaurant-table.dto';
 import { Prisma, DiningOrderStatus } from '@prisma/client';
+import { assertBranchBelongs } from '../../../common/helpers/assert-branch-belongs';
 
 // Order is "active" (table still occupied) until it reaches a terminal state.
 // Filtering only by OPEN dropped orders advanced to kitchen / ready-for-payment,
@@ -115,12 +116,8 @@ export class TablesService {
     }
   }
 
-  private async assertBranchBelongs(tenantId: string, branchId: string) {
-    const branch = await this.prisma.branch.findFirst({
-      where: { id: branchId, tenantId },
-      select: { id: true },
-    });
-    if (!branch) throw new NotFoundException('Sucursal no encontrada.');
+  private assertBranchBelongs(tenantId: string, branchId: string) {
+    return assertBranchBelongs(this.prisma, tenantId, branchId);
   }
 
   private async assertAreaBelongs(tenantId: string, branchId: string, areaId: string) {

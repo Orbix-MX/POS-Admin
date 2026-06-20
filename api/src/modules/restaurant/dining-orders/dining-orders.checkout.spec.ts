@@ -48,6 +48,8 @@ function build() {
   };
 
   const prisma = {
+    // assertBranchBelongs: por defecto la sucursal pertenece al tenant.
+    branch: { findFirst: jest.fn().mockResolvedValue({ id: BRANCH }) },
     diningOrder: { findFirst: jest.fn() },
     customer: { findFirst: jest.fn() },
     // isKitchenEnabled() consulta el tenant; null ⇒ cocina deshabilitada, así el
@@ -74,6 +76,13 @@ describe('DiningOrdersService.checkout', () => {
     const { service, prisma } = build();
     prisma.diningOrder.findFirst.mockResolvedValue(null);
     await expect(service.checkout(BRANCH, 'do-1', fullPayment)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('rejects when branch does not belong to the tenant (cross-tenant)', async () => {
+    const { service, prisma } = build();
+    prisma.branch.findFirst.mockResolvedValue(null); // sucursal de otro tenant
+    await expect(service.checkout(BRANCH, 'do-1', fullPayment)).rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.diningOrder.findFirst).not.toHaveBeenCalled(); // frena antes de tocar datos
   });
 
   it('rejects when already charged (orderId present) — idempotency', async () => {

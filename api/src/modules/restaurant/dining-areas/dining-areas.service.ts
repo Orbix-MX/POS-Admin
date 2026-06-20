@@ -4,6 +4,7 @@ import { TenantContextService } from '../../../common/context/tenant-context.ser
 import { AuditContextService } from '../../../common/context/audit-context.service';
 import { CreateDiningAreaDto, UpdateDiningAreaDto } from './dto/dining-area.dto';
 import { Prisma } from '@prisma/client';
+import { assertBranchBelongs } from '../../../common/helpers/assert-branch-belongs';
 
 @Injectable()
 export class DiningAreasService {
@@ -81,12 +82,8 @@ export class DiningAreasService {
     }
   }
 
-  private async assertBranchBelongs(tenantId: string, branchId: string) {
-    const branch = await this.prisma.branch.findFirst({
-      where: { id: branchId, tenantId },
-      select: { id: true },
-    });
-    if (!branch) throw new NotFoundException('Sucursal no encontrada.');
+  private assertBranchBelongs(tenantId: string, branchId: string) {
+    return assertBranchBelongs(this.prisma, tenantId, branchId);
   }
 
   private async assertExists(tenantId: string, branchId: string, id: string) {

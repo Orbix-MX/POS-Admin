@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DiningOrdersService } from './dining-orders.service';
 
@@ -36,6 +36,8 @@ function buildOpen() {
   const tableUpdate = jest.fn(() => ({ __op: 'tableUpdate' as const }));
 
   const prisma = {
+    // assertBranchBelongs: por defecto la sucursal pertenece al tenant.
+    branch: { findFirst: jest.fn().mockResolvedValue({ id: BRANCH }) },
     restaurantTable: {
       findFirst: jest.fn().mockResolvedValue({ id: TABLE, name: 'Mesa 1', status: 'AVAILABLE' }),
       update: tableUpdate,
@@ -79,6 +81,13 @@ describe('DiningOrdersService.open — una sola cuenta activa por mesa', () => {
     const { service } = buildOpen();
     const order = await service.open(BRANCH, dineIn as never);
     expect(order).toEqual(expect.objectContaining({ tableId: TABLE }));
+  });
+
+  it('rechaza si la sucursal no pertenece al tenant (cross-tenant)', async () => {
+    const { service, prisma } = buildOpen();
+    prisma.branch.findFirst.mockResolvedValue(null); // sucursal de otro tenant
+    await expect(service.open(BRANCH, dineIn as never)).rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.diningOrder.create).not.toHaveBeenCalled(); // frena antes de escribir
   });
 
   it('pre-check: rechaza si la mesa ya tiene una cuenta activa NO-OPEN (ej. en cocina)', async () => {
