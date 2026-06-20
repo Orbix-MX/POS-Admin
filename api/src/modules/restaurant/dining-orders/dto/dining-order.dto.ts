@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsEnum, IsOptional, IsNumber, Min, MaxLength, ValidateIf } from 'class-validator';
+import { IsString, IsNotEmpty, IsEnum, IsOptional, IsNumber, Min, MaxLength, ValidateIf, IsUUID } from 'class-validator';
 import { Type } from 'class-transformer';
 import { DiningServiceType, DiningOrderStatus } from '@prisma/client';
 
@@ -29,6 +29,13 @@ export class OpenDiningOrderDto {
 }
 
 export class AddDiningItemDto {
+  // Id de cliente (uuid) para captura offline: permite que la app referencie la
+  // línea (update/remove) antes de sincronizar. Si se provee, la línea se crea
+  // con ese id de forma idempotente (sin fusionar) — reintentos no duplican.
+  @IsUUID()
+  @IsOptional()
+  id?: string;
+
   @IsString()
   @IsNotEmpty()
   productName!: string;

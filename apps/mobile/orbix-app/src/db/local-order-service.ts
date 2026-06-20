@@ -57,6 +57,32 @@ export class LocalOrderService {
       payload: { id },
     });
   }
+
+  // ── Ops sobre órdenes YA sincronizadas (offline) ───────────────────────────
+  // No tocan las tablas locales: la cola guarda los ids de servidor/cliente y el
+  // worker los reproduce directo contra el API. El id del ítem (uuid de cliente)
+  // permite update/remove antes de que el ADD se sincronice.
+
+  async queueRemoteAddItem(p: {
+    branchId: string; orderId: string;
+    item: { id: string; productId: string | null; productName: string; unitPrice: number; quantity: number; notes: string | null };
+  }): Promise<void> {
+    await syncQueueRepository.enqueue({ localId: p.orderId, operationType: 'REMOTE_ADD_ITEM', payload: p });
+  }
+
+  async queueRemoteUpdateItem(p: {
+    branchId: string; orderId: string; itemId: string; quantity?: number; notes?: string | null;
+  }): Promise<void> {
+    await syncQueueRepository.enqueue({ localId: p.itemId, operationType: 'REMOTE_UPDATE_ITEM', payload: p });
+  }
+
+  async queueRemoteRemoveItem(p: { branchId: string; orderId: string; itemId: string }): Promise<void> {
+    await syncQueueRepository.enqueue({ localId: p.itemId, operationType: 'REMOTE_REMOVE_ITEM', payload: p });
+  }
+
+  async queueRemoteFire(p: { branchId: string; orderId: string }): Promise<void> {
+    await syncQueueRepository.enqueue({ localId: p.orderId, operationType: 'REMOTE_FIRE', payload: p });
+  }
 }
 
 export const localOrderService = new LocalOrderService();

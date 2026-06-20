@@ -38,6 +38,8 @@ export interface DiningOrderItem {
   /** NULL = pendiente de envío (ronda en captura); fecha = ya enviado a cocina. */
   sentToKitchenAt?: string | null;
   createdAt: string;
+  /** Solo cliente: cambio aplicado offline aún sin confirmar en el backend. */
+  pendingSync?: boolean;
 }
 
 export type DiningOrderStatus =
@@ -127,7 +129,7 @@ export async function fetchOrder(branchId: string, orderId: string): Promise<Din
 export async function addOrderItem(
   branchId: string,
   orderId: string,
-  item: { productName: string; unitPrice: number; quantity: number; productId?: string; notes?: string },
+  item: { productName: string; unitPrice: number; quantity: number; id?: string; productId?: string; notes?: string },
 ): Promise<DiningOrderItem> {
   const { data } = await apiClient.post<DiningOrderItem>(
     `/branches/${branchId}/dining-orders/${orderId}/items`,

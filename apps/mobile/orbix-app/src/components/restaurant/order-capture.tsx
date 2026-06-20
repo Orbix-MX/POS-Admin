@@ -25,7 +25,7 @@ import { useTheme } from '@/providers/theme-provider';
 import { useResponsive } from '@/hooks/use-responsive';
 import { useNetwork } from '@/hooks/use-network';
 import { useDeviceStore } from '@/store/device-store';
-import { localOrderService, refreshSyncPending } from '@/db';
+import { localOrderService, refreshSyncPending, newId } from '@/db';
 import {
   fetchOrder, addOrderItem, updateOrderItem, removeOrderItem,
   searchProducts, fetchCategories, changeOrderStatus, fireRound, openDiningOrder, discardOrder,
@@ -373,10 +373,82 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   // Draft (new capture): mutate local state only — instant, the hot path.
-  // Persisted (editing an open order): mutate the server, then reload so the
-  // notes-aware merge is reflected correctly without fragile optimistic guesses.
+  // Persisted (orden ya sincronizada): UI optimista + (online) sync inmediato o
+  // (offline / fallo de red) encolar para sincronizar al reconectar. Cada línea
+  // lleva un id de cliente (uuid) estable, así update/remove funcionan aun antes
+  // de que el ADD llegue al backend. Solo un error real (4xx) revierte la op.
   const sameNote = (a: string | null, b: string | null) => (a ?? '').trim() === (b ?? '').trim();
   const normNote = (n?: string | null) => { const t = (n ?? '').trim(); return t.length ? t : null; };
+  const isNetworkError = (e: unknown) => !(e as { response?: unknown })?.response;
+  const setItemPending = (id: string, pending: boolean) =>
+    setOrder((prev) => prev && { ...prev, items: prev.items.map((i) => i.id === id ? { ...i, pendingSync: pending } : i) });
+
+  // Persiste un alta de línea: online la sube; offline/sin red la encola.
+  const persistAdd = useCallback(async (line: DiningOrderItem) => {
+    const item = {
+      id: line.id,
+      productId: line.productId,
+      productName: line.productName,
+      unitPrice: Number(line.unitPrice),
+      quantity: line.quantity,
+      notes: line.notes,
+    };
+    const enqueue = async () => {
+      await localOrderService.queueRemoteAddItem({ branchId, orderId: orderId!, item });
+      await refreshSyncPending();
+      setItemPending(line.id, true);
+    };
+    if (!isConnected) { await enqueue(); return; }
+    try {
+      await addOrderItem(branchId, orderId!, {
+        id: item.id,
+        productName: item.productName,
+        unitPrice: item.unitPrice,
+        quantity: item.quantity,
+        ...(item.productId ? { productId: item.productId } : {}),
+        ...(item.notes ? { notes: item.notes } : {}),
+      });
+      setItemPending(line.id, false);
+    } catch (e) {
+      if (isNetworkError(e)) { await enqueue(); return; }
+      setOrder((prev) => prev && { ...prev, items: prev.items.filter((i) => i.id !== line.id) });
+      Alert.alert('No se pudo agregar', getApiErrorMessage(e, 'Intenta de nuevo.'));
+    }
+  }, [isConnected, branchId, orderId]);
+
+  // Persiste un cambio de línea (cantidad/nota). `revert` deshace el optimismo.
+  const persistUpdate = useCallback(async (itemId: string, patch: { quantity?: number; notes?: string | null }, revert: () => void) => {
+    const enqueue = async () => {
+      await localOrderService.queueRemoteUpdateItem({ branchId, orderId: orderId!, itemId, ...patch });
+      await refreshSyncPending();
+      setItemPending(itemId, true);
+    };
+    if (!isConnected) { await enqueue(); return; }
+    try {
+      const saved = await updateOrderItem(branchId, orderId!, itemId, patch);
+      setOrder((prev) => prev && { ...prev, items: prev.items.map((i) => i.id === itemId ? { ...normalizeItem(saved), pendingSync: false } : i) });
+    } catch (e) {
+      if (isNetworkError(e)) { await enqueue(); return; }
+      revert();
+      Alert.alert('No se pudo actualizar', getApiErrorMessage(e, 'Intenta de nuevo.'));
+    }
+  }, [isConnected, branchId, orderId]);
+
+  // Persiste una baja de línea. `reinsert` la reinserta si el backend la rechaza.
+  const persistRemove = useCallback(async (itemId: string, reinsert: () => void) => {
+    const enqueue = async () => {
+      await localOrderService.queueRemoteRemoveItem({ branchId, orderId: orderId!, itemId });
+      await refreshSyncPending();
+    };
+    if (!isConnected) { await enqueue(); return; }
+    try {
+      await removeOrderItem(branchId, orderId!, itemId);
+    } catch (e) {
+      if (isNetworkError(e)) { await enqueue(); return; }
+      reinsert();
+      Alert.alert('No se pudo eliminar', getApiErrorMessage(e, 'Intenta de nuevo.'));
+    }
+  }, [isConnected, branchId, orderId]);
 
   // Add a product line. quantity ≥1; notes null for the quick path. Lines with a
   // different note are kept separate; same product + same note accumulate.
@@ -391,7 +463,7 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
           return prev.map((i) => i === existing ? { ...i, quantity: i.quantity + quantity } : i);
         }
         return [...prev, {
-          id: `local-${product.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: newId(),
           productId: product.id,
           productName: product.name,
           unitPrice: product.price,
@@ -404,54 +476,32 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
       return;
     }
 
-    // Persistida: optimista (feedback inmediato). Solo fusiona con una línea
-    // PENDIENTE ya guardada (no temp); las enviadas no se tocan. Reconcilia con
-    // la respuesta del servidor y, si falla, revierte SOLO esta operación.
-    let incId: string | null = null;
-    let tempId: string | null = null;
-    setOrder((prev) => {
-      if (!prev) return prev;
-      const existing = prev.items.find(
-        (i) => i.productId === product.id && sameNote(i.notes, note) && isPending(i) && !i.id.startsWith('temp-'),
+    // Persistida: fusiona con una línea PENDIENTE existente (incrementa su
+    // cantidad vía UPDATE) o agrega una línea nueva con id de cliente.
+    const existing = order?.items.find((i) => i.productId === product.id && sameNote(i.notes, note) && isPending(i));
+    if (existing) {
+      const prevQty = existing.quantity;
+      const newQty = prevQty + quantity;
+      setOrder((prev) => prev && { ...prev, items: prev.items.map((i) => i.id === existing.id ? { ...i, quantity: newQty } : i) });
+      void persistUpdate(existing.id, { quantity: newQty }, () =>
+        setOrder((prev) => prev && { ...prev, items: prev.items.map((i) => i.id === existing.id ? { ...i, quantity: prevQty } : i) }),
       );
-      if (existing) {
-        incId = existing.id;
-        return { ...prev, items: prev.items.map((i) => i.id === existing.id ? { ...i, quantity: i.quantity + quantity } : i) };
-      }
-      tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      const temp: DiningOrderItem = {
-        id: tempId,
-        productId: product.id,
-        productName: product.name,
-        unitPrice: product.price,
-        quantity,
-        notes: note,
-        sentToKitchenAt: null,
-        createdAt: new Date().toISOString(),
-      };
-      return { ...prev, items: [...prev.items, temp] };
-    });
-    addOrderItem(branchId, orderId!, {
+      return;
+    }
+    const line: DiningOrderItem = {
+      id: newId(),
       productId: product.id,
       productName: product.name,
       unitPrice: product.price,
       quantity,
-      ...(note ? { notes: note } : {}),
-    })
-      .then((saved) => {
-        setOrder((prev) => prev && { ...prev, items: upsertItem(prev.items, normalizeItem(saved), tempId ?? undefined) });
-      })
-      .catch((e) => {
-        // Revierte SOLO esta línea: quita la temporal o resta lo incrementado.
-        setOrder((prev) => {
-          if (!prev) return prev;
-          if (tempId) return { ...prev, items: prev.items.filter((i) => i.id !== tempId) };
-          if (incId) return { ...prev, items: prev.items.map((i) => i.id === incId ? { ...i, quantity: i.quantity - quantity } : i) };
-          return prev;
-        });
-        Alert.alert('No se pudo agregar', getApiErrorMessage(e, 'Intenta de nuevo.'));
-      });
-  }, [isPersisted, orderId, branchId, isEditable]);
+      notes: note,
+      sentToKitchenAt: null,
+      createdAt: new Date().toISOString(),
+      pendingSync: !isConnected,
+    };
+    setOrder((prev) => prev && { ...prev, items: [...prev.items, line] });
+    void persistAdd(line);
+  }, [isPersisted, isEditable, isConnected, order, persistAdd, persistUpdate]);
 
   // Quick add (tap): +1, no note.
   const addProduct = useCallback((product: ProductResult) => addLine(product, 1, null), [addLine]);
@@ -465,18 +515,12 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
       setLocalItems((prev) => prev.map((i) => i.id === item.id ? { ...i, quantity, notes: note } : i));
       return;
     }
-    if (item.id.startsWith('temp-')) return;
-    const prevSnapshot = { quantity: item.quantity, notes: item.notes };
+    const snapshot = { quantity: item.quantity, notes: item.notes };
     setOrder((prev) => prev && { ...prev, items: prev.items.map((i) => i.id === item.id ? { ...i, quantity, notes: note } : i) });
-    updateOrderItem(branchId, orderId!, item.id, { quantity, notes: note })
-      .then((saved) => {
-        setOrder((prev) => prev && { ...prev, items: prev.items.map((i) => i.id === item.id ? normalizeItem(saved) : i) });
-      })
-      .catch((e) => {
-        setOrder((prev) => prev && { ...prev, items: prev.items.map((i) => i.id === item.id ? { ...i, ...prevSnapshot } : i) });
-        Alert.alert('No se pudo actualizar', getApiErrorMessage(e, 'Intenta de nuevo.'));
-      });
-  }, [isPersisted, orderId, branchId, isEditable]);
+    void persistUpdate(item.id, { quantity, notes: note }, () =>
+      setOrder((prev) => prev && { ...prev, items: prev.items.map((i) => i.id === item.id ? { ...i, ...snapshot } : i) }),
+    );
+  }, [isPersisted, isEditable, persistUpdate]);
 
   const changeQty = useCallback((item: DiningOrderItem, delta: number) => {
     if (!isEditable || !isPending(item)) return;
@@ -487,21 +531,12 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
       setLocalItems((prev) => prev.map((i) => i.id === item.id ? { ...i, quantity: newQty } : i));
       return;
     }
-
-    if (item.id.startsWith('temp-')) return; // wait for server id
-    setOrder((prev) => prev && {
-      ...prev,
-      items: prev.items.map((i) => i.id === item.id ? { ...i, quantity: newQty } : i),
-    });
-    updateOrderItem(branchId, orderId!, item.id, { quantity: newQty }).catch((e) => {
-      // Revierte solo este renglón al valor previo.
-      setOrder((prev) => prev && {
-        ...prev,
-        items: prev.items.map((i) => i.id === item.id ? { ...i, quantity: item.quantity } : i),
-      });
-      Alert.alert('No se pudo actualizar', getApiErrorMessage(e, 'Intenta de nuevo.'));
-    });
-  }, [isPersisted, orderId, branchId, isEditable]);
+    const prevQty = item.quantity;
+    setOrder((prev) => prev && { ...prev, items: prev.items.map((i) => i.id === item.id ? { ...i, quantity: newQty } : i) });
+    void persistUpdate(item.id, { quantity: newQty }, () =>
+      setOrder((prev) => prev && { ...prev, items: prev.items.map((i) => i.id === item.id ? { ...i, quantity: prevQty } : i) }),
+    );
+  }, [isPersisted, isEditable, persistUpdate]);
 
   const removeItem = useCallback((item: DiningOrderItem) => {
     if (!isEditable || !isPending(item)) return;
@@ -510,30 +545,27 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
         setLocalItems((prev) => prev.filter((i) => i.id !== item.id));
         return;
       }
-      // Optimista: quita ya. Si falla, reinserta el ítem en su posición original.
+      // Optimista: quita ya. Si el backend la rechaza, reinserta en su posición.
       let index = -1;
       setOrder((prev) => {
         if (!prev) return prev;
         index = prev.items.findIndex((i) => i.id === item.id);
         return { ...prev, items: prev.items.filter((i) => i.id !== item.id) };
       });
-      if (!item.id.startsWith('temp-')) {
-        removeOrderItem(branchId, orderId!, item.id).catch((e) => {
-          setOrder((prev) => {
-            if (!prev || prev.items.some((i) => i.id === item.id)) return prev;
-            const items = [...prev.items];
-            items.splice(index < 0 ? items.length : index, 0, item);
-            return { ...prev, items };
-          });
-          Alert.alert('No se pudo eliminar', getApiErrorMessage(e, 'Intenta de nuevo.'));
-        });
-      }
+      void persistRemove(item.id, () =>
+        setOrder((prev) => {
+          if (!prev || prev.items.some((i) => i.id === item.id)) return prev;
+          const items = [...prev.items];
+          items.splice(index < 0 ? items.length : index, 0, item);
+          return { ...prev, items };
+        }),
+      );
     };
     Alert.alert('Eliminar producto', `¿Quitar "${item.productName}"?`, [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Eliminar', style: 'destructive', onPress: doRemove },
     ]);
-  }, [isPersisted, orderId, branchId, isEditable]);
+  }, [isPersisted, isEditable, persistRemove]);
 
   // Config sheet confirm → add a configured line or apply edits to an existing one.
   const handleConfigConfirm = useCallback((quantity: number, note: string) => {

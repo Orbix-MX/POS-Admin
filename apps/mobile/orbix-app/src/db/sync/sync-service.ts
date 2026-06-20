@@ -28,6 +28,9 @@ import { useDeviceStore } from '@/store/device-store';
 // In-process guard so overlapping triggers don't double-process.
 let running = false;
 
+// Tras N intentos una entrada pasa a FAILED (dead-letter) para no bloquear la cola.
+const MAX_SYNC_ATTEMPTS = 6;
+
 export interface SyncResult {
   processed: number;
   remaining: number;
@@ -56,10 +59,19 @@ export async function processSyncQueue(): Promise<SyncResult> {
         await syncQueueRepository.setStatus(entry.id, 'DONE');
         processed += 1;
       } catch (e) {
-        // Transient (offline mid-run, server busy, dependency not yet synced).
-        // Keep PENDING, record the reason, stop to preserve ordering.
         failed = getApiErrorMessage(e, 'Error de sincronización');
         await syncQueueRepository.incrementAttempts(entry.id);
+        const status = httpStatus(e);
+        const attempts = entry.attempts + 1;
+        // Permanente (4xx no idempotente) o agotó reintentos → dead-letter
+        // (FAILED) y CONTINÚA: una entrada envenenada no bloquea el resto.
+        const permanent = status !== undefined && status >= 400 && status < 500;
+        if (permanent || attempts >= MAX_SYNC_ATTEMPTS) {
+          await syncQueueRepository.setStatus(entry.id, 'FAILED', failed);
+          continue;
+        }
+        // Transitorio (offline a media corrida, 5xx, dependencia aún no subida):
+        // mantener PENDING y detener para preservar el orden FIFO.
         await syncQueueRepository.setStatus(entry.id, 'PENDING', failed);
         break;
       }
@@ -86,6 +98,79 @@ async function processEntry(entry: SyncQueueEntry): Promise<void> {
       return deleteItem(entry);
     case 'UPDATE_ORDER':
       return updateOrder(entry);
+    case 'REMOTE_ADD_ITEM':
+      return remoteAddItem(entry);
+    case 'REMOTE_UPDATE_ITEM':
+      return remoteUpdateItem(entry);
+    case 'REMOTE_REMOVE_ITEM':
+      return remoteRemoveItem(entry);
+    case 'REMOTE_FIRE':
+      return remoteFire(entry);
+  }
+}
+
+/** HTTP status de un error de axios, si lo hay (para idempotencia). */
+function httpStatus(e: unknown): number | undefined {
+  return (e as { response?: { status?: number } })?.response?.status;
+}
+
+// ── REMOTE ops: editan una orden ya sincronizada por serverId ────────────────
+// El payload trae todo (ids de servidor/cliente). Idempotentes: un ítem ya
+// removido/inexistente (404) o una ronda sin pendientes (400) se consideran
+// hechas — no bloquean la cola ni se reintentan en bucle.
+
+async function remoteAddItem(entry: SyncQueueEntry): Promise<void> {
+  if (!entry.payload) return;
+  const { branchId, orderId, item } = JSON.parse(entry.payload) as {
+    branchId: string; orderId: string;
+    item: { id: string; productId: string | null; productName: string; unitPrice: number; quantity: number; notes: string | null };
+  };
+  // addItem es idempotente cuando se envía el id (el backend devuelve la línea
+  // existente si ya fue creada en un intento previo).
+  await addOrderItem(branchId, orderId, {
+    id: item.id,
+    productName: item.productName,
+    unitPrice: item.unitPrice,
+    quantity: item.quantity,
+    ...(item.productId ? { productId: item.productId } : {}),
+    ...(item.notes ? { notes: item.notes } : {}),
+  });
+}
+
+async function remoteUpdateItem(entry: SyncQueueEntry): Promise<void> {
+  if (!entry.payload) return;
+  const { branchId, orderId, itemId, quantity, notes } = JSON.parse(entry.payload) as {
+    branchId: string; orderId: string; itemId: string; quantity?: number; notes?: string | null;
+  };
+  try {
+    await updateOrderItem(branchId, orderId, itemId, { quantity, notes });
+  } catch (e) {
+    if (httpStatus(e) === 404) return; // el ítem ya no existe → nada que actualizar
+    throw e;
+  }
+}
+
+async function remoteRemoveItem(entry: SyncQueueEntry): Promise<void> {
+  if (!entry.payload) return;
+  const { branchId, orderId, itemId } = JSON.parse(entry.payload) as {
+    branchId: string; orderId: string; itemId: string;
+  };
+  try {
+    await removeOrderItem(branchId, orderId, itemId);
+  } catch (e) {
+    if (httpStatus(e) === 404) return; // ya removido
+    throw e;
+  }
+}
+
+async function remoteFire(entry: SyncQueueEntry): Promise<void> {
+  if (!entry.payload) return;
+  const { branchId, orderId } = JSON.parse(entry.payload) as { branchId: string; orderId: string };
+  try {
+    await fireRound(branchId, orderId);
+  } catch (e) {
+    if (httpStatus(e) === 400) return; // sin productos pendientes → ya enviada
+    throw e;
   }
 }
 

@@ -31,20 +31,35 @@ export interface LocalOrderItem {
   createdAt: string;
 }
 
-/** The mutations the offline layer records, awaiting a future push. */
+/**
+ * The mutations the offline layer records, awaiting a future push.
+ *
+ * Two families:
+ *  - LOCAL ops (CREATE_ORDER/…/DELETE_ITEM): act on locally-created rows; the
+ *    worker maps localId → serverId before replaying. Used for new drafts.
+ *  - REMOTE ops (REMOTE_*): act on an ALREADY-synced order by serverId; the
+ *    payload carries every id needed (order + item are server/client uuids), so
+ *    no local mirror is required. Used to edit existing orders offline.
+ */
 export type SyncOperationType =
   | 'CREATE_ORDER'
   | 'UPDATE_ORDER'
   | 'ADD_ITEM'
   | 'UPDATE_ITEM'
-  | 'DELETE_ITEM';
+  | 'DELETE_ITEM'
+  | 'REMOTE_ADD_ITEM'
+  | 'REMOTE_UPDATE_ITEM'
+  | 'REMOTE_REMOVE_ITEM'
+  | 'REMOTE_FIRE';
 
 export type SyncEntityType = 'order' | 'order_item';
 export type SyncStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'FAILED';
 
 /** Which entity an operation acts on (derived from the operation type). */
 export function entityTypeFor(op: SyncOperationType): SyncEntityType {
-  return op === 'CREATE_ORDER' || op === 'UPDATE_ORDER' ? 'order' : 'order_item';
+  return op === 'CREATE_ORDER' || op === 'UPDATE_ORDER' || op === 'REMOTE_FIRE'
+    ? 'order'
+    : 'order_item';
 }
 
 export interface SyncQueueEntry {

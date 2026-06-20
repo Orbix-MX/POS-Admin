@@ -4,6 +4,7 @@
  */
 export { getDatabase, initDatabase, closeDatabase } from './database';
 export { TABLES, SCHEMA_VERSION } from './schema';
+export { newId } from './ids';
 
 export { OrderRepository, orderRepository } from './repositories/order-repository';
 export type { CreateOrderInput, UpdateOrderPatch } from './repositories/order-repository';

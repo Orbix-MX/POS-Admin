@@ -184,6 +184,29 @@ export class DiningOrdersService {
     const tenantId = this.tenantContext.requireTenantId();
     await this.requireEditableOrder(tenantId, branchId, orderId);
 
+    // Captura offline: la línea trae un id de cliente. Se crea con ese id sin
+    // fusionar e idempotente — si ya existe (reintento de sync), se devuelve tal
+    // cual para no duplicar. Permite update/remove por id antes de sincronizar.
+    if (dto.id) {
+      const existing = await this.prisma.diningOrderItem.findUnique({
+        where: { id: dto.id },
+        select: ITEM_SELECT,
+      });
+      if (existing) return existing;
+      return this.prisma.diningOrderItem.create({
+        data: {
+          id: dto.id,
+          orderId,
+          productId: dto.productId ?? null,
+          productName: dto.productName,
+          unitPrice: dto.unitPrice,
+          quantity: dto.quantity,
+          notes: dto.notes ?? null,
+        },
+        select: ITEM_SELECT,
+      });
+    }
+
     // Solo se fusiona con una línea PENDIENTE (no enviada) del mismo producto y
     // nota. Las líneas ya enviadas a cocina nunca se tocan (no se re-prepara lo
     // hecho); un producto repetido en otra ronda es una línea pendiente nueva.
