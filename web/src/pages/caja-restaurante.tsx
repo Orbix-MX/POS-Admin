@@ -7,7 +7,7 @@ import {
 import { fmtComandaMoney } from '@/services/retail/comanda-service'
 import {
   getActiveDiningOrders, checkoutDiningOrder, isPayableDiningOrder, diningOrderTotal,
-  openDiningOrder, addDiningOrderItem, changeDiningOrderStatus,
+  openDiningOrder, addDiningOrderItem, fireDiningRound,
   type DiningOrder,
 } from '@/services/restaurant/dining-orders-service'
 import { fetchProducts, type Product } from '@/services/retail/product-service'
@@ -357,7 +357,7 @@ function DirectCheckoutPanel({ branchId, kitchenEnabled, onSuccess }: { branchId
           productId: i.id, productName: i.name, unitPrice: i.price, quantity: i.qty,
         })
       }
-      await changeDiningOrderStatus(branchId, created.id, kitchenEnabled ? 'SENT_TO_KITCHEN' : 'READY_FOR_PAYMENT')
+      await fireDiningRound(branchId, created.id)
       setDoneAction('guardar')
       setTimeout(resetAfterDone, 1500)
     } catch (e: unknown) {
@@ -384,7 +384,7 @@ function DirectCheckoutPanel({ branchId, kitchenEnabled, onSuccess }: { branchId
           productId: i.id, productName: i.name, unitPrice: i.price, quantity: i.qty,
         })
       }
-      await changeDiningOrderStatus(branchId, created.id, 'READY_FOR_PAYMENT')
+      await fireDiningRound(branchId, created.id)
       const result = await checkoutDiningOrder(branchId, created.id, [{ paymentMethod, amount: cartTotal }])
       printOrder(result.id)
       setDoneAction('cobrar')

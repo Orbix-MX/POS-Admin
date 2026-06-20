@@ -31,6 +31,9 @@ const NO_KITCHEN_FLOW: Record<string, DiningOrderStatus[]> = {
 // Statuses from which a dining order may be charged.
 const PAYABLE_STATUSES: DiningOrderStatus[] = ['DELIVERED', 'READY_FOR_PAYMENT'];
 
+// Terminal: la cuenta ya no admite edición de productos.
+const LOCKED_STATUSES: DiningOrderStatus[] = ['PAID', 'CANCELLED'];
+
 const ITEM_SELECT = {
   id: true,
   productId: true,
@@ -38,6 +41,7 @@ const ITEM_SELECT = {
   unitPrice: true,
   quantity: true,
   notes: true,
+  sentToKitchenAt: true,
   createdAt: true,
 } as const;
 
@@ -67,10 +71,11 @@ export class DiningOrdersService {
 
   async findActive(branchId: string) {
     const tenantId = this.tenantContext.requireTenantId();
-    // Drafts being captured (OPEN) plus accounts awaiting payment so the waiter
-    // can charge them. Kitchen in-progress states and terminal states are out.
+    // Todas las cuentas vivas (no terminales): borradores, en cocina y por
+    // cobrar. Incluir los estados de cocina permite reabrir una cuenta enviada
+    // para capturar rondas adicionales.
     return this.prisma.diningOrder.findMany({
-      where: { tenantId, branchId, status: { in: ['OPEN', 'READY_FOR_PAYMENT', 'DELIVERED'] } },
+      where: { tenantId, branchId, status: { notIn: ['PAID', 'CLOSED', 'CANCELLED'] } },
       orderBy: { openedAt: 'asc' },
       select: ORDER_SELECT,
     });
@@ -161,19 +166,30 @@ export class DiningOrdersService {
     return order;
   }
 
+  /**
+   * Carga una orden que admite edición de productos: cualquiera que NO esté en
+   * estado terminal (PAID/CANCELLED). Habilita rondas adicionales sobre cuentas
+   * ya enviadas a cocina (SENT_TO_KITCHEN/IN_PREPARATION/READY/READY_FOR_PAYMENT).
+   */
+  private async requireEditableOrder(tenantId: string, branchId: string, orderId: string) {
+    const order = await this.prisma.diningOrder.findFirst({
+      where: { id: orderId, tenantId, branchId, status: { notIn: LOCKED_STATUSES } },
+      select: { id: true, status: true },
+    });
+    if (!order) throw new NotFoundException('Orden activa no encontrada o ya cerrada.');
+    return order;
+  }
+
   async addItem(branchId: string, orderId: string, dto: AddDiningItemDto) {
     const tenantId = this.tenantContext.requireTenantId();
-    const order = await this.prisma.diningOrder.findFirst({
-      where: { id: orderId, tenantId, branchId, status: 'OPEN' },
-      select: { id: true },
-    });
-    if (!order) throw new NotFoundException('Orden activa no encontrada.');
+    await this.requireEditableOrder(tenantId, branchId, orderId);
 
-    // Solo se fusiona con una línea existente del mismo producto Y la misma nota.
-    // Notas distintas ("sin cebolla" vs "extra queso") son líneas separadas.
+    // Solo se fusiona con una línea PENDIENTE (no enviada) del mismo producto y
+    // nota. Las líneas ya enviadas a cocina nunca se tocan (no se re-prepara lo
+    // hecho); un producto repetido en otra ronda es una línea pendiente nueva.
     if (dto.productId) {
       const existing = await this.prisma.diningOrderItem.findFirst({
-        where: { orderId, productId: dto.productId, notes: dto.notes ?? null },
+        where: { orderId, productId: dto.productId, notes: dto.notes ?? null, sentToKitchenAt: null },
         select: { id: true, quantity: true },
       });
       if (existing) {
@@ -193,6 +209,7 @@ export class DiningOrdersService {
         unitPrice: dto.unitPrice,
         quantity: dto.quantity,
         notes: dto.notes ?? null,
+        // Nueva línea = pendiente de envío (sentToKitchenAt null por defecto).
       },
       select: ITEM_SELECT,
     });
@@ -200,17 +217,17 @@ export class DiningOrdersService {
 
   async updateItem(branchId: string, orderId: string, itemId: string, dto: UpdateDiningItemDto) {
     const tenantId = this.tenantContext.requireTenantId();
-    const order = await this.prisma.diningOrder.findFirst({
-      where: { id: orderId, tenantId, branchId, status: 'OPEN' },
-      select: { id: true },
-    });
-    if (!order) throw new NotFoundException('Orden activa no encontrada.');
+    await this.requireEditableOrder(tenantId, branchId, orderId);
 
     const item = await this.prisma.diningOrderItem.findFirst({
       where: { id: itemId, orderId },
-      select: { id: true },
+      select: { id: true, sentToKitchenAt: true },
     });
     if (!item) throw new NotFoundException('Ítem no encontrado.');
+    // No se modifica lo ya enviado a cocina (puede estar en preparación).
+    if (item.sentToKitchenAt) {
+      throw new ConflictException('El producto ya fue enviado a cocina; no se puede modificar.');
+    }
 
     return this.prisma.diningOrderItem.update({
       where: { id: itemId },
@@ -224,17 +241,17 @@ export class DiningOrdersService {
 
   async removeItem(branchId: string, orderId: string, itemId: string) {
     const tenantId = this.tenantContext.requireTenantId();
-    const order = await this.prisma.diningOrder.findFirst({
-      where: { id: orderId, tenantId, branchId, status: 'OPEN' },
-      select: { id: true },
-    });
-    if (!order) throw new NotFoundException('Orden activa no encontrada.');
+    await this.requireEditableOrder(tenantId, branchId, orderId);
 
     const item = await this.prisma.diningOrderItem.findFirst({
       where: { id: itemId, orderId },
-      select: { id: true },
+      select: { id: true, sentToKitchenAt: true },
     });
     if (!item) throw new NotFoundException('Ítem no encontrado.');
+    // No se elimina lo ya enviado a cocina.
+    if (item.sentToKitchenAt) {
+      throw new ConflictException('El producto ya fue enviado a cocina; no se puede eliminar.');
+    }
 
     await this.prisma.diningOrderItem.delete({ where: { id: itemId } });
     return { deleted: true };
@@ -362,6 +379,41 @@ export class DiningOrdersService {
       data: { status: target },
       select: ORDER_SELECT,
     });
+  }
+
+  /**
+   * Enviar una ronda: marca como enviados SOLO los ítems pendientes
+   * (sentToKitchenAt null) y lleva la cuenta al estado de envío correspondiente.
+   * Soporta rondas múltiples sobre la misma cuenta sin duplicar DiningOrder y
+   * sin re-enviar lo ya preparado. Con cocina → SENT_TO_KITCHEN (la cuenta
+   * vuelve a la cola del KDS con la ronda nueva); sin cocina → READY_FOR_PAYMENT.
+   */
+  async fireRound(branchId: string, orderId: string) {
+    const tenantId = this.tenantContext.requireTenantId();
+    const order = await this.requireEditableOrder(tenantId, branchId, orderId);
+
+    const pending = await this.prisma.diningOrderItem.count({
+      where: { orderId, sentToKitchenAt: null },
+    });
+    if (pending === 0) {
+      throw new BadRequestException('No hay productos pendientes de enviar.');
+    }
+
+    const kitchenEnabled = await this.isKitchenEnabled(tenantId);
+    const target: DiningOrderStatus = kitchenEnabled ? 'SENT_TO_KITCHEN' : 'READY_FOR_PAYMENT';
+
+    const [, updated] = await this.prisma.$transaction([
+      this.prisma.diningOrderItem.updateMany({
+        where: { orderId, sentToKitchenAt: null },
+        data: { sentToKitchenAt: new Date() },
+      }),
+      this.prisma.diningOrder.update({
+        where: { id: orderId },
+        data: { status: target },
+        select: ORDER_SELECT,
+      }),
+    ]);
+    return updated;
   }
 
   /**

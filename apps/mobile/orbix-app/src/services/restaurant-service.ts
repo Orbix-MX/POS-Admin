@@ -35,6 +35,8 @@ export interface DiningOrderItem {
   unitPrice: number;
   quantity: number;
   notes: string | null;
+  /** NULL = pendiente de envío (ronda en captura); fecha = ya enviado a cocina. */
+  sentToKitchenAt?: string | null;
   createdAt: string;
 }
 
@@ -166,6 +168,18 @@ export async function changeOrderStatus(
   const { data } = await apiClient.patch<DiningOrder>(
     `/branches/${branchId}/dining-orders/${orderId}/status`,
     { status },
+  );
+  return data;
+}
+
+/**
+ * Envía una ronda: marca como enviados solo los ítems pendientes y avanza el
+ * estado (a cocina o a caja). No duplica la orden ni re-envía lo ya preparado.
+ */
+export async function fireRound(branchId: string, orderId: string): Promise<DiningOrder> {
+  const { data } = await apiClient.post<DiningOrder>(
+    `/branches/${branchId}/dining-orders/${orderId}/fire`,
+    {},
   );
   return data;
 }

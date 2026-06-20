@@ -14,9 +14,13 @@ import { orderItemRepository } from '../repositories/order-item-repository';
 import { syncQueueRepository } from '../repositories/sync-queue-repository';
 import type { SyncQueueEntry } from '../types';
 import {
-  openDiningOrder, addOrderItem, updateOrderItem, removeOrderItem, changeOrderStatus,
+  openDiningOrder, addOrderItem, updateOrderItem, removeOrderItem, changeOrderStatus, fireRound,
   type DiningOrderStatus,
 } from '@/services/restaurant-service';
+
+// Estados de "envío" que en el servidor se aplican vía fireRound (marca los
+// ítems pendientes como enviados), no como un simple cambio de estado.
+const FIRE_STATUSES: DiningOrderStatus[] = ['SENT_TO_KITCHEN', 'READY_FOR_PAYMENT'];
 import { getApiErrorMessage } from '@/services/api-client';
 import { useSyncStore } from '@/store/sync-store';
 import { useDeviceStore } from '@/store/device-store';
@@ -145,6 +149,12 @@ async function updateOrder(entry: SyncQueueEntry): Promise<void> {
   if (!order?.serverId) throw new Error('La orden aún no se ha sincronizado.');
   const payload = entry.payload ? (JSON.parse(entry.payload) as { status?: string }) : {};
   if (payload.status) {
-    await changeOrderStatus(order.branchId, order.serverId, payload.status as DiningOrderStatus);
+    const status = payload.status as DiningOrderStatus;
+    if (FIRE_STATUSES.includes(status)) {
+      // Envío de ronda: marca los ítems pendientes como enviados en el servidor.
+      await fireRound(order.branchId, order.serverId);
+    } else {
+      await changeOrderStatus(order.branchId, order.serverId, status);
+    }
   }
 }

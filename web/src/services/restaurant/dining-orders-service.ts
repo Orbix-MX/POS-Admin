@@ -149,6 +149,19 @@ export async function changeDiningOrderStatus(
   return data
 }
 
+/**
+ * Envía una ronda: marca como enviados solo los ítems pendientes y avanza el
+ * estado (cocina o caja). Reemplaza al changeStatus para el "primer envío" y las
+ * rondas adicionales — así el KDS recibe únicamente lo nuevo, sin duplicar la cuenta.
+ */
+export async function fireDiningRound(branchId: string, orderId: string): Promise<DiningOrder> {
+  const { data } = await api.post<DiningOrder>(
+    `/branches/${branchId}/dining-orders/${orderId}/fire`,
+    {},
+  )
+  return data
+}
+
 export async function discardDiningOrder(
   branchId: string,
   orderId: string,

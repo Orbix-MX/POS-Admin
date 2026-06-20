@@ -28,7 +28,7 @@ import { useDeviceStore } from '@/store/device-store';
 import { localOrderService, refreshSyncPending } from '@/db';
 import {
   fetchOrder, addOrderItem, updateOrderItem, removeOrderItem,
-  searchProducts, fetchCategories, changeOrderStatus, openDiningOrder, discardOrder,
+  searchProducts, fetchCategories, changeOrderStatus, fireRound, openDiningOrder, discardOrder,
 } from '@/services/restaurant-service';
 import { getApiErrorMessage } from '@/services/api-client';
 import { CheckoutModal } from '@/components/restaurant/checkout-modal';
@@ -353,10 +353,15 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
   );
 
   const status: DiningOrderStatus = order?.status ?? 'OPEN';
-  const isDraft = status === 'OPEN';
+  // Editable mientras la cuenta no esté cerrada (permite rondas sobre cuentas
+  // ya enviadas a cocina). Solo PAID/CANCELLED bloquean.
+  const isEditable = status !== 'PAID' && status !== 'CANCELLED';
   const isPayable = PAYABLE_STATUSES.includes(status);
   // Cocina terminó (READY): el mesero puede marcarla lista para cobro.
   const isReady = status === 'READY';
+  // Hay productos pendientes de enviar (ronda en captura).
+  const hasPending = items.some((i) => !i.sentToKitchenAt);
+  const isPending = (i: DiningOrderItem) => !i.sentToKitchenAt;
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   // Draft (new capture): mutate local state only — instant, the hot path.
@@ -368,7 +373,7 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
   // Add a product line. quantity ≥1; notes null for the quick path. Lines with a
   // different note are kept separate; same product + same note accumulate.
   const addLine = useCallback((product: ProductResult, quantity: number, notes: string | null) => {
-    if (!isDraft) return;
+    if (!isEditable) return;
     const note = normNote(notes);
 
     if (!isPersisted) {
@@ -384,12 +389,33 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
           unitPrice: product.price,
           quantity,
           notes: note,
+          sentToKitchenAt: null,
           createdAt: new Date().toISOString(),
         }];
       });
       return;
     }
 
+    // Persistida: optimista (feedback inmediato) — solo fusiona con una línea
+    // PENDIENTE; las enviadas no se tocan. Luego reconcilia con el servidor.
+    setOrder((prev) => {
+      if (!prev) return prev;
+      const existing = prev.items.find((i) => i.productId === product.id && sameNote(i.notes, note) && isPending(i));
+      if (existing) {
+        return { ...prev, items: prev.items.map((i) => i === existing ? { ...i, quantity: i.quantity + quantity } : i) };
+      }
+      const temp: DiningOrderItem = {
+        id: `temp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        productId: product.id,
+        productName: product.name,
+        unitPrice: product.price,
+        quantity,
+        notes: note,
+        sentToKitchenAt: null,
+        createdAt: new Date().toISOString(),
+      };
+      return { ...prev, items: [...prev.items, temp] };
+    });
     addOrderItem(branchId, orderId!, {
       productId: product.id,
       productName: product.name,
@@ -399,27 +425,29 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
     })
       .then(() => loadOrder())
       .catch(() => void loadOrder());
-  }, [isPersisted, orderId, branchId, loadOrder, isDraft]);
+  }, [isPersisted, orderId, branchId, loadOrder, isEditable]);
 
   // Quick add (tap): +1, no note.
   const addProduct = useCallback((product: ProductResult) => addLine(product, 1, null), [addLine]);
 
   // Edit an existing line (quantity and/or note) — from the config sheet.
+  // Solo líneas pendientes (lo enviado a cocina queda bloqueado).
   const editLine = useCallback((item: DiningOrderItem, quantity: number, notes: string | null) => {
-    if (!isDraft) return;
+    if (!isEditable || !isPending(item)) return;
     const note = normNote(notes);
     if (!isPersisted) {
       setLocalItems((prev) => prev.map((i) => i.id === item.id ? { ...i, quantity, notes: note } : i));
       return;
     }
     if (item.id.startsWith('temp-')) return;
+    setOrder((prev) => prev && { ...prev, items: prev.items.map((i) => i.id === item.id ? { ...i, quantity, notes: note } : i) });
     updateOrderItem(branchId, orderId!, item.id, { quantity, notes: note })
       .then(() => loadOrder())
       .catch(() => void loadOrder());
-  }, [isPersisted, orderId, branchId, loadOrder, isDraft]);
+  }, [isPersisted, orderId, branchId, loadOrder, isEditable]);
 
   const changeQty = useCallback((item: DiningOrderItem, delta: number) => {
-    if (!isDraft) return;
+    if (!isEditable || !isPending(item)) return;
     const newQty = item.quantity + delta;
     if (newQty < 1) return;
 
@@ -434,10 +462,10 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
       items: prev.items.map((i) => i.id === item.id ? { ...i, quantity: newQty } : i),
     });
     updateOrderItem(branchId, orderId!, item.id, { quantity: newQty }).catch(() => void loadOrder());
-  }, [isPersisted, orderId, branchId, loadOrder, isDraft]);
+  }, [isPersisted, orderId, branchId, loadOrder, isEditable]);
 
   const removeItem = useCallback((item: DiningOrderItem) => {
-    if (!isDraft) return;
+    if (!isEditable || !isPending(item)) return;
     const doRemove = () => {
       if (!isPersisted) {
         setLocalItems((prev) => prev.filter((i) => i.id !== item.id));
@@ -452,7 +480,7 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Eliminar', style: 'destructive', onPress: doRemove },
     ]);
-  }, [isPersisted, orderId, branchId, loadOrder, isDraft]);
+  }, [isPersisted, orderId, branchId, loadOrder, isEditable]);
 
   // Config sheet confirm → add a configured line or apply edits to an existing one.
   const handleConfigConfirm = useCallback((quantity: number, note: string) => {
@@ -466,8 +494,8 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
   // the DiningOrder, save its items, then advance to the kitchen/checkout state.
   // Editing an existing order just advances the status (items already saved).
   const sendOrder = useCallback(() => {
-    if (totalQty === 0) {
-      Alert.alert('Orden vacía', 'Agrega al menos un producto antes de continuar.');
+    if (!hasPending) {
+      Alert.alert('Sin pendientes', 'No hay productos pendientes de enviar.');
       return;
     }
     const next: DiningOrderStatus = kitchenEnabled ? 'SENT_TO_KITCHEN' : 'READY_FOR_PAYMENT';
@@ -524,8 +552,9 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
             });
           }
         }
-        const updated = await changeOrderStatus(branchId, id, next);
-        setOrder((prev) => prev && { ...prev, status: updated.status });
+        // Envía solo la ronda pendiente (no re-envía lo ya preparado).
+        const updated = await fireRound(branchId, id);
+        setOrder((prev) => prev && { ...prev, status: updated.status, items: updated.items });
         Alert.alert(successTitle, successBody, [{ text: 'OK', onPress: onClose }]);
       } catch (e) {
         Alert.alert('No se pudo continuar', getApiErrorMessage(e, 'Intenta de nuevo.'));
@@ -533,7 +562,7 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
         setSending(false);
       }
     })();
-  }, [totalQty, isConnected, target, subtotal, orderId, ensureOrder, localItems, branchId, kitchenEnabled, onClose]);
+  }, [hasPending, isConnected, target, subtotal, orderId, ensureOrder, localItems, branchId, kitchenEnabled, onClose]);
 
   // Cocina entregó (READY) → marcar lista para cobro (READY_FOR_PAYMENT) para
   // habilitar el cobro desde mesas/comandas.
@@ -643,7 +672,7 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
         renderItem={({ item }) => (
           <Pressable
             onPress={() => addProduct(item)}
-            onLongPress={() => isDraft && setConfigTarget({ mode: 'add', product: item })}
+            onLongPress={() => isEditable && setConfigTarget({ mode: 'add', product: item })}
             delayLongPress={250}
             style={({ pressed }) => ({
               flex: 1 / productCols,
@@ -682,7 +711,9 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
   const renderOrderItem = (item: DiningOrderItem) => {
     const lineTotal = Number(item.unitPrice) * item.quantity;
     const atMin = item.quantity <= 1;
-    const pending = item.id.startsWith('temp-');
+    const saving = item.id.startsWith('temp-');     // optimista, sin id de servidor
+    const sent = !!item.sentToKitchenAt;            // ya enviado a cocina → bloqueado
+    const editable = isEditable && !sent && !saving;
     return (
       <View
         key={item.id}
@@ -691,13 +722,13 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
           borderBottomWidth: 1,
           borderBottomColor: theme.colors.border,
           gap: theme.spacing.sm,
-          opacity: pending ? 0.6 : 1,
+          opacity: saving ? 0.6 : 1,
         }}
       >
-        {/* Nombre + total. Tocar abre la configuración (cantidad + nota). */}
+        {/* Nombre + total. Tocar abre la configuración (cantidad + nota) si editable. */}
         <Pressable
-          onPress={() => isDraft && !pending && setConfigTarget({ mode: 'edit', item })}
-          disabled={!isDraft || pending}
+          onPress={() => editable && setConfigTarget({ mode: 'edit', item })}
+          disabled={!editable}
         >
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: theme.spacing.sm }}>
             <Text variant="label" style={{ flex: 1 }} numberOfLines={2}>{item.productName}</Text>
@@ -708,34 +739,42 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
               <Text variant="small" tone="primary">↳</Text>
               <Text variant="small" tone="primary" style={{ flex: 1 }}>{item.notes}</Text>
             </View>
-          ) : isDraft ? (
+          ) : editable ? (
             <Text variant="caption" tone="muted" style={{ marginTop: 2 }}>+ Agregar nota</Text>
           ) : null}
         </Pressable>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <Text variant="small" tone="secondary">{formatCurrency(Number(item.unitPrice))} c/u</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md }}>
-            <Pressable onPress={() => removeItem(item)} hitSlop={8} style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, padding: theme.spacing.xs })}>
-              <Icon name="trash" size={16} color={theme.colors.danger} />
-            </Pressable>
-            <Pressable
-              onPress={() => changeQty(item, -1)}
-              disabled={atMin || pending}
-              hitSlop={6}
-              style={({ pressed }) => ({ width: 34, height: 34, borderRadius: theme.radius.md, backgroundColor: theme.colors.surfaceMuted, alignItems: 'center', justifyContent: 'center', opacity: (atMin || pending) ? 0.35 : pressed ? 0.6 : 1 })}
-            >
-              <Icon name="minus" size={16} color={theme.colors.text} />
-            </Pressable>
-            <Text variant="body" style={{ minWidth: 22, textAlign: 'center', fontWeight: '700' }}>{item.quantity}</Text>
-            <Pressable
-              onPress={() => changeQty(item, 1)}
-              disabled={pending}
-              hitSlop={6}
-              style={({ pressed }) => ({ width: 34, height: 34, borderRadius: theme.radius.md, backgroundColor: theme.colors.surfaceMuted, alignItems: 'center', justifyContent: 'center', opacity: pending ? 0.35 : pressed ? 0.6 : 1 })}
-            >
-              <Icon name="plus" size={16} color={theme.colors.text} />
-            </Pressable>
-          </View>
+          {sent ? (
+            // Línea ya enviada a cocina: bloqueada (no se re-prepara ni se edita).
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+              <Icon name="check" size={13} color={theme.colors.success} />
+              <Text variant="caption" tone="success">Enviada · {item.quantity}</Text>
+            </View>
+          ) : (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md }}>
+              <Pressable onPress={() => removeItem(item)} disabled={!editable} hitSlop={8} style={({ pressed }) => ({ opacity: !editable ? 0.35 : pressed ? 0.5 : 1, padding: theme.spacing.xs })}>
+                <Icon name="trash" size={16} color={theme.colors.danger} />
+              </Pressable>
+              <Pressable
+                onPress={() => changeQty(item, -1)}
+                disabled={atMin || !editable}
+                hitSlop={6}
+                style={({ pressed }) => ({ width: 34, height: 34, borderRadius: theme.radius.md, backgroundColor: theme.colors.surfaceMuted, alignItems: 'center', justifyContent: 'center', opacity: (atMin || !editable) ? 0.35 : pressed ? 0.6 : 1 })}
+              >
+                <Icon name="minus" size={16} color={theme.colors.text} />
+              </Pressable>
+              <Text variant="body" style={{ minWidth: 22, textAlign: 'center', fontWeight: '700' }}>{item.quantity}</Text>
+              <Pressable
+                onPress={() => changeQty(item, 1)}
+                disabled={!editable}
+                hitSlop={6}
+                style={({ pressed }) => ({ width: 34, height: 34, borderRadius: theme.radius.md, backgroundColor: theme.colors.surfaceMuted, alignItems: 'center', justifyContent: 'center', opacity: !editable ? 0.35 : pressed ? 0.6 : 1 })}
+              >
+                <Icon name="plus" size={16} color={theme.colors.text} />
+              </Pressable>
+            </View>
+          )}
         </View>
       </View>
     );
@@ -780,17 +819,17 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
           <Text variant="body" tone="secondary">Subtotal</Text>
           <Text variant="h2">{formatCurrency(subtotal)}</Text>
         </View>
-        {isDraft ? (
-          // Regla 2/3: action depends on whether the kitchen module is enabled.
+        {hasPending ? (
+          // Hay ronda pendiente → enviar solo lo nuevo (a cocina o a caja).
           <Pressable
             onPress={sendOrder}
-            disabled={sending || totalQty === 0}
+            disabled={sending}
             style={({ pressed }) => ({
               paddingVertical: theme.spacing.lg,
               borderRadius: theme.radius.md,
               backgroundColor: theme.colors.primary,
               alignItems: 'center',
-              opacity: (sending || totalQty === 0) ? 0.45 : pressed ? 0.85 : 1,
+              opacity: sending ? 0.45 : pressed ? 0.85 : 1,
             })}
           >
             {sending

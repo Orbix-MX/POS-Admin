@@ -1104,6 +1104,11 @@ model DiningOrderItem {
   quantity    Int         @default(1)
   notes       String?
 
+  // Momento en que el ítem se envió a cocina/caja. NULL = pendiente de envío
+  // (ronda en captura). Permite rondas múltiples sobre la misma cuenta sin
+  // duplicar DiningOrder y sin re-enviar lo ya preparado.
+  sentToKitchenAt DateTime? @map("sent_to_kitchen_at")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -94,6 +94,16 @@ export class DiningOrdersController {
     return this.service.changeStatus(branchId, orderId, dto.status);
   }
 
+  @Post(':orderId/fire')
+  @RequirePermissions('comanda:view')
+  @ApiOperation({ summary: 'Send pending items (a new round) to kitchen/cashier without duplicating the order' })
+  fireRound(
+    @Param('branchId', ParseUUIDPipe) branchId: string,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+  ) {
+    return this.service.fireRound(branchId, orderId);
+  }
+
   @Post(':orderId/checkout')
   @RequirePermissions('orders:create')
   @ApiOperation({ summary: 'Charge the dining order: generate Order, consume inventory, record payment, release table' })

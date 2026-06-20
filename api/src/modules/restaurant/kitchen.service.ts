@@ -95,13 +95,17 @@ export class KitchenService {
         table: { select: { id: true, name: true } },
         waiter: { select: { id: true, firstName: true, lastName: true } },
         items: {
-          orderBy: { createdAt: 'asc' },
+          // Cocina solo ve lo ya enviado (las rondas pendientes en captura no
+          // aparecen). Orden por envío para que la ronda nueva quede al final.
+          where: { sentToKitchenAt: { not: null } },
+          orderBy: [{ sentToKitchenAt: 'asc' }, { createdAt: 'asc' }],
           select: {
             id: true,
             productId: true,
             productName: true,
             quantity: true,
             notes: true,
+            sentToKitchenAt: true,
           },
         },
       },

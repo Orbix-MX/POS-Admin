@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import { fetchProducts, type Product } from '@/services/retail/product-service'
 import {
-  getActiveDiningOrders, openDiningOrder, addDiningOrderItem, changeDiningOrderStatus,
+  getActiveDiningOrders, openDiningOrder, addDiningOrderItem, fireDiningRound,
   diningOrderTotal, fmtDiningMoney,
   type DiningOrder,
 } from '@/services/restaurant/dining-orders-service'
@@ -421,8 +421,9 @@ export function Comanda() {
         })
       }
 
-      const next = kitchenEnabled ? 'SENT_TO_KITCHEN' : 'READY_FOR_PAYMENT'
-      await changeDiningOrderStatus(branchId, orderId, next)
+      // Envía la ronda: marca enviados los ítems pendientes y avanza el estado
+      // (a cocina o a caja). No re-envía lo ya preparado.
+      await fireDiningRound(branchId, orderId)
 
       setSuccessLabel(activeLabel)
       setStage('success')
