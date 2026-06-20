@@ -12,6 +12,9 @@ export interface CreateOrderItemInput {
   productName: string;
   unitPrice: number;
   quantity: number;
+  /** Id explícito (uuid de cliente). Por defecto se genera uno. Permite que la
+   *  línea en memoria (React) y la fila SQLite compartan id para edición/borrado. */
+  id?: string;
   productId?: string | null;
   notes?: string | null;
   serverId?: string | null;
@@ -44,7 +47,7 @@ export class OrderItemRepository {
   async create(input: CreateOrderItemInput): Promise<LocalOrderItem> {
     const db = await getDatabase();
     const item: LocalOrderItem = {
-      id: newId(),
+      id: input.id ?? newId(),
       orderId: input.orderId,
       serverId: input.serverId ?? null,
       productId: input.productId ?? null,

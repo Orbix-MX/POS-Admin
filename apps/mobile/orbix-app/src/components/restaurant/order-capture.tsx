@@ -25,7 +25,7 @@ import { useTheme } from '@/providers/theme-provider';
 import { useResponsive } from '@/hooks/use-responsive';
 import { useNetwork } from '@/hooks/use-network';
 import { useDeviceStore } from '@/store/device-store';
-import { localOrderService, refreshSyncPending, newId } from '@/db';
+import { localOrderService, refreshSyncPending, newId, orderRepository, orderItemRepository } from '@/db';
 import {
   fetchOrder, addOrderItem, updateOrderItem, removeOrderItem,
   searchProducts, fetchCategories, changeOrderStatus, fireRound, openDiningOrder, discardOrder,
@@ -229,12 +229,19 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
   // Dedupe the lazy create: many fast taps must yield a single order.
   const createInFlight = useRef<Promise<string | null> | null>(null);
 
+  // Draft local en SQLite: respaldo inmediato de lo capturado para que un cierre
+  // inesperado de la app no pierda nada. NULL hasta que se agrega el primer ítem.
+  const localDraftId = useRef<string | null>(null);
+  const localDraftInFlight = useRef<Promise<string> | null>(null);
+
   // Sync internal id when the target changes (new screen open).
   useEffect(() => {
     setOrderId(target?.kind === 'existing' ? target.orderId : null);
     setOrder(null);
     setLocalItems([]);
     createInFlight.current = null;
+    localDraftId.current = null;
+    localDraftInFlight.current = null;
   }, [target]);
 
   /**
@@ -268,6 +275,55 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
     return promise;
   }, [orderId, target, branchId, onOrderCreated]);
 
+  /**
+   * Crea (perezosamente) el borrador LOCAL en SQLite para un target draft y
+   * devuelve su id local. Es respaldo de captura, NO crea nada en el servidor.
+   * Dedup por ref para que ráfagas de toques generen un solo borrador.
+   */
+  const ensureLocalDraft = useCallback(async (): Promise<string> => {
+    if (localDraftId.current) return localDraftId.current;
+    if (localDraftInFlight.current) return localDraftInFlight.current;
+    if (!target || target.kind !== 'draft') throw new Error('No hay borrador que persistir.');
+
+    const promise = orderRepository.create({
+      branchId,
+      serviceType: target.serviceType,
+      tableId: target.serviceType === 'DINE_IN' ? target.tableId : null,
+      reference: target.serviceType === 'COUNTER' ? (target.reference ?? null) : null,
+      status: 'OPEN',
+    })
+      .then((o) => { localDraftId.current = o.id; return o.id; })
+      .catch((e) => { localDraftInFlight.current = null; throw e; });
+    localDraftInFlight.current = promise;
+    return promise;
+  }, [target, branchId]);
+
+  // Respaldo de captura (best-effort): cada cambio de la orden en borrador se
+  // refleja de inmediato en SQLite. Si falla la persistencia local, el ítem sigue
+  // en memoria; al enviar se reconstruye el borrador desde localItems.
+  const persistDraftAdd = useCallback(async (line: DiningOrderItem) => {
+    try {
+      const localId = await ensureLocalDraft();
+      await orderItemRepository.create({
+        id: line.id,
+        orderId: localId,
+        productId: line.productId,
+        productName: line.productName,
+        unitPrice: Number(line.unitPrice),
+        quantity: line.quantity,
+        notes: line.notes,
+      });
+    } catch { /* respaldo best-effort */ }
+  }, [ensureLocalDraft]);
+
+  const persistDraftUpdate = useCallback(async (itemId: string, patch: { quantity?: number; notes?: string | null }) => {
+    try { await orderItemRepository.update(itemId, patch); } catch { /* best-effort */ }
+  }, []);
+
+  const persistDraftRemove = useCallback(async (itemId: string) => {
+    try { await orderItemRepository.delete(itemId); } catch { /* best-effort */ }
+  }, []);
+
   // Load existing order + categories when opened. Products load separately
   // (server-side, debounced). Drafts skip the order fetch.
   useEffect(() => {
@@ -284,6 +340,42 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
       if (o.status === 'fulfilled' && o.value) setOrder(o.value);
       if (cats.status === 'fulfilled') setCategories(cats.value);
       setLoadingOrder(false);
+    })();
+    return () => { alive = false; };
+  }, [visible, target, branchId]);
+
+  // Recuperación automática: al abrir un borrador, restaura lo capturado antes de
+  // un cierre inesperado (kill de la app, reinicio del dispositivo). Busca en
+  // SQLite un borrador local de la misma mesa/mostrador (sin orden en servidor) y
+  // recarga sus líneas. También limpia restos de un envío online interrumpido.
+  useEffect(() => {
+    if (!visible || !target || target.kind !== 'draft') return;
+    let alive = true;
+    (async () => {
+      try {
+        await orderRepository.deleteServerLinkedDrafts(branchId);
+        const drafts = await orderRepository.findLocalDrafts(branchId);
+        const match = drafts.find((o) =>
+          o.serviceType === target.serviceType &&
+          (target.serviceType === 'DINE_IN'
+            ? o.tableId === target.tableId
+            : (o.reference ?? null) === (target.reference ?? null)),
+        );
+        if (!match || !alive) return;
+        const localItemsRows = await orderItemRepository.findByOrder(match.id);
+        if (!alive) return;
+        localDraftId.current = match.id;
+        setLocalItems(localItemsRows.map((it) => ({
+          id: it.id,
+          productId: it.productId,
+          productName: it.productName,
+          unitPrice: it.unitPrice,
+          quantity: it.quantity,
+          notes: it.notes,
+          sentToKitchenAt: null,
+          createdAt: it.createdAt,
+        })));
+      } catch { /* recuperación best-effort */ }
     })();
     return () => { alive = false; };
   }, [visible, target, branchId]);
@@ -457,12 +549,14 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
     const note = normNote(notes);
 
     if (!isPersisted) {
-      setLocalItems((prev) => {
-        const existing = prev.find((i) => i.productId === product.id && sameNote(i.notes, note));
-        if (existing) {
-          return prev.map((i) => i === existing ? { ...i, quantity: i.quantity + quantity } : i);
-        }
-        return [...prev, {
+      // Borrador: muta memoria + refleja en SQLite de inmediato (respaldo).
+      const existing = localItems.find((i) => i.productId === product.id && sameNote(i.notes, note));
+      if (existing) {
+        const newQty = existing.quantity + quantity;
+        setLocalItems((prev) => prev.map((i) => i.id === existing.id ? { ...i, quantity: newQty } : i));
+        void persistDraftUpdate(existing.id, { quantity: newQty });
+      } else {
+        const line: DiningOrderItem = {
           id: newId(),
           productId: product.id,
           productName: product.name,
@@ -471,8 +565,10 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
           notes: note,
           sentToKitchenAt: null,
           createdAt: new Date().toISOString(),
-        }];
-      });
+        };
+        setLocalItems((prev) => [...prev, line]);
+        void persistDraftAdd(line);
+      }
       return;
     }
 
@@ -501,7 +597,7 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
     };
     setOrder((prev) => prev && { ...prev, items: [...prev.items, line] });
     void persistAdd(line);
-  }, [isPersisted, isEditable, isConnected, order, persistAdd, persistUpdate]);
+  }, [isPersisted, isEditable, isConnected, order, localItems, persistAdd, persistUpdate, persistDraftAdd, persistDraftUpdate]);
 
   // Quick add (tap): +1, no note.
   const addProduct = useCallback((product: ProductResult) => addLine(product, 1, null), [addLine]);
@@ -513,6 +609,7 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
     const note = normNote(notes);
     if (!isPersisted) {
       setLocalItems((prev) => prev.map((i) => i.id === item.id ? { ...i, quantity, notes: note } : i));
+      void persistDraftUpdate(item.id, { quantity, notes: note });
       return;
     }
     const snapshot = { quantity: item.quantity, notes: item.notes };
@@ -520,7 +617,7 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
     void persistUpdate(item.id, { quantity, notes: note }, () =>
       setOrder((prev) => prev && { ...prev, items: prev.items.map((i) => i.id === item.id ? { ...i, ...snapshot } : i) }),
     );
-  }, [isPersisted, isEditable, persistUpdate]);
+  }, [isPersisted, isEditable, persistUpdate, persistDraftUpdate]);
 
   const changeQty = useCallback((item: DiningOrderItem, delta: number) => {
     if (!isEditable || !isPending(item)) return;
@@ -529,6 +626,7 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
 
     if (!isPersisted) {
       setLocalItems((prev) => prev.map((i) => i.id === item.id ? { ...i, quantity: newQty } : i));
+      void persistDraftUpdate(item.id, { quantity: newQty });
       return;
     }
     const prevQty = item.quantity;
@@ -536,13 +634,14 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
     void persistUpdate(item.id, { quantity: newQty }, () =>
       setOrder((prev) => prev && { ...prev, items: prev.items.map((i) => i.id === item.id ? { ...i, quantity: prevQty } : i) }),
     );
-  }, [isPersisted, isEditable, persistUpdate]);
+  }, [isPersisted, isEditable, persistUpdate, persistDraftUpdate]);
 
   const removeItem = useCallback((item: DiningOrderItem) => {
     if (!isEditable || !isPending(item)) return;
     const doRemove = () => {
       if (!isPersisted) {
         setLocalItems((prev) => prev.filter((i) => i.id !== item.id));
+        void persistDraftRemove(item.id);
         return;
       }
       // Optimista: quita ya. Si el backend la rechaza, reinserta en su posición.
@@ -565,7 +664,7 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Eliminar', style: 'destructive', onPress: doRemove },
     ]);
-  }, [isPersisted, isEditable, persistRemove]);
+  }, [isPersisted, isEditable, persistRemove, persistDraftRemove]);
 
   // Config sheet confirm → add a configured line or apply edits to an existing one.
   const handleConfigConfirm = useCallback((quantity: number, note: string) => {
@@ -592,19 +691,17 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
     setSending(true);
     (async () => {
       try {
-        // ── Offline: persist a new order locally + queue it (same UX) ──────────
+        // ── Offline: encola el borrador local ya persistido (mismo UX) ─────────
         if (!isConnected && !orderId && target?.kind === 'draft') {
-          const created = await localOrderService.createOrder({
-            branchId,
-            serviceType: target.serviceType,
-            tableId: target.serviceType === 'DINE_IN' ? target.tableId : null,
-            reference: target.serviceType === 'COUNTER' ? (target.reference ?? null) : null,
-            status: next,
-            subtotal,
-          });
+          // Reconstruye el borrador en SQLite desde la memoria (fuente de verdad
+          // de la UI) para cubrir cualquier hueco del respaldo best-effort, y
+          // encólalo: CREATE_ORDER + ADD_ITEM* + estado final.
+          const localId = await ensureLocalDraft();
+          await orderItemRepository.deleteByOrder(localId);
           for (const it of localItems) {
-            await localOrderService.addItem({
-              orderId: created.id,
+            await orderItemRepository.create({
+              id: it.id,
+              orderId: localId,
               productId: it.productId,
               productName: it.productName,
               unitPrice: Number(it.unitPrice),
@@ -612,9 +709,8 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
               notes: it.notes,
             });
           }
-          // Queue the final status AFTER the items so the sync worker advances
-          // the backend order (Cocina/Caja) once items are pushed.
-          await localOrderService.updateOrder(created.id, { status: next });
+          await localOrderService.enqueueDraftForSync(localId, next);
+          localDraftId.current = null; // ya encolado; una captura nueva arranca limpio
           await refreshSyncPending(); // reflect new pending ops in the status badge
           Alert.alert(successTitle, `${successBody}\n\nSe guardó sin conexión y se sincronizará al reconectar.`, [
             { text: 'OK', onPress: onClose },
@@ -627,8 +723,15 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
         if (!id) {
           id = await ensureOrder();
           if (!id) throw new Error('No se pudo crear la orden.');
+          // Vincula el borrador local a la orden de servidor: si el envío se
+          // interrumpe aquí, la recuperación no recreará un duplicado (el servidor
+          // pasa a ser autoritativo y la mesa ya quedó ocupada).
+          if (localDraftId.current) {
+            await orderRepository.update(localDraftId.current, { serverId: id }).catch(() => {});
+          }
           for (const it of localItems) {
             await addOrderItem(branchId, id, {
+              id: it.id,
               productId: it.productId ?? undefined,
               productName: it.productName,
               unitPrice: Number(it.unitPrice),
@@ -660,6 +763,11 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
         }
         const updated = await fireRound(branchId, id!);
         setOrder((prev) => prev && { ...prev, status: updated.status, items: updated.items });
+        // Orden ya en el servidor: el borrador local respaldo sobra (ítems cascada).
+        if (localDraftId.current) {
+          void orderRepository.delete(localDraftId.current).catch(() => {});
+          localDraftId.current = null;
+        }
         Alert.alert(successTitle, successBody, [{ text: 'OK', onPress: onClose }]);
       } catch (e) {
         Alert.alert('No se pudo continuar', getApiErrorMessage(e, 'Intenta de nuevo.'));
@@ -667,7 +775,7 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
         setSending(false);
       }
     })();
-  }, [hasPending, isConnected, target, subtotal, orderId, ensureOrder, localItems, branchId, kitchenEnabled, onClose]);
+  }, [hasPending, isConnected, target, orderId, ensureOrder, ensureLocalDraft, localItems, branchId, kitchenEnabled, onClose]);
 
   // Cocina entregó (READY) → marcar lista para cobro (READY_FOR_PAYMENT) para
   // habilitar el cobro desde mesas/comandas.
@@ -701,8 +809,10 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
         text: 'Descartar',
         style: 'destructive',
         onPress: () => {
-          // Only an existing persisted order needs server cleanup.
+          // Orden existente → limpieza en servidor. Borrador nuevo → borra su
+          // respaldo local para que la recuperación no lo vuelva a ofrecer.
           if (isPersisted && orderId) void discardOrder(branchId, orderId).catch(() => {});
+          else if (localDraftId.current) void orderRepository.delete(localDraftId.current).catch(() => {});
           onClose();
         },
       },

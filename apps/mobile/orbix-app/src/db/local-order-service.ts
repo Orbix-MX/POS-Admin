@@ -83,6 +83,37 @@ export class LocalOrderService {
   async queueRemoteFire(p: { branchId: string; orderId: string }): Promise<void> {
     await syncQueueRepository.enqueue({ localId: p.orderId, operationType: 'REMOTE_FIRE', payload: p });
   }
+
+  /**
+   * Encola un borrador local YA persistido (creado durante la captura) para que el
+   * worker lo suba al reconectar: CREATE_ORDER + un ADD_ITEM por línea + el cambio
+   * de estado final (Cocina/Caja). No crea filas nuevas — reutiliza el draft que
+   * ya vive en SQLite, de modo que nada de lo capturado se pierde sin conexión.
+   */
+  async enqueueDraftForSync(localOrderId: string, status: string): Promise<void> {
+    const order = await orderRepository.findById(localOrderId);
+    if (!order) return;
+    const items = await orderItemRepository.findByOrder(localOrderId);
+
+    await syncQueueRepository.enqueue({
+      localId: order.id,
+      operationType: 'CREATE_ORDER',
+      payload: order,
+    });
+    for (const item of items) {
+      await syncQueueRepository.enqueue({
+        localId: item.id,
+        operationType: 'ADD_ITEM',
+        payload: item,
+      });
+    }
+    await orderRepository.update(localOrderId, { status });
+    await syncQueueRepository.enqueue({
+      localId: order.id,
+      operationType: 'UPDATE_ORDER',
+      payload: { id: order.id, status },
+    });
+  }
 }
 
 export const localOrderService = new LocalOrderService();

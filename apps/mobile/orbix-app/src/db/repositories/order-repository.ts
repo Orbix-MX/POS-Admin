@@ -89,6 +89,37 @@ export class OrderRepository {
     return rows.map(mapRow);
   }
 
+  /**
+   * Borradores locales en captura: aún sin orden en el servidor (server_id NULL)
+   * y en estado OPEN. Son los que se restauran al reabrir la pantalla tras un
+   * cierre inesperado de la app, para no perder lo capturado.
+   */
+  async findLocalDrafts(branchId: string): Promise<LocalOrder[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<OrderRow>(
+      `SELECT * FROM ${TABLES.orders}
+        WHERE branch_id = ? AND server_id IS NULL AND status = 'OPEN'
+        ORDER BY created_at DESC`,
+      [branchId],
+    );
+    return rows.map(mapRow);
+  }
+
+  /**
+   * Limpia restos de un envío online interrumpido: borradores que ya tienen orden
+   * en el servidor (server_id) pero quedaron sin marcar como sincronizados. El
+   * servidor es la fuente autoritativa de esas órdenes, así que la copia local
+   * sobra (sus ítems cascada). Evita restaurar duplicados.
+   */
+  async deleteServerLinkedDrafts(branchId: string): Promise<void> {
+    const db = await getDatabase();
+    await db.runAsync(
+      `DELETE FROM ${TABLES.orders}
+        WHERE branch_id = ? AND server_id IS NOT NULL AND synced = 0 AND status = 'OPEN'`,
+      [branchId],
+    );
+  }
+
   /** Orders not yet pushed to the backend (synced = 0). */
   async findUnsynced(): Promise<LocalOrder[]> {
     const db = await getDatabase();
