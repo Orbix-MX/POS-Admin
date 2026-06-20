@@ -53,13 +53,24 @@ export interface KitchenProduct {
   comboItems: KitchenComboItem[]
 }
 
+export type KitchenRoundStatus = 'SENT' | 'IN_PREPARATION' | 'DONE'
+
 export interface KitchenOrderItem {
   id: string
   productId: string | null
   productName: string
   quantity: number
   notes: string | null
+  sentToKitchenAt: string | null
   product: KitchenProduct | null
+}
+
+export interface KitchenRound {
+  id: string
+  roundNumber: number
+  sentAt: string
+  status: KitchenRoundStatus
+  items: KitchenOrderItem[]
 }
 
 export interface KitchenWaiter {
@@ -76,7 +87,7 @@ export interface KitchenOrder {
   openedAt: string
   table: { id: string; name: string } | null
   waiter: KitchenWaiter | null
-  items: KitchenOrderItem[]
+  rounds: KitchenRound[]
 }
 
 export async function getKitchenOrders(): Promise<KitchenOrder[]> {
@@ -90,6 +101,17 @@ export async function updateKitchenStatus(
 ): Promise<KitchenOrder> {
   const { data } = await api.patch<KitchenOrder>(
     `/restaurant/kitchen/orders/${orderId}/status`,
+    { status },
+  )
+  return data
+}
+
+export async function updateKitchenRoundStatus(
+  roundId: string,
+  status: KitchenRoundStatus,
+): Promise<KitchenRound> {
+  const { data } = await api.patch<KitchenRound>(
+    `/restaurant/kitchen/rounds/${roundId}/status`,
     { status },
   )
   return data

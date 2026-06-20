@@ -2,8 +2,10 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   getKitchenOrders,
   updateKitchenStatus,
+  updateKitchenRoundStatus,
   type KitchenOrder,
   type KitchenOrderStatus,
+  type KitchenRoundStatus,
 } from '@/services/retail/kitchen-service'
 
 const POLL_INTERVAL_MS = 15_000
@@ -44,6 +46,7 @@ export function useKitchen() {
   const [error, setError] = useState<string | null>(null)
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const [updating, setUpdating] = useState<Record<string, boolean>>({})
+  const [updatingRound, setUpdatingRound] = useState<Record<string, boolean>>({})
   const [selectedOrder, setSelectedOrder] = useState<KitchenOrder | null>(null)
   const knownIds = useRef<Set<string>>(new Set())
   const [tick, setTick] = useState(0)
@@ -123,13 +126,37 @@ export function useKitchen() {
 
   const handleStart   = useCallback((o: KitchenOrder) => applyStatus(o, 'IN_PREPARATION'), [applyStatus])
   const handleReady   = useCallback((o: KitchenOrder) => applyStatus(o, 'READY'), [applyStatus])
-  // Cocina entrega directo a caja: READY → READY_FOR_PAYMENT (sale del KDS, cobrable).
   const handleDeliver = useCallback((o: KitchenOrder) => applyStatus(o, 'READY_FOR_PAYMENT'), [applyStatus])
 
+  // Marca una ronda como DONE — la elimina del KDS sin tocar el estado de la orden.
+  const handleMarkRoundDone = useCallback(async (orderId: string, roundId: string) => {
+    setUpdatingRound(p => ({ ...p, [roundId]: true }))
+    try {
+      await updateKitchenRoundStatus(roundId, 'DONE' as KitchenRoundStatus)
+      setOrders(prev =>
+        prev.map(o =>
+          o.id !== orderId
+            ? o
+            : { ...o, rounds: o.rounds.filter(r => r.id !== roundId) },
+        ),
+      )
+      setSelectedOrder(prev =>
+        prev?.id === orderId
+          ? { ...prev, rounds: prev.rounds.filter(r => r.id !== roundId) }
+          : prev,
+      )
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Error al marcar ronda'
+      setError(msg)
+    } finally {
+      setUpdatingRound(p => ({ ...p, [roundId]: false }))
+    }
+  }, [])
+
   return {
-    orders, columns, loading, error, lastRefresh, updating,
+    orders, columns, loading, error, lastRefresh, updating, updatingRound,
     selectedOrder, setSelectedOrder,
-    handleStart, handleReady, handleDeliver,
+    handleStart, handleReady, handleDeliver, handleMarkRoundDone,
     refresh: () => load(),
   }
 }

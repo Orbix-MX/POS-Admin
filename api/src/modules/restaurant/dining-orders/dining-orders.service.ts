@@ -42,6 +42,7 @@ const ITEM_SELECT = {
   quantity: true,
   notes: true,
   sentToKitchenAt: true,
+  kitchenRoundId: true,
   createdAt: true,
 } as const;
 
@@ -413,30 +414,45 @@ export class DiningOrdersService {
    */
   async fireRound(branchId: string, orderId: string) {
     const tenantId = this.tenantContext.requireTenantId();
-    const order = await this.requireEditableOrder(tenantId, branchId, orderId);
+    await this.requireEditableOrder(tenantId, branchId, orderId);
 
-    const pending = await this.prisma.diningOrderItem.count({
+    const pendingCount = await this.prisma.diningOrderItem.count({
       where: { orderId, sentToKitchenAt: null },
     });
-    if (pending === 0) {
+    if (pendingCount === 0) {
       throw new BadRequestException('No hay productos pendientes de enviar.');
     }
 
     const kitchenEnabled = await this.isKitchenEnabled(tenantId);
     const target: DiningOrderStatus = kitchenEnabled ? 'SENT_TO_KITCHEN' : 'READY_FOR_PAYMENT';
 
-    const [, updated] = await this.prisma.$transaction([
-      this.prisma.diningOrderItem.updateMany({
+    return this.prisma.$transaction(async (tx) => {
+      // Determine the next round number for this order.
+      const lastRound = await tx.kitchenRound.findFirst({
+        where: { orderId },
+        orderBy: { roundNumber: 'desc' },
+        select: { roundNumber: true },
+      });
+      const nextRoundNumber = (lastRound?.roundNumber ?? 0) + 1;
+      const now = new Date();
+
+      // Create the round record.
+      const round = await tx.kitchenRound.create({
+        data: { orderId, roundNumber: nextRoundNumber, sentAt: now },
+      });
+
+      // Stamp pending items with this round's id and timestamp.
+      await tx.diningOrderItem.updateMany({
         where: { orderId, sentToKitchenAt: null },
-        data: { sentToKitchenAt: new Date() },
-      }),
-      this.prisma.diningOrder.update({
+        data: { sentToKitchenAt: now, kitchenRoundId: round.id },
+      });
+
+      return tx.diningOrder.update({
         where: { id: orderId },
         data: { status: target },
         select: ORDER_SELECT,
-      }),
-    ]);
-    return updated;
+      });
+    });
   }
 
   /**

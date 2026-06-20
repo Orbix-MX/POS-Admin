@@ -1,6 +1,6 @@
-import { RefreshCw, ChefHat, Play, CheckCheck, X, Clock, Loader2, Truck, AlertTriangle, FlaskConical, Layers, User } from 'lucide-react'
+import { RefreshCw, ChefHat, Play, CheckCheck, X, Clock, Loader2, Truck, AlertTriangle, FlaskConical, Layers, User, CheckSquare } from 'lucide-react'
 import { useKitchen, elapsedMinutes, priorityLevel } from '@/hooks/use-kitchen'
-import type { KitchenOrder, KitchenOrderItem, KitchenProduct } from '@/services/retail/kitchen-service'
+import type { KitchenOrder, KitchenOrderItem, KitchenProduct, KitchenRound } from '@/services/retail/kitchen-service'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -122,11 +122,13 @@ function OrderItemDetail({ item }: { item: KitchenOrderItem }) {
 // ─── Kitchen card ─────────────────────────────────────────────────────────────
 
 type CardActions = {
-  onStart:   (o: KitchenOrder) => void
-  onReady:   (o: KitchenOrder) => void
-  onDeliver: (o: KitchenOrder) => void
-  onOpen:    (o: KitchenOrder) => void
-  busy:      boolean
+  onStart:         (o: KitchenOrder) => void
+  onReady:         (o: KitchenOrder) => void
+  onDeliver:       (o: KitchenOrder) => void
+  onOpen:          (o: KitchenOrder) => void
+  onMarkRoundDone: (orderId: string, roundId: string) => void
+  busy:            boolean
+  busyRound:       Record<string, boolean>
 }
 
 function KitchenCard({ order, actions }: { order: KitchenOrder; actions: CardActions }) {
@@ -169,20 +171,35 @@ function KitchenCard({ order, actions }: { order: KitchenOrder; actions: CardAct
         </div>
       </div>
 
-      {/* Items */}
-      <div className="px-3.5 py-2.5 space-y-0.5 border-b border-zinc-800/60">
-        {order.items.slice(0, 5).map(item => (
-          <div key={item.id} className="flex items-center gap-2 text-[12px]">
-            <span className="text-amber-500 font-bold tabular-nums w-5 text-right">{item.quantity}×</span>
-            <span className="text-zinc-200 truncate">{item.productName}</span>
-            {item.product?.type === 'RECIPE' && <FlaskConical className="w-3 h-3 text-violet-500 shrink-0" />}
-            {item.product?.type === 'COMBO'  && <Layers       className="w-3 h-3 text-blue-400 shrink-0" />}
-          </div>
-        ))}
-        {order.items.length > 5 && (
-          <div className="text-[10px] text-zinc-600 pl-7">
-            +{order.items.length - 5} más…
-          </div>
+      {/* Rounds */}
+      <div className="px-3.5 py-2.5 space-y-2 border-b border-zinc-800/60">
+        {order.rounds.map((round, ri) => {
+          const previewItems = round.items.slice(0, 4)
+          const extra = round.items.length - previewItems.length
+          return (
+            <div key={round.id}>
+              {order.rounds.length > 1 && (
+                <div className="flex items-center gap-1 mb-1 text-[9px] font-bold text-zinc-500 uppercase tracking-widest">
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${ri === order.rounds.length - 1 ? 'bg-amber-400' : 'bg-zinc-600'}`} />
+                  Ronda {round.roundNumber}
+                </div>
+              )}
+              {previewItems.map(item => (
+                <div key={item.id} className="flex items-center gap-2 text-[12px]">
+                  <span className="text-amber-500 font-bold tabular-nums w-5 text-right">{item.quantity}×</span>
+                  <span className="text-zinc-200 truncate">{item.productName}</span>
+                  {item.product?.type === 'RECIPE' && <FlaskConical className="w-3 h-3 text-violet-500 shrink-0" />}
+                  {item.product?.type === 'COMBO'  && <Layers       className="w-3 h-3 text-blue-400 shrink-0" />}
+                </div>
+              ))}
+              {extra > 0 && (
+                <div className="text-[10px] text-zinc-600 pl-7">+{extra} más…</div>
+              )}
+            </div>
+          )
+        })}
+        {order.rounds.length === 0 && (
+          <div className="text-[11px] text-zinc-600 italic">Sin rondas activas</div>
         )}
       </div>
 
@@ -296,6 +313,47 @@ function KitchenColumn({
 
 // ─── Detail modal ─────────────────────────────────────────────────────────────
 
+function RoundSection({
+  round, orderId, onMarkDone, busy,
+}: {
+  round: KitchenRound
+  orderId: string
+  onMarkDone: (orderId: string, roundId: string) => void
+  busy: boolean
+}) {
+  const totalItems = round.items.reduce((s, i) => s + i.quantity, 0)
+  return (
+    <div className="border border-zinc-800 rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-3.5 py-2 bg-zinc-800/40 border-b border-zinc-800">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">
+            Ronda {round.roundNumber}
+          </span>
+          <span className="text-[10px] text-zinc-600">{fmtTime(round.sentAt)}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-zinc-500">{totalItems} pieza{totalItems !== 1 ? 's' : ''}</span>
+          <button
+            onClick={() => onMarkDone(orderId, round.id)}
+            disabled={busy}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg border border-emerald-700/50 bg-emerald-950/50
+              text-[10px] font-semibold text-emerald-400 hover:bg-emerald-900/40 transition-colors
+              disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckSquare className="w-3 h-3" />}
+            Lista
+          </button>
+        </div>
+      </div>
+      <div className="px-3.5 py-3 space-y-2">
+        {round.items.map(item => (
+          <OrderItemDetail key={item.id} item={item} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function DetailModal({
   order, onClose, actions,
 }: {
@@ -305,6 +363,7 @@ function DetailModal({
 }) {
   const mins = elapsedMinutes(order.openedAt)
   const prio = priorityLevel(mins)
+  const totalItems = order.rounds.reduce((s, r) => s + r.items.length, 0)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -345,14 +404,26 @@ function DetailModal({
           </div>
         </div>
 
-        {/* Items */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
+        {/* Rounds */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
           <div className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-3">
-            {order.items.length} {order.items.length === 1 ? 'producto' : 'productos'}
+            {totalItems} {totalItems === 1 ? 'producto' : 'productos'} · {order.rounds.length} {order.rounds.length === 1 ? 'ronda' : 'rondas'} activas
           </div>
-          {order.items.map(item => (
-            <OrderItemDetail key={item.id} item={item} />
-          ))}
+          {order.rounds.length === 0 ? (
+            <div className="text-[12px] text-zinc-600 italic text-center py-4">
+              Todas las rondas marcadas como listas.
+            </div>
+          ) : (
+            order.rounds.map(round => (
+              <RoundSection
+                key={round.id}
+                round={round}
+                orderId={order.id}
+                onMarkDone={actions.onMarkRoundDone}
+                busy={!!actions.busyRound[round.id]}
+              />
+            ))
+          )}
         </div>
 
         {/* Actions */}
@@ -412,20 +483,22 @@ function ModalBtn({
 
 export function Kitchen() {
   const {
-    columns, loading, error, lastRefresh, updating,
+    columns, loading, error, lastRefresh, updating, updatingRound,
     selectedOrder, setSelectedOrder,
-    handleStart, handleReady, handleDeliver,
+    handleStart, handleReady, handleDeliver, handleMarkRoundDone,
     refresh,
   } = useKitchen()
 
   const totalActive = columns.SENT_TO_KITCHEN.length + columns.IN_PREPARATION.length + columns.READY.length
 
   const cardActions: CardActions = {
-    onStart:   handleStart,
-    onReady:   handleReady,
-    onDeliver: handleDeliver,
-    onOpen:    setSelectedOrder,
-    busy:      false,
+    onStart:         handleStart,
+    onReady:         handleReady,
+    onDeliver:       handleDeliver,
+    onOpen:          setSelectedOrder,
+    onMarkRoundDone: handleMarkRoundDone,
+    busy:            false,
+    busyRound:       updatingRound,
   }
 
   return (
@@ -517,10 +590,12 @@ export function Kitchen() {
           order={selectedOrder}
           onClose={() => setSelectedOrder(null)}
           actions={{
-            onStart:   (o) => { handleStart(o);   setSelectedOrder(null) },
-            onReady:   (o) => { handleReady(o);   setSelectedOrder(null) },
-            onDeliver: (o) => { handleDeliver(o); setSelectedOrder(null) },
-            busy: !!updating[selectedOrder.id],
+            onStart:         (o) => { handleStart(o);   setSelectedOrder(null) },
+            onReady:         (o) => { handleReady(o);   setSelectedOrder(null) },
+            onDeliver:       (o) => { handleDeliver(o); setSelectedOrder(null) },
+            onMarkRoundDone: handleMarkRoundDone,
+            busy:            !!updating[selectedOrder.id],
+            busyRound:       updatingRound,
           }}
         />
       )}

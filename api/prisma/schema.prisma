@@ -1083,16 +1083,40 @@ model DiningOrder {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branch Branch           @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  table  RestaurantTable? @relation(fields: [tableId], references: [id], onDelete: Cascade)
-  waiter Employee         @relation("DiningOrderWaiter", fields: [waiterId], references: [id])
-  order  Order?           @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  items  DiningOrderItem[]
+  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch        Branch           @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  table         RestaurantTable? @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  waiter        Employee         @relation("DiningOrderWaiter", fields: [waiterId], references: [id])
+  order         Order?           @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  items         DiningOrderItem[]
+  kitchenRounds KitchenRound[]
 
   @@index([tenantId, branchId, status])
   @@index([tableId, status])
   @@map("dining_orders")
+}
+
+enum KitchenRoundStatus {
+  SENT
+  IN_PREPARATION
+  DONE
+}
+
+model KitchenRound {
+  id          String             @id @default(uuid())
+  orderId     String             @map("order_id")
+  roundNumber Int                @map("round_number")
+  sentAt      DateTime           @map("sent_at")
+  status      KitchenRoundStatus @default(SENT)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order DiningOrder     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  items DiningOrderItem[]
+
+  @@index([orderId])
+  @@map("kitchen_rounds")
 }
 
 model DiningOrderItem {
@@ -1109,10 +1133,15 @@ model DiningOrderItem {
   // duplicar DiningOrder y sin re-enviar lo ya preparado.
   sentToKitchenAt DateTime? @map("sent_to_kitchen_at")
 
+  // FK a la ronda de cocina que lo envió. NULL para ítems pre-migración o cuando
+  // kitchen está deshabilitado.
+  kitchenRoundId String?       @map("kitchen_round_id")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  order DiningOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order        DiningOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  kitchenRound KitchenRound? @relation(fields: [kitchenRoundId], references: [id], onDelete: SetNull)
 
   @@index([orderId])
   @@map("dining_order_items")

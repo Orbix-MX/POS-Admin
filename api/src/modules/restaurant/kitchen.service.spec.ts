@@ -23,6 +23,10 @@ const mockDiningOrders = {
   changeStatus: jest.fn(),
 };
 
+function makeRound(roundNumber: number, items: unknown[] = []) {
+  return { id: `round-${roundNumber}`, roundNumber, sentAt: new Date().toISOString(), status: 'SENT', items };
+}
+
 function makeOrder(overrides: Record<string, unknown> = {}) {
   return {
     id: ORDER_ID,
@@ -32,7 +36,7 @@ function makeOrder(overrides: Record<string, unknown> = {}) {
     openedAt: new Date().toISOString(),
     table: { id: 'table-1', name: 'Mesa 5' },
     waiter: { id: 'emp-1', firstName: 'Ana', lastName: 'Lopez' },
-    items: [],
+    kitchenRounds: [],
     ...overrides,
   };
 }
@@ -91,7 +95,9 @@ describe('KitchenService (DiningOrder KDS)', () => {
 
     it('attaches resolved product (recipe/combo) to each item by productId', async () => {
       const order = makeOrder({
-        items: [{ id: 'it-1', productId: 'prod-1', productName: 'Tacos', quantity: 2, notes: null }],
+        kitchenRounds: [
+          makeRound(1, [{ id: 'it-1', productId: 'prod-1', productName: 'Tacos', quantity: 2, notes: null, sentToKitchenAt: new Date().toISOString() }]),
+        ],
       });
       mockPrismaService.diningOrder.findMany.mockResolvedValue([order]);
       mockPrismaService.product.findMany.mockResolvedValue([
@@ -103,19 +109,21 @@ describe('KitchenService (DiningOrder KDS)', () => {
       expect(mockPrismaService.product.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: expect.objectContaining({ id: { in: ['prod-1'] }, tenantId: TENANT_ID }) }),
       );
-      expect(result[0].items[0].product).toMatchObject({ id: 'prod-1', type: 'RECIPE' });
+      expect(result[0].rounds[0].items[0].product).toMatchObject({ id: 'prod-1', type: 'RECIPE' });
     });
 
     it('skips product lookup when there are no product items', async () => {
       const order = makeOrder({
-        items: [{ id: 'it-1', productId: null, productName: 'Nota libre', quantity: 1, notes: null }],
+        kitchenRounds: [
+          makeRound(1, [{ id: 'it-1', productId: null, productName: 'Nota libre', quantity: 1, notes: null, sentToKitchenAt: new Date().toISOString() }]),
+        ],
       });
       mockPrismaService.diningOrder.findMany.mockResolvedValue([order]);
 
       const result = await service.getKitchenOrders();
 
       expect(mockPrismaService.product.findMany).not.toHaveBeenCalled();
-      expect(result[0].items[0].product).toBeNull();
+      expect(result[0].rounds[0].items[0].product).toBeNull();
     });
 
     it('orders results by openedAt ascending', async () => {

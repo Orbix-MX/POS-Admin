@@ -1,5 +1,5 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
-import { DiningOrderStatus } from '@prisma/client';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { DiningOrderStatus, KitchenRoundStatus } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { TenantContextService } from '../../common/context/tenant-context.service';
 import { DiningOrdersService } from './dining-orders/dining-orders.service';
@@ -94,28 +94,38 @@ export class KitchenService {
         openedAt: true,
         table: { select: { id: true, name: true } },
         waiter: { select: { id: true, firstName: true, lastName: true } },
-        items: {
-          // Cocina solo ve lo ya enviado (las rondas pendientes en captura no
-          // aparecen). Orden por envío para que la ronda nueva quede al final.
-          where: { sentToKitchenAt: { not: null } },
-          orderBy: [{ sentToKitchenAt: 'asc' }, { createdAt: 'asc' }],
+        kitchenRounds: {
+          // Solo rondas activas (no marcadas como DONE por la cocina).
+          where: { status: { not: 'DONE' } },
+          orderBy: { roundNumber: 'asc' },
           select: {
             id: true,
-            productId: true,
-            productName: true,
-            quantity: true,
-            notes: true,
-            sentToKitchenAt: true,
+            roundNumber: true,
+            sentAt: true,
+            status: true,
+            items: {
+              select: {
+                id: true,
+                productId: true,
+                productName: true,
+                quantity: true,
+                notes: true,
+                sentToKitchenAt: true,
+              },
+            },
           },
         },
       },
     });
 
-    // DiningOrderItem no tiene relación directa a Product; se resuelven aparte
-    // los productos (receta/combo) para mostrar insumos sin migrar el esquema.
+    // Resolve products (recipe/combo) for ingredient display.
     const productIds = [
       ...new Set(
-        orders.flatMap((o) => o.items.map((i) => i.productId).filter((id): id is string => id != null)),
+        orders.flatMap((o) =>
+          o.kitchenRounds.flatMap((r) =>
+            r.items.map((i) => i.productId).filter((id): id is string => id != null),
+          ),
+        ),
       ),
     ];
     const products = productIds.length
@@ -128,9 +138,12 @@ export class KitchenService {
 
     return orders.map((o) => ({
       ...o,
-      items: o.items.map((i) => ({
-        ...i,
-        product: i.productId ? productMap.get(i.productId) ?? null : null,
+      rounds: o.kitchenRounds.map((r) => ({
+        ...r,
+        items: r.items.map((i) => ({
+          ...i,
+          product: i.productId ? (productMap.get(i.productId) ?? null) : null,
+        })),
       })),
     }));
   }
@@ -140,8 +153,20 @@ export class KitchenService {
     if (!branchId) {
       throw new BadRequestException('No hay sucursal seleccionada para la cocina.');
     }
-    // La validación de transición (SENT_TO_KITCHEN → IN_PREPARATION → READY →
-    // DELIVERED) vive en DiningOrdersService.changeStatus (flujo de cocina).
     return this.diningOrders.changeStatus(branchId, orderId, status);
+  }
+
+  async updateRoundStatus(roundId: string, status: KitchenRoundStatus) {
+    const tenantId = this.tenantContext.requireTenantId();
+    const round = await this.prisma.kitchenRound.findFirst({
+      where: { id: roundId, order: { tenantId } },
+      select: { id: true },
+    });
+    if (!round) throw new NotFoundException('Ronda no encontrada.');
+    return this.prisma.kitchenRound.update({
+      where: { id: roundId },
+      data: { status },
+      select: { id: true, roundNumber: true, sentAt: true, status: true },
+    });
   }
 }
