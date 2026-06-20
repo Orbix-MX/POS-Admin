@@ -41,7 +41,13 @@ function build() {
     },
     order: {
       create: jest.fn().mockResolvedValue({ id: 'order-1' }),
-      findUnique: jest.fn().mockResolvedValue({ id: 'order-1', status: 'DELIVERED', paymentStatus: 'PAID' }),
+      // Payload de impresión del ticket: cabecera + líneas + pagos.
+      findUnique: jest.fn().mockResolvedValue({
+        id: 'order-1', orderNumber: 'C-123', status: 'DELIVERED', paymentStatus: 'PAID',
+        total: 200, tableNumber: 'Mesa 5', employeeNumber: 'Ana López',
+        items: [{ name: 'Burger', quantity: 2, price: 80 }, { name: 'Papas', quantity: 1, price: 40 }],
+        payments: [{ paymentMethod: 'CASH', amount: 200, status: 'PAID' }],
+      }),
     },
     orderItem: { create: jest.fn().mockResolvedValue({}) },
     restaurantTable: { update: jest.fn().mockResolvedValue({}) },
@@ -154,5 +160,38 @@ describe('DiningOrdersService.checkout', () => {
     await expect(
       service.checkout(BRANCH, 'do-1', { ...fullPayment, customerId: 'cust-x' }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('ticket: devuelve la orden con líneas y pagos (payload de impresión)', async () => {
+    const { service, prisma, tx } = build();
+    prisma.diningOrder.findFirst.mockResolvedValue(diningOrder());
+
+    const ticket = await service.checkout(BRANCH, 'do-1', fullPayment) as {
+      orderNumber: string; items: unknown[]; payments: unknown[];
+    };
+
+    // La recarga final incluye items + payments: todo lo que el cliente imprime.
+    expect(tx.order.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ include: { items: true, payments: true } }),
+    );
+    expect(ticket.orderNumber).toBe('C-123');
+    expect(ticket.items).toHaveLength(2);
+    expect(ticket.payments).toHaveLength(1);
+  });
+
+  it('rollback: si falla el consumo de inventario, no se escribe el footprint financiero', async () => {
+    const { service, prisma, tx, consume, createPayments, createCashMovements } = build();
+    prisma.diningOrder.findFirst.mockResolvedValue(diningOrder());
+    // Inventario insuficiente a mitad de la transacción.
+    consume.mockRejectedValue(new BadRequestException('Stock insuficiente'));
+
+    await expect(service.checkout(BRANCH, 'do-1', fullPayment)).rejects.toBeInstanceOf(BadRequestException);
+
+    // El error se lanza DENTRO del $transaction (Prisma revierte order.create y el
+    // lock). Como prueba de atomicidad: el footprint financiero posterior nunca corre.
+    expect(tx.order.create).toHaveBeenCalledTimes(1); // alcanzó a crear (será revertido)
+    expect(createPayments).not.toHaveBeenCalled();
+    expect(createCashMovements).not.toHaveBeenCalled();
+    expect(tx.restaurantTable.update).not.toHaveBeenCalled(); // mesa NO se libera
   });
 });

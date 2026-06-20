@@ -39,9 +39,16 @@ const CTX: InventoryContext = {
   referenceType: 'ORDER',
 };
 
-function makeTx(products: Record<string, FakeProduct>, supplyStock: Record<string, number>) {
+function makeTx(
+  products: Record<string, FakeProduct>,
+  supplyStock: Record<string, number>,
+  opts: { branchRows?: Set<string> } = {},
+) {
   const productStock: Record<string, number> = {};
   for (const p of Object.values(products)) productStock[p.id] = p.stock;
+  // Productos que YA tienen fila en branch_inventory. Por defecto todos, salvo que
+  // el caso pruebe el sembrado (create) de una fila inexistente.
+  const branchRows = opts.branchRows ?? new Set(Object.keys(products));
 
   const calls = {
     productUpdateMany: [] as { id: string; decrement: number }[],
@@ -51,6 +58,7 @@ function makeTx(products: Record<string, FakeProduct>, supplyStock: Record<strin
     inventoryMovements: [] as { type: string; productId: string; quantity: number }[],
     supplyMovements: [] as { type: string; supplyId: string; quantity: number }[],
     branchInventory: [] as { productId: string; increment: number }[],
+    branchInventoryCreate: [] as { productId: string; stock: number }[],
   };
 
   const tx = {
@@ -98,11 +106,15 @@ function makeTx(products: Record<string, FakeProduct>, supplyStock: Record<strin
       }),
     },
     branchInventory: {
-      updateMany: jest.fn(({ data }: { where: unknown; data: { stock: { increment: number } } }) => {
-        calls.branchInventory.push({ productId: 'n/a', increment: data.stock.increment });
+      updateMany: jest.fn(({ where, data }: { where: { branchId: string; productId: string }; data: { stock: { increment: number } } }) => {
+        if (!branchRows.has(where.productId)) return Promise.resolve({ count: 0 });
+        calls.branchInventory.push({ productId: where.productId, increment: data.stock.increment });
         return Promise.resolve({ count: 1 });
       }),
-      create: jest.fn(() => Promise.resolve({})),
+      create: jest.fn(({ data }: { data: { productId: string; stock: number } }) => {
+        calls.branchInventoryCreate.push({ productId: data.productId, stock: data.stock });
+        return Promise.resolve({});
+      }),
     },
     inventoryMovement: {
       create: jest.fn(({ data }: { data: { type: string; productId: string; quantity: number } }) => {
@@ -205,6 +217,48 @@ describe('InventoryConsumptionEngine', () => {
 
       expect(productStock.p1).toBe(50 - 2 * 3); // child qty 2 × order qty 3
       expect(supplyStock.s1).toBe(100 - 4 * 1 * 3); // recipe needs 4 × comboQty 1 × order 3
+    });
+  });
+
+  describe('BranchInventory', () => {
+    it('decrements the branch row by the consumed quantity for the product', async () => {
+      const { tx, calls } = makeTx({ p1: simple('p1', 10) }, {});
+      await engine.consume(tx as never, [{ productId: 'p1', quantity: 4, itemType: 'PRODUCT' }], CTX);
+      // Delta negativo = salida de stock de la sucursal por la venta.
+      expect(calls.branchInventory).toEqual([{ productId: 'p1', increment: -4 }]);
+      expect(calls.branchInventoryCreate).toHaveLength(0); // ya existía la fila
+    });
+
+    it('seeds the branch row from the product global stock when none exists', async () => {
+      // Sin fila previa: updateMany count 0 → create sembrando con el stock global
+      // ya descontado (el decremento global del producto corre antes del sembrado).
+      const { tx, calls } = makeTx({ p1: simple('p1', 25) }, {}, { branchRows: new Set() });
+      await engine.consume(tx as never, [{ productId: 'p1', quantity: 2, itemType: 'PRODUCT' }], CTX);
+      expect(calls.branchInventoryCreate).toEqual([{ productId: 'p1', stock: 23 }]); // 25 - 2
+    });
+
+    it('does not touch branch inventory when the context has no branch', async () => {
+      const { tx, calls } = makeTx({ p1: simple('p1', 10) }, {});
+      await engine.consume(
+        tx as never,
+        [{ productId: 'p1', quantity: 3, itemType: 'PRODUCT' }],
+        { ...CTX, branchId: null },
+      );
+      expect(calls.branchInventory).toHaveLength(0);
+      expect(calls.branchInventoryCreate).toHaveLength(0);
+    });
+
+    it('COMBO applies branch deltas only to SIMPLE leaves (not virtual parents)', async () => {
+      const products = {
+        combo: { id: 'combo', name: 'combo', type: 'COMBO' as const, trackInventory: false, stock: 0, recipe: null,
+          comboItems: [{ childProductId: 'p1', quantity: 2 }, { childProductId: 'r1', quantity: 1 }] },
+        p1: simple('p1', 50),
+        r1: recipe('r1', [supplyItem('s1', 4)]),
+      };
+      const { tx, calls } = makeTx(products, { s1: 100 });
+      await engine.consume(tx as never, [{ productId: 'combo', quantity: 3, itemType: 'PRODUCT' }], CTX);
+      // Solo la hoja SIMPLE p1 mueve branch inventory; combo/r1 (virtuales) no.
+      expect(calls.branchInventory).toEqual([{ productId: 'p1', increment: -6 }]);
     });
   });
 
