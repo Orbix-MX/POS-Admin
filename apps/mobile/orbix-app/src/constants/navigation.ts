@@ -21,8 +21,7 @@ export interface TabRoute {
 export const TAB_ROUTES: TabRoute[] = [
   { name: 'index', label: 'Inicio', icon: 'home', inRail: true, inBottomNav: true },
   { name: 'mesas', label: 'Mesas', icon: 'tables', inRail: true, inBottomNav: true, requires: hasTables },
-  { name: 'comandas', label: 'Comandas', icon: 'orders', inRail: true, inBottomNav: false, requires: hasOrders },
-  { name: 'cuenta', label: 'Cuenta', icon: 'bill', inRail: true, inBottomNav: true },
+  { name: 'comandas', label: 'Comandas', icon: 'orders', inRail: true, inBottomNav: true, requires: hasOrders },
   { name: 'perfil', label: 'Perfil', icon: 'profile', inRail: false, inBottomNav: true },
 ];
 

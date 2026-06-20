@@ -343,7 +343,8 @@ export default function TablesScreen() {
     <Screen edges={[]}>
       <AppHeader
         branchName={activeBranch?.name ?? 'Sucursal'}
-        searchPlaceholder="Buscar mesa"
+        showSearch={false}
+        actions={[]}
         onPressBranch={canSwitch ? openSelector : undefined}
       />
 

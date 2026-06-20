@@ -571,7 +571,8 @@ export default function ComandasScreen() {
       <AppHeader
         dense
         branchName={activeBranch?.name ?? 'Sucursal'}
-        searchPlaceholder="Buscar comanda"
+        showSearch={false}
+        actions={[]}
         onPressBranch={canSwitch ? openSelector : undefined}
       />
 
