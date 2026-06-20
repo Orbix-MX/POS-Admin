@@ -478,7 +478,7 @@ export class DiningOrdersService {
         table: { select: { name: true } },
         waiter: { select: { firstName: true, lastName: true } },
         items: {
-          select: { productId: true, productName: true, unitPrice: true, quantity: true, notes: true },
+          select: { productId: true, productName: true, unitPrice: true, quantity: true, notes: true, sentToKitchenAt: true },
         },
       },
     });
@@ -489,6 +489,18 @@ export class DiningOrdersService {
     }
     if (order.items.length === 0) {
       throw new BadRequestException('La orden no tiene productos; no se puede cobrar.');
+    }
+
+    // Con cocina habilitada: bloquear checkout si existen ítems capturados pero nunca enviados.
+    // Sin cocina: no aplica porque fireRound no forma parte del flujo.
+    const kitchenEnabled = await this.isKitchenEnabled(tenantId);
+    if (kitchenEnabled) {
+      const pendingItems = order.items.filter(i => i.sentToKitchenAt === null);
+      if (pendingItems.length > 0) {
+        throw new BadRequestException(
+          'Existen productos pendientes por enviar a cocina. Envía la ronda antes de cobrar.',
+        );
+      }
     }
 
     // Optional customer for billing / CxC on the generated Order.
