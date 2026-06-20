@@ -51,6 +51,24 @@ export type CaptureTarget =
 
 const formatCurrency = (n: number) => `$${n.toFixed(2)}`;
 
+// Normaliza el ítem del backend (unitPrice llega como Decimal/string).
+function normalizeItem(saved: DiningOrderItem): DiningOrderItem {
+  return { ...saved, unitPrice: Number(saved.unitPrice) };
+}
+
+/**
+ * Reemplaza/inserta un ítem confirmado por el servidor dentro de la lista,
+ * descartando opcionalmente la línea optimista temporal (`dropId`). Si el id ya
+ * existe (p. ej. el backend fusionó por producto+nota), lo reemplaza en lugar de
+ * duplicarlo. Reconciliación por-ítem: no recarga toda la orden.
+ */
+function upsertItem(items: DiningOrderItem[], saved: DiningOrderItem, dropId?: string): DiningOrderItem[] {
+  const base = dropId ? items.filter((i) => i.id !== dropId) : items;
+  return base.some((i) => i.id === saved.id)
+    ? base.map((i) => (i.id === saved.id ? saved : i))
+    : [...base, saved];
+}
+
 const STATUS_LABEL: Record<DiningOrderStatus, string> = {
   OPEN: 'Borrador',
   SENT_TO_KITCHEN: 'Enviada a cocina',
@@ -210,16 +228,6 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
 
   // Dedupe the lazy create: many fast taps must yield a single order.
   const createInFlight = useRef<Promise<string | null> | null>(null);
-
-  const loadOrder = useCallback(async () => {
-    if (!orderId) return;
-    try {
-      const o = await fetchOrder(branchId, orderId);
-      setOrder(o);
-    } catch {
-      // keep last known state
-    }
-  }, [orderId, branchId]);
 
   // Sync internal id when the target changes (new screen open).
   useEffect(() => {
@@ -396,16 +404,23 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
       return;
     }
 
-    // Persistida: optimista (feedback inmediato) — solo fusiona con una línea
-    // PENDIENTE; las enviadas no se tocan. Luego reconcilia con el servidor.
+    // Persistida: optimista (feedback inmediato). Solo fusiona con una línea
+    // PENDIENTE ya guardada (no temp); las enviadas no se tocan. Reconcilia con
+    // la respuesta del servidor y, si falla, revierte SOLO esta operación.
+    let incId: string | null = null;
+    let tempId: string | null = null;
     setOrder((prev) => {
       if (!prev) return prev;
-      const existing = prev.items.find((i) => i.productId === product.id && sameNote(i.notes, note) && isPending(i));
+      const existing = prev.items.find(
+        (i) => i.productId === product.id && sameNote(i.notes, note) && isPending(i) && !i.id.startsWith('temp-'),
+      );
       if (existing) {
-        return { ...prev, items: prev.items.map((i) => i === existing ? { ...i, quantity: i.quantity + quantity } : i) };
+        incId = existing.id;
+        return { ...prev, items: prev.items.map((i) => i.id === existing.id ? { ...i, quantity: i.quantity + quantity } : i) };
       }
+      tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       const temp: DiningOrderItem = {
-        id: `temp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        id: tempId,
         productId: product.id,
         productName: product.name,
         unitPrice: product.price,
@@ -423,9 +438,20 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
       quantity,
       ...(note ? { notes: note } : {}),
     })
-      .then(() => loadOrder())
-      .catch(() => void loadOrder());
-  }, [isPersisted, orderId, branchId, loadOrder, isEditable]);
+      .then((saved) => {
+        setOrder((prev) => prev && { ...prev, items: upsertItem(prev.items, normalizeItem(saved), tempId ?? undefined) });
+      })
+      .catch((e) => {
+        // Revierte SOLO esta línea: quita la temporal o resta lo incrementado.
+        setOrder((prev) => {
+          if (!prev) return prev;
+          if (tempId) return { ...prev, items: prev.items.filter((i) => i.id !== tempId) };
+          if (incId) return { ...prev, items: prev.items.map((i) => i.id === incId ? { ...i, quantity: i.quantity - quantity } : i) };
+          return prev;
+        });
+        Alert.alert('No se pudo agregar', getApiErrorMessage(e, 'Intenta de nuevo.'));
+      });
+  }, [isPersisted, orderId, branchId, isEditable]);
 
   // Quick add (tap): +1, no note.
   const addProduct = useCallback((product: ProductResult) => addLine(product, 1, null), [addLine]);
@@ -440,11 +466,17 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
       return;
     }
     if (item.id.startsWith('temp-')) return;
+    const prevSnapshot = { quantity: item.quantity, notes: item.notes };
     setOrder((prev) => prev && { ...prev, items: prev.items.map((i) => i.id === item.id ? { ...i, quantity, notes: note } : i) });
     updateOrderItem(branchId, orderId!, item.id, { quantity, notes: note })
-      .then(() => loadOrder())
-      .catch(() => void loadOrder());
-  }, [isPersisted, orderId, branchId, loadOrder, isEditable]);
+      .then((saved) => {
+        setOrder((prev) => prev && { ...prev, items: prev.items.map((i) => i.id === item.id ? normalizeItem(saved) : i) });
+      })
+      .catch((e) => {
+        setOrder((prev) => prev && { ...prev, items: prev.items.map((i) => i.id === item.id ? { ...i, ...prevSnapshot } : i) });
+        Alert.alert('No se pudo actualizar', getApiErrorMessage(e, 'Intenta de nuevo.'));
+      });
+  }, [isPersisted, orderId, branchId, isEditable]);
 
   const changeQty = useCallback((item: DiningOrderItem, delta: number) => {
     if (!isEditable || !isPending(item)) return;
@@ -461,8 +493,15 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
       ...prev,
       items: prev.items.map((i) => i.id === item.id ? { ...i, quantity: newQty } : i),
     });
-    updateOrderItem(branchId, orderId!, item.id, { quantity: newQty }).catch(() => void loadOrder());
-  }, [isPersisted, orderId, branchId, loadOrder, isEditable]);
+    updateOrderItem(branchId, orderId!, item.id, { quantity: newQty }).catch((e) => {
+      // Revierte solo este renglón al valor previo.
+      setOrder((prev) => prev && {
+        ...prev,
+        items: prev.items.map((i) => i.id === item.id ? { ...i, quantity: item.quantity } : i),
+      });
+      Alert.alert('No se pudo actualizar', getApiErrorMessage(e, 'Intenta de nuevo.'));
+    });
+  }, [isPersisted, orderId, branchId, isEditable]);
 
   const removeItem = useCallback((item: DiningOrderItem) => {
     if (!isEditable || !isPending(item)) return;
@@ -471,16 +510,30 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
         setLocalItems((prev) => prev.filter((i) => i.id !== item.id));
         return;
       }
-      setOrder((prev) => prev && { ...prev, items: prev.items.filter((i) => i.id !== item.id) });
+      // Optimista: quita ya. Si falla, reinserta el ítem en su posición original.
+      let index = -1;
+      setOrder((prev) => {
+        if (!prev) return prev;
+        index = prev.items.findIndex((i) => i.id === item.id);
+        return { ...prev, items: prev.items.filter((i) => i.id !== item.id) };
+      });
       if (!item.id.startsWith('temp-')) {
-        removeOrderItem(branchId, orderId!, item.id).catch(() => void loadOrder());
+        removeOrderItem(branchId, orderId!, item.id).catch((e) => {
+          setOrder((prev) => {
+            if (!prev || prev.items.some((i) => i.id === item.id)) return prev;
+            const items = [...prev.items];
+            items.splice(index < 0 ? items.length : index, 0, item);
+            return { ...prev, items };
+          });
+          Alert.alert('No se pudo eliminar', getApiErrorMessage(e, 'Intenta de nuevo.'));
+        });
       }
     };
     Alert.alert('Eliminar producto', `¿Quitar "${item.productName}"?`, [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Eliminar', style: 'destructive', onPress: doRemove },
     ]);
-  }, [isPersisted, orderId, branchId, loadOrder, isEditable]);
+  }, [isPersisted, orderId, branchId, isEditable]);
 
   // Config sheet confirm → add a configured line or apply edits to an existing one.
   const handleConfigConfirm = useCallback((quantity: number, note: string) => {
