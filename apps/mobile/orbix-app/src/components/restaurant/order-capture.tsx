@@ -638,7 +638,27 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
           }
         }
         // Envía solo la ronda pendiente (no re-envía lo ya preparado).
-        const updated = await fireRound(branchId, id);
+        if (!isConnected) {
+          // Existing order offline → queue fire so the sync worker calls fireRound later.
+          await localOrderService.queueRemoteFire({ branchId, orderId: id! });
+          // Mark all pending items as pendingSync so the UI reflects the queued state.
+          setOrder((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  items: prev.items.map((it) =>
+                    it.sentToKitchenAt == null ? { ...it, pendingSync: true } : it,
+                  ),
+                }
+              : prev,
+          );
+          await refreshSyncPending();
+          Alert.alert(successTitle, `${successBody}\n\nSe guardó sin conexión y se sincronizará al reconectar.`, [
+            { text: 'OK', onPress: onClose },
+          ]);
+          return;
+        }
+        const updated = await fireRound(branchId, id!);
         setOrder((prev) => prev && { ...prev, status: updated.status, items: updated.items });
         Alert.alert(successTitle, successBody, [{ text: 'OK', onPress: onClose }]);
       } catch (e) {
