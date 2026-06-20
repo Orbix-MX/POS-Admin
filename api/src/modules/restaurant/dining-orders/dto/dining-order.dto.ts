@@ -56,7 +56,13 @@ export class UpdateDiningItemDto {
   @IsNumber()
   @Min(1)
   @Type(() => Number)
-  quantity!: number;
+  @IsOptional()
+  quantity?: number;
+
+  // Nota/modificador libre de la línea ("sin cebolla", "término medio").
+  @IsString()
+  @IsOptional()
+  notes?: string;
 }
 
 export class ChangeDiningStatusDto {

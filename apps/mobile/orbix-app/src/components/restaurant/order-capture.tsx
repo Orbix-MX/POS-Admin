@@ -18,9 +18,9 @@
  * Once the order leaves OPEN it stops being a draft and items become read-only.
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { View, Pressable, ScrollView, FlatList, ActivityIndicator, Alert } from 'react-native';
+import { View, Pressable, ScrollView, FlatList, ActivityIndicator, Alert, Modal, TextInput } from 'react-native';
 
-import { Text, Icon, SearchBar } from '@/components/ui';
+import { Text, Icon, SearchBar, Stepper } from '@/components/ui';
 import { useTheme } from '@/providers/theme-provider';
 import { useResponsive } from '@/hooks/use-responsive';
 import { useNetwork } from '@/hooks/use-network';
@@ -31,9 +31,13 @@ import {
   searchProducts, fetchCategories, changeOrderStatus, openDiningOrder, discardOrder,
 } from '@/services/restaurant-service';
 import { getApiErrorMessage } from '@/services/api-client';
+import { CheckoutModal } from '@/components/restaurant/checkout-modal';
 import type {
   DiningOrder, DiningOrderItem, ProductResult, ProductCategory, DiningOrderStatus,
 } from '@/services/restaurant-service';
+
+// Estados desde los que una cuenta puede cobrarse (igual que el backend).
+const PAYABLE_STATUSES: DiningOrderStatus[] = ['READY_FOR_PAYMENT', 'DELIVERED'];
 
 /**
  * How to open the capture. Either re-enter an existing order (`orderId`) or start
@@ -69,6 +73,88 @@ function formatElapsed(openedAt: string): string {
 const FILTER_ALL = 'all';
 const FILTER_COMBOS = 'combos';
 
+// Atajos de nota frecuentes para capturar modificadores en un toque.
+const NOTE_SUGGESTIONS = ['Sin cebolla', 'Sin hielo', 'Extra queso', 'Término medio', 'Poco picante', 'Para llevar'];
+
+/**
+ * ItemConfigSheet — hoja inferior para configurar una línea: cantidad + nota.
+ * Se abre al MANTENER PRESIONADO un producto (alta con config) o al TOCAR una
+ * línea existente (edición). El tap normal sobre el producto agrega rápido.
+ */
+interface ItemConfigSheetProps {
+  visible: boolean;
+  title: string;
+  initialQuantity: number;
+  initialNote: string;
+  confirmLabel: string;
+  onCancel: () => void;
+  onConfirm: (quantity: number, note: string) => void;
+}
+
+function ItemConfigSheet({ visible, title, initialQuantity, initialNote, confirmLabel, onCancel, onConfirm }: ItemConfigSheetProps) {
+  const theme = useTheme();
+  const [qty, setQty] = useState(initialQuantity);
+  const [note, setNote] = useState(initialNote);
+
+  // Re-seed when (re)opened for a new target.
+  useEffect(() => {
+    if (visible) { setQty(initialQuantity); setNote(initialNote); }
+  }, [visible, initialQuantity, initialNote]);
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
+      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }} onPress={onCancel}>
+        <Pressable
+          onPress={(e) => e.stopPropagation()}
+          style={{ backgroundColor: theme.colors.card, borderTopLeftRadius: theme.radius['2xl'], borderTopRightRadius: theme.radius['2xl'], padding: theme.spacing['2xl'], gap: theme.spacing.lg }}
+        >
+          <View style={{ width: 40, height: 4, backgroundColor: theme.colors.border, borderRadius: 2, alignSelf: 'center' }} />
+
+          <Text variant="h2" numberOfLines={2}>{title}</Text>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text variant="label" tone="secondary">Cantidad</Text>
+            <Stepper value={qty} onChange={setQty} min={1} size="lg" />
+          </View>
+
+          <View style={{ gap: theme.spacing.sm }}>
+            <Text variant="label" tone="secondary">Nota / modificador</Text>
+            <TextInput
+              value={note}
+              onChangeText={setNote}
+              placeholder="Ej. sin cebolla, término medio"
+              placeholderTextColor={theme.colors.textMuted}
+              multiline
+              style={{ backgroundColor: theme.colors.surfaceMuted, borderRadius: theme.radius.lg, paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.md, fontSize: 16, color: theme.colors.text, minHeight: 48 }}
+            />
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
+              {NOTE_SUGGESTIONS.map((s) => (
+                <Pressable
+                  key={s}
+                  onPress={() => setNote((prev) => prev.trim() ? `${prev.trim()}, ${s}` : s)}
+                  style={({ pressed }) => ({ backgroundColor: pressed ? theme.colors.primarySoft : theme.colors.surfaceMuted, borderRadius: theme.radius.full, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm })}
+                >
+                  <Text variant="small" tone="secondary">{s}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
+          <Pressable
+            onPress={() => onConfirm(qty, note)}
+            style={({ pressed }) => ({ backgroundColor: pressed ? theme.colors.primaryStrong : theme.colors.primary, borderRadius: theme.radius.lg, padding: theme.spacing.lg, alignItems: 'center' })}
+          >
+            <Text variant="body" style={{ color: theme.colors.onPrimary, fontWeight: '700' }}>{confirmLabel}</Text>
+          </Pressable>
+          <Pressable onPress={onCancel} style={{ alignItems: 'center', paddingVertical: theme.spacing.sm }}>
+            <Text variant="small" tone="secondary">Cancelar</Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 interface OrderCaptureProps {
   visible: boolean;
   target: CaptureTarget | null;
@@ -96,10 +182,25 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
   const [localItems, setLocalItems] = useState<DiningOrderItem[]>([]);
   const [loadingOrder, setLoadingOrder] = useState(false);
   const [sending, setSending] = useState(false);
+  // Cobro de una cuenta ya pagable (READY_FOR_PAYMENT/DELIVERED).
+  const [checkoutVisible, setCheckoutVisible] = useState(false);
+  // Configuración de línea (cantidad + nota). 'add' desde mantener presionado un
+  // producto; 'edit' al tocar una línea de la orden.
+  const [configTarget, setConfigTarget] = useState<
+    | { mode: 'add'; product: ProductResult }
+    | { mode: 'edit'; item: DiningOrderItem }
+    | null
+  >(null);
 
   const [products, setProducts] = useState<ProductResult[]>([]);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
+  // Paginación server-side del catálogo (infinite scroll).
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  // Ignora respuestas obsoletas cuando el usuario teclea/cambia filtro rápido.
+  const catalogReqId = useRef(0);
 
   const [filter, setFilter] = useState<string>(FILTER_ALL);
   const [search, setSearch] = useState('');
@@ -159,25 +260,22 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
     return promise;
   }, [orderId, target, branchId, onOrderCreated]);
 
-  // Load existing order + catalog when opened. Drafts skip the order fetch.
+  // Load existing order + categories when opened. Products load separately
+  // (server-side, debounced). Drafts skip the order fetch.
   useEffect(() => {
     if (!visible) return;
     let alive = true;
     const existingId = target?.kind === 'existing' ? target.orderId : null;
-    setLoadingCatalog(true);
     if (existingId) setLoadingOrder(true);
     (async () => {
-      const [o, prods, cats] = await Promise.allSettled([
+      const [o, cats] = await Promise.allSettled([
         existingId ? fetchOrder(branchId, existingId) : Promise.resolve(null),
-        searchProducts(),
         fetchCategories(),
       ]);
       if (!alive) return;
       if (o.status === 'fulfilled' && o.value) setOrder(o.value);
-      if (prods.status === 'fulfilled') setProducts(prods.value);
       if (cats.status === 'fulfilled') setCategories(cats.value);
       setLoadingOrder(false);
-      setLoadingCatalog(false);
     })();
     return () => { alive = false; };
   }, [visible, target, branchId]);
@@ -187,15 +285,58 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
     if (!visible) { setSearch(''); setFilter(FILTER_ALL); setSheetOpen(false); }
   }, [visible]);
 
-  const filteredProducts = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return products.filter((p) => {
-      if (filter === FILTER_COMBOS && p.type !== 'COMBO') return false;
-      if (filter !== FILTER_ALL && filter !== FILTER_COMBOS && p.categoryId !== filter) return false;
-      if (q && !p.name.toLowerCase().includes(q) && !p.sku.toLowerCase().includes(q)) return false;
-      return true;
-    });
-  }, [products, filter, search]);
+  // Build the server query from the active filter (category id or COMBO type).
+  const buildQuery = useCallback((pageNum: number) => ({
+    page: pageNum,
+    limit: 30,
+    search: search.trim() || undefined,
+    ...(filter === FILTER_COMBOS ? { type: 'COMBO' as const }
+      : filter !== FILTER_ALL ? { categoryId: filter } : {}),
+  }), [search, filter]);
+
+  // Fetch page 1 (replace) — server-side search/filter. Guarded against stale
+  // responses so fast typing always reflects the latest query.
+  const loadFirstPage = useCallback(async () => {
+    const reqId = ++catalogReqId.current;
+    setLoadingCatalog(true);
+    try {
+      const res = await searchProducts(buildQuery(1));
+      if (reqId !== catalogReqId.current) return; // a newer query superseded this
+      setProducts(res.products);
+      setPage(res.page);
+      setHasMore(res.page < res.totalPages);
+    } catch {
+      if (reqId === catalogReqId.current) { setProducts([]); setHasMore(false); }
+    } finally {
+      if (reqId === catalogReqId.current) setLoadingCatalog(false);
+    }
+  }, [buildQuery]);
+
+  // Append the next page (infinite scroll).
+  const loadMore = useCallback(async () => {
+    if (loadingMore || loadingCatalog || !hasMore) return;
+    const reqId = catalogReqId.current; // tied to the current query
+    setLoadingMore(true);
+    try {
+      const res = await searchProducts(buildQuery(page + 1));
+      if (reqId !== catalogReqId.current) return; // query changed mid-fetch
+      setProducts((prev) => [...prev, ...res.products]);
+      setPage(res.page);
+      setHasMore(res.page < res.totalPages);
+    } catch {
+      // keep what we have; user can retry by scrolling
+    } finally {
+      if (reqId === catalogReqId.current) setLoadingMore(false);
+    }
+  }, [loadingMore, loadingCatalog, hasMore, page, buildQuery]);
+
+  // Debounced re-query on open / search / filter change. 250 ms keeps typing
+  // fluid on mid-range Android without hammering the API.
+  useEffect(() => {
+    if (!visible) return;
+    const t = setTimeout(() => { void loadFirstPage(); }, 250);
+    return () => clearTimeout(t);
+  }, [visible, search, filter, loadFirstPage]);
 
   // Persisted = an order already exists on the server (editing an existing order).
   // Draft = brand-new capture: items stay local until confirmed.
@@ -213,66 +354,67 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
 
   const status: DiningOrderStatus = order?.status ?? 'OPEN';
   const isDraft = status === 'OPEN';
+  const isPayable = PAYABLE_STATUSES.includes(status);
+  // Cocina terminó (READY): el mesero puede marcarla lista para cobro.
+  const isReady = status === 'READY';
 
   // ── Mutations ──────────────────────────────────────────────────────────────
-  // Draft mode mutates only local state (no network). Editing a persisted order
-  // keeps the optimistic server sync.
-  const addProduct = useCallback((product: ProductResult) => {
-    if (!isDraft) return;
+  // Draft (new capture): mutate local state only — instant, the hot path.
+  // Persisted (editing an open order): mutate the server, then reload so the
+  // notes-aware merge is reflected correctly without fragile optimistic guesses.
+  const sameNote = (a: string | null, b: string | null) => (a ?? '').trim() === (b ?? '').trim();
+  const normNote = (n?: string | null) => { const t = (n ?? '').trim(); return t.length ? t : null; };
 
-    // New capture → accumulate locally; persisted on Enviar a Cocina/Caja.
+  // Add a product line. quantity ≥1; notes null for the quick path. Lines with a
+  // different note are kept separate; same product + same note accumulate.
+  const addLine = useCallback((product: ProductResult, quantity: number, notes: string | null) => {
+    if (!isDraft) return;
+    const note = normNote(notes);
+
     if (!isPersisted) {
       setLocalItems((prev) => {
-        const existing = prev.find((i) => i.productId === product.id);
+        const existing = prev.find((i) => i.productId === product.id && sameNote(i.notes, note));
         if (existing) {
-          return prev.map((i) => i.productId === product.id ? { ...i, quantity: i.quantity + 1 } : i);
+          return prev.map((i) => i === existing ? { ...i, quantity: i.quantity + quantity } : i);
         }
         return [...prev, {
-          id: `local-${product.id}`,
+          id: `local-${product.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           productId: product.id,
           productName: product.name,
           unitPrice: product.price,
-          quantity: 1,
-          notes: null,
+          quantity,
+          notes: note,
           createdAt: new Date().toISOString(),
         }];
       });
       return;
     }
 
-    // Editing an existing order → optimistic add + persist.
-    setOrder((prev) => {
-      if (!prev) return prev;
-      const existing = prev.items.find((i) => i.productId === product.id);
-      if (existing) {
-        return { ...prev, items: prev.items.map((i) => i.id === existing.id ? { ...i, quantity: i.quantity + 1 } : i) };
-      }
-      const temp: DiningOrderItem = {
-        id: `temp-${product.id}`,
-        productId: product.id,
-        productName: product.name,
-        unitPrice: product.price,
-        quantity: 1,
-        notes: null,
-        createdAt: new Date().toISOString(),
-      };
-      return { ...prev, items: [...prev.items, temp] };
-    });
     addOrderItem(branchId, orderId!, {
       productId: product.id,
       productName: product.name,
       unitPrice: product.price,
-      quantity: 1,
+      quantity,
+      ...(note ? { notes: note } : {}),
     })
-      .then((saved) => {
-        setOrder((prev) => prev && {
-          ...prev,
-          items: prev.items.map((i) =>
-            i.productId === product.id
-              ? { ...saved, unitPrice: Number(saved.unitPrice) }
-              : i),
-        });
-      })
+      .then(() => loadOrder())
+      .catch(() => void loadOrder());
+  }, [isPersisted, orderId, branchId, loadOrder, isDraft]);
+
+  // Quick add (tap): +1, no note.
+  const addProduct = useCallback((product: ProductResult) => addLine(product, 1, null), [addLine]);
+
+  // Edit an existing line (quantity and/or note) — from the config sheet.
+  const editLine = useCallback((item: DiningOrderItem, quantity: number, notes: string | null) => {
+    if (!isDraft) return;
+    const note = normNote(notes);
+    if (!isPersisted) {
+      setLocalItems((prev) => prev.map((i) => i.id === item.id ? { ...i, quantity, notes: note } : i));
+      return;
+    }
+    if (item.id.startsWith('temp-')) return;
+    updateOrderItem(branchId, orderId!, item.id, { quantity, notes: note })
+      .then(() => loadOrder())
       .catch(() => void loadOrder());
   }, [isPersisted, orderId, branchId, loadOrder, isDraft]);
 
@@ -291,7 +433,7 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
       ...prev,
       items: prev.items.map((i) => i.id === item.id ? { ...i, quantity: newQty } : i),
     });
-    updateOrderItem(branchId, orderId!, item.id, newQty).catch(() => void loadOrder());
+    updateOrderItem(branchId, orderId!, item.id, { quantity: newQty }).catch(() => void loadOrder());
   }, [isPersisted, orderId, branchId, loadOrder, isDraft]);
 
   const removeItem = useCallback((item: DiningOrderItem) => {
@@ -311,6 +453,14 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
       { text: 'Eliminar', style: 'destructive', onPress: doRemove },
     ]);
   }, [isPersisted, orderId, branchId, loadOrder, isDraft]);
+
+  // Config sheet confirm → add a configured line or apply edits to an existing one.
+  const handleConfigConfirm = useCallback((quantity: number, note: string) => {
+    if (!configTarget) return;
+    if (configTarget.mode === 'add') addLine(configTarget.product, quantity, note);
+    else editLine(configTarget.item, quantity, note);
+    setConfigTarget(null);
+  }, [configTarget, addLine, editLine]);
 
   // Confirm the capture. This is the ONLY point a new order is persisted: create
   // the DiningOrder, save its items, then advance to the kitchen/checkout state.
@@ -385,6 +535,23 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
     })();
   }, [totalQty, isConnected, target, subtotal, orderId, ensureOrder, localItems, branchId, kitchenEnabled, onClose]);
 
+  // Cocina entregó (READY) → marcar lista para cobro (READY_FOR_PAYMENT) para
+  // habilitar el cobro desde mesas/comandas.
+  const markReadyForPayment = useCallback(() => {
+    if (!orderId) return;
+    setSending(true);
+    (async () => {
+      try {
+        const updated = await changeOrderStatus(branchId, orderId, 'READY_FOR_PAYMENT');
+        setOrder((prev) => prev && { ...prev, status: updated.status });
+      } catch (e) {
+        Alert.alert('No se pudo actualizar', getApiErrorMessage(e, 'Intenta de nuevo.'));
+      } finally {
+        setSending(false);
+      }
+    })();
+  }, [orderId, branchId]);
+
   // Discard guard. A new capture is never persisted, so abandoning keeps nothing.
   // For an existing order left empty, delete it server-side (frees table).
   const handleClose = useCallback(() => {
@@ -452,20 +619,32 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
     ) : (
       <FlatList
         key={`grid-${productCols}`}
-        data={filteredProducts}
+        data={products}
         keyExtractor={(p) => p.id}
         numColumns={productCols}
         columnWrapperStyle={{ gap: theme.spacing.md }}
         contentContainerStyle={{ gap: theme.spacing.md, padding: theme.spacing.lg }}
         keyboardShouldPersistTaps="handled"
+        onEndReached={() => void loadMore()}
+        onEndReachedThreshold={0.4}
+        removeClippedSubviews
+        initialNumToRender={18}
+        windowSize={7}
         ListEmptyComponent={
           <Text variant="body" tone="secondary" style={{ textAlign: 'center', marginTop: theme.spacing.xl }}>
-            Sin productos.
+            {search.trim() ? `Sin resultados para “${search.trim()}”.` : 'Sin productos.'}
           </Text>
+        }
+        ListFooterComponent={
+          loadingMore
+            ? <ActivityIndicator color={theme.colors.primary} style={{ marginVertical: theme.spacing.lg }} />
+            : null
         }
         renderItem={({ item }) => (
           <Pressable
             onPress={() => addProduct(item)}
+            onLongPress={() => isDraft && setConfigTarget({ mode: 'add', product: item })}
+            delayLongPress={250}
             style={({ pressed }) => ({
               flex: 1 / productCols,
               backgroundColor: theme.colors.card,
@@ -515,10 +694,24 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
           opacity: pending ? 0.6 : 1,
         }}
       >
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: theme.spacing.sm }}>
-          <Text variant="label" style={{ flex: 1 }} numberOfLines={2}>{item.productName}</Text>
-          <Text variant="bodyStrong">{formatCurrency(lineTotal)}</Text>
-        </View>
+        {/* Nombre + total. Tocar abre la configuración (cantidad + nota). */}
+        <Pressable
+          onPress={() => isDraft && !pending && setConfigTarget({ mode: 'edit', item })}
+          disabled={!isDraft || pending}
+        >
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: theme.spacing.sm }}>
+            <Text variant="label" style={{ flex: 1 }} numberOfLines={2}>{item.productName}</Text>
+            <Text variant="bodyStrong">{formatCurrency(lineTotal)}</Text>
+          </View>
+          {item.notes ? (
+            <View style={{ flexDirection: 'row', gap: 4, marginTop: 2 }}>
+              <Text variant="small" tone="primary">↳</Text>
+              <Text variant="small" tone="primary" style={{ flex: 1 }}>{item.notes}</Text>
+            </View>
+          ) : isDraft ? (
+            <Text variant="caption" tone="muted" style={{ marginTop: 2 }}>+ Agregar nota</Text>
+          ) : null}
+        </Pressable>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <Text variant="small" tone="secondary">{formatCurrency(Number(item.unitPrice))} c/u</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md }}>
@@ -605,6 +798,39 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
               : <Text variant="bodyStrong" style={{ color: theme.colors.onPrimary }}>{kitchenEnabled ? 'Enviar a Cocina' : 'Enviar a Caja'}</Text>
             }
           </Pressable>
+        ) : isPayable ? (
+          // Cuenta lista para cobro → cobrar (genera Order + pago + ticket).
+          <Pressable
+            onPress={() => setCheckoutVisible(true)}
+            disabled={sending || totalQty === 0}
+            style={({ pressed }) => ({
+              paddingVertical: theme.spacing.lg,
+              borderRadius: theme.radius.md,
+              backgroundColor: theme.colors.primary,
+              alignItems: 'center',
+              opacity: (sending || totalQty === 0) ? 0.45 : pressed ? 0.85 : 1,
+            })}
+          >
+            <Text variant="bodyStrong" style={{ color: theme.colors.onPrimary }}>Cobrar {formatCurrency(subtotal)}</Text>
+          </Pressable>
+        ) : isReady ? (
+          // Cocina entregó → habilitar el cobro.
+          <Pressable
+            onPress={markReadyForPayment}
+            disabled={sending}
+            style={({ pressed }) => ({
+              paddingVertical: theme.spacing.lg,
+              borderRadius: theme.radius.md,
+              backgroundColor: theme.colors.primary,
+              alignItems: 'center',
+              opacity: sending ? 0.45 : pressed ? 0.85 : 1,
+            })}
+          >
+            {sending
+              ? <ActivityIndicator color={theme.colors.onPrimary} />
+              : <Text variant="bodyStrong" style={{ color: theme.colors.onPrimary }}>Marcar lista para cobro</Text>
+            }
+          </Pressable>
         ) : (
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm, paddingVertical: theme.spacing.md, borderRadius: theme.radius.md, backgroundColor: theme.colors.surfaceMuted }}>
             <Icon name="orders" size={16} color={theme.colors.textSecondary} />
@@ -615,10 +841,37 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
     </View>
   );
 
+  // Modal de cobro, compartido por ambos layouts. Al pagar, cierra la captura
+  // (el padre refresca mesas/comandas).
+  const checkoutModal = (
+    <CheckoutModal
+      visible={checkoutVisible}
+      order={order}
+      branchId={branchId}
+      onClose={() => setCheckoutVisible(false)}
+      onPaid={() => { setCheckoutVisible(false); onClose(); }}
+    />
+  );
+
+  // Hoja de cantidad + nota (alta con config / edición de línea).
+  const configSheet = (
+    <ItemConfigSheet
+      visible={configTarget != null}
+      title={configTarget?.mode === 'add' ? configTarget.product.name : configTarget?.mode === 'edit' ? configTarget.item.productName : ''}
+      initialQuantity={configTarget?.mode === 'edit' ? configTarget.item.quantity : 1}
+      initialNote={configTarget?.mode === 'edit' ? (configTarget.item.notes ?? '') : ''}
+      confirmLabel={configTarget?.mode === 'edit' ? 'Guardar' : 'Agregar'}
+      onCancel={() => setConfigTarget(null)}
+      onConfirm={handleConfigConfirm}
+    />
+  );
+
   // ── Tablet: 3 panels ────────────────────────────────────────────────────────
   if (isTablet) {
     return (
       <View style={{ flex: 1, flexDirection: 'row', backgroundColor: theme.colors.canvas }}>
+        {checkoutModal}
+        {configSheet}
         {/* Left: search + filters */}
         <View style={{ width: 210, borderRightWidth: 1, borderRightColor: theme.colors.border, backgroundColor: theme.colors.card }}>
           <View style={{ padding: theme.spacing.lg, gap: theme.spacing.md }}>
@@ -647,6 +900,8 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
   // ── Phone: chips + grid + docked order sheet ────────────────────────────────
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.canvas }}>
+      {checkoutModal}
+      {configSheet}
       {/* Top bar */}
       <View style={{ padding: theme.spacing.lg, gap: theme.spacing.md, backgroundColor: theme.colors.card, borderBottomWidth: 1, borderBottomColor: theme.colors.border }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>

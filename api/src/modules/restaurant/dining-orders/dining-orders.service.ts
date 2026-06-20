@@ -169,9 +169,11 @@ export class DiningOrdersService {
     });
     if (!order) throw new NotFoundException('Orden activa no encontrada.');
 
+    // Solo se fusiona con una línea existente del mismo producto Y la misma nota.
+    // Notas distintas ("sin cebolla" vs "extra queso") son líneas separadas.
     if (dto.productId) {
       const existing = await this.prisma.diningOrderItem.findFirst({
-        where: { orderId, productId: dto.productId },
+        where: { orderId, productId: dto.productId, notes: dto.notes ?? null },
         select: { id: true, quantity: true },
       });
       if (existing) {
@@ -212,7 +214,10 @@ export class DiningOrdersService {
 
     return this.prisma.diningOrderItem.update({
       where: { id: itemId },
-      data: { quantity: dto.quantity },
+      data: {
+        ...(dto.quantity != null && { quantity: dto.quantity }),
+        ...(dto.notes !== undefined && { notes: dto.notes.trim() || null }),
+      },
       select: ITEM_SELECT,
     });
   }

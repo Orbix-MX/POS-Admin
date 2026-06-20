@@ -159,7 +159,7 @@ export class ProductsService {
   }
 
   async findAll(queryDto: QueryProductDto): Promise<PaginatedResponse<Product>> {
-    const { skip, limit, page, search, categoryId, status } = queryDto;
+    const { skip, limit, page, search, categoryId, status, type } = queryDto;
     const tenantId = this.tenantContext.requireTenantId();
     const where: Prisma.ProductWhereInput = { tenantId };
 
@@ -173,6 +173,7 @@ export class ProductsService {
 
     if (categoryId) where.categoryId = categoryId;
     if (status) where.status = status;
+    if (type) where.type = type;
 
     const [products, total] = await Promise.all([
       this.prisma.product.findMany({

@@ -138,11 +138,14 @@ export async function updateOrderItem(
   branchId: string,
   orderId: string,
   itemId: string,
-  quantity: number,
+  patch: { quantity?: number; notes?: string | null },
 ): Promise<DiningOrderItem> {
   const { data } = await apiClient.patch<DiningOrderItem>(
     `/branches/${branchId}/dining-orders/${orderId}/items/${itemId}`,
-    { quantity },
+    {
+      ...(patch.quantity != null && { quantity: patch.quantity }),
+      ...(patch.notes !== undefined && { notes: patch.notes ?? '' }),
+    },
   );
   return data;
 }
@@ -211,12 +214,43 @@ interface RawProduct {
   category?: { id: string; name: string } | null;
 }
 
-export async function searchProducts(search?: string, categoryId?: string): Promise<ProductResult[]> {
-  const params = new URLSearchParams({ status: 'ACTIVE', limit: '100' });
-  if (search) params.set('search', search);
-  if (categoryId) params.set('categoryId', categoryId);
-  const { data } = await apiClient.get<{ data: RawProduct[] }>(`/products?${params.toString()}`);
-  return (data.data ?? []).map((p) => ({
+export interface ProductPage {
+  products: ProductResult[];
+  page: number;
+  totalPages: number;
+  total: number;
+}
+
+export interface SearchProductsParams {
+  search?: string;
+  categoryId?: string;
+  /** Filtra por tipo (p. ej. 'COMBO') server-side; escala igual que categorías. */
+  type?: ProductKind;
+  page?: number;
+  limit?: number;
+}
+
+/**
+ * Búsqueda de productos paginada y server-side. Reemplaza la carga del catálogo
+ * completo: el backend filtra por texto/categoría/tipo y pagina, de modo que la
+ * captura escala con 100, 500 o 2000+ productos sin traer todo al dispositivo.
+ */
+export async function searchProducts(opts: SearchProductsParams = {}): Promise<ProductPage> {
+  const params = new URLSearchParams({
+    status: 'ACTIVE',
+    page: String(opts.page ?? 1),
+    limit: String(opts.limit ?? 30),
+  });
+  if (opts.search) params.set('search', opts.search);
+  if (opts.categoryId) params.set('categoryId', opts.categoryId);
+  if (opts.type) params.set('type', opts.type);
+
+  const { data } = await apiClient.get<{
+    data: RawProduct[];
+    meta?: { page: number; limit: number; total: number; totalPages: number };
+  }>(`/products?${params.toString()}`);
+
+  const products = (data.data ?? []).map((p) => ({
     id: p.id,
     name: p.name,
     price: Number(p.price),
@@ -225,6 +259,13 @@ export async function searchProducts(search?: string, categoryId?: string): Prom
     categoryId: p.categoryId ?? p.category?.id ?? null,
     category: p.category ?? null,
   }));
+
+  return {
+    products,
+    page: data.meta?.page ?? 1,
+    totalPages: data.meta?.totalPages ?? 1,
+    total: data.meta?.total ?? products.length,
+  };
 }
 
 export async function fetchCategories(): Promise<ProductCategory[]> {

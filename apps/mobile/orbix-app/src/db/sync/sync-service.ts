@@ -125,7 +125,10 @@ async function updateItem(entry: SyncQueueEntry): Promise<void> {
   if (!item?.serverId) return;   // unsynced edits already captured by ADD_ITEM
   const order = await orderRepository.findById(item.orderId);
   if (!order?.serverId) throw new Error('La orden aún no se ha sincronizado.');
-  await updateOrderItem(order.branchId, order.serverId, item.serverId, item.quantity);
+  await updateOrderItem(order.branchId, order.serverId, item.serverId, {
+    quantity: item.quantity,
+    notes: item.notes,
+  });
 }
 
 async function deleteItem(entry: SyncQueueEntry): Promise<void> {
