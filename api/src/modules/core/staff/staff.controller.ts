@@ -2,8 +2,9 @@ import { Controller, Post, Patch, Delete, Body, Param, UseGuards } from '@nestjs
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 import { StaffService } from './staff.service';
-import { PinLoginDto, AssignPinDto, VerifyPinDto } from './dto/staff.dto';
+import { PinLoginDto, AssignPinDto, VerifyPinDto, OperatorLoginDto } from './dto/staff.dto';
 import { Public } from '../../../common/decorators/public.decorator';
+import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 
 @ApiTags('Staff')
@@ -33,6 +34,20 @@ export class StaffController {
   @ApiOperation({ summary: 'Verify an operative PIN and return the employee (no token)' })
   verifyPin(@Body() dto: VerifyPinDto) {
     return this.staffService.verifyPin(this.tenantContext.requireTenantId(), dto.pin);
+  }
+
+  // Operator login under a user session: mints an operator JWT for the waiter so
+  // web reaches parity with mobile (the backend learns the real Employee on every
+  // request). tenantId is taken from the session, never the body. Gated by the
+  // same comanda permission the dining endpoints require, and rate-limited.
+  @ApiBearerAuth()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @RequirePermissions('comanda:view')
+  @Post('operator-login')
+  @ApiOperation({ summary: 'Operator PIN login under a user session — mints an operator JWT (web parity with mobile)' })
+  operatorLogin(@Body() dto: OperatorLoginDto) {
+    return this.staffService.operatorLogin(this.tenantContext.requireTenantId(), dto.pin, dto.branchId);
   }
 
   // ── Admin (web): manage employee PINs ────────────────────────────────────────

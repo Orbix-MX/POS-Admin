@@ -8,6 +8,15 @@ import { DevicesService } from '../devices/devices.service';
 import { getModulesForPlan, getAllowedModulesForVertical } from '@orbix/types';
 
 /**
+ * Operator token lifetime. A PIN session is shift-bound: 12h covers a full shift
+ * and forces re-identification afterwards. Shared by both operator-login paths
+ * (device-gated mobile + user-session-gated web) so the JWT is identical and the
+ * downstream auth (JwtStrategy `typ:'operator'` + PermissionsGuard DEVICE_OPERATOR)
+ * behaves the same regardless of which client minted it.
+ */
+const OPERATOR_TOKEN_TTL = '12h';
+
+/**
  * Operative PIN login. The DEVICE is the principal (validated via deviceToken);
  * the PIN only selects which employee is operating. PINs are stored as a
  * deterministic salted hash (sha256 + pepper) so they stay unique per tenant and
@@ -30,8 +39,41 @@ export class StaffService {
   /** Device-principal PIN login. Returns operator identity, permissions, and available branches. */
   async pinLogin(deviceToken: string, pin: string) {
     // Gate: device + tenant + branch + license must all be active/valid.
-    const { device, tenantId, branchId } = await this.devicesService.authorizeByToken(deviceToken);
+    const { device, tenantId } = await this.devicesService.authorizeByToken(deviceToken);
+    // Mobile: no explicit branch is requested — the device scope + employee
+    // primary branch resolve the default. Identical token minting as web.
+    return this.buildOperatorSession(tenantId, pin, { deviceBranchId: device.branchId });
+  }
 
+  /**
+   * Authorize an employee by PIN under an EXISTING user session and mint an
+   * operator JWT for them — the web counterpart to the mobile device login. The
+   * user session (RBAC `comanda:view`) is the gate instead of a device token;
+   * `tenantId` comes from that session (never the body). The minted token is the
+   * exact same shape as mobile's, so the backend learns the real waiter
+   * (`sub = employee.id`) for every web comanda/caja request — closing the gap
+   * where web only knew a client-side PIN. `branchId` is validated against the
+   * operator's available branches.
+   */
+  async operatorLogin(tenantId: string, pin: string, branchId: string) {
+    return this.buildOperatorSession(tenantId, pin, { requestedBranchId: branchId });
+  }
+
+  /**
+   * Shared operator-session builder. Resolves the employee by PIN, computes the
+   * available branches (device scope ∩ employee assignments), picks the operating
+   * branch and signs the `typ:'operator'` JWT. Both login paths funnel through
+   * here so mobile and web stay byte-for-byte compatible.
+   *
+   * Branch resolution:
+   *  - `requestedBranchId` (web): must be one of the operator's available branches.
+   *  - otherwise (mobile): employee primary > device branch > first available.
+   */
+  private async buildOperatorSession(
+    tenantId: string,
+    pin: string,
+    opts: { deviceBranchId?: string | null; requestedBranchId?: string },
+  ) {
     const employee = await this.prisma.employee.findFirst({
       where: { tenantId, pinHash: this.hashPin(tenantId, pin), status: 'ACTIVE' },
       include: {
@@ -57,17 +99,31 @@ export class StaffService {
         tenantId,
         status: 'ACTIVE',
         // Device scope: if device is pinned to a branch, restrict to that branch only
-        ...(device.branchId ? { id: device.branchId } : {}),
+        ...(opts.deviceBranchId ? { id: opts.deviceBranchId } : {}),
         // Employee scope: if employee has explicit assignments, filter to those
         ...(hasExplicitBranches ? { id: { in: employeeBranchIds } } : {}),
       },
-      select: { id: true, name: true },
+      select: { id: true, name: true, restaurantVisibilityMode: true },
       orderBy: { isMain: 'desc' },
     });
 
-    // Default branch: employee's primary > device branch > first available
-    const primaryBranchId = employee.branches.find((eb) => eb.isPrimary)?.branchId;
-    const defaultBranchId = primaryBranchId ?? branchId ?? availableBranches[0]?.id ?? null;
+    // Branch selection. Web passes the already-selected branch and it MUST be in
+    // scope (no silent fallback that would let an operator act on a branch they
+    // can't access). Mobile passes none → primary > device branch > first.
+    let defaultBranchId: string | null;
+    if (opts.requestedBranchId) {
+      const allowed = availableBranches.some((b) => b.id === opts.requestedBranchId);
+      if (!allowed) {
+        throw new BadRequestException({
+          code: 'BRANCH_NOT_ALLOWED',
+          message: 'La sucursal no está disponible para este operador.',
+        });
+      }
+      defaultBranchId = opts.requestedBranchId;
+    } else {
+      const primaryBranchId = employee.branches.find((eb) => eb.isPrimary)?.branchId;
+      defaultBranchId = primaryBranchId ?? opts.deviceBranchId ?? availableBranches[0]?.id ?? null;
+    }
 
     // Compute tenant modules so the operator JWT carries them (needed for RequireModuleGuard).
     const tenant = await this.prisma.tenant.findUnique({
@@ -90,7 +146,7 @@ export class StaffService {
         enabledModules,
         permissions,
       },
-      { expiresIn: '12h' },
+      { expiresIn: OPERATOR_TOKEN_TTL },
     );
 
     return {
@@ -105,6 +161,10 @@ export class StaffService {
       permissions,
       branchId: defaultBranchId,
       availableBranches,
+      // Modo de visibilidad de comandas de la sucursal operada. Infra: el cliente
+      // lo consume desde la sesión; HOY no altera ninguna pantalla (default SHARED).
+      restaurantVisibilityMode:
+        availableBranches.find((b) => b.id === defaultBranchId)?.restaurantVisibilityMode ?? 'SHARED',
     };
   }
 

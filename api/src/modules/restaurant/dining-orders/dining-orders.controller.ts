@@ -1,7 +1,7 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, ParseUUIDPipe } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, ParseUUIDPipe } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { DiningOrdersService } from './dining-orders.service';
-import { OpenDiningOrderDto, AddDiningItemDto, UpdateDiningItemDto, ChangeDiningStatusDto, CleanupEmptyOrdersDto } from './dto/dining-order.dto';
+import { OpenDiningOrderDto, AddDiningItemDto, UpdateDiningItemDto, ChangeDiningStatusDto, CleanupEmptyOrdersDto, ListDiningOrdersDto } from './dto/dining-order.dto';
 import { CheckoutDiningOrderDto } from './dto/checkout-dining-order.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
 import { RequireModule } from '../../../common/guards/require-module.guard';
@@ -15,9 +15,18 @@ export class DiningOrdersController {
 
   @Get()
   @RequirePermissions('comanda:view')
-  @ApiOperation({ summary: 'List active (OPEN) dining orders for a branch' })
-  findActive(@Param('branchId', ParseUUIDPipe) branchId: string) {
-    return this.service.findActive(branchId);
+  @ApiOperation({ summary: 'List active dining orders for a branch' })
+  @ApiQuery({
+    name: 'scope',
+    required: false,
+    enum: ['all', 'own'],
+    description: "Visibilidad: 'all' (caja, todas) o 'own' (operador, respetará la visibilidad futura). Default 'all'.",
+  })
+  findActive(
+    @Param('branchId', ParseUUIDPipe) branchId: string,
+    @Query() query: ListDiningOrdersDto,
+  ) {
+    return this.service.findActive(branchId, query.scope);
   }
 
   @Get('table/:tableId')

@@ -1,6 +1,17 @@
-import { IsString, IsNotEmpty, IsEnum, IsOptional, IsNumber, Min, MaxLength, ValidateIf, IsUUID } from 'class-validator';
+import { IsString, IsNotEmpty, IsEnum, IsOptional, IsNumber, Min, MaxLength, ValidateIf, IsUUID, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
 import { DiningServiceType, DiningOrderStatus } from '@prisma/client';
+
+/**
+ * Intención de visibilidad del solicitante de GET /dining-orders. Hace EXPLÍCITO
+ * quién pregunta para que `restaurantVisibilityMode` (futuro) pueda restringir a
+ * los operadores sin tocar a la caja:
+ *  - 'all'  → caja: SIEMPRE todas las cuentas activas (cobra cualquiera).
+ *  - 'own'  → comanda/operador: respetará la visibilidad futura (p. ej. OWN_ONLY
+ *             filtra por mesero). Hoy NO filtra; solo se fija el contrato.
+ */
+export const DINING_ORDER_SCOPES = ['all', 'own'] as const;
+export type DiningOrderScope = (typeof DINING_ORDER_SCOPES)[number];
 
 export class OpenDiningOrderDto {
   @IsEnum(DiningServiceType)
@@ -75,6 +86,13 @@ export class UpdateDiningItemDto {
 export class ChangeDiningStatusDto {
   @IsEnum(DiningOrderStatus)
   status!: DiningOrderStatus;
+}
+
+export class ListDiningOrdersDto {
+  // Default 'all' (sin cambio de comportamiento). La comanda envía 'own'.
+  @IsOptional()
+  @IsIn(DINING_ORDER_SCOPES)
+  scope?: DiningOrderScope;
 }
 
 export class CleanupEmptyOrdersDto {

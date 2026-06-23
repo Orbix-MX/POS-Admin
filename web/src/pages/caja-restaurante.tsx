@@ -14,9 +14,9 @@ import { fetchProducts, type Product } from '@/services/retail/product-service'
 import { fetchSupplies, type Supply } from '@/services/retail/supplies-service'
 import { withdrawForSupplies } from '@/services/core/caja-service'
 import { printOrder } from '@/services/core/print-service'
-import { verifyWaiterPin, waiterFullName } from '@/services/restaurant/waiter-auth-service'
+import { operatorFullName } from '@/services/restaurant/operator-session-service'
 import { useAuthStore } from '@/store/auth-store'
-import { useWaiterStore } from '@/store/waiter-store'
+import { useOperatorStore } from '@/store/operator-store'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -281,21 +281,23 @@ function DirectCheckoutPanel({ branchId, kitchenEnabled, onSuccess }: { branchId
   const [error, setError] = useState<string | null>(null)
   const [doneAction, setDoneAction] = useState<DirectAction | null>(null)
 
-  // Mesero por PIN (compartido con la comanda). Si ya se ingresó en otra
-  // operación, basta y no se vuelve a pedir; aquí solo se identifica si falta.
-  const waiter = useWaiterStore((s) => s.waiter)
-  const setStoreWaiter = useWaiterStore((s) => s.setWaiter)
+  // Sesión de operador por PIN (compartida con la comanda y persistente entre
+  // recargas). Canjea un JWT operador; el backend conoce al mesero real. Si ya
+  // hay sesión activa, no se vuelve a pedir.
+  const currentOperator = useOperatorStore((s) => s.currentOperator)
+  const loginOperator = useOperatorStore((s) => s.loginOperator)
+  const waiter = currentOperator?.employee ?? null
   const [pin, setPin] = useState('')
   const [pinError, setPinError] = useState<string | null>(null)
   const [verifying, setVerifying] = useState(false)
 
   const handleVerifyPin = async () => {
     if (!/^\d{4,6}$/.test(pin)) { setPinError('El PIN debe tener entre 4 y 6 dígitos.'); return }
+    if (!branchId) { setPinError('Selecciona una sucursal primero.'); return }
     setPinError(null)
     setVerifying(true)
     try {
-      const w = await verifyWaiterPin(pin)
-      setStoreWaiter(w)
+      await loginOperator(pin, branchId)
       setPin('')
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } }; message?: string }
@@ -574,7 +576,7 @@ function DirectCheckoutPanel({ branchId, kitchenEnabled, onSuccess }: { branchId
               entre operaciones (comanda/caja), así no se vuelve a pedir. */}
           {waiter ? (
             <div className="flex items-center justify-between gap-2 text-[11px] bg-muted/40 border border-border rounded-lg px-2.5 py-1.5">
-              <span className="text-muted-foreground truncate">Mesero: <span className="font-semibold text-foreground">{waiterFullName(waiter)}</span></span>
+              <span className="text-muted-foreground truncate">Mesero: <span className="font-semibold text-foreground">{operatorFullName(waiter)}</span></span>
             </div>
           ) : (
             <div className="space-y-1.5 bg-muted/30 border border-border rounded-lg p-2.5">
@@ -885,8 +887,9 @@ export function CajaRestaurante() {
     setLoading(true)
     try {
       // Cuentas del branch listas para cobrar (DELIVERED / READY_FOR_PAYMENT).
-      // La caja ve TODAS las cuentas, sin filtrar por mesero.
-      const data = await getActiveDiningOrders(branchId)
+      // 'all': la caja ve TODAS las cuentas, sin importar mesero — inmune a la
+      // visibilidad futura (OWN_ONLY nunca restringe scope 'all').
+      const data = await getActiveDiningOrders(branchId, 'all')
       setTables(data.filter(isPayableDiningOrder))
     } catch {
       // silent

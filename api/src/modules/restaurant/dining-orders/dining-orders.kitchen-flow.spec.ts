@@ -62,6 +62,7 @@ function build(opts: { orderStatus?: string; pending?: number; lastRound?: numbe
     { getUserId: () => 'user-1' } as never,
     { consume: jest.fn(), restore: jest.fn(), validate: jest.fn() } as never,
     { resolveActiveCashSession: jest.fn(), createPayments: jest.fn(), createCashMovements: jest.fn() } as never,
+    { resolveRestaurantVisibilityMode: jest.fn().mockResolvedValue('SHARED') } as never,
   );
 
   const setKitchen = (enabled: boolean) =>

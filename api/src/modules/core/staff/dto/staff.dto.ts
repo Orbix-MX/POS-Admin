@@ -1,4 +1,4 @@
-import { IsString, Matches, IsOptional } from 'class-validator';
+import { IsString, Matches, IsOptional, IsUUID } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class PinLoginDto {
@@ -17,6 +17,17 @@ export class VerifyPinDto {
   @IsString()
   @Matches(/^\d{4,6}$/, { message: 'El PIN debe tener entre 4 y 6 dígitos.' })
   pin: string;
+}
+
+export class OperatorLoginDto {
+  @ApiProperty({ example: '1234', description: 'Operative PIN (4-6 digits).' })
+  @IsString()
+  @Matches(/^\d{4,6}$/, { message: 'El PIN debe tener entre 4 y 6 dígitos.' })
+  pin: string;
+
+  @ApiProperty({ description: 'Branch to operate. Must belong to the tenant and the operator scope.' })
+  @IsUUID()
+  branchId: string;
 }
 
 export class AssignPinDto {

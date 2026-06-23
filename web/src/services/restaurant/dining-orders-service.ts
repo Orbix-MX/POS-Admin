@@ -72,8 +72,21 @@ export function isPayableDiningOrder(o: DiningOrder): boolean {
 
 // ─── Lectura ───────────────────────────────────────────────────────────────────
 
-export async function getActiveDiningOrders(branchId: string): Promise<DiningOrder[]> {
-  const { data } = await api.get<DiningOrder[]>(`/branches/${branchId}/dining-orders`)
+/**
+ * Intención de visibilidad del solicitante. 'all' (caja): todas las cuentas
+ * activas, siempre. 'own' (comanda/operador): respetará `restaurantVisibilityMode`
+ * cuando se implemente. Hoy el backend no filtra; el contrato ya queda fijado.
+ */
+export type DiningOrderScope = 'all' | 'own'
+
+export async function getActiveDiningOrders(
+  branchId: string,
+  scope: DiningOrderScope = 'all',
+): Promise<DiningOrder[]> {
+  const { data } = await api.get<DiningOrder[]>(
+    `/branches/${branchId}/dining-orders`,
+    { params: { scope } },
+  )
   return Array.isArray(data) ? data : []
 }
 

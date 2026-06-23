@@ -1,13 +1,14 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
-import { DiningOrderStatus, Prisma } from '@prisma/client';
+import { DiningOrderStatus, Prisma, RestaurantVisibilityMode } from '@prisma/client';
 import { getModulesForPlan, SystemModule } from '@orbix/types';
 import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { AuditContextService } from '../../../common/context/audit-context.service';
-import { OpenDiningOrderDto, AddDiningItemDto, UpdateDiningItemDto } from './dto/dining-order.dto';
+import { OpenDiningOrderDto, AddDiningItemDto, UpdateDiningItemDto, DiningOrderScope } from './dto/dining-order.dto';
 import { CheckoutDiningOrderDto } from './dto/checkout-dining-order.dto';
 import { InventoryConsumptionEngine } from '../../retail/inventory/inventory-consumption.engine';
 import { OrderCheckoutEngine } from '../../retail/checkout/order-checkout.engine';
+import { RestaurantVisibilityService } from '../visibility/restaurant-visibility.service';
 import { roundMoney } from '../../../common/utils/money.util';
 import { assertBranchBelongs } from '../../../common/helpers/assert-branch-belongs';
 
@@ -79,19 +80,72 @@ export class DiningOrdersService {
     private readonly auditContext: AuditContextService,
     private readonly inventory: InventoryConsumptionEngine,
     private readonly checkoutEngine: OrderCheckoutEngine,
+    private readonly visibility: RestaurantVisibilityService,
   ) {}
 
-  async findActive(branchId: string) {
+  async findActive(branchId: string, scope: DiningOrderScope = 'all') {
     const tenantId = this.tenantContext.requireTenantId();
     await assertBranchBelongs(this.prisma, tenantId, branchId);
     // Todas las cuentas vivas (no terminales): borradores, en cocina y por
     // cobrar. Incluir los estados de cocina permite reabrir una cuenta enviada
     // para capturar rondas adicionales.
+    //
+    // `scope` declara la intención del solicitante (caja vs operador). Hoy ambos
+    // ven todo; el filtro de visibilidad se resuelve en un único punto para que
+    // OWN_ONLY (futuro) restrinja solo a 'own' sin afectar nunca a la caja.
+    const visibilityWhere = await this.resolveVisibilityWhere(tenantId, branchId, scope);
     return this.prisma.diningOrder.findMany({
-      where: { tenantId, branchId, status: { notIn: ['PAID', 'CLOSED', 'CANCELLED'] } },
+      where: {
+        tenantId,
+        branchId,
+        status: { notIn: ['PAID', 'CLOSED', 'CANCELLED'] },
+        ...visibilityWhere,
+      },
       orderBy: { openedAt: 'asc' },
       select: ORDER_SELECT,
     });
+  }
+
+  /**
+   * Punto de extensión para `restaurantVisibilityMode` (Opción A). Resuelve el
+   * modo configurado por sucursal y, en el futuro, devolverá el filtro de
+   * DiningOrder correspondiente. HOY NO FILTRA: devuelve `{}` en todos los casos
+   * y para todos los modos — solo fija el contrato.
+   *
+   * Reglas (Opción A — aprobadas):
+   *  - 'all' (caja): SIEMPRE `{}`. La caja ve todas las cuentas en cualquier
+   *    modo. Se retorna antes de mirar el modo: inmune por construcción.
+   *  - 'own' (operador): aquí entrará el filtro según el modo:
+   *      · SHARED              → `{}` (sin filtro; comportamiento actual).
+   *      · OWN_ONLY            → FUTURO `{ waiterId: this.auditContext.getUserId() }`
+   *                              (identidad de confianza: proviene del token operador).
+   *      · OWN_WITH_SUPERVISOR → FUTURO `{ OR: [ {waiterId: yo}, {<supervisores>} ] }`.
+   *
+   * Mesas, Kitchen y Caja NO se filtran aquí ni en ningún otro punto: este es el
+   * ÚNICO lugar donde el modo afectará la visibilidad, y solo para scope 'own'.
+   */
+  private async resolveVisibilityWhere(
+    tenantId: string,
+    branchId: string,
+    scope: DiningOrderScope,
+  ): Promise<Prisma.DiningOrderWhereInput> {
+    // Caja: inmune al modo. Se decide antes de resolverlo.
+    if (scope === 'all') return {};
+
+    // Operador: el modo gobernará el filtro futuro. Hoy se resuelve pero NO se
+    // aplica — todos los modos devuelven `{}` para preservar el comportamiento.
+    const mode = await this.visibility.resolveRestaurantVisibilityMode(tenantId, branchId);
+    switch (mode) {
+      case RestaurantVisibilityMode.OWN_ONLY:
+        // FUTURO: return { waiterId: this.auditContext.getUserId() };
+        return {};
+      case RestaurantVisibilityMode.OWN_WITH_SUPERVISOR:
+        // FUTURO: return { OR: [{ waiterId: this.auditContext.getUserId() }, /* supervisores */] };
+        return {};
+      case RestaurantVisibilityMode.SHARED:
+      default:
+        return {};
+    }
   }
 
   async findForTable(branchId: string, tableId: string) {
@@ -109,9 +163,15 @@ export class DiningOrdersService {
   async open(branchId: string, dto: OpenDiningOrderDto) {
     const tenantId = this.tenantContext.requireTenantId();
     await assertBranchBelongs(this.prisma, tenantId, branchId);
-    // Web (sesión usuario) envía el waiter explícito tras autorizarlo por PIN;
-    // la app móvil (token operator) lo deriva de la identidad del token.
-    const waiterId = dto.waiterId ?? this.auditContext.getUserId();
+    // Identidad del mesero, fuente única según el principal:
+    //  - Token operador (mobile + web operator-login): SIEMPRE el empleado del
+    //    token. Se IGNORA cualquier `dto.waiterId` del cliente — el operador
+    //    autenticado no puede atribuir una cuenta a otro empleado.
+    //  - Sesión de usuario (sin operador): el cliente envía el waiter explícito
+    //    (web legacy tras verificar PIN); cae al usuario solo como último recurso.
+    const waiterId = this.auditContext.isOperator()
+      ? this.auditContext.getUserId()
+      : (dto.waiterId ?? this.auditContext.getUserId());
     const serviceType = dto.serviceType ?? 'DINE_IN';
 
     if (!waiterId) throw new ConflictException('No se pudo identificar al mesero.');

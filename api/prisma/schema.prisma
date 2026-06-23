@@ -1035,6 +1035,17 @@ enum RestaurantServiceMode {
   HYBRID
 }
 
+// Per-branch waiter command visibility. Controls whether an operator (waiter)
+// sees every active DiningOrder or only their own. Tables/Kitchen/Cashier are
+// NEVER filtered by this — only DiningOrder listing for scope='own'. The filter
+// itself is NOT implemented yet (see DiningOrdersService.resolveVisibilityWhere):
+// today all modes behave like SHARED. Default SHARED preserves current behavior.
+enum RestaurantVisibilityMode {
+  SHARED
+  OWN_ONLY
+  OWN_WITH_SUPERVISOR
+}
+
 model RestaurantTable {
   id           String      @id @default(uuid())
   tenantId     String
@@ -1261,6 +1272,11 @@ model Branch {
   isMain    Boolean      @default(false)
   status    BranchStatus @default(ACTIVE)
   settings  Json?
+
+  // Waiter command visibility for this branch. Default SHARED = current behavior
+  // (everyone sees every active order). Persisted infra for a future filter; not
+  // enforced yet. See DiningOrdersService.resolveVisibilityWhere.
+  restaurantVisibilityMode RestaurantVisibilityMode @default(SHARED) @map("restaurant_visibility_mode")
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 

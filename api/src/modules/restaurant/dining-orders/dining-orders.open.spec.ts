@@ -66,9 +66,10 @@ function buildOpen() {
   const service = new DiningOrdersService(
     prisma as never,
     { requireTenantId: () => TENANT } as never,
-    { getUserId: () => WAITER } as never,
+    { getUserId: () => WAITER, isOperator: () => false } as never,
     { consume: jest.fn(), restore: jest.fn(), validate: jest.fn() } as never,
     { resolveActiveCashSession: jest.fn(), createPayments: jest.fn(), createCashMovements: jest.fn() } as never,
+    { resolveRestaurantVisibilityMode: jest.fn().mockResolvedValue('SHARED') } as never,
   );
 
   return { service, prisma, activeTables };
@@ -79,7 +80,7 @@ const dineIn = { serviceType: 'DINE_IN' as const, tableId: TABLE, waiterId: WAIT
 describe('DiningOrdersService.open — una sola cuenta activa por mesa', () => {
   it('abre la cuenta cuando la mesa está libre', async () => {
     const { service } = buildOpen();
-    const order = await service.open(BRANCH, dineIn as never);
+    const order = await service.open(BRANCH, dineIn);
     expect(order).toEqual(expect.objectContaining({ tableId: TABLE }));
   });
 
@@ -127,7 +128,7 @@ describe('DiningOrdersService.open — una sola cuenta activa por mesa', () => {
     );
 
     const fulfilled = results.filter((r) => r.status === 'fulfilled');
-    const rejected = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
+    const rejected = results.filter((r) => r.status === 'rejected');
 
     expect(fulfilled).toHaveLength(1);
     expect(rejected).toHaveLength(4);

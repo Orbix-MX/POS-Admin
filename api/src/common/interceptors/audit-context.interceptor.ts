@@ -19,8 +19,13 @@ export class AuditContextInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const request = context.switchToHttp().getRequest();
     const user = request.user as
-      | { id?: string; tenantId?: string; tenantRole?: TenantRole; branchId?: string }
+      | { id?: string; role?: string; tenantId?: string; tenantRole?: TenantRole; branchId?: string }
       | undefined;
+
+    // Operator tokens (`typ:'operator'`) carry an Employee id in `id`, flagged via
+    // `role === 'DEVICE_OPERATOR'` (set by JwtStrategy). Propagated so services can
+    // treat the operator as the authoritative identity.
+    const isOperator = user?.role === 'DEVICE_OPERATOR';
 
     return new Observable((subscriber) => {
       this.tenantContext.run(
@@ -30,7 +35,7 @@ export class AuditContextInterceptor implements NestInterceptor {
           branchId: user?.branchId,
         },
         () => {
-          this.auditContext.run({ userId: user?.id }, () => {
+          this.auditContext.run({ userId: user?.id, isOperator }, () => {
             next.handle().subscribe(subscriber);
           });
         },

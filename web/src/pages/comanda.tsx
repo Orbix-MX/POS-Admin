@@ -10,9 +10,9 @@ import {
   type DiningOrder,
 } from '@/services/restaurant/dining-orders-service'
 import { fetchTables, type RestaurantTable } from '@/services/restaurant/tables-service'
-import { verifyWaiterPin, waiterFullName, type VerifiedWaiter } from '@/services/restaurant/waiter-auth-service'
+import { operatorFullName, type OperatorEmployee } from '@/services/restaurant/operator-session-service'
 import { useAuthStore } from '@/store/auth-store'
-import { useWaiterStore } from '@/store/waiter-store'
+import { useOperatorStore } from '@/store/operator-store'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -192,15 +192,15 @@ export function Comanda() {
 
   const [stage, setStage] = useState<ComandaStage>('login')
 
-  // Login (autorización de mesero por PIN — no emite token)
+  // Login del mesero por PIN → canjea un JWT operador (identidad autenticada).
   const [pin, setPin] = useState('')
   const [loginError, setLoginError] = useState('')
   const [loginLoading, setLoginLoading] = useState(false)
-  const [waiter, setWaiter] = useState<VerifiedWaiter | null>(null)
-  // Mesero persistente entre operaciones/páginas (comanda ↔ caja). Un PIN basta.
-  const storeWaiter = useWaiterStore((s) => s.waiter)
-  const setStoreWaiter = useWaiterStore((s) => s.setWaiter)
-  const clearStoreWaiter = useWaiterStore((s) => s.clearWaiter)
+  const [waiter, setWaiter] = useState<OperatorEmployee | null>(null)
+  // Sesión de operador persistente entre páginas (comanda ↔ caja) y recargas.
+  const storeOperator = useOperatorStore((s) => s.currentOperator)
+  const loginOperator = useOperatorStore((s) => s.loginOperator)
+  const logoutOperator = useOperatorStore((s) => s.logoutOperator)
 
   // Open orders + tables
   const [openOrders, setOpenOrders] = useState<DiningOrder[]>([])
@@ -257,14 +257,15 @@ export function Comanda() {
 
   // ── Tablero: mesas + mis cuentas abiertas ─────────────────────────────────────
 
-  const loadBoard = useCallback(async (w: VerifiedWaiter | null) => {
+  const loadBoard = useCallback(async (w: OperatorEmployee | null) => {
     if (!branchId || !w) return
     setBoardLoading(true)
     setBoardError('')
     try {
       const [allTables, orders] = await Promise.all([
         fetchTables(branchId),
-        getActiveDiningOrders(branchId),
+        // 'own': la comanda es vista de operador → respetará la visibilidad futura.
+        getActiveDiningOrders(branchId, 'own'),
       ])
       setTables(allTables.filter(t => t.isActive))
       // Mis cuentas en captura (OPEN) — son a las que puedo seguir agregando.
@@ -297,12 +298,16 @@ export function Comanda() {
       setLoginError('El PIN debe tener entre 4 y 6 dígitos.')
       return
     }
+    if (!branchId) {
+      setLoginError('Selecciona una sucursal primero.')
+      return
+    }
     setLoginError('')
     setLoginLoading(true)
     try {
-      const w = await verifyWaiterPin(value)
+      await loginOperator(value, branchId)
+      const w = useOperatorStore.getState().currentOperator?.employee ?? null
       setWaiter(w)
-      setStoreWaiter(w)
       setStage('open-orders')
       await loadBoard(w)
     } catch (e: unknown) {
@@ -312,16 +317,25 @@ export function Comanda() {
     } finally {
       setLoginLoading(false)
     }
-  }, [loadBoard, setStoreWaiter])
+  }, [branchId, loadBoard, loginOperator])
 
-  // Mesero ya identificado en una operación previa (p. ej. caja) → saltar el PIN.
+  // Sesión de operador ya activa (caja, u otra pestaña, o tras recargar) → saltar el PIN.
   useEffect(() => {
-    if (stage === 'login' && !waiter && storeWaiter) {
-      setWaiter(storeWaiter)
+    if (stage === 'login' && !waiter && storeOperator) {
+      setWaiter(storeOperator.employee)
       setStage('open-orders')
-      void loadBoard(storeWaiter)
+      void loadBoard(storeOperator.employee)
     }
-  }, [stage, waiter, storeWaiter, loadBoard])
+  }, [stage, waiter, storeOperator, loadBoard])
+
+  // Token de operador expiró (401 en ruta de comanda) → volver al PIN sin recargar.
+  useEffect(() => {
+    if (!storeOperator && stage !== 'login') {
+      setWaiter(null)
+      setOpenOrders([]); setTables([])
+      setStage('login')
+    }
+  }, [storeOperator, stage])
 
   const pressPinKey = (key: string) => {
     setLoginError('')
@@ -333,7 +347,7 @@ export function Comanda() {
   }
 
   const logoutWaiter = () => {
-    setWaiter(null); clearStoreWaiter(); setPin(''); setLoginError('')
+    setWaiter(null); logoutOperator(); setPin(''); setLoginError('')
     setOpenOrders([]); setTables([])
     setStage('login')
   }
@@ -528,7 +542,7 @@ export function Comanda() {
           </button>
           <div className="flex-1">
             <div className="text-[15px] font-extrabold text-foreground">
-              {waiter ? waiterFullName(waiter) : 'Mesero'}
+              {waiter ? operatorFullName(waiter) : 'Mesero'}
             </div>
             <div className="text-[11px] text-muted-foreground">
               {openOrders.length > 0
@@ -663,7 +677,7 @@ export function Comanda() {
           </div>
           <div className="min-w-0">
             <div className="text-[15px] font-extrabold text-foreground truncate">
-              {activeLabel}{waiter && <span className="ml-2 text-[11px] font-normal text-muted-foreground">· {waiterFullName(waiter)}</span>}
+              {activeLabel}{waiter && <span className="ml-2 text-[11px] font-normal text-muted-foreground">· {operatorFullName(waiter)}</span>}
               {activeOrderId && <span className="ml-2 text-[11px] font-normal text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">Agregando a cuenta existente</span>}
             </div>
             <div className="text-[11px] text-muted-foreground">
