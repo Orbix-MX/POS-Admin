@@ -65,7 +65,7 @@ const dto = { branchId: BRANCH, exchangeRateUsdMxn: 17, openingAmount: 1000 };
 describe('CashSessionsService.open — una sola sesión ABIERTA por sucursal', () => {
   it('abre la caja cuando la sucursal no tiene sesión activa', async () => {
     const { service, openKeys } = buildOpen();
-    const session = await service.open(dto as never);
+    const session = await service.open(dto);
     expect(session).toEqual(expect.objectContaining({ branchId: BRANCH, status: 'ABIERTA' }));
     expect(openKeys.size).toBe(1);
   });
@@ -96,16 +96,16 @@ describe('CashSessionsService.open — una sola sesión ABIERTA por sucursal', (
     const { service, openKeys } = buildOpen();
     // findFirst sigue devolviendo null (lectura obsoleta), simulando un reintento
     // que no “ve” la sesión recién creada por la primera llamada.
-    await service.open(dto as never); // primera apertura: gana
+    await service.open(dto); // primera apertura: gana
     await expect(service.open(dto as never)).rejects.toBeInstanceOf(BadRequestException);
     expect(openKeys.size).toBe(1); // sigue habiendo una sola
   });
 
   it('APERTURA TRAS CIERRE: tras cerrar la sesión, se puede abrir una nueva', async () => {
     const { service, openKeys, close } = buildOpen();
-    await service.open(dto as never);
+    await service.open(dto);
     close(); // la sesión pasa a CERRADA → el índice parcial ya no la cuenta
-    const reopened = await service.open(dto as never);
+    const reopened = await service.open(dto);
     expect(reopened).toEqual(expect.objectContaining({ status: 'ABIERTA' }));
     expect(openKeys.size).toBe(1);
   });
@@ -114,7 +114,7 @@ describe('CashSessionsService.open — una sola sesión ABIERTA por sucursal', (
     const { service, openKeys } = buildOpen();
     const results = await Promise.allSettled(Array.from({ length: 5 }, () => service.open(dto as never)));
     const fulfilled = results.filter((r) => r.status === 'fulfilled');
-    const rejected = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
+    const rejected = results.filter((r) => r.status === 'rejected');
     expect(fulfilled).toHaveLength(1);
     expect(rejected).toHaveLength(4);
     rejected.forEach((r) => expect(r.reason).toBeInstanceOf(BadRequestException));

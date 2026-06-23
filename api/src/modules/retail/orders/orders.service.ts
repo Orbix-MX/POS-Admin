@@ -207,7 +207,7 @@ export class OrdersService {
     if (dto.isLayaway) {
       initialPaymentStatus = paidNow >= total ? 'PAID' : paidNow > 0 ? 'PARTIALLY_PAID' : 'PENDING';
     } else {
-      initialPaymentStatus = (dto.paymentStatus ?? PaymentStatus.PENDING) as string;
+      initialPaymentStatus = (dto.paymentStatus ?? PaymentStatus.PENDING);
     }
 
     const order = await this.prisma.$transaction(async (tx) => {

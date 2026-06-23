@@ -308,7 +308,7 @@ export class PlatformTenantsService {
     if (!tenant) throw new NotFoundException('Tenant not found');
 
     // Validate extras are compatible with the tenant's business vertical
-    const vertical = tenant.businessVertical as BusinessVertical;
+    const vertical = tenant.businessVertical;
     const incompatible = dto.enabledModules.filter(
       m => !isModuleCompatibleWithVertical(m, vertical),
     );

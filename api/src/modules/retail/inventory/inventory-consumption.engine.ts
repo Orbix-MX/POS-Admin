@@ -379,7 +379,7 @@ export class InventoryConsumptionEngine {
     const product = (await tx.product.findUnique({
       where: { id: productId },
       select: PRODUCT_LOAD_SELECT,
-    })) as LoadedProduct | null;
+    }));
 
     cache.set(productId, product);
     return product;

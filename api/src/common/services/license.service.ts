@@ -79,7 +79,7 @@ export class LicenseService {
   // ─── Status mapping & tenant sync ───────────────────────────────────────────
   private toTenantStatus(status: LicenseStatus): TenantStatus {
     // LicenseStatus and TenantStatus share these names 1:1.
-    return status as unknown as TenantStatus;
+    return status;
   }
 
   /** Pushes the license's derived fields onto the Tenant so existing logic sees them. */

@@ -186,8 +186,8 @@ export class WidgetsService {
       title: widget.title,
       subtitle: widget.subtitle ?? undefined,
       data: null,
-      meta: {} as WidgetMeta,
-      config: (widget.config ?? {}) as WidgetDisplayConfig,
+      meta: {},
+      config: (widget.config ?? {}),
       error: message,
       lastUpdate: new Date().toISOString(),
     };

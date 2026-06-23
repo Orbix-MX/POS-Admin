@@ -141,7 +141,7 @@ describe('KitchenService (DiningOrder KDS)', () => {
     it('delegates transition to DiningOrdersService.changeStatus with branch from context', async () => {
       mockDiningOrders.changeStatus.mockResolvedValue({ id: ORDER_ID, status: 'IN_PREPARATION' });
 
-      await service.updateKitchenStatus(ORDER_ID, 'IN_PREPARATION' as never);
+      await service.updateKitchenStatus(ORDER_ID, 'IN_PREPARATION');
 
       expect(mockDiningOrders.changeStatus).toHaveBeenCalledWith(BRANCH_ID, ORDER_ID, 'IN_PREPARATION');
     });
@@ -150,7 +150,7 @@ describe('KitchenService (DiningOrder KDS)', () => {
       mockTenantContext.getBranchId.mockReturnValue(null);
 
       await expect(
-        service.updateKitchenStatus(ORDER_ID, 'IN_PREPARATION' as never),
+        service.updateKitchenStatus(ORDER_ID, 'IN_PREPARATION'),
       ).rejects.toThrow(BadRequestException);
       expect(mockDiningOrders.changeStatus).not.toHaveBeenCalled();
     });

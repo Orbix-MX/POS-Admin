@@ -11,7 +11,7 @@ describe('Supplies – EDIT (e2e)', () => {
   let app: INestApplication;
   let authToken: string;
   let supplyId: string;
-  let MU: Record<string, string> = {};
+  const MU: Record<string, string> = {};
 
   const suffix = Date.now();
 

@@ -101,7 +101,7 @@ export class PrinterConfigsService {
     const printer = await this.findPrinterForType(tenantId, branchId, printerType);
     const cols = (printer?.paperWidth ?? 80) <= 58 ? 32 : 48;
     const buffer = this.buildEscPosReceipt(
-      order as Parameters<typeof this.buildEscPosReceipt>[0],
+      order,
       tenant?.name ?? 'Tienda',
       cols,
     );
@@ -147,7 +147,7 @@ export class PrinterConfigsService {
 
     const cols = (printer.paperWidth ?? 80) <= 58 ? 32 : 48;
     const data = this.buildEscPosReceipt(
-      order as Parameters<typeof this.buildEscPosReceipt>[0],
+      order,
       tenant?.name ?? 'Tienda',
       cols,
     );

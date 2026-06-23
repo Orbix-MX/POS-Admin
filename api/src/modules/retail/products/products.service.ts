@@ -155,7 +155,7 @@ export class ProductsService {
       return created;
     });
 
-    return product as Product;
+    return product;
   }
 
   async findAll(queryDto: QueryProductDto): Promise<PaginatedResponse<Product>> {
@@ -316,7 +316,7 @@ export class ProductsService {
       });
     }
 
-    return updated as Product;
+    return updated;
   }
 
   async remove(id: string): Promise<void> {
