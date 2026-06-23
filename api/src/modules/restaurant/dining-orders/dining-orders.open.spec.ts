@@ -69,7 +69,7 @@ function buildOpen() {
     { getUserId: () => WAITER, isOperator: () => false } as never,
     { consume: jest.fn(), restore: jest.fn(), validate: jest.fn() } as never,
     { resolveActiveCashSession: jest.fn(), createPayments: jest.fn(), createCashMovements: jest.fn() } as never,
-    { resolveRestaurantVisibilityMode: jest.fn().mockResolvedValue('SHARED') } as never,
+    { resolveRestaurantVisibilityMode: jest.fn().mockResolvedValue('SHARED'), assertCanAccessOrder: jest.fn().mockResolvedValue(undefined) } as never,
   );
 
   return { service, prisma, activeTables };

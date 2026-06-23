@@ -34,7 +34,7 @@ function build(mode: Mode = 'SHARED') {
     { getUserId: () => 'op-1', isOperator: () => true } as never,
     { consume: jest.fn(), restore: jest.fn(), validate: jest.fn() } as never,
     { resolveActiveCashSession: jest.fn(), createPayments: jest.fn(), createCashMovements: jest.fn() } as never,
-    { resolveRestaurantVisibilityMode } as never,
+    { resolveRestaurantVisibilityMode, assertCanAccessOrder: jest.fn().mockResolvedValue(undefined) } as never,
   );
   return { service, findMany, resolveRestaurantVisibilityMode };
 }

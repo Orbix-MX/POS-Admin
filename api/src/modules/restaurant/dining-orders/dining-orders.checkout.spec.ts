@@ -70,7 +70,7 @@ function build() {
     { getUserId: () => 'user-1' } as never,
     { consume, restore: jest.fn(), validate: jest.fn() } as never,
     { resolveActiveCashSession, createPayments, createCashMovements } as never,
-    { resolveRestaurantVisibilityMode: jest.fn().mockResolvedValue('SHARED') } as never,
+    { resolveRestaurantVisibilityMode: jest.fn().mockResolvedValue('SHARED'), assertCanAccessOrder: jest.fn().mockResolvedValue(undefined) } as never,
   );
 
   return { service, prisma, tx, consume, createPayments, createCashMovements, resolveActiveCashSession };

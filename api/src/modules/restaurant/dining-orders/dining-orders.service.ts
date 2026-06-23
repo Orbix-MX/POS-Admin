@@ -157,7 +157,12 @@ export class DiningOrdersService {
       where: { tenantId, branchId, tableId, status: { in: ACTIVE_STATUSES } },
       select: ORDER_SELECT,
     });
-    return order ?? null;
+    if (!order) return null;
+    // La mesa sigue siendo global (su ocupación se ve vía /tables). Lo que se
+    // protege aquí es el DETALLE de la cuenta: bajo modos restrictivos, abrir la
+    // cuenta de una mesa atendida por otro operador se trata como inexistente.
+    await this.visibility.assertCanAccessOrder({ waiterId: order.waiter.id, branchId });
+    return order;
   }
 
   async open(branchId: string, dto: OpenDiningOrderDto) {
@@ -270,6 +275,8 @@ export class DiningOrdersService {
       select: ORDER_SELECT,
     });
     if (!order) throw new NotFoundException('Orden no encontrada.');
+    // Autorización por recurso (lectura por id): no revelar comandas ajenas.
+    await this.visibility.assertCanAccessOrder({ waiterId: order.waiter.id, branchId });
     return order;
   }
 
@@ -282,9 +289,12 @@ export class DiningOrdersService {
     await assertBranchBelongs(this.prisma, tenantId, branchId);
     const order = await this.prisma.diningOrder.findFirst({
       where: { id: orderId, tenantId, branchId, status: { notIn: LOCKED_STATUSES } },
-      select: { id: true, status: true },
+      select: { id: true, status: true, waiterId: true },
     });
     if (!order) throw new NotFoundException('Orden activa no encontrada o ya cerrada.');
+    // Autorización por recurso: bajo modos restrictivos, un operador no edita
+    // (addItem/updateItem/removeItem/fireRound) comandas ajenas conociendo su id.
+    await this.visibility.assertCanAccessOrder({ waiterId: order.waiterId, branchId });
     return order;
   }
 
@@ -399,9 +409,11 @@ export class DiningOrdersService {
     await assertBranchBelongs(this.prisma, tenantId, branchId);
     const order = await this.prisma.diningOrder.findFirst({
       where: { id: orderId, tenantId, branchId },
-      select: { id: true, status: true, tableId: true, _count: { select: { items: true } } },
+      select: { id: true, status: true, tableId: true, waiterId: true, _count: { select: { items: true } } },
     });
     if (!order) return { discarded: false as const };
+    // Autorización por recurso: no descartar la comanda en borrador de otro operador.
+    await this.visibility.assertCanAccessOrder({ waiterId: order.waiterId, branchId });
 
     if (order.status !== 'OPEN') {
       throw new ConflictException('Solo se pueden descartar órdenes en borrador (OPEN).');
@@ -477,9 +489,11 @@ export class DiningOrdersService {
     await assertBranchBelongs(this.prisma, tenantId, branchId);
     const order = await this.prisma.diningOrder.findFirst({
       where: { id: orderId, tenantId, branchId },
-      select: { id: true, status: true, tableId: true },
+      select: { id: true, status: true, tableId: true, waiterId: true },
     });
     if (!order) throw new NotFoundException('Orden no encontrada.');
+    // Autorización por recurso: no avanzar el ciclo de una comanda ajena por id.
+    await this.visibility.assertCanAccessOrder({ waiterId: order.waiterId, branchId });
 
     const kitchenEnabled = await this.isKitchenEnabled(tenantId);
     const flow = kitchenEnabled ? KITCHEN_FLOW : NO_KITCHEN_FLOW;

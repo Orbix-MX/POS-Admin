@@ -45,7 +45,7 @@ function build({ isOperator, tokenUserId, employeeValid = true }: BuildOpts) {
     { getUserId: () => tokenUserId, isOperator: () => isOperator } as never,
     { consume: jest.fn(), restore: jest.fn(), validate: jest.fn() } as never,
     { resolveActiveCashSession: jest.fn(), createPayments: jest.fn(), createCashMovements: jest.fn() } as never,
-    { resolveRestaurantVisibilityMode: jest.fn().mockResolvedValue('SHARED') } as never,
+    { resolveRestaurantVisibilityMode: jest.fn().mockResolvedValue('SHARED'), assertCanAccessOrder: jest.fn().mockResolvedValue(undefined) } as never,
   );
 
   return { service, prisma, create, employeeFindFirst };
