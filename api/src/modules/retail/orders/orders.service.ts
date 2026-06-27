@@ -794,10 +794,13 @@ export class OrdersService {
         });
       }
 
-      // Create cash movements for non-credit, non-card payments
+      // Create cash movements for non-credit payments — paridad con create():
+      // CARD también genera CashMovement SALE (no afecta el efectivo esperado, pero
+      // alimenta totals.sales.card del corte). Sin él, abonos/liquidaciones con
+      // tarjeta vía addPayment no aparecían en el resumen de caja. CREDITO se excluye.
       // Use sale amount (net) — amountReceived/changeGiven are metadata only (for tickets/audit)
       for (const p of dto.payments) {
-        if (!p.method || p.method === 'CREDITO' || p.method === 'CARD') continue;
+        if (!p.method || p.method === 'CREDITO') continue;
         const isUsd = (p.currency ?? 'MXN') === 'USD';
         const netAmount = roundMoney(Number(p.amount));
         const amountMxnEquivalent = isUsd ? convertMoney(netAmount, sessionRate) : netAmount;
