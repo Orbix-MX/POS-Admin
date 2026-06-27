@@ -364,18 +364,21 @@ export class OrdersService {
 
       const remainingBalance = Math.max(0, total - paidNow);
 
-      if (isCredit && customerId) {
+      if (isCredit && customerId && remainingBalance > 0) {
         const dueDate = dto.dueDate
           ? new Date(dto.dueDate)
           : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
+        // Pago mixto (efectivo/tarjeta/transferencia + crédito): la CxC sólo debe
+        // reflejar el SALDO a crédito, no el total. paidNow ya excluye los CREDITO,
+        // así que remainingBalance = lo realmente financiado. Espejo de apartados.
         await tx.accountReceivable.create({
           data: {
             tenantId,
             orderId: newOrder.id,
             customerId,
             totalAmount: total,
-            balance: total,
+            balance: remainingBalance,
             status: 'PENDIENTE',
             dueDate,
           },
