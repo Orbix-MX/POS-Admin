@@ -35,12 +35,15 @@ export class OrdersService {
       throw new BadRequestException('La venta debe tener al menos un item');
     }
 
+    const tenantId = this.tenantContext.requireTenantId();
     const customerId: string | null = dto.customerId ?? null;
     let addressId: string | null = null;
 
     if (customerId) {
-      const customer = await this.prisma.customer.findUnique({
-        where: { id: customerId },
+      // Aislamiento multi-tenant: el id viene del cliente; sin filtro tenantId un
+      // operador podría referenciar un Customer de otra organización.
+      const customer = await this.prisma.customer.findFirst({
+        where: { id: customerId, tenantId },
         include: { addresses: true },
       });
       if (!customer) {
@@ -58,7 +61,9 @@ export class OrdersService {
     const productIds = [...new Set(productItems.map((i) => i.productId).filter(Boolean) as string[])];
     const products = productIds.length
       ? await this.prisma.product.findMany({
-          where: { id: { in: productIds } },
+          // Aislamiento multi-tenant: ids controlados por el cliente — un producto
+          // de otro tenant decrementaría su stock. Filtrar por tenantId.
+          where: { id: { in: productIds }, tenantId },
           include: {
             category: true,
             recipe: {
@@ -83,14 +88,20 @@ export class OrdersService {
     // Optionally validate services from catalog
     const catalogServiceIds = [...new Set(serviceItems.map((i) => i.serviceId).filter(Boolean) as string[])];
     const catalogServices = catalogServiceIds.length
-      ? await this.prisma.service.findMany({ where: { id: { in: catalogServiceIds } } })
+      ? await this.prisma.service.findMany({ where: { id: { in: catalogServiceIds }, tenantId } })
       : [];
+    // Un serviceId del catálogo debe pertenecer al tenant. Si tras el filtro falta
+    // alguno, es una referencia cruzada entre organizaciones → se rechaza.
+    if (catalogServices.length !== catalogServiceIds.length) {
+      const found = new Set(catalogServices.map((s) => s.id));
+      const missing = catalogServiceIds.filter((id) => !found.has(id));
+      throw new NotFoundException(`Servicios no encontrados: ${missing.join(', ')}`);
+    }
     const serviceMap = new Map(catalogServices.map((s) => [s.id, s]));
 
     const productMap = new Map(products.map((p) => [p.id, p]));
 
     // Tenant default tax rate (percent) from settings JSON; product.taxRate overrides per item
-    const tenantId = this.tenantContext.requireTenantId();
     const tenantRow = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { settings: true },
@@ -554,6 +565,7 @@ export class OrdersService {
       include: {
         items: true,
         payments: true,
+        refunds: { include: { items: true } },
         accountReceivable: { include: { payments: true } },
       },
     });
@@ -564,15 +576,31 @@ export class OrdersService {
 
     const before = { status: order.status, paymentStatus: order.paymentStatus };
 
+    // Cantidades ya devueltas al stock por reembolsos por línea previos. La reversa
+    // solo debe restaurar el remanente no reembolsado; restaurar de nuevo lo que un
+    // refund ya repuso genera stock fantasma / doble devolución.
+    const refundedQtyByItem = new Map<string, number>();
+    for (const r of order.refunds) {
+      for (const ri of r.items) {
+        refundedQtyByItem.set(
+          ri.orderItemId,
+          (refundedQtyByItem.get(ri.orderItemId) ?? 0) + ri.quantity,
+        );
+      }
+    }
+    const restorableItems = order.items
+      .map((it) => ({
+        productId: it.productId,
+        itemType: it.itemType,
+        quantity: it.quantity - (refundedQtyByItem.get(it.id) ?? 0),
+      }))
+      .filter((it) => it.quantity > 0);
+
     return this.prisma.$transaction(async (tx) => {
-      // 1. Restore stock symmetrically (SIMPLE / RECIPE / COMBO) via the engine.
+      // 1. Restaurar SOLO el remanente no reembolsado (engine: SIMPLE/RECIPE/COMBO).
       await this.inventory.restore(
         tx,
-        order.items.map((it) => ({
-          productId: it.productId,
-          quantity: it.quantity,
-          itemType: it.itemType,
-        })),
+        restorableItems,
         {
           tenantId,
           branchId: order.branchId ?? null,
@@ -583,7 +611,9 @@ export class OrdersService {
         },
       );
 
-      // 2. Reverse cash movements tied to this order
+      // 2. Reversar el efectivo de la venta MENOS lo que reembolsos previos ya
+      // sacaron de la caja. Sin esto, un refund parcial (efectivo ya devuelto)
+      // seguido de una reversa sacaría el dinero dos veces (doble salida).
       const activeSession = await tx.cashSession.findFirst({
         where: {
           tenantId,
@@ -595,7 +625,26 @@ export class OrdersService {
       const orderMovements = await tx.cashMovement.findMany({
         where: { tenantId, referenceId: order.id, referenceType: { in: ['ORDER', 'CHANGE_OUT'] } },
       });
+      const priorRefundMovements = await tx.cashMovement.findMany({
+        where: { tenantId, referenceId: order.id, referenceType: 'REFUND' },
+      });
+      const mxnValue = (m: (typeof orderMovements)[number]): number =>
+        Number(m.amountMxnEquivalent ?? m.amount);
+
+      const alreadyRefundedMxn = priorRefundMovements.reduce((s, m) => s + mxnValue(m), 0);
+      let reverseBudgetMxn = Math.max(
+        0,
+        orderMovements.reduce((s, m) => s + mxnValue(m), 0) - alreadyRefundedMxn,
+      );
+
       for (const m of orderMovements) {
+        if (reverseBudgetMxn <= 0.001) break;
+        const movMxn = mxnValue(m);
+        // Fracción de este movimiento aún por reversar (acotada por el presupuesto).
+        const fraction = movMxn > 0 ? Math.min(1, reverseBudgetMxn / movMxn) : 1;
+        const reverseAmount = roundMoney(Number(m.amount) * fraction);
+        if (reverseAmount <= 0) continue;
+        reverseBudgetMxn -= movMxn * fraction;
         // SALE (cash in) → reverse with EXPENSE; CHANGE_OUT (cash out) → reverse with INCOME
         const reverseType = m.type === 'EXPENSE' ? 'INCOME' : 'EXPENSE';
         await tx.cashMovement.create({
@@ -604,10 +653,14 @@ export class OrdersService {
             cashSessionId: activeSession?.id ?? null,
             type: reverseType,
             currency: m.currency,
-            amount: m.amount,
+            amount: reverseAmount,
             ...(m.exchangeRateUsed != null && { exchangeRateUsed: m.exchangeRateUsed }),
-            ...(m.amountOriginalCurrency != null && { amountOriginalCurrency: m.amountOriginalCurrency }),
-            ...(m.amountMxnEquivalent != null && { amountMxnEquivalent: m.amountMxnEquivalent }),
+            ...(m.amountOriginalCurrency != null && {
+              amountOriginalCurrency: roundMoney(Number(m.amountOriginalCurrency) * fraction),
+            }),
+            ...(m.amountMxnEquivalent != null && {
+              amountMxnEquivalent: roundMoney(Number(m.amountMxnEquivalent) * fraction),
+            }),
             paymentMethod: m.paymentMethod,
             referenceId: order.id,
             referenceType: `REVERSAL_${mode}`,
