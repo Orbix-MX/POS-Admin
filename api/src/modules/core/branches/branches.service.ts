@@ -5,6 +5,7 @@ import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { AuditService } from '../../../common/services/audit.service';
 import { PlanLimitsService } from '../../../common/services/plan-limits.service';
+import { randomUUID } from 'node:crypto';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { BulkUpdateInventoryDto, TransferStockDto } from './dto/update-inventory.dto';
@@ -156,17 +157,39 @@ export class BranchesService {
       select: { stock: true },
     });
 
-    const result = await this.prisma.branchInventory.upsert({
-      where: { branchId_productId: { branchId, productId } },
-      update: { stock },
-      create: { branchId, productId, stock },
+    const previousStock = existing?.stock ?? 0;
+    const delta = stock - previousStock;
+
+    // Mismo resultado de stock que antes; se AÑADE el registro en el ledger para
+    // que el ajuste manual quede trazable (antes solo existía audit.log).
+    const result = await this.prisma.$transaction(async (tx) => {
+      const upserted = await tx.branchInventory.upsert({
+        where: { branchId_productId: { branchId, productId } },
+        update: { stock },
+        create: { branchId, productId, stock },
+      });
+      if (delta !== 0) {
+        await tx.inventoryMovement.create({
+          data: {
+            tenantId,
+            type: 'AJUSTE',
+            productId,
+            branchId,
+            quantity: delta,
+            referenceId: `${branchId}:${productId}`,
+            referenceType: 'INVENTORY_ADJUST',
+            notes: 'Ajuste manual de inventario de sucursal',
+          },
+        });
+      }
+      return upserted;
     });
 
     await this.audit.log({
       action: 'INVENTORY_ADJUST',
       entityType: 'BranchInventory',
       entityId: `${branchId}:${productId}`,
-      before: { stock: existing?.stock ?? 0 },
+      before: { stock: previousStock },
       after: { stock: result.stock },
       reason: 'Ajuste manual de inventario de sucursal',
     });
@@ -179,14 +202,43 @@ export class BranchesService {
     const branch = await this.prisma.branch.findFirst({ where: { id: branchId, tenantId } });
     if (!branch) throw new NotFoundException('Branch not found');
 
+    // Conteo físico / ajuste masivo. Mismo resultado de stock; se AÑADE un
+    // movimiento AJUSTE por cada diferencia para dejar el conteo trazable.
+    const productIds = dto.items.map((i) => i.productId);
+    const existingRows = await this.prisma.branchInventory.findMany({
+      where: { branchId, productId: { in: productIds } },
+      select: { productId: true, stock: true },
+    });
+    const prevByProduct = new Map(existingRows.map((r) => [r.productId, r.stock]));
+
     await this.prisma.$transaction(
-      dto.items.map((item) =>
-        this.prisma.branchInventory.upsert({
-          where: { branchId_productId: { branchId, productId: item.productId } },
-          update: { stock: item.stock },
-          create: { branchId, productId: item.productId, stock: item.stock },
-        }),
-      ),
+      dto.items.flatMap((item) => {
+        const delta = item.stock - (prevByProduct.get(item.productId) ?? 0);
+        const ops: ReturnType<typeof this.prisma.branchInventory.upsert>[] = [
+          this.prisma.branchInventory.upsert({
+            where: { branchId_productId: { branchId, productId: item.productId } },
+            update: { stock: item.stock },
+            create: { branchId, productId: item.productId, stock: item.stock },
+          }),
+        ];
+        if (delta !== 0) {
+          ops.push(
+            this.prisma.inventoryMovement.create({
+              data: {
+                tenantId,
+                type: 'AJUSTE',
+                productId: item.productId,
+                branchId,
+                quantity: delta,
+                referenceId: branchId,
+                referenceType: 'INVENTORY_COUNT',
+                notes: 'Conteo físico / ajuste masivo de inventario',
+              },
+            }) as never,
+          );
+        }
+        return ops;
+      }),
     );
   }
 
@@ -205,6 +257,11 @@ export class BranchesService {
       throw new BadRequestException('Insufficient stock in source branch');
     }
 
+    // Mismo movimiento físico de stock entre sucursales; se AÑADEN dos registros
+    // en el ledger (salida en origen, entrada en destino) enlazados por transferId
+    // para trazabilidad completa. La dirección se distingue por referenceType.
+    const transferId = randomUUID();
+
     await this.prisma.$transaction([
       this.prisma.branchInventory.update({
         where: { branchId_productId: { branchId: fromBranchId, productId: dto.productId } },
@@ -214,6 +271,30 @@ export class BranchesService {
         where: { branchId_productId: { branchId: dto.toBranchId, productId: dto.productId } },
         update: { stock: { increment: dto.quantity } },
         create: { branchId: dto.toBranchId, productId: dto.productId, stock: dto.quantity },
+      }),
+      this.prisma.inventoryMovement.create({
+        data: {
+          tenantId,
+          type: 'TRANSFERENCIA',
+          productId: dto.productId,
+          branchId: fromBranchId,
+          quantity: dto.quantity,
+          referenceId: transferId,
+          referenceType: 'TRANSFER_OUT',
+          notes: `Transferencia a sucursal ${dto.toBranchId}`,
+        },
+      }),
+      this.prisma.inventoryMovement.create({
+        data: {
+          tenantId,
+          type: 'TRANSFERENCIA',
+          productId: dto.productId,
+          branchId: dto.toBranchId,
+          quantity: dto.quantity,
+          referenceId: transferId,
+          referenceType: 'TRANSFER_IN',
+          notes: `Transferencia desde sucursal ${fromBranchId}`,
+        },
       }),
     ]);
   }
