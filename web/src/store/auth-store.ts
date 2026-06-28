@@ -12,6 +12,7 @@ import {
   getAccessToken,
 } from '@/services/core/auth-service'
 import type { AuthUser, Tenant, Branch } from '@/services/core/auth-service'
+import { DEFAULT_BUSINESS_FEATURES, type BusinessFeatures } from '@/types/business-config'
 
 interface AuthState {
   user: AuthUser | null
@@ -26,8 +27,10 @@ interface AuthState {
   overUserLimit: boolean
   capabilitiesLoaded: boolean
   businessVertical: string
+  businessProfile: string
   posOperationMode: string
   enabledFeatures: string[]
+  businessFeatures: BusinessFeatures
 
   // Branch state
   currentBranch: Branch | null
@@ -95,8 +98,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   overUserLimit: false,
   capabilitiesLoaded: !getAccessToken(),
   businessVertical: 'RETAIL',
+  businessProfile: 'RETAIL',
   posOperationMode: 'QUICK_SALE',
   enabledFeatures: [],
+  businessFeatures: DEFAULT_BUSINESS_FEATURES,
 
   currentBranch: null,
   availableBranches: null,
@@ -121,8 +126,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         capabilitiesLoaded: true,
         user: profile.user,
         businessVertical: caps.businessVertical ?? 'RETAIL',
+        businessProfile: caps.businessProfile ?? 'RETAIL',
         posOperationMode: caps.posOperationMode ?? 'QUICK_SALE',
         enabledFeatures: caps.enabledFeatures ?? [],
+        businessFeatures: caps.businessFeatures ?? DEFAULT_BUSINESS_FEATURES,
       })
       // Restore branch selection
       await loadBranchesAndAutoSelect(set, profile.currentBranchId)
@@ -151,8 +158,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           enabledModules: res.enabledModules ?? [],
           capabilitiesLoaded: true,
           businessVertical: res.businessVertical ?? 'RETAIL',
+          businessProfile: res.businessProfile ?? 'RETAIL',
           posOperationMode: res.posOperationMode ?? 'QUICK_SALE',
           enabledFeatures: res.enabledFeatures ?? [],
+          businessFeatures: res.businessFeatures ?? DEFAULT_BUSINESS_FEATURES,
         })
         await loadBranchesAndAutoSelect(set, profile?.currentBranchId)
       } else {
@@ -184,8 +193,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         enabledModules: res.enabledModules ?? [],
         capabilitiesLoaded: true,
         businessVertical: res.businessVertical ?? 'RETAIL',
+        businessProfile: res.businessProfile ?? 'RETAIL',
         posOperationMode: res.posOperationMode ?? 'QUICK_SALE',
         enabledFeatures: res.enabledFeatures ?? [],
+        businessFeatures: res.businessFeatures ?? DEFAULT_BUSINESS_FEATURES,
       })
       await loadBranchesAndAutoSelect(set, profile?.currentBranchId)
     } catch (e: unknown) {
@@ -227,8 +238,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       availableBranches: null,
       needsBranchSelection: false,
       businessVertical: 'RETAIL',
+      businessProfile: 'RETAIL',
       posOperationMode: 'QUICK_SALE',
       enabledFeatures: [],
+      businessFeatures: DEFAULT_BUSINESS_FEATURES,
       tenantSuspended: false,
     })
   },
