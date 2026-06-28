@@ -23,7 +23,7 @@ import {
   isModuleCompatibleWithVertical,
   BusinessVertical,
 } from '@orbix/types';
-import { UpdateTenantVerticalDto } from './dto/update-tenant.dto';
+import { UpdateTenantVerticalDto, UpdateTenantProfileDto } from './dto/update-tenant.dto';
 
 type PlatformActor = { id: string };
 
@@ -359,6 +359,32 @@ export class PlatformTenantsService {
         entityId: id,
         before,
         after: { userLimitOverride: dto.userLimitOverride },
+      },
+    });
+
+    return updated;
+  }
+
+  async updateProfile(id: string, dto: UpdateTenantProfileDto, actor: PlatformActor) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id } });
+    if (!tenant) throw new NotFoundException('Tenant not found');
+
+    const before = { businessProfile: tenant.businessProfile };
+    const updated = await this.prisma.tenant.update({
+      where: { id },
+      data: { businessProfile: dto.businessProfile },
+    });
+
+    await this.prisma.platformAuditLog.create({
+      data: {
+        platformUserId: actor.id,
+        tenantId: id,
+        action: 'TENANT_PROFILE_CHANGED',
+        entityType: 'Tenant',
+        entityId: id,
+        before,
+        after: { businessProfile: dto.businessProfile },
+        notes: dto.notes,
       },
     });
 

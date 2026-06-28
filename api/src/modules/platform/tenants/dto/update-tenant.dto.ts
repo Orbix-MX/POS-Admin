@@ -1,6 +1,6 @@
 import { IsEnum, IsOptional, IsArray, IsString, IsInt, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { TenantStatus, TenantPlan, BusinessVertical, PosOperationMode, TenantFeature } from '@prisma/client';
+import { TenantStatus, TenantPlan, BusinessVertical, BusinessProfile, PosOperationMode, TenantFeature } from '@prisma/client';
 
 export class UpdateTenantStatusDto {
   @ApiPropertyOptional({ enum: TenantStatus })
@@ -31,6 +31,17 @@ export class UpdateTenantLimitsDto {
   @IsInt()
   @Min(1)
   userLimitOverride?: number | null;
+}
+
+export class UpdateTenantProfileDto {
+  @ApiProperty({ enum: BusinessProfile })
+  @IsEnum(BusinessProfile)
+  businessProfile: BusinessProfile;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  notes?: string;
 }
 
 export class UpdateTenantVerticalDto {
