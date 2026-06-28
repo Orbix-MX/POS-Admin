@@ -15,6 +15,9 @@ type NavItem = {
   permission?: string
   featureGuard?: (hasFeature: (f: TenantFeature) => boolean, hasPosMode: (m: PosOperationMode) => boolean) => boolean
   verticalGuard?: (hasVertical: (v: BusinessVertical) => boolean) => boolean
+  // Convergence: gate by capability derived from the business profile.
+  // Preferred over verticalGuard for module availability.
+  businessFeatureGuard?: (hasBusinessFeature: (f: keyof BusinessFeatures) => boolean) => boolean
 }
 
 type NavGroup = {
@@ -25,7 +28,7 @@ type NavGroup = {
 import { useERPStore } from '@/store/erp-store'
 import { useAuthStore } from '@/store/auth-store'
 import { useTenantFeatures } from '@/hooks/use-tenant-features'
-import type { TenantFeature, PosOperationMode, BusinessVertical } from '@/hooks/use-tenant-features'
+import type { TenantFeature, PosOperationMode, BusinessVertical, BusinessFeatures } from '@/hooks/use-tenant-features'
 import { AvatarInitials } from './avatar-initials'
 
 function TenantLogo({ logoUrl, name, size = 30 }: { logoUrl?: string; name: string; size?: number }) {
@@ -62,7 +65,7 @@ const ALL_NAV: NavGroup[] = [
       { module: 'ventas',    label: 'Ventas',       icon: ShoppingBag,     path: '/ventas'    },
       { module: 'compras',   label: 'Compras',      icon: ShoppingCart,    path: '/compras'   },
       { module: 'inventario',label: 'Inventario',   icon: Package,         path: '/inventario'},
-      { module: 'insumos',   label: 'Insumos',      icon: FlaskConical,    path: '/insumos',  verticalGuard: (hasVertical: (v: BusinessVertical) => boolean) => hasVertical('RESTAURANT') },
+      { module: 'insumos',   label: 'Insumos',      icon: FlaskConical,    path: '/insumos',  businessFeatureGuard: (has: (f: keyof BusinessFeatures) => boolean) => has('enableSupplies') },
       { module: 'clientes',  label: 'Clientes',     icon: Users,           path: '/clientes'  },
       { module: 'proveedores',label: 'Proveedores', icon: Truck,           path: '/proveedores'},
       { module: 'servicios', label: 'Servicios',    icon: Wrench,          path: '/servicios' },
@@ -111,7 +114,7 @@ export function Sidebar() {
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN'
 
-  const { hasVertical } = useTenantFeatures()
+  const { hasVertical, hasBusinessFeature } = useTenantFeatures()
 
   const visibleGroups = ALL_NAV.map(group => ({
     ...group,
@@ -119,7 +122,8 @@ export function Sidebar() {
       enabledModules.includes(item.module) &&
       (isSuperAdmin || !item.permission || permissions.includes(item.permission)) &&
       (!item.featureGuard || item.featureGuard(hasFeature, hasPosMode)) &&
-      (!item.verticalGuard || item.verticalGuard(hasVertical))
+      (!item.verticalGuard || item.verticalGuard(hasVertical)) &&
+      (!item.businessFeatureGuard || item.businessFeatureGuard(hasBusinessFeature))
     ),
   })).filter(group => group.items.length > 0)
 

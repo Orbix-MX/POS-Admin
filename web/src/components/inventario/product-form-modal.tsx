@@ -8,6 +8,8 @@ import { uploadProductImage, deleteProductImage } from '@/services/retail/produc
 import { ImageViewer } from '@/components/shared/image-viewer'
 import { fetchSupplies, type Supply } from '@/services/retail/supplies-service'
 import { fetchProducts } from '@/services/retail/product-service'
+import { useTenantFeatures } from '@/hooks/use-tenant-features'
+import { useAuthStore } from '@/store/auth-store'
 import { Trash2, Plus } from 'lucide-react'
 
 export interface ProductFormModalProps {
@@ -494,6 +496,25 @@ export function ProductFormModal({
   const showRecipe = productType === 'RECIPE'
   const showCombo = productType === 'COMBO'
 
+  // Tipos de producto disponibles según la configuración del negocio:
+  // - RECIPE: solo si la capacidad enableRecipes está activa (derivada del
+  //   business profile; el backend también lo bloquea vía enableRecipes).
+  // - SERVICE: solo si el módulo 'servicios' está habilitado para el tenant.
+  // Siempre se conserva el tipo actual para no romper la edición de un producto
+  // existente cuyo tipo ya no esté disponible.
+  const { hasBusinessFeature } = useTenantFeatures()
+  const enabledModules = useAuthStore(s => s.enabledModules)
+  const availableTypeOptions = useMemo(
+    () =>
+      PRODUCT_TYPE_OPTIONS.filter(o => {
+        if (o.value === productType) return true
+        if (o.value === 'RECIPE') return hasBusinessFeature('enableRecipes')
+        if (o.value === 'SERVICE') return enabledModules.includes('servicios')
+        return true
+      }),
+    [productType, hasBusinessFeature, enabledModules],
+  )
+
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file || !editingId) return
@@ -659,7 +680,7 @@ export function ProductFormModal({
                 <SelectValue>{PRODUCT_TYPE_OPTIONS.find((o) => o.value === productType)?.label ?? productType}</SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {PRODUCT_TYPE_OPTIONS.map((o) => (
+                {availableTypeOptions.map((o) => (
                   <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                 ))}
               </SelectContent>
