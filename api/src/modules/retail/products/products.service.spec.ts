@@ -5,6 +5,7 @@ import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { AuditService } from '../../../common/services/audit.service';
 import { R2Service } from '../../../storage/r2.service';
+import { BusinessConfigurationService } from '../../../common/business-config/business-configuration.service';
 import { SlugUtil } from '../../../common/utils/slug.util';
 
 describe('ProductsService', () => {
@@ -46,6 +47,7 @@ describe('ProductsService', () => {
   const mockTenantContext = { requireTenantId: jest.fn().mockReturnValue('tenant-1') };
   const mockAuditService = { log: jest.fn() };
   const mockR2Service = { upload: jest.fn(), delete: jest.fn(), buildKey: jest.fn().mockReturnValue('key') };
+  const mockBusinessConfig = { hasFeature: jest.fn().mockResolvedValue(false) };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -55,6 +57,7 @@ describe('ProductsService', () => {
         { provide: TenantContextService, useValue: mockTenantContext },
         { provide: AuditService, useValue: mockAuditService },
         { provide: R2Service, useValue: mockR2Service },
+        { provide: BusinessConfigurationService, useValue: mockBusinessConfig },
       ],
     }).compile();
 

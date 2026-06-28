@@ -32,6 +32,7 @@ function build(prev: number) {
     { requireTenantId: () => TENANT } as never,
     { log: jest.fn() } as never,
     { upload: jest.fn(), delete: jest.fn(), buildKey: () => 'k' } as never,
+    { hasFeature: jest.fn().mockResolvedValue(false) } as never,
   );
 
   return { service, invCreate, productUpdate };
