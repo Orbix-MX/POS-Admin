@@ -422,9 +422,27 @@ export class ProductsService {
 
     if (newStock < 0) throw new BadRequestException('Insufficient stock');
 
-    const updated = await this.prisma.product.update({
-      where: { id, tenantId },
-      data: { stock: newStock },
+    // Flujo de ajuste oficial: la baja/alta de stock y su movimiento AJUSTE van
+    // juntos en una transacción. Antes era una escritura "manual" sin ledger.
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const u = await tx.product.update({
+        where: { id, tenantId },
+        data: { stock: newStock },
+      });
+      if (quantity !== 0) {
+        await tx.inventoryMovement.create({
+          data: {
+            tenantId,
+            type: 'AJUSTE',
+            productId: id,
+            quantity,
+            referenceId: id,
+            referenceType: 'PRODUCT_ADJUST',
+            notes: `Ajuste manual (${quantity >= 0 ? '+' : ''}${quantity})`,
+          },
+        });
+      }
+      return u;
     });
 
     await this.audit.log({

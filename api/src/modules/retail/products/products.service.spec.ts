@@ -34,6 +34,13 @@ describe('ProductsService', () => {
       updateMany: jest.fn(),
       findFirst: jest.fn(),
     },
+    inventoryMovement: { create: jest.fn() },
+    $transaction: jest.fn((cb: (tx: unknown) => unknown) =>
+      cb({
+        product: { update: mockPrismaService.product.update },
+        inventoryMovement: { create: jest.fn() },
+      }),
+    ),
   };
 
   const mockTenantContext = { requireTenantId: jest.fn().mockReturnValue('tenant-1') };
