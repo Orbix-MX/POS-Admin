@@ -4,7 +4,7 @@ import {
   IsArray, ValidateNested, MinLength, MaxLength, Matches,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { TenantPlan, TenantStatus, BusinessVertical, PosOperationMode, TenantFeature } from '@prisma/client';
+import { TenantPlan, TenantStatus, BusinessVertical, BusinessProfile, PosOperationMode, TenantFeature } from '@prisma/client';
 
 export class ProvisionTenantInfoDto {
   @ApiProperty() @IsString() @MinLength(2) @MaxLength(100) name: string;
@@ -31,6 +31,14 @@ export class ProvisionTenantInfoDto {
   @IsOptional()
   @IsEnum(BusinessVertical)
   businessVertical?: BusinessVertical;
+
+  // Base architecture of the tenant, fixed at provisioning. Persisted only —
+  // no behaviour derives from it yet (BP-01). Default RETAIL preserves the
+  // current shape for any caller that omits it.
+  @ApiPropertyOptional({ enum: BusinessProfile, default: 'RETAIL' })
+  @IsOptional()
+  @IsEnum(BusinessProfile)
+  businessProfile?: BusinessProfile;
 
   @ApiPropertyOptional({ enum: PosOperationMode })
   @IsOptional()

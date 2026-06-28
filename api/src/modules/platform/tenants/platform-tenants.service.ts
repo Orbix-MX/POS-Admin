@@ -135,6 +135,7 @@ export class PlatformTenantsService {
           enabledModules,
           trialEndsAt,
           businessVertical: vertical,
+          businessProfile: dto.tenant.businessProfile ?? 'RETAIL',
           posOperationMode: posMode,
           enabledFeatures: features,
         },
