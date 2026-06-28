@@ -69,7 +69,7 @@ const ALL_NAV: NavGroup[] = [
       { module: 'cotizaciones',label: 'Cotizaciones',icon: FileText,       path: '/cotizaciones'},
       { module: 'ordenes-trabajo', label: 'Órdenes de Trabajo', icon: Wrench, path: '/ordenes-trabajo' },
       { module: 'empleados', label: 'Capital Humano', icon: UserCheck, path: '/empleados' },
-      { module: 'caja-restaurante', label: 'Caja Restaurante', icon: CreditCard, path: '/caja-restaurante' },
+      { module: 'caja-restaurante', label: 'Caja Restaurante', icon: CreditCard, path: '/caja-restaurante', verticalGuard: (hasVertical: (v: BusinessVertical) => boolean) => hasVertical('RESTAURANT') },
       { module: 'dining-areas',      label: 'Áreas',   icon: LayoutGrid, path: '/dining-areas',      verticalGuard: (hasVertical: (v: BusinessVertical) => boolean) => hasVertical('RESTAURANT') },
       { module: 'restaurant-tables', label: 'Mesas',   icon: Grid3x3,    path: '/restaurant-tables', verticalGuard: (hasVertical: (v: BusinessVertical) => boolean) => hasVertical('RESTAURANT') },
       { module: 'comanda',           label: 'Comanda', icon: ChefHat,    path: '/comanda',            verticalGuard: (hasVertical: (v: BusinessVertical) => boolean) => hasVertical('RESTAURANT') },
