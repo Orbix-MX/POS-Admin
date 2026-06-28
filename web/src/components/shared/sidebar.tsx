@@ -62,7 +62,7 @@ const ALL_NAV: NavGroup[] = [
       { module: 'ventas',    label: 'Ventas',       icon: ShoppingBag,     path: '/ventas'    },
       { module: 'compras',   label: 'Compras',      icon: ShoppingCart,    path: '/compras'   },
       { module: 'inventario',label: 'Inventario',   icon: Package,         path: '/inventario'},
-      { module: 'insumos',   label: 'Insumos',      icon: FlaskConical,    path: '/insumos'   },
+      { module: 'insumos',   label: 'Insumos',      icon: FlaskConical,    path: '/insumos',  verticalGuard: (hasVertical: (v: BusinessVertical) => boolean) => hasVertical('RESTAURANT') },
       { module: 'clientes',  label: 'Clientes',     icon: Users,           path: '/clientes'  },
       { module: 'proveedores',label: 'Proveedores', icon: Truck,           path: '/proveedores'},
       { module: 'servicios', label: 'Servicios',    icon: Wrench,          path: '/servicios' },
