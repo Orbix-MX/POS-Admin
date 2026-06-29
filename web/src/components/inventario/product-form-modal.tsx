@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect, useMemo, type Dispatch, type SetStateAction } from 'react'
-import { FormModal, FormField } from '@/components/shared/form-modal'
+import { FormField } from '@/components/shared/form-modal'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { STATUS_OPTIONS, TAX_CODES, TAX_RATE_MAP, PRODUCT_TYPE_OPTIONS } from '@/hooks/retail/use-products'
 import type { Product, RecipeItem, ComboItem } from '@/services/retail/product-service'
@@ -582,10 +583,18 @@ export function ProductFormModal({
 
   return (
     <>
-      <FormModal open={open} onClose={onClose} title={editingId ? 'Editar Producto' : 'Nuevo Producto'}>
-        {/* Image section */}
-        <div className="mb-5">
-          <label className="block text-xs font-semibold text-muted-foreground mb-2">Imagen del producto</label>
+      <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+        <DialogContent className="sm:max-w-[940px] w-[95vw] max-h-[90vh] flex flex-col overflow-hidden p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border shrink-0">
+            <DialogTitle>{editingId ? 'Editar Producto' : 'Nuevo Producto'}</DialogTitle>
+          </DialogHeader>
+
+          {/* Body: formulario (scroll) | imagen (fija). En móvil se apila. */}
+          <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden">
+
+            {/* Columna imagen — order-2 (derecha desktop / abajo móvil), fija mientras el form hace scroll */}
+            <div className="order-2 w-full md:w-[32%] md:shrink-0 md:overflow-y-auto border-t md:border-t-0 md:border-l border-border bg-muted/10 px-5 py-5">
+              <label className="block text-xs font-semibold text-muted-foreground mb-2">Imagen del producto</label>
 
           {editingId ? (
             <div className="space-y-2">
@@ -669,10 +678,13 @@ export function ProductFormModal({
           )}
 
           {uploadError && <p className="text-xs text-destructive mt-1.5">{uploadError}</p>}
-        </div>
+            </div>
+            {/* /Columna imagen */}
 
-        <div className="grid grid-cols-2 gap-x-4">
-          {/* Tipo de producto */}
+            {/* Columna formulario — order-1 (izquierda desktop / arriba móvil), scroll independiente */}
+            <div className="order-1 w-full md:w-[68%] md:overflow-y-auto px-6 py-5">
+              <div className="grid grid-cols-2 gap-x-4">
+                {/* Tipo de producto */}
           <div className="col-span-2 mb-3.5">
             <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Tipo de producto</label>
             <Select value={productType} onValueChange={(v) => setForm((p) => ({ ...p, type: v as Product['type'] }))}>
@@ -841,12 +853,19 @@ export function ProductFormModal({
           <div className="col-span-2">
             <FormField label="Meta Description" value={form.metaDescription} onChange={v => setForm(p => ({ ...p, metaDescription: v }))} />
           </div>
-        </div>
-        <div className="flex gap-2.5 justify-end pt-2">
-          <button type="button" onClick={onClose} className="px-4.5 py-2 border border-border rounded-lg bg-card text-[13px] cursor-pointer text-muted-foreground">Cancelar</button>
-          <button type="button" onClick={onSave} className="px-4.5 py-2 bg-primary text-primary-foreground border-none rounded-lg text-[13px] font-semibold cursor-pointer">Guardar</button>
-        </div>
-      </FormModal>
+              </div>
+            </div>
+            {/* /Columna formulario */}
+          </div>
+          {/* /Body */}
+
+          {/* Footer fijo */}
+          <div className="flex gap-2.5 justify-end px-6 py-4 border-t border-border shrink-0 bg-card">
+            <button type="button" onClick={onClose} className="px-4.5 py-2 border border-border rounded-lg bg-card text-[13px] cursor-pointer text-muted-foreground">Cancelar</button>
+            <button type="button" onClick={onSave} className="px-4.5 py-2 bg-primary text-primary-foreground border-none rounded-lg text-[13px] font-semibold cursor-pointer">Guardar</button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {viewerOpen && primaryImage && (
         <ImageViewer
