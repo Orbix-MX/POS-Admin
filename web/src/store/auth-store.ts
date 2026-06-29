@@ -12,6 +12,7 @@ import {
   getAccessToken,
 } from '@/services/core/auth-service'
 import type { AuthUser, Tenant, Branch } from '@/services/core/auth-service'
+import { DEFAULT_BUSINESS_FEATURES, type BusinessFeatures } from '@/types/business-config'
 
 interface AuthState {
   user: AuthUser | null
@@ -25,17 +26,25 @@ interface AuthState {
   permissions: string[]
   overUserLimit: boolean
   capabilitiesLoaded: boolean
+  businessVertical: string
+  businessProfile: string
+  posOperationMode: string
+  enabledFeatures: string[]
+  businessFeatures: BusinessFeatures
 
   // Branch state
   currentBranch: Branch | null
   availableBranches: Branch[] | null
   needsBranchSelection: boolean
 
+  tenantSuspended: boolean
+
   init: () => Promise<void>
   login: (email: string, password: string) => Promise<void>
   confirmTenant: (slug: string) => Promise<void>
   confirmBranch: (branchId: string) => Promise<void>
   logout: () => Promise<void>
+  setTenantSuspended: (value: boolean) => void
 }
 
 async function loadBranchesAndAutoSelect(
@@ -88,10 +97,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   permissions: [],
   overUserLimit: false,
   capabilitiesLoaded: !getAccessToken(),
+  businessVertical: 'RETAIL',
+  businessProfile: 'RETAIL',
+  posOperationMode: 'QUICK_SALE',
+  enabledFeatures: [],
+  businessFeatures: DEFAULT_BUSINESS_FEATURES,
 
   currentBranch: null,
   availableBranches: null,
   needsBranchSelection: false,
+  tenantSuspended: false,
+
+  setTenantSuspended: (value) => set({
+    tenantSuspended: value,
+    isAuthenticated: false,
+    capabilitiesLoaded: true,
+  }),
 
   init: async () => {
     if (!getAccessToken()) { set({ capabilitiesLoaded: true }); return }
@@ -104,6 +125,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         overUserLimit: caps.overUserLimit ?? false,
         capabilitiesLoaded: true,
         user: profile.user,
+        businessVertical: caps.businessVertical ?? 'RETAIL',
+        businessProfile: caps.businessProfile ?? 'RETAIL',
+        posOperationMode: caps.posOperationMode ?? 'QUICK_SALE',
+        enabledFeatures: caps.enabledFeatures ?? [],
+        businessFeatures: caps.businessFeatures ?? DEFAULT_BUSINESS_FEATURES,
       })
       // Restore branch selection
       await loadBranchesAndAutoSelect(set, profile.currentBranchId)
@@ -131,13 +157,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           plan: res.plan ?? null,
           enabledModules: res.enabledModules ?? [],
           capabilitiesLoaded: true,
+          businessVertical: res.businessVertical ?? 'RETAIL',
+          businessProfile: res.businessProfile ?? 'RETAIL',
+          posOperationMode: res.posOperationMode ?? 'QUICK_SALE',
+          enabledFeatures: res.enabledFeatures ?? [],
+          businessFeatures: res.businessFeatures ?? DEFAULT_BUSINESS_FEATURES,
         })
         await loadBranchesAndAutoSelect(set, profile?.currentBranchId)
       } else {
         set({ tempToken: accessToken, user, availableTenants, loading: false })
       }
     } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Credenciales incorrectas'
+      const data = (e as { response?: { data?: { message?: string; code?: string } } })?.response?.data
+      const msg = data?.message ?? 'Credenciales incorrectas'
       set({ error: msg, loading: false })
     }
   },
@@ -160,10 +192,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         plan: res.plan ?? null,
         enabledModules: res.enabledModules ?? [],
         capabilitiesLoaded: true,
+        businessVertical: res.businessVertical ?? 'RETAIL',
+        businessProfile: res.businessProfile ?? 'RETAIL',
+        posOperationMode: res.posOperationMode ?? 'QUICK_SALE',
+        enabledFeatures: res.enabledFeatures ?? [],
+        businessFeatures: res.businessFeatures ?? DEFAULT_BUSINESS_FEATURES,
       })
       await loadBranchesAndAutoSelect(set, profile?.currentBranchId)
     } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Error al seleccionar tienda'
+      const data = (e as { response?: { data?: { message?: string; code?: string } } })?.response?.data
+      const msg = data?.message ?? 'Error al seleccionar tienda'
       set({ error: msg, loading: false })
     }
   },
@@ -199,6 +237,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       currentBranch: null,
       availableBranches: null,
       needsBranchSelection: false,
+      businessVertical: 'RETAIL',
+      businessProfile: 'RETAIL',
+      posOperationMode: 'QUICK_SALE',
+      enabledFeatures: [],
+      businessFeatures: DEFAULT_BUSINESS_FEATURES,
+      tenantSuspended: false,
     })
   },
 }))

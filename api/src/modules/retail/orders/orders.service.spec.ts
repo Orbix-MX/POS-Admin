@@ -3,6 +3,10 @@ import { NotFoundException } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { PrismaService } from '../../../database/prisma.service';
 import { CouponsService } from '../coupons/coupons.service';
+import { AuditContextService } from '../../../common/context/audit-context.service';
+import { TenantContextService } from '../../../common/context/tenant-context.service';
+import { AuditService } from '../../../common/services/audit.service';
+import { InventoryConsumptionEngine } from '../inventory/inventory-consumption.engine';
 
 describe('OrdersService', () => {
   let service: OrdersService;
@@ -11,6 +15,7 @@ describe('OrdersService', () => {
   const mockPrismaService = {
     order: {
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       findMany: jest.fn(),
       update: jest.fn(),
       count: jest.fn(),
@@ -31,6 +36,22 @@ describe('OrdersService', () => {
         OrdersService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: CouponsService, useValue: mockCouponsService },
+        {
+          provide: AuditContextService,
+          useValue: { getUserId: jest.fn().mockReturnValue('user-1') },
+        },
+        {
+          provide: TenantContextService,
+          useValue: {
+            requireTenantId: jest.fn().mockReturnValue('tenant-1'),
+            getBranchId: jest.fn().mockReturnValue(null),
+          },
+        },
+        { provide: AuditService, useValue: { log: jest.fn() } },
+        {
+          provide: InventoryConsumptionEngine,
+          useValue: { consume: jest.fn(), restore: jest.fn(), validate: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -81,7 +102,7 @@ describe('OrdersService', () => {
         payment: null,
       };
 
-      mockPrismaService.order.findUnique.mockResolvedValue(mockOrder);
+      mockPrismaService.order.findFirst.mockResolvedValue(mockOrder);
 
       const result = await service.findOne(orderId);
 
@@ -90,7 +111,7 @@ describe('OrdersService', () => {
     });
 
     it('should throw NotFoundException if order not found', async () => {
-      mockPrismaService.order.findUnique.mockResolvedValue(null);
+      mockPrismaService.order.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne('invalid-id')).rejects.toThrow(
         NotFoundException,
@@ -109,7 +130,7 @@ describe('OrdersService', () => {
 
       const updatedOrder = { ...mockOrder, status: newStatus };
 
-      mockPrismaService.order.findUnique.mockResolvedValue(mockOrder);
+      mockPrismaService.order.findFirst.mockResolvedValue(mockOrder);
       mockPrismaService.order.update.mockResolvedValue(updatedOrder);
 
       const result = await service.updateStatus(orderId, newStatus);
@@ -118,7 +139,7 @@ describe('OrdersService', () => {
     });
 
     it('should throw NotFoundException if order not found', async () => {
-      mockPrismaService.order.findUnique.mockResolvedValue(null);
+      mockPrismaService.order.findFirst.mockResolvedValue(null);
 
       await expect(service.updateStatus('invalid-id', 'CONFIRMED' as any)).rejects.toThrow(
         NotFoundException,

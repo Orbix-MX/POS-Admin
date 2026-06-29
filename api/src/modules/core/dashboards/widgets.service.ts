@@ -79,6 +79,11 @@ export class WidgetsService {
       if (v != null) params.set(k, v);
     }
 
+    // Validate endpoint is a relative /api/ path — prevents SSRF via DB-controlled value
+    if (!widget.endpoint.startsWith('/api/') || widget.endpoint.includes('..') || /[?#]/.test(widget.endpoint)) {
+      return this.errorResponse(widget, 'Invalid widget endpoint configuration');
+    }
+
     const port = process.env.PORT ?? '3001';
     const qs = params.toString();
     const url = `http://localhost:${port}${widget.endpoint}${qs ? `?${qs}` : ''}`;
@@ -181,8 +186,8 @@ export class WidgetsService {
       title: widget.title,
       subtitle: widget.subtitle ?? undefined,
       data: null,
-      meta: {} as WidgetMeta,
-      config: (widget.config ?? {}) as WidgetDisplayConfig,
+      meta: {},
+      config: (widget.config ?? {}),
       error: message,
       lastUpdate: new Date().toISOString(),
     };

@@ -243,7 +243,7 @@ export class PurchasesService {
     const order = await this.prisma.purchaseOrder.findFirst({
       where: { id, tenantId },
       include: {
-        items: true,
+        items: { include: { product: { select: { id: true, name: true } } } },
         receipts: { include: { items: true } },
         supplier: true,
       },
@@ -254,6 +254,9 @@ export class PurchasesService {
     }
     if (order.status === 'BORRADOR') {
       throw new BadRequestException('La orden debe ser enviada antes de recibir mercancía');
+    }
+    if (order.status === 'COMPLETADA') {
+      throw new BadRequestException('La orden ya está completada, no se puede recibir más mercancía');
     }
 
     // Build maps for validation
@@ -278,10 +281,16 @@ export class PurchasesService {
       if (!orderItem) {
         throw new BadRequestException(`El producto ${ri.productId} no está en esta orden de compra`);
       }
-      const totalAfter = (alreadyReceived.get(ri.productId) ?? 0) + ri.quantityReceived;
-      if (totalAfter > orderItem.quantityOrdered) {
+      const previouslyReceived = alreadyReceived.get(ri.productId) ?? 0;
+      const remainingQuantity = orderItem.quantityOrdered - previouslyReceived;
+      const productName = (orderItem as any).product?.name ?? ri.productId;
+
+      if (ri.quantityReceived <= 0) {
+        throw new BadRequestException(`La cantidad para "${productName}" debe ser mayor a 0`);
+      }
+      if (ri.quantityReceived > remainingQuantity) {
         throw new BadRequestException(
-          `La cantidad recibida para el producto ${ri.productId} excede la cantidad ordenada (${orderItem.quantityOrdered})`,
+          `"${productName}": se intenta recibir ${ri.quantityReceived} pero solo quedan ${remainingQuantity} pendientes de ${orderItem.quantityOrdered} ordenados (ya recibidos: ${previouslyReceived})`,
         );
       }
     }

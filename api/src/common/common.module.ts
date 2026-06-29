@@ -3,6 +3,8 @@ import { AuditContextService } from './context/audit-context.service';
 import { TenantContextService } from './context/tenant-context.service';
 import { AuditService } from './services/audit.service';
 import { PlanLimitsService } from './services/plan-limits.service';
+import { LicenseService } from './services/license.service';
+import { BusinessConfigurationService } from './business-config/business-configuration.service';
 
 /**
  * Global module so that AuditContextService and TenantContextService
@@ -13,7 +15,7 @@ import { PlanLimitsService } from './services/plan-limits.service';
  */
 @Global()
 @Module({
-  providers: [AuditContextService, TenantContextService, AuditService, PlanLimitsService],
-  exports: [AuditContextService, TenantContextService, AuditService, PlanLimitsService],
+  providers: [AuditContextService, TenantContextService, AuditService, PlanLimitsService, LicenseService, BusinessConfigurationService],
+  exports: [AuditContextService, TenantContextService, AuditService, PlanLimitsService, LicenseService, BusinessConfigurationService],
 })
 export class CommonModule {}

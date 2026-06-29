@@ -92,6 +92,17 @@ export const ALL_PERMISSIONS: PermissionDef[] = [
   { key: 'employees:create', name: 'Dar de alta empleados', description: 'Registrar nuevos empleados', module: 'employees', action: 'create' },
   { key: 'employees:edit', name: 'Editar empleados', description: 'Editar datos de empleados', module: 'employees', action: 'edit' },
   { key: 'employees:delete', name: 'Dar de baja empleados', description: 'Desactivar empleados', module: 'employees', action: 'delete' },
+  // comanda (restaurante)
+  { key: 'comanda:view',   name: 'Acceder a Comandas',  description: 'Acceder al módulo de captura de comandas de restaurante', module: 'comanda', action: 'view'   },
+  { key: 'comanda:manage', name: 'Administrar Comandas', description: 'Ver y gestionar todas las comandas del restaurante',       module: 'comanda', action: 'manage' },
+  // restaurant areas
+  { key: 'restaurant.areas:view',   name: 'Ver áreas de restaurante',   description: 'Ver listado de áreas (salón, terraza, etc.)', module: 'comanda', action: 'view'   },
+  { key: 'restaurant.areas:create', name: 'Crear áreas de restaurante', description: 'Crear nuevas áreas en el restaurante',        module: 'comanda', action: 'create' },
+  { key: 'restaurant.areas:update', name: 'Editar áreas de restaurante', description: 'Editar y activar/desactivar áreas',          module: 'comanda', action: 'update' },
+  // restaurant tables
+  { key: 'restaurant.tables:view',   name: 'Ver mesas',   description: 'Ver listado y estado de mesas', module: 'comanda', action: 'view'   },
+  { key: 'restaurant.tables:create', name: 'Crear mesas', description: 'Agregar nuevas mesas',          module: 'comanda', action: 'create' },
+  { key: 'restaurant.tables:update', name: 'Editar mesas', description: 'Editar mesas y cambiar estado', module: 'comanda', action: 'update' },
   // reports
   { key: 'reports:view', name: 'Ver reportes', module: 'reports', action: 'view' },
   // settings
@@ -101,10 +112,14 @@ export const ALL_PERMISSIONS: PermissionDef[] = [
   { key: 'tenant:view', name: 'Ver información empresa', description: 'Ver datos generales y branding de la empresa', module: 'tenant', action: 'view' },
   { key: 'tenant:edit', name: 'Editar información empresa', description: 'Editar datos generales de la empresa', module: 'tenant', action: 'edit' },
   { key: 'tenant:branding', name: 'Gestionar branding', description: 'Subir y cambiar logo y banner de la empresa', module: 'tenant', action: 'branding' },
+  // kitchen (KDS)
+  { key: 'kitchen:view',   name: 'Ver cocina (KDS)',       description: 'Ver órdenes activas en pantalla de cocina',     module: 'kitchen', action: 'view'   },
+  { key: 'kitchen:manage', name: 'Gestionar cocina',       description: 'Iniciar, pausar, reanudar y marcar listo',      module: 'kitchen', action: 'manage' },
+  { key: 'kitchen:reject', name: 'Rechazar órdenes',       description: 'Rechazar órdenes con comentario obligatorio',   module: 'kitchen', action: 'reject' },
 ];
 
 export const MODULES_ORDER = [
-  'dashboard', 'pos', 'products', 'categories', 'orders', 'refunds',
+  'dashboard', 'pos', 'comanda', 'products', 'categories', 'orders', 'refunds',
   'customers', 'receivables', 'suppliers', 'purchases', 'payables', 'cash', 'coupons', 'settings',
   'employees', 'branches', 'users', 'roles', 'reports',
 ];

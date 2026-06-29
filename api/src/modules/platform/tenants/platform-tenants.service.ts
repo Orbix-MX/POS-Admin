@@ -2,9 +2,11 @@ import {
   Injectable,
   ConflictException,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { PasswordUtil } from '../../../common/utils/password.util';
+import { LicenseService } from '../../../common/services/license.service';
 import { ProvisionTenantDto } from './dto/provision-tenant.dto';
 import {
   UpdateTenantStatusDto,
@@ -14,12 +16,23 @@ import {
 } from './dto/update-tenant.dto';
 import { PlatformTenantsQueryDto } from './dto/platform-tenants-query.dto';
 import { ALL_PERMISSIONS } from '../../core/permissions/permissions.constants';
+import {
+  VERTICAL_DEFAULT_FEATURES,
+  VERTICAL_DEFAULT_POS_MODE,
+  VERTICAL_DEFAULT_EXTRAS,
+  isModuleCompatibleWithVertical,
+  BusinessVertical,
+} from '@orbix/types';
+import { UpdateTenantVerticalDto, UpdateTenantProfileDto } from './dto/update-tenant.dto';
 
 type PlatformActor = { id: string };
 
 @Injectable()
 export class PlatformTenantsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private licenseService: LicenseService,
+  ) {}
 
   async findAll(query: PlatformTenantsQueryDto) {
     const { status, plan, search, page = 1, limit = 20 } = query;
@@ -106,14 +119,25 @@ export class PlatformTenantsService {
 
     const result = await this.prisma.$transaction(async (tx) => {
       // 1. Create tenant
+      const vertical = dto.tenant.businessVertical ?? 'RETAIL';
+      const posMode = dto.tenant.posOperationMode ?? VERTICAL_DEFAULT_POS_MODE[vertical];
+      const features = dto.tenant.enabledFeatures ?? VERTICAL_DEFAULT_FEATURES[vertical];
+
+      const defaultExtras = VERTICAL_DEFAULT_EXTRAS[vertical] ?? [];
+      const enabledModules = dto.tenant.enabledModules ?? defaultExtras;
+
       const tenant = await tx.tenant.create({
         data: {
           name: dto.tenant.name,
           slug: dto.tenant.slug,
           plan: dto.tenant.plan,
           status,
-          enabledModules: dto.tenant.enabledModules ?? [],
+          enabledModules,
           trialEndsAt,
+          businessVertical: vertical,
+          businessProfile: dto.tenant.businessProfile ?? 'RETAIL',
+          posOperationMode: posMode,
+          enabledFeatures: features,
         },
       });
 
@@ -205,6 +229,17 @@ export class PlatformTenantsService {
       },
     });
 
+    // 9. Issue the tenant's initial license (every tenant operates under one).
+    //    Trials inherit trialDays; otherwise a perpetual license the platform
+    //    admin can later bound/renew. No billing is involved yet.
+    await this.licenseService.createLicense(
+      result.tenant.id,
+      dto.trialDays
+        ? { plan: result.tenant.plan, trialDays: dto.trialDays, notes: dto.notes }
+        : { plan: result.tenant.plan, status: 'ACTIVE', notes: dto.notes },
+      actor.id,
+    );
+
     return {
       tenant: result.tenant,
       branch: result.branch,
@@ -273,6 +308,17 @@ export class PlatformTenantsService {
     const tenant = await this.prisma.tenant.findUnique({ where: { id } });
     if (!tenant) throw new NotFoundException('Tenant not found');
 
+    // Validate extras are compatible with the tenant's business vertical
+    const vertical = tenant.businessVertical;
+    const incompatible = dto.enabledModules.filter(
+      m => !isModuleCompatibleWithVertical(m, vertical),
+    );
+    if (incompatible.length > 0) {
+      throw new BadRequestException(
+        `Modules incompatible with vertical '${vertical}': ${incompatible.join(', ')}`,
+      );
+    }
+
     const before = { enabledModules: tenant.enabledModules };
     const updated = await this.prisma.tenant.update({
       where: { id },
@@ -313,6 +359,67 @@ export class PlatformTenantsService {
         entityId: id,
         before,
         after: { userLimitOverride: dto.userLimitOverride },
+      },
+    });
+
+    return updated;
+  }
+
+  async updateProfile(id: string, dto: UpdateTenantProfileDto, actor: PlatformActor) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id } });
+    if (!tenant) throw new NotFoundException('Tenant not found');
+
+    const before = { businessProfile: tenant.businessProfile };
+    const updated = await this.prisma.tenant.update({
+      where: { id },
+      data: { businessProfile: dto.businessProfile },
+    });
+
+    await this.prisma.platformAuditLog.create({
+      data: {
+        platformUserId: actor.id,
+        tenantId: id,
+        action: 'TENANT_PROFILE_CHANGED',
+        entityType: 'Tenant',
+        entityId: id,
+        before,
+        after: { businessProfile: dto.businessProfile },
+        notes: dto.notes,
+      },
+    });
+
+    return updated;
+  }
+
+  async updateVertical(id: string, dto: UpdateTenantVerticalDto, actor: PlatformActor) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id } });
+    if (!tenant) throw new NotFoundException('Tenant not found');
+
+    const before = {
+      businessVertical: tenant.businessVertical,
+      posOperationMode: tenant.posOperationMode,
+      enabledFeatures: tenant.enabledFeatures,
+    };
+
+    const updated = await this.prisma.tenant.update({
+      where: { id },
+      data: {
+        businessVertical: dto.businessVertical,
+        posOperationMode: dto.posOperationMode,
+        enabledFeatures: dto.enabledFeatures,
+      },
+    });
+
+    await this.prisma.platformAuditLog.create({
+      data: {
+        platformUserId: actor.id,
+        tenantId: id,
+        action: 'TENANT_VERTICAL_CHANGED',
+        entityType: 'Tenant',
+        entityId: id,
+        before,
+        after: { businessVertical: dto.businessVertical, posOperationMode: dto.posOperationMode, enabledFeatures: dto.enabledFeatures },
+        notes: dto.notes,
       },
     });
 

@@ -85,8 +85,8 @@ interface PaginatedResponse<T> {
 
 export async function fetchActiveCashSession(branchId?: string): Promise<ApiCashSession | null> {
   const params = branchId ? { branchId } : {}
-  const { data } = await api.get<ApiCashSession | null>('/cash-sessions/active', { params })
-  return data
+  const { data } = await api.get<ApiCashSession | Record<string, never>>('/cash-sessions/active', { params })
+  return data && 'id' in data ? data as ApiCashSession : null
 }
 
 export async function fetchCashSessions(params?: {
@@ -139,6 +139,30 @@ export interface ManualMovementInput {
 
 export async function createManualMovement(input: ManualMovementInput): Promise<ApiCashMovement> {
   const { data } = await api.post<ApiCashMovement>('/cash-sessions/active/movement', input)
+  return data
+}
+
+export interface SupplyPurchaseLine {
+  supplyId: string
+  quantity: number
+  lineCost: number
+}
+
+export interface WithdrawForSuppliesInput {
+  items: SupplyPurchaseLine[]
+  notes?: string
+  authEmail: string
+  authPassword: string
+}
+
+/** Retiro de efectivo de la caja para compra de insumos. Requiere password admin. */
+export async function withdrawForSupplies(
+  input: WithdrawForSuppliesInput,
+): Promise<{ total: number; itemsCount: number }> {
+  const { data } = await api.post<{ total: number; itemsCount: number }>(
+    '/cash-sessions/active/withdraw-supplies',
+    input,
+  )
   return data
 }
 

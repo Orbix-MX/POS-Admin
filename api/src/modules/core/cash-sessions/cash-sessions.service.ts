@@ -9,10 +9,20 @@ import { OpenCashSessionDto } from './dto/open-session.dto';
 import { CloseCashSessionDto } from './dto/close-session.dto';
 import { CloseWithAuthDto } from './dto/close-with-auth.dto';
 import { QueryCashSessionsDto } from './dto/query-sessions.dto';
+import { WithdrawForSuppliesDto } from './dto/withdraw-supplies.dto';
 import { roundMoney } from '../../../common/utils/money.util';
+import { convertToBaseUnit } from '../../../common/helpers/unit-conversion';
 
 const CASH_INCOME_TYPES = ['SALE', 'CXC_PAYMENT', 'INCOME'] as const;
 const CASH_EXPENSE_TYPES = ['SUPPLIER_PAYMENT', 'EXPENSE'] as const;
+
+// Nombre del índice único parcial (una sesión ABIERTA por tenant+sucursal) —
+// para traducir la violación P2002 a un mensaje de negocio claro.
+const OPEN_SESSION_UNIQUE_INDEX = 'cash_sessions_one_open_per_branch_key';
+
+// Valid-format bcrypt hash used as constant-time dummy when user email is not found.
+// Prevents timing oracle that would reveal which emails exist in the system.
+const TIMING_SAFE_DUMMY_HASH = '$2b$10$abcdefghijklmnopqrstuuQfTkF.n8cXD.5EGovU1qWDzd3tpjRCC';
 
 type MovementLike = {
   type: string;
@@ -35,6 +45,10 @@ export class CashSessionsService {
     const userId = this.auditContext.getUserId();
     const branchId = dto.branchId ?? this.tenantContext.getBranchId() ?? null;
 
+    // Pre-chequeo amigable. No es la garantía: dos operadores concurrentes pueden
+    // cruzarlo antes de insertar. La garantía real es el índice único parcial (una
+    // ABIERTA por tenant+sucursal); su violación P2002 se traduce abajo. Check +
+    // índice = mensaje claro y cero duplicados.
     const existing = await this.prisma.cashSession.findFirst({
       where: { tenantId, branchId, status: 'ABIERTA' },
     });
@@ -42,22 +56,51 @@ export class CashSessionsService {
       throw new BadRequestException('Ya existe una sesión de caja abierta para esta sucursal');
     }
 
-    return this.prisma.cashSession.create({
-      data: {
-        tenantId,
-        branchId,
-        status: 'ABIERTA',
-        exchangeRateUsdMxn: dto.exchangeRateUsdMxn,
-        openingAmount: dto.openingAmount,
-        openingAmountUsd: dto.openingAmountUsd ?? 0,
-        notes: dto.notes ?? null,
-        openedById: userId ?? null,
-      },
-      include: {
-        branch: { select: { id: true, name: true } },
-        openedBy: { select: { id: true, email: true } },
-      },
-    });
+    try {
+      // Apertura transaccional: el insert es la operación atómica que compite por
+      // el índice único. Si dos requests llegan a la vez, solo uno persiste.
+      return await this.prisma.$transaction((tx) =>
+        tx.cashSession.create({
+          data: {
+            tenantId,
+            branchId,
+            status: 'ABIERTA',
+            exchangeRateUsdMxn: dto.exchangeRateUsdMxn,
+            openingAmount: dto.openingAmount,
+            openingAmountUsd: dto.openingAmountUsd ?? 0,
+            notes: dto.notes ?? null,
+            openedById: userId ?? null,
+          },
+          include: {
+            branch: { select: { id: true, name: true } },
+            openedBy: { select: { id: true, email: true } },
+          },
+        }),
+      );
+    } catch (e) {
+      // P2002 sobre el índice parcial = otro operador ganó la carrera y ya abrió
+      // la sesión de esta sucursal. Se reporta como conflicto de negocio.
+      if (this.isOpenSessionUniqueViolation(e)) {
+        throw new BadRequestException('Ya existe una sesión de caja abierta para esta sucursal');
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * True cuando el error es una violación del índice único parcial que protege
+   * "una sola sesión ABIERTA por tenant+sucursal" (Prisma P2002). Como el índice
+   * es por expresión (COALESCE), el target puede no traer columnas: ante un P2002
+   * en este flujo se asume dicho índice (es la única restricción única posible).
+   */
+  private isOpenSessionUniqueViolation(e: unknown): boolean {
+    if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== 'P2002') {
+      return false;
+    }
+    const target = e.meta?.target;
+    if (typeof target === 'string') return target.includes(OPEN_SESSION_UNIQUE_INDEX);
+    if (Array.isArray(target)) return target.includes(OPEN_SESSION_UNIQUE_INDEX);
+    return true;
   }
 
   async close(id: string, dto: CloseCashSessionDto) {
@@ -187,9 +230,14 @@ export class CashSessionsService {
   async createManualMovement(dto: import('./dto/create-movement.dto').CreateManualMovementDto) {
     const tenantId = this.tenantContext.requireTenantId();
     const userId = this.auditContext.getUserId();
+    const branchId = this.tenantContext.getBranchId() ?? null;
 
+    // La sesión debe ser la de la sucursal del operador. Sin el filtro branchId, un
+    // movimiento manual caía en cualquier sesión abierta del tenant (cruce entre
+    // sucursales). Con branch null (token sin sucursal) Prisma ignora el filtro y se
+    // conserva el comportamiento previo.
     const activeSession = await this.prisma.cashSession.findFirst({
-      where: { tenantId, status: 'ABIERTA' },
+      where: { tenantId, branchId: branchId ?? undefined, status: 'ABIERTA' },
     });
 
     const currency = dto.currency ?? 'MXN';
@@ -214,10 +262,9 @@ export class CashSessionsService {
     const tenantId = this.tenantContext.requireTenantId();
 
     const user = await this.prisma.user.findFirst({ where: { email: dto.authEmail } });
-    if (!user) throw new UnauthorizedException('Credenciales incorrectas');
-
-    const passwordValid = await bcrypt.compare(dto.authPassword, user.password);
-    if (!passwordValid) throw new UnauthorizedException('Credenciales incorrectas');
+    // Always run bcrypt regardless of whether user exists — prevents timing oracle
+    const passwordValid = await bcrypt.compare(dto.authPassword, user?.password ?? TIMING_SAFE_DUMMY_HASH);
+    if (!user || !passwordValid) throw new UnauthorizedException('Credenciales incorrectas');
 
     const membership = await this.prisma.tenantMembership.findFirst({
       where: { userId: user.id, tenantId },
@@ -242,10 +289,9 @@ export class CashSessionsService {
     const adminUser = await this.prisma.user.findFirst({
       where: { email: dto.authEmail },
     });
-    if (!adminUser) throw new UnauthorizedException('Credenciales incorrectas');
-
-    const passwordValid = await bcrypt.compare(dto.authPassword, adminUser.password);
-    if (!passwordValid) throw new UnauthorizedException('Credenciales incorrectas');
+    // Always run bcrypt regardless of whether user exists — prevents timing oracle
+    const passwordValid = await bcrypt.compare(dto.authPassword, adminUser?.password ?? TIMING_SAFE_DUMMY_HASH);
+    if (!adminUser || !passwordValid) throw new UnauthorizedException('Credenciales incorrectas');
 
     // Ensure authorizer belongs to the same tenant
     const membership = await this.prisma.tenantMembership.findFirst({
@@ -297,6 +343,140 @@ export class CashSessionsService {
         authorizedBy: { select: { id: true, email: true } },
         movements: true,
       },
+    });
+  }
+
+  /**
+   * Verifica credenciales de un autorizador (admin): email + password + que
+   * pertenezca al tenant y tenga el permiso requerido (SUPER_ADMIN lo omite).
+   * Devuelve el usuario autorizador.
+   */
+  private async verifyAuthorizer(
+    tenantId: string,
+    authEmail: string,
+    authPassword: string,
+    requiredPermission: string,
+  ) {
+    const user = await this.prisma.user.findFirst({ where: { email: authEmail } });
+    if (!user) throw new UnauthorizedException('Credenciales incorrectas');
+
+    const passwordValid = await bcrypt.compare(authPassword, user.password);
+    if (!passwordValid) throw new UnauthorizedException('Credenciales incorrectas');
+
+    const membership = await this.prisma.tenantMembership.findFirst({
+      where: { userId: user.id, tenantId },
+    });
+    if (!membership) {
+      throw new UnauthorizedException('El usuario autorizador no pertenece a esta organización');
+    }
+
+    if (user.role !== 'SUPER_ADMIN') {
+      const perms = await this.getEffectivePermissions(user.id, tenantId);
+      if (!perms.includes(requiredPermission)) {
+        throw new ForbiddenException('El usuario autorizador no tiene permiso para autorizar esta operación');
+      }
+    }
+
+    return user;
+  }
+
+  /**
+   * Retiro de efectivo de la caja para compra de insumos, con autorización de
+   * administrador (mismo permiso que el cierre: pos.cash:close). Registra un
+   * egreso (EXPENSE) y suma el stock comprado a cada insumo con su movimiento
+   * de tipo PURCHASE. Todo en una transacción.
+   */
+  async withdrawForSupplies(dto: WithdrawForSuppliesDto) {
+    const tenantId = this.tenantContext.requireTenantId();
+    const userId = this.auditContext.getUserId() ?? null;
+    const branchId = this.tenantContext.getBranchId() ?? null;
+
+    // 1. Autorización del administrador
+    const authorizer = await this.verifyAuthorizer(
+      tenantId,
+      dto.authEmail,
+      dto.authPassword,
+      'pos.cash:close',
+    );
+
+    // 2. Debe existir sesión de caja abierta
+    const session = await this.prisma.cashSession.findFirst({
+      where: { tenantId, branchId: branchId ?? undefined, status: 'ABIERTA' },
+      include: { movements: true },
+    });
+    if (!session) {
+      throw new BadRequestException('No hay sesión de caja activa. Abre la caja antes de retirar efectivo.');
+    }
+
+    // 3. Cargar y validar insumos
+    const supplyIds = [...new Set(dto.items.map((i) => i.supplyId))];
+    const supplies = await this.prisma.supply.findMany({
+      where: { id: { in: supplyIds }, tenantId },
+    });
+    if (supplies.length !== supplyIds.length) {
+      throw new NotFoundException('Uno o más insumos no existen');
+    }
+    const supplyMap = new Map(supplies.map((s) => [s.id, s]));
+
+    const total = roundMoney(dto.items.reduce((sum, i) => sum + i.lineCost, 0));
+    if (total <= 0) throw new BadRequestException('El monto del retiro debe ser mayor a 0');
+
+    // 4. Validar efectivo disponible (MXN) en la caja
+    const movements = session.movements as unknown as MovementLike[];
+    const expectedCashMxn = this.calculateExpectedCash(Number(session.openingAmount), movements, 'MXN');
+    if (total > expectedCashMxn) {
+      throw new BadRequestException(
+        `Efectivo insuficiente en caja. Disponible: $${expectedCashMxn.toFixed(2)}, retiro solicitado: $${total.toFixed(2)}`,
+      );
+    }
+
+    // 5. Transacción: egreso + alta de stock de insumos
+    return this.prisma.$transaction(async (tx) => {
+      const cashMovement = await tx.cashMovement.create({
+        data: {
+          tenantId,
+          cashSessionId: session.id,
+          type: 'EXPENSE',
+          currency: 'MXN',
+          amount: total,
+          paymentMethod: 'CASH',
+          referenceType: 'SUPPLY_PURCHASE',
+          notes: `Compra de insumos — autorizado por ${authorizer.email}${dto.notes ? ` — ${dto.notes}` : ''}`,
+          createdById: userId,
+        },
+      });
+
+      for (const line of dto.items) {
+        const supply = supplyMap.get(line.supplyId)!;
+        const convFactor = Number(supply.conversionFactor) || 1;
+        // La cantidad se captura en la unidad de inventario; el stock se guarda en unidad base
+        const quantityInBase = supply.baseUnitId
+          ? convertToBaseUnit(line.quantity, convFactor)
+          : line.quantity;
+
+        await tx.supply.update({
+          where: { id: supply.id },
+          data: {
+            stock: { increment: quantityInBase },
+            updatedById: userId,
+          },
+        });
+
+        await tx.supplyMovement.create({
+          data: {
+            tenantId,
+            supplyId: supply.id,
+            type: 'PURCHASE',
+            quantity: quantityInBase,
+            referenceId: cashMovement.id,
+            notes: `Compra desde caja (${line.quantity} ${supply.unit}, $${roundMoney(line.lineCost).toFixed(2)})`,
+            ...(branchId && { branchId }),
+            ...(userId && { createdById: userId }),
+          },
+        });
+      }
+
+      return { cashMovement, total, itemsCount: dto.items.length };
     });
   }
 

@@ -2,7 +2,14 @@
   "permissions": {
     "allow": [
       "Bash(npx tsc *)",
-      "Bash(pnpm run *)"
+      "Bash(pnpm run *)",
+      "Bash(dir \"C:\\\\Users\\\\juanj\\\\source\\\\repos\\\\ERPPV\\\\api\\\\src\\\\modules\\\\core\\\\dashboards\")",
+      "Bash(node -e \"try { module = require\\('./node_modules/@prisma/client/default.js'\\); console.log\\(Object.keys\\(module\\).slice\\(0,5\\)\\); } catch\\(e\\) { console.log\\('ERR:', e.code, e.message.slice\\(0,100\\)\\); }\")",
+      "Bash(node -e \"const m = require\\('./node_modules/@prisma/client/default.js'\\); console.log\\(Object.keys\\(m\\).join\\('\\\\n'\\)\\);\")",
+      "Bash(node -e \"const m = require\\('./node_modules/@prisma/client/default.js'\\); const {PrismaClient} = m; const p = Object.create\\(PrismaClient.prototype\\); console.log\\('platformAuditLog' in p, typeof p.platformAuditLog\\);\")",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"require\\('C:/Users/juanj/source/repos/ERPPV/api/dist/src/app.module.js'\\)\")",
+      "Bash(xargs grep -l \"sign\\\\|JwtService\")"
     ]
   }
 }

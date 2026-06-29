@@ -4,7 +4,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   LayoutDashboard, ShoppingBag, ShoppingCart, Package,
   Users, Truck, FileText, Settings, Shield,
-  ChevronDown, LogOut, Landmark, Receipt, TrendingUp, Wrench, UserCheck, MapPin,
+  ChevronDown, LogOut, Landmark, Receipt, TrendingUp, Wrench, UserCheck, MapPin, CreditCard, FlaskConical, ChefHat, LayoutGrid, Grid3x3,
 } from 'lucide-react'
 
 type NavItem = {
@@ -13,6 +13,11 @@ type NavItem = {
   icon: LucideIcon
   path: string
   permission?: string
+  featureGuard?: (hasFeature: (f: TenantFeature) => boolean, hasPosMode: (m: PosOperationMode) => boolean) => boolean
+  verticalGuard?: (hasVertical: (v: BusinessVertical) => boolean) => boolean
+  // Convergence: gate by capability derived from the business profile.
+  // Preferred over verticalGuard for module availability.
+  businessFeatureGuard?: (hasBusinessFeature: (f: keyof BusinessFeatures) => boolean) => boolean
 }
 
 type NavGroup = {
@@ -22,6 +27,8 @@ type NavGroup = {
 }
 import { useERPStore } from '@/store/erp-store'
 import { useAuthStore } from '@/store/auth-store'
+import { useTenantFeatures } from '@/hooks/use-tenant-features'
+import type { TenantFeature, PosOperationMode, BusinessVertical, BusinessFeatures } from '@/hooks/use-tenant-features'
 import { AvatarInitials } from './avatar-initials'
 
 function TenantLogo({ logoUrl, name, size = 30 }: { logoUrl?: string; name: string; size?: number }) {
@@ -58,12 +65,28 @@ const ALL_NAV: NavGroup[] = [
       { module: 'ventas',    label: 'Ventas',       icon: ShoppingBag,     path: '/ventas'    },
       { module: 'compras',   label: 'Compras',      icon: ShoppingCart,    path: '/compras'   },
       { module: 'inventario',label: 'Inventario',   icon: Package,         path: '/inventario'},
+      { module: 'insumos',   label: 'Insumos',      icon: FlaskConical,    path: '/insumos',  businessFeatureGuard: (has: (f: keyof BusinessFeatures) => boolean) => has('enableSupplies') },
       { module: 'clientes',  label: 'Clientes',     icon: Users,           path: '/clientes'  },
       { module: 'proveedores',label: 'Proveedores', icon: Truck,           path: '/proveedores'},
       { module: 'servicios', label: 'Servicios',    icon: Wrench,          path: '/servicios' },
       { module: 'cotizaciones',label: 'Cotizaciones',icon: FileText,       path: '/cotizaciones'},
       { module: 'ordenes-trabajo', label: 'Órdenes de Trabajo', icon: Wrench, path: '/ordenes-trabajo' },
       { module: 'empleados', label: 'Capital Humano', icon: UserCheck, path: '/empleados' },
+      { module: 'caja-restaurante', label: 'Caja Restaurante', icon: CreditCard, path: '/caja-restaurante', verticalGuard: (hasVertical: (v: BusinessVertical) => boolean) => hasVertical('RESTAURANT') },
+      { module: 'dining-areas',      label: 'Áreas',   icon: LayoutGrid, path: '/dining-areas',      verticalGuard: (hasVertical: (v: BusinessVertical) => boolean) => hasVertical('RESTAURANT') },
+      { module: 'restaurant-tables', label: 'Mesas',   icon: Grid3x3,    path: '/restaurant-tables', verticalGuard: (hasVertical: (v: BusinessVertical) => boolean) => hasVertical('RESTAURANT') },
+      { module: 'comanda',           label: 'Comanda', icon: ChefHat,    path: '/comanda',            verticalGuard: (hasVertical: (v: BusinessVertical) => boolean) => hasVertical('RESTAURANT') },
+      {
+        // El gate autoritativo es enabledModules.includes('kitchen') (se enciende
+        // al habilitar el módulo). No usar featureGuard('KITCHEN'): 'KITCHEN' es un
+        // TenantFeature (Tenant.enabledFeatures) distinto del módulo y se desincroniza.
+        module: 'kitchen',
+        label: 'Cocina',
+        icon: ChefHat,
+        path: '/kitchen',
+        permission: 'kitchen:view',
+        verticalGuard: (hasVertical: (v: BusinessVertical) => boolean) => hasVertical('RESTAURANT'),
+      },
     ],
   },
   {
@@ -82,6 +105,7 @@ const ALL_NAV: NavGroup[] = [
 export function Sidebar() {
   const { empresa, tenantBranding } = useERPStore()
   const { user, logout, enabledModules, permissions, currentBranch, availableBranches, confirmBranch } = useAuthStore()
+  const { hasFeature, hasPosMode } = useTenantFeatures()
   const [expanded, setExpanded] = useState<Record<string, boolean>>({ business: true, management: true })
   const [branchMenuOpen, setBranchMenuOpen] = useState(false)
 
@@ -90,11 +114,16 @@ export function Sidebar() {
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN'
 
+  const { hasVertical, hasBusinessFeature } = useTenantFeatures()
+
   const visibleGroups = ALL_NAV.map(group => ({
     ...group,
     items: group.items.filter(item =>
       enabledModules.includes(item.module) &&
-      (isSuperAdmin || !item.permission || permissions.includes(item.permission))
+      (isSuperAdmin || !item.permission || permissions.includes(item.permission)) &&
+      (!item.featureGuard || item.featureGuard(hasFeature, hasPosMode)) &&
+      (!item.verticalGuard || item.verticalGuard(hasVertical)) &&
+      (!item.businessFeatureGuard || item.businessFeatureGuard(hasBusinessFeature))
     ),
   })).filter(group => group.items.length > 0)
 

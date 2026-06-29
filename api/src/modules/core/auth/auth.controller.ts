@@ -10,8 +10,11 @@ import {
   SelectTenantResponseDto,
   SelectBranchResponseDto,
   CapabilitiesResponseDto,
+  RefreshResponseDto,
 } from './dto/auth-response.dto';
+import { RefreshTokenDto, LogoutDto } from './dto/refresh-token.dto';
 import { Public } from '../../../common/decorators/public.decorator';
+import { AllowInvalidLicense } from '../../../common/decorators/allow-invalid-license.decorator';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { TenantRole, TenantPlan } from '@prisma/client';
 
@@ -27,6 +30,10 @@ type AuthUser = {
 
 @ApiTags('Auth')
 @Controller('auth')
+// Session endpoints stay reachable even with an invalid license so users can
+// read their state, switch to a licensed tenant, or log out. Per-tenant entry
+// is still gated inside selectTenant.
+@AllowInvalidLicense()
 export class AuthController {
   constructor(private authService: AuthService) {}
 
@@ -48,12 +55,24 @@ export class AuthController {
     return this.authService.login(loginDto);
   }
 
+  @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @Post('refresh')
+  @ApiOperation({ summary: 'Exchange a refresh token for a new access token (rotates refresh token)' })
+  async refresh(@Body() dto: RefreshTokenDto): Promise<RefreshResponseDto> {
+    return this.authService.refresh(dto.refreshToken);
+  }
+
   @Post('logout')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Logout — revokes current token' })
-  async logout(@Headers('authorization') authHeader: string): Promise<{ message: string }> {
+  @ApiOperation({ summary: 'Logout — revokes current access token and (optionally) the refresh token' })
+  async logout(
+    @Headers('authorization') authHeader: string,
+    @Body() dto: LogoutDto,
+  ): Promise<{ message: string }> {
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : '';
-    await this.authService.logout(token);
+    await this.authService.logout(token, dto?.refreshToken);
     return { message: 'Logged out successfully' };
   }
 
@@ -65,6 +84,8 @@ export class AuthController {
   }
 
   @Patch('select-tenant/:slug')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Select active tenant — returns new JWT with tenantId embedded' })
   selectTenant(

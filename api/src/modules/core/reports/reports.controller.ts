@@ -4,6 +4,7 @@ import { Type } from 'class-transformer';
 import { IsEnum, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { ServiceQuoteStatus } from '@prisma/client';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
+import { RequireModule } from '../../../common/guards/require-module.guard';
 import { ReportsService } from './reports.service';
 
 class MonthlyQuotesQueryDto {
@@ -77,6 +78,7 @@ class MonthlySalesQueryDto {
   branchId?: string;
 }
 
+@RequireModule('reportes')
 @ApiTags('Reports')
 @ApiBearerAuth()
 @Controller('reports')
@@ -203,6 +205,24 @@ export class ReportsController {
   @ApiQuery({ name: 'branchId', required: false, description: 'Filter by branch ID' })
   monthlySales(@Query() query: MonthlySalesQueryDto) {
     return this.reportsService.monthlySales({
+      year:     query.year,
+      month:    query.month,
+      branchId: query.branchId,
+    });
+  }
+
+  @Get('orders/monthly')
+  @RequirePermissions('reports:view')
+  @ApiOperation({
+    summary: 'Cantidad de ventas del mes',
+    description:
+      'Returns a COUNTER-format WidgetResponse with the number of paid orders (not revenue) for the requested month, including month-over-month comparison.',
+  })
+  @ApiQuery({ name: 'year',     required: false, description: 'Year (default: current)' })
+  @ApiQuery({ name: 'month',    required: false, description: 'Month 1-12 (default: current)' })
+  @ApiQuery({ name: 'branchId', required: false, description: 'Filter by branch ID' })
+  monthlyOrderCount(@Query() query: MonthlySalesQueryDto) {
+    return this.reportsService.monthlyOrderCount({
       year:     query.year,
       month:    query.month,
       branchId: query.branchId,

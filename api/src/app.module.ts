@@ -24,6 +24,10 @@ import { DashboardModule } from './modules/core/dashboard/dashboard.module';
 import { EmployeesModule } from './modules/core/employees/employees.module';
 import { DashboardsModule } from './modules/core/dashboards/dashboards.module';
 import { ReportsModule } from './modules/core/reports/reports.module';
+import { PrinterConfigsModule } from './modules/core/printer-configs/printer-configs.module';
+import { DevicesModule } from './modules/core/devices/devices.module';
+import { LicenseModule } from './modules/core/license/license.module';
+import { StaffModule } from './modules/core/staff/staff.module';
 
 // Retail modules — retail/POS vertical
 import { CategoriesModule } from './modules/retail/categories/categories.module';
@@ -35,6 +39,9 @@ import { PurchasesModule } from './modules/retail/purchases/purchases.module';
 import { ServicesModule } from './modules/retail/services/services.module';
 import { ServiceQuotesModule } from './modules/retail/service-quotes/service-quotes.module';
 import { WorkOrdersModule } from './modules/retail/work-orders/work-orders.module';
+import { SuppliesModule } from './modules/retail/supplies/supplies.module';
+import { MeasurementUnitsModule } from './modules/retail/measurement-units/measurement-units.module';
+import { RestaurantModule } from './modules/restaurant/restaurant.module';
 import { PlatformModule } from './modules/platform/platform.module';
 
 @Module({
@@ -61,6 +68,10 @@ import { PlatformModule } from './modules/platform/platform.module';
     EmployeesModule,
     DashboardsModule,
     ReportsModule,
+    PrinterConfigsModule,
+    DevicesModule,
+    LicenseModule,
+    StaffModule,
 
     // Retail
     CategoriesModule,
@@ -72,6 +83,9 @@ import { PlatformModule } from './modules/platform/platform.module';
     ServicesModule,
     ServiceQuotesModule,
     WorkOrdersModule,
+    SuppliesModule,
+    MeasurementUnitsModule,
+    RestaurantModule,
 
     // Platform (SaaS admin — separate from tenant modules)
     PlatformModule,

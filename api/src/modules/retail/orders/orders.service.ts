@@ -17,6 +17,7 @@ import {
   calculateTax,
   convertMoney,
 } from '../../../common/utils/money.util';
+import { InventoryConsumptionEngine } from '../inventory/inventory-consumption.engine';
 
 @Injectable()
 export class OrdersService {
@@ -26,6 +27,7 @@ export class OrdersService {
     private tenantContext: TenantContextService,
     private couponsService: CouponsService,
     private audit: AuditService,
+    private inventory: InventoryConsumptionEngine,
   ) { }
 
   async create(dto: CreateOrderDto): Promise<Order> {
@@ -33,12 +35,15 @@ export class OrdersService {
       throw new BadRequestException('La venta debe tener al menos un item');
     }
 
+    const tenantId = this.tenantContext.requireTenantId();
     const customerId: string | null = dto.customerId ?? null;
     let addressId: string | null = null;
 
     if (customerId) {
-      const customer = await this.prisma.customer.findUnique({
-        where: { id: customerId },
+      // Aislamiento multi-tenant: el id viene del cliente; sin filtro tenantId un
+      // operador podría referenciar un Customer de otra organización.
+      const customer = await this.prisma.customer.findFirst({
+        where: { id: customerId, tenantId },
         include: { addresses: true },
       });
       if (!customer) {
@@ -52,10 +57,24 @@ export class OrdersService {
     const productItems = dto.items.filter((i) => !i.itemType || i.itemType === 'PRODUCT');
     const serviceItems = dto.items.filter((i) => i.itemType === 'SERVICE');
 
-    // Validate and load products
+    // Validate and load products (include recipe for consumption check)
     const productIds = [...new Set(productItems.map((i) => i.productId).filter(Boolean) as string[])];
     const products = productIds.length
-      ? await this.prisma.product.findMany({ where: { id: { in: productIds } }, include: { category: true } })
+      ? await this.prisma.product.findMany({
+          // Aislamiento multi-tenant: ids controlados por el cliente — un producto
+          // de otro tenant decrementaría su stock. Filtrar por tenantId.
+          where: { id: { in: productIds }, tenantId },
+          include: {
+            category: true,
+            recipe: {
+              include: {
+                items: {
+                  include: { supply: { include: { baseUnit: true, inventoryUnit: true } } },
+                },
+              },
+            },
+          },
+        })
       : [];
     if (products.length !== productIds.length) {
       const found = new Set(products.map((p) => p.id));
@@ -63,17 +82,26 @@ export class OrdersService {
       throw new NotFoundException(`Productos no encontrados: ${missing.join(', ')}`);
     }
 
+    // Stock availability (SIMPLE / RECIPE / COMBO) is validated and applied
+    // atomically by InventoryConsumptionEngine inside the transaction below.
+
     // Optionally validate services from catalog
     const catalogServiceIds = [...new Set(serviceItems.map((i) => i.serviceId).filter(Boolean) as string[])];
     const catalogServices = catalogServiceIds.length
-      ? await this.prisma.service.findMany({ where: { id: { in: catalogServiceIds } } })
+      ? await this.prisma.service.findMany({ where: { id: { in: catalogServiceIds }, tenantId } })
       : [];
+    // Un serviceId del catálogo debe pertenecer al tenant. Si tras el filtro falta
+    // alguno, es una referencia cruzada entre organizaciones → se rechaza.
+    if (catalogServices.length !== catalogServiceIds.length) {
+      const found = new Set(catalogServices.map((s) => s.id));
+      const missing = catalogServiceIds.filter((id) => !found.has(id));
+      throw new NotFoundException(`Servicios no encontrados: ${missing.join(', ')}`);
+    }
     const serviceMap = new Map(catalogServices.map((s) => [s.id, s]));
 
     const productMap = new Map(products.map((p) => [p.id, p]));
 
     // Tenant default tax rate (percent) from settings JSON; product.taxRate overrides per item
-    const tenantId = this.tenantContext.requireTenantId();
     const tenantRow = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { settings: true },
@@ -190,7 +218,7 @@ export class OrdersService {
     if (dto.isLayaway) {
       initialPaymentStatus = paidNow >= total ? 'PAID' : paidNow > 0 ? 'PARTIALLY_PAID' : 'PENDING';
     } else {
-      initialPaymentStatus = (dto.paymentStatus ?? PaymentStatus.PENDING) as string;
+      initialPaymentStatus = (dto.paymentStatus ?? PaymentStatus.PENDING);
     }
 
     const order = await this.prisma.$transaction(async (tx) => {
@@ -210,6 +238,7 @@ export class OrdersService {
           ...(couponCode != null && { couponCode }),
           status: dto.isLayaway ? ('LAYAWAY' as any) : ((dto.status ?? 'PENDING') as any),
           paymentStatus: initialPaymentStatus as any,
+          orderOrigin: 'RETAIL_POS',
           ...(createdById != null && { createdById }),
           ...(branchId != null && { branchId }),
           ...(dto.sourceQuoteId != null && { serviceQuoteId: dto.sourceQuoteId }),
@@ -261,47 +290,17 @@ export class OrdersService {
         });
       }
 
-      // Decrement stock only for product items — guarded against negative stock.
-      // updateMany with stock>=qty is atomic at row level; count===0 means the
-      // product is untracked-with-insufficient or a concurrent sale drained it.
-      for (const item of productItems) {
-        const product = productMap.get(item.productId!)!;
-        if (product.trackInventory) {
-          const res = await tx.product.updateMany({
-            where: { id: item.productId!, stock: { gte: item.quantity } },
-            data: { stock: { decrement: item.quantity } },
-          });
-          if (res.count === 0) {
-            throw new BadRequestException(
-              `Stock insuficiente para "${product.name}". Disponible: ${product.stock}, solicitado: ${item.quantity}`,
-            );
-          }
-        } else {
-          await tx.product.update({
-            where: { id: item.productId! },
-            data: { stock: { decrement: item.quantity } },
-          });
-        }
-      }
-
-      // Decrement branch inventory for product items only
-      if (branchId) {
-        for (const item of productItems) {
-          const updatedProduct = await tx.product.findUnique({
-            where: { id: item.productId! },
-            select: { stock: true },
-          });
-          await tx.branchInventory.upsert({
-            where: { branchId_productId: { branchId, productId: item.productId! } },
-            update: { stock: { decrement: item.quantity } },
-            create: {
-              branchId,
-              productId: item.productId!,
-              stock: updatedProduct?.stock ?? 0,
-            },
-          });
-        }
-      }
+      // Single inventory engine: SIMPLE / RECIPE / COMBO consumption + branch
+      // inventory + movements, guarded against negative stock atomically.
+      await this.inventory.consume(
+        tx,
+        productItems.map((i) => ({
+          productId: i.productId ?? null,
+          quantity: i.quantity,
+          itemType: 'PRODUCT' as const,
+        })),
+        { tenantId, branchId: branchId ?? null, userId: createdById ?? null, referenceId: newOrder.id, referenceType: 'ORDER' },
+      );
 
       const paymentStatus = initialPaymentStatus as any;
       const paymentConcept = dto.isLayaway ? 'LAYAWAY_DEPOSIT' : 'SALE';
@@ -365,18 +364,21 @@ export class OrdersService {
 
       const remainingBalance = Math.max(0, total - paidNow);
 
-      if (isCredit && customerId) {
+      if (isCredit && customerId && remainingBalance > 0) {
         const dueDate = dto.dueDate
           ? new Date(dto.dueDate)
           : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
+        // Pago mixto (efectivo/tarjeta/transferencia + crédito): la CxC sólo debe
+        // reflejar el SALDO a crédito, no el total. paidNow ya excluye los CREDITO,
+        // así que remainingBalance = lo realmente financiado. Espejo de apartados.
         await tx.accountReceivable.create({
           data: {
             tenantId,
             orderId: newOrder.id,
             customerId,
             totalAmount: total,
-            balance: total,
+            balance: remainingBalance,
             status: 'PENDIENTE',
             dueDate,
           },
@@ -461,12 +463,13 @@ export class OrdersService {
 
   async findAll(query: QueryOrdersDto): Promise<PaginatedResponse<Order>> {
     const tenantId = this.tenantContext.requireTenantId();
-    const { skip, limit, page, customerId, status } = query;
+    const { skip, limit, page, customerId, status, orderOrigin } = query;
 
     const where: any = {
       tenantId,
       ...(customerId != null && { customerId }),
       ...(status != null && { status }),
+      ...(orderOrigin != null && { orderOrigin }),
     };
 
     const [orders, total] = await Promise.all([
@@ -565,6 +568,7 @@ export class OrdersService {
       include: {
         items: true,
         payments: true,
+        refunds: { include: { items: true } },
         accountReceivable: { include: { payments: true } },
       },
     });
@@ -575,52 +579,44 @@ export class OrdersService {
 
     const before = { status: order.status, paymentStatus: order.paymentStatus };
 
-    return this.prisma.$transaction(async (tx) => {
-      // 1. Restore stock for product items
-      for (const it of order.items) {
-        if (it.itemType !== 'PRODUCT' || !it.productId) continue;
-        const prod = await tx.product.findUnique({
-          where: { id: it.productId },
-          select: { trackInventory: true },
-        });
-        if (!prod?.trackInventory) continue;
-
-        await tx.product.update({
-          where: { id: it.productId },
-          data: { stock: { increment: it.quantity } },
-        });
-        if (order.branchId) {
-          await tx.branchInventory.upsert({
-            where: {
-              branchId_productId: {
-                branchId: order.branchId,
-                productId: it.productId,
-              },
-            },
-            update: { stock: { increment: it.quantity } },
-            create: {
-              branchId: order.branchId,
-              productId: it.productId,
-              stock: it.quantity,
-            },
-          });
-        }
-        await tx.inventoryMovement.create({
-          data: {
-            tenantId,
-            type: 'DEVOLUCION',
-            productId: it.productId,
-            branchId: order.branchId ?? null,
-            quantity: it.quantity,
-            referenceId: order.id,
-            referenceType: 'ORDER',
-            notes: `Reversa por ${mode}`,
-            createdById: userId,
-          },
-        });
+    // Cantidades ya devueltas al stock por reembolsos por línea previos. La reversa
+    // solo debe restaurar el remanente no reembolsado; restaurar de nuevo lo que un
+    // refund ya repuso genera stock fantasma / doble devolución.
+    const refundedQtyByItem = new Map<string, number>();
+    for (const r of order.refunds) {
+      for (const ri of r.items) {
+        refundedQtyByItem.set(
+          ri.orderItemId,
+          (refundedQtyByItem.get(ri.orderItemId) ?? 0) + ri.quantity,
+        );
       }
+    }
+    const restorableItems = order.items
+      .map((it) => ({
+        productId: it.productId,
+        itemType: it.itemType,
+        quantity: it.quantity - (refundedQtyByItem.get(it.id) ?? 0),
+      }))
+      .filter((it) => it.quantity > 0);
 
-      // 2. Reverse cash movements tied to this order
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Restaurar SOLO el remanente no reembolsado (engine: SIMPLE/RECIPE/COMBO).
+      await this.inventory.restore(
+        tx,
+        restorableItems,
+        {
+          tenantId,
+          branchId: order.branchId ?? null,
+          userId,
+          referenceId: order.id,
+          referenceType: 'ORDER',
+          note: `Reversa por ${mode}`,
+        },
+      );
+
+      // 2. Reversar el efectivo de la venta MENOS lo que reembolsos previos ya
+      // sacaron de la caja. Sin esto, un refund parcial (efectivo ya devuelto)
+      // seguido de una reversa sacaría el dinero dos veces (doble salida).
       const activeSession = await tx.cashSession.findFirst({
         where: {
           tenantId,
@@ -632,7 +628,26 @@ export class OrdersService {
       const orderMovements = await tx.cashMovement.findMany({
         where: { tenantId, referenceId: order.id, referenceType: { in: ['ORDER', 'CHANGE_OUT'] } },
       });
+      const priorRefundMovements = await tx.cashMovement.findMany({
+        where: { tenantId, referenceId: order.id, referenceType: 'REFUND' },
+      });
+      const mxnValue = (m: (typeof orderMovements)[number]): number =>
+        Number(m.amountMxnEquivalent ?? m.amount);
+
+      const alreadyRefundedMxn = priorRefundMovements.reduce((s, m) => s + mxnValue(m), 0);
+      let reverseBudgetMxn = Math.max(
+        0,
+        orderMovements.reduce((s, m) => s + mxnValue(m), 0) - alreadyRefundedMxn,
+      );
+
       for (const m of orderMovements) {
+        if (reverseBudgetMxn <= 0.001) break;
+        const movMxn = mxnValue(m);
+        // Fracción de este movimiento aún por reversar (acotada por el presupuesto).
+        const fraction = movMxn > 0 ? Math.min(1, reverseBudgetMxn / movMxn) : 1;
+        const reverseAmount = roundMoney(Number(m.amount) * fraction);
+        if (reverseAmount <= 0) continue;
+        reverseBudgetMxn -= movMxn * fraction;
         // SALE (cash in) → reverse with EXPENSE; CHANGE_OUT (cash out) → reverse with INCOME
         const reverseType = m.type === 'EXPENSE' ? 'INCOME' : 'EXPENSE';
         await tx.cashMovement.create({
@@ -641,10 +656,14 @@ export class OrdersService {
             cashSessionId: activeSession?.id ?? null,
             type: reverseType,
             currency: m.currency,
-            amount: m.amount,
+            amount: reverseAmount,
             ...(m.exchangeRateUsed != null && { exchangeRateUsed: m.exchangeRateUsed }),
-            ...(m.amountOriginalCurrency != null && { amountOriginalCurrency: m.amountOriginalCurrency }),
-            ...(m.amountMxnEquivalent != null && { amountMxnEquivalent: m.amountMxnEquivalent }),
+            ...(m.amountOriginalCurrency != null && {
+              amountOriginalCurrency: roundMoney(Number(m.amountOriginalCurrency) * fraction),
+            }),
+            ...(m.amountMxnEquivalent != null && {
+              amountMxnEquivalent: roundMoney(Number(m.amountMxnEquivalent) * fraction),
+            }),
             paymentMethod: m.paymentMethod,
             referenceId: order.id,
             referenceType: `REVERSAL_${mode}`,
@@ -775,10 +794,13 @@ export class OrdersService {
         });
       }
 
-      // Create cash movements for non-credit, non-card payments
+      // Create cash movements for non-credit payments — paridad con create():
+      // CARD también genera CashMovement SALE (no afecta el efectivo esperado, pero
+      // alimenta totals.sales.card del corte). Sin él, abonos/liquidaciones con
+      // tarjeta vía addPayment no aparecían en el resumen de caja. CREDITO se excluye.
       // Use sale amount (net) — amountReceived/changeGiven are metadata only (for tickets/audit)
       for (const p of dto.payments) {
-        if (!p.method || p.method === 'CREDITO' || p.method === 'CARD') continue;
+        if (!p.method || p.method === 'CREDITO') continue;
         const isUsd = (p.currency ?? 'MXN') === 'USD';
         const netAmount = roundMoney(Number(p.amount));
         const amountMxnEquivalent = isUsd ? convertMoney(netAmount, sessionRate) : netAmount;
@@ -857,7 +879,7 @@ export class OrdersService {
       include: {
         payments: true,
         items: true,
-        refunds: true,
+        refunds: { include: { items: true } },
         accountReceivable: true,
       },
     });
@@ -873,7 +895,55 @@ export class OrdersService {
     const previouslyRefunded = order.refunds.reduce((s, r) => s + Number(r.amount), 0);
     const maxRefundable = totalCollected - previouslyRefunded;
 
-    const refundAmount = dto.amount;
+    // Resolve the refund as money-only or item-level. Item-level refunds derive
+    // their amount from the lines and drive inventory restoration; the cumulative
+    // quantity already refunded per line is what prevents restoring it twice.
+    const itemMap = new Map(order.items.map((i) => [i.id, i]));
+    const alreadyRefundedQty = new Map<string, number>();
+    for (const r of order.refunds) {
+      for (const ri of r.items) {
+        alreadyRefundedQty.set(ri.orderItemId, (alreadyRefundedQty.get(ri.orderItemId) ?? 0) + ri.quantity);
+      }
+    }
+
+    const refundLines: { orderItem: (typeof order.items)[number]; quantity: number }[] = [];
+    let refundAmount: number;
+
+    if (dto.items?.length) {
+      for (const line of dto.items) {
+        const orderItem = itemMap.get(line.orderItemId);
+        if (!orderItem) {
+          throw new BadRequestException(`La línea ${line.orderItemId} no pertenece a esta orden`);
+        }
+        const refundedQty = alreadyRefundedQty.get(orderItem.id) ?? 0;
+        const remaining = orderItem.quantity - refundedQty;
+        if (line.quantity > remaining) {
+          throw new BadRequestException(
+            `No se pueden reembolsar ${line.quantity} de "${orderItem.name}": ` +
+              `disponibles ${remaining} (vendidas ${orderItem.quantity}, ya reembolsadas ${refundedQty})`,
+          );
+        }
+        refundLines.push({ orderItem, quantity: line.quantity });
+      }
+      const linesAmount = roundMoney(
+        refundLines.reduce(
+          (s, l) => s + (Number(l.orderItem.total) / l.orderItem.quantity) * l.quantity,
+          0,
+        ),
+      );
+      if (dto.amount != null && Math.abs(dto.amount - linesAmount) > 0.01) {
+        throw new BadRequestException(
+          `El monto indicado ($${dto.amount}) no coincide con la suma de las líneas ($${linesAmount.toFixed(2)})`,
+        );
+      }
+      refundAmount = dto.amount ?? linesAmount;
+    } else {
+      if (dto.amount == null) {
+        throw new BadRequestException('Debes indicar un monto a reembolsar o las líneas a devolver');
+      }
+      refundAmount = dto.amount;
+    }
+
     if (refundAmount > maxRefundable + 0.001) {
       throw new BadRequestException(
         `El monto a reembolsar ($${refundAmount}) supera el máximo reembolsable ($${maxRefundable.toFixed(2)})`,
@@ -939,8 +1009,9 @@ export class OrdersService {
         },
       });
 
-      // 3. OrderRefund record
-      await tx.orderRefund.create({
+      // 3. OrderRefund record. Item-level refunds always restore inventory.
+      const restoresInventory = refundLines.length > 0;
+      const refund = await tx.orderRefund.create({
         data: {
           tenantId,
           orderId: order.id,
@@ -949,7 +1020,7 @@ export class OrdersService {
           refundMethod: dto.refundMethod,
           originalMethod: originalMethod ?? undefined,
           reason: dto.reason,
-          restoreInventory: dto.restoreInventory ?? false,
+          restoreInventory: restoresInventory,
           windowOverride: dto.windowOverride ?? false,
           notes: dto.notes ?? null,
           cashMovementId: cashMov.id,
@@ -957,40 +1028,36 @@ export class OrdersService {
         },
       });
 
-      // 4. If restoreInventory, credit stock back for product items
-      if (dto.restoreInventory) {
-        for (const it of order.items) {
-          if (it.itemType !== 'PRODUCT' || !it.productId) continue;
-          const prod = await tx.product.findUnique({
-            where: { id: it.productId },
-            select: { trackInventory: true },
-          });
-          if (!prod?.trackInventory) continue;
-          await tx.product.update({
-            where: { id: it.productId },
-            data: { stock: { increment: it.quantity } },
-          });
-          if (order.branchId) {
-            await tx.branchInventory.upsert({
-              where: { branchId_productId: { branchId: order.branchId, productId: it.productId } },
-              update: { stock: { increment: it.quantity } },
-              create: { branchId: order.branchId, productId: it.productId, stock: it.quantity },
-            });
-          }
-          await tx.inventoryMovement.create({
+      // 4. Item-level refund: persist the refunded lines (cumulative cap already
+      // enforced above) and restore stock for exactly those quantities. Money-only
+      // refunds (no lines) never touch inventory.
+      if (restoresInventory) {
+        for (const line of refundLines) {
+          await tx.orderRefundItem.create({
             data: {
-              tenantId,
-              type: 'DEVOLUCION',
-              productId: it.productId,
-              branchId: order.branchId ?? null,
-              quantity: it.quantity,
-              referenceId: order.id,
-              referenceType: 'REFUND',
-              notes: `Reembolso: ${dto.reason}`,
-              createdById: userId,
+              refundId: refund.id,
+              orderItemId: line.orderItem.id,
+              productId: line.orderItem.productId ?? null,
+              quantity: line.quantity,
             },
           });
         }
+        await this.inventory.restore(
+          tx,
+          refundLines.map((l) => ({
+            productId: l.orderItem.productId,
+            quantity: l.quantity,
+            itemType: l.orderItem.itemType,
+          })),
+          {
+            tenantId,
+            branchId: order.branchId ?? null,
+            userId,
+            referenceId: order.id,
+            referenceType: 'REFUND',
+            note: `Reembolso: ${dto.reason}`,
+          },
+        );
       }
 
       // 5. Recompute payment status

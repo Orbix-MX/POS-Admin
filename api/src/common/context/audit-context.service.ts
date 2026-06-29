@@ -3,6 +3,13 @@ import { AsyncLocalStorage } from 'async_hooks';
 
 export interface AuditContext {
   userId?: string;
+  /**
+   * True when the request is authenticated by a device operator token
+   * (`typ:'operator'`, `role === 'DEVICE_OPERATOR'`). In that case `userId` is an
+   * Employee id (the operator), not a User id — used to make the operator the
+   * authoritative identity (e.g. DiningOrder.waiterId) and ignore client-sent ids.
+   */
+  isOperator?: boolean;
 }
 
 @Injectable()
@@ -23,5 +30,10 @@ export class AuditContextService {
     if (store) {
       store.userId = userId;
     }
+  }
+
+  /** True when the current principal is a device operator (employee), not a user. */
+  isOperator(): boolean {
+    return this.als.getStore()?.isOperator ?? false;
   }
 }

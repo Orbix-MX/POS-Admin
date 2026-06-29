@@ -5,6 +5,7 @@ import { RefreshButton } from '@/components/shared/refresh-button'
 import {
   useVentas,
   ORDER_FILTER_STATUSES,
+  ORDER_ORIGIN_FILTERS,
   fmtMoney,
   fmtDate,
   customerName,
@@ -30,11 +31,14 @@ export function Ventas() {
     loading, error, loadOrders,
     search, setSearch,
     statusFilter, setStatusFilter,
+    originFilter, setOriginFilter,
     page, setPage,
     filtered, pageData, stats,
     detailOpen, detailOrder,
     handleOpenDetail, handleCloseDetail,
     handleUpdateStatus,
+    showOriginColumn,
+    showOriginFilters,
   } = useVentas()
 
   const columns: Column<ApiOrder>[] = useMemo(() => [
@@ -53,6 +57,16 @@ export function Ventas() {
         <span className="text-[13px] text-foreground">{customerName(r.customer)}</span>
       ),
     },
+    ...(showOriginColumn ? [{
+      label: 'Origen',
+      render: (r: ApiOrder) => {
+        const isRest = r.orderOrigin === 'RESTAURANT_COMANDA'
+          || (r.orderOrigin == null && r.tableNumber != null)
+        return isRest
+          ? <span className="inline-flex items-center gap-1 text-[11px] font-medium text-orange-700 bg-orange-50 px-2 py-0.5 rounded-full">🍽 Mesa {r.tableNumber ?? '—'}</span>
+          : <span className="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full">🛒 POS</span>
+      },
+    }] : []),
     {
       label: 'Estado',
       render: r => (
@@ -81,7 +95,7 @@ export function Ventas() {
         </button>
       ),
     },
-  ], [handleOpenDetail])
+  ], [handleOpenDetail, showOriginColumn])
 
   return (
     <div className="p-7 flex flex-col gap-5">
@@ -103,19 +117,37 @@ export function Ventas() {
       {/* table card */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3.5 border-b border-border gap-3 flex-wrap">
-          <div className="flex gap-1.5 flex-wrap">
-            {ORDER_FILTER_STATUSES.map(s => (
-              <button
-                key={s.key}
-                onClick={() => { setStatusFilter(s.key); setPage(1) }}
-                className={`px-3 py-1.5 border rounded-md text-xs cursor-pointer font-medium transition-all
-                  ${statusFilter === s.key
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-border bg-card text-muted-foreground hover:bg-muted/50'}`}
-              >
-                {s.label}
-              </button>
-            ))}
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-1.5 flex-wrap">
+              {ORDER_FILTER_STATUSES.map(s => (
+                <button
+                  key={s.key}
+                  onClick={() => { setStatusFilter(s.key); setPage(1) }}
+                  className={`px-3 py-1.5 border rounded-md text-xs cursor-pointer font-medium transition-all
+                    ${statusFilter === s.key
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border bg-card text-muted-foreground hover:bg-muted/50'}`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+            {showOriginFilters && (
+              <div className="flex gap-1.5 flex-wrap">
+                {ORDER_ORIGIN_FILTERS.map(o => (
+                  <button
+                    key={o.key}
+                    onClick={() => { setOriginFilter(o.key); setPage(1) }}
+                    className={`px-3 py-1.5 border rounded-md text-xs cursor-pointer font-medium transition-all
+                      ${originFilter === o.key
+                        ? 'border-orange-500 bg-orange-500 text-white'
+                        : 'border-border bg-card text-muted-foreground hover:bg-muted/50'}`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <RefreshButton loading={loading} onClick={loadOrders} />
@@ -167,10 +199,25 @@ export function Ventas() {
             </div>
 
             <div className="p-5 flex flex-col gap-5">
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <StatusPill label={ORDER_STATUS_LABELS[detailOrder.status]} color={ORDER_STATUS_COLORS[detailOrder.status]} />
                 <StatusPill label={PAYMENT_STATUS_LABELS[detailOrder.paymentStatus]} color={PAYMENT_STATUS_COLORS[detailOrder.paymentStatus]} />
+                {(detailOrder.orderOrigin === 'RESTAURANT_COMANDA' || (detailOrder.orderOrigin == null && detailOrder.tableNumber != null)) && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-orange-700 bg-orange-50 px-2 py-0.5 rounded-full">🍽 Restaurante</span>
+                )}
               </div>
+
+              {(detailOrder.orderOrigin === 'RESTAURANT_COMANDA' || detailOrder.tableNumber) && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg px-3.5 py-2.5 flex flex-col gap-1">
+                  <div className="text-[10px] font-bold text-orange-700 uppercase tracking-wider">Info de mesa</div>
+                  {detailOrder.tableNumber && (
+                    <div className="text-sm text-foreground">Mesa: <span className="font-semibold">{detailOrder.tableNumber}</span></div>
+                  )}
+                  {detailOrder.employeeNumber && (
+                    <div className="text-sm text-foreground">Mesero: <span className="font-semibold">{detailOrder.employeeNumber}</span></div>
+                  )}
+                </div>
+              )}
 
               <div>
                 <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Cliente</div>

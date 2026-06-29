@@ -7,6 +7,9 @@ import { Employee, EmployeeStatus } from '@prisma/client';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 
+/** Employee without the secret PIN hash; exposes only whether a PIN is set. */
+export type PublicEmployee = Omit<Employee, 'pinHash'> & { hasPin: boolean };
+
 @Injectable()
 export class EmployeesService {
   constructor(
@@ -15,7 +18,13 @@ export class EmployeesService {
     private auditContext: AuditContextService,
   ) {}
 
-  async findAll(paginationDto: PaginationDto): Promise<PaginatedResponse<Employee>> {
+  /** Never leak the PIN hash to clients; surface a boolean instead. */
+  private sanitize(e: Employee): PublicEmployee {
+    const { pinHash, ...rest } = e;
+    return { ...rest, hasPin: pinHash != null };
+  }
+
+  async findAll(paginationDto: PaginationDto): Promise<PaginatedResponse<PublicEmployee>> {
     const tenantId = this.tenantContext.requireTenantId();
     const { skip, limit, page } = paginationDto;
     const where = { tenantId };
@@ -31,19 +40,19 @@ export class EmployeesService {
     ]);
 
     return {
-      data: employees,
+      data: employees.map((e) => this.sanitize(e)),
       meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
   }
 
-  async findOne(id: string): Promise<Employee> {
+  async findOne(id: string): Promise<PublicEmployee> {
     const tenantId = this.tenantContext.requireTenantId();
     const employee = await this.prisma.employee.findFirst({ where: { id, tenantId } });
     if (!employee) throw new NotFoundException('Employee not found');
-    return employee;
+    return this.sanitize(employee);
   }
 
-  async create(dto: CreateEmployeeDto): Promise<Employee> {
+  async create(dto: CreateEmployeeDto): Promise<PublicEmployee> {
     const tenantId = this.tenantContext.requireTenantId();
     const userId = this.auditContext.getUserId();
 
@@ -57,7 +66,7 @@ export class EmployeesService {
     });
     if (byEmail) throw new ConflictException('Email already registered');
 
-    return this.prisma.employee.create({
+    const created = await this.prisma.employee.create({
       data: {
         tenantId,
         employeeNumber: dto.employeeNumber,
@@ -79,9 +88,10 @@ export class EmployeesService {
         updatedById: userId ?? null,
       },
     });
+    return this.sanitize(created);
   }
 
-  async update(id: string, dto: UpdateEmployeeDto): Promise<Employee> {
+  async update(id: string, dto: UpdateEmployeeDto): Promise<PublicEmployee> {
     const tenantId = this.tenantContext.requireTenantId();
     const userId = this.auditContext.getUserId();
 
@@ -103,7 +113,7 @@ export class EmployeesService {
     }
 
     const { birthDate, hireDate, ...rest } = dto;
-    return this.prisma.employee.update({
+    const updated = await this.prisma.employee.update({
       where: { id },
       data: {
         ...rest,
@@ -112,15 +122,17 @@ export class EmployeesService {
         updatedById: userId ?? null,
       },
     });
+    return this.sanitize(updated);
   }
 
-  async remove(id: string): Promise<Employee> {
+  async remove(id: string): Promise<PublicEmployee> {
     const tenantId = this.tenantContext.requireTenantId();
     const employee = await this.prisma.employee.findFirst({ where: { id, tenantId } });
     if (!employee) throw new NotFoundException('Employee not found');
-    return this.prisma.employee.update({
+    const removed = await this.prisma.employee.update({
       where: { id },
       data: { status: EmployeeStatus.INACTIVE },
     });
+    return this.sanitize(removed);
   }
 }

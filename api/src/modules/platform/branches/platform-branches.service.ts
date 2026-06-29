@@ -5,8 +5,8 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { PlanLimitsService } from '../../../common/services/plan-limits.service';
-import { getMaxBranchesForPlan } from '@ventasy/types';
-import type { TenantPlan } from '@ventasy/types';
+import { getMaxBranchesForPlan } from '@orbix/types';
+import type { TenantPlan } from '@orbix/types';
 import { CreatePlatformBranchDto, UpdateBranchStatusDto, UpdateBranchLimitsDto } from './dto/platform-branch.dto';
 
 type PlatformActor = { id: string };

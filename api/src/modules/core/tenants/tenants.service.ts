@@ -14,6 +14,8 @@ import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { Prisma, Tenant } from '@prisma/client';
 
+export type RestaurantServiceMode = 'TABLE_SERVICE' | 'COUNTER_SERVICE' | 'HYBRID';
+
 export interface TenantInfo {
   name: string;
   displayName?: string;
@@ -25,6 +27,7 @@ export interface TenantInfo {
   rfc?: string;
   timezone?: string;
   currency?: string;
+  restaurantServiceMode?: RestaurantServiceMode;
 }
 
 const MAX_BRANDING_SIZE = 5 * 1024 * 1024;
@@ -53,6 +56,9 @@ export class TenantsService {
           plan: dto.plan,
           settings: dto.settings,
           userLimitOverride: dto.userLimitOverride,
+          ...(dto.businessVertical && { businessVertical: dto.businessVertical }),
+          ...(dto.posOperationMode && { posOperationMode: dto.posOperationMode }),
+          ...(dto.enabledFeatures && { enabledFeatures: dto.enabledFeatures }),
           // 30-day trial on creation
           trialEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         },
@@ -134,6 +140,9 @@ export class TenantsService {
         ...(dto.status && { status: dto.status }),
         ...(dto.settings !== undefined && { settings: dto.settings }),
         ...(dto.userLimitOverride !== undefined && { userLimitOverride: dto.userLimitOverride }),
+        ...(dto.businessVertical && { businessVertical: dto.businessVertical }),
+        ...(dto.posOperationMode && { posOperationMode: dto.posOperationMode }),
+        ...(dto.enabledFeatures !== undefined && { enabledFeatures: dto.enabledFeatures }),
       },
     });
 
@@ -155,6 +164,10 @@ export class TenantsService {
   /** Add a user to the current tenant */
   async addMember(userId: string, role = 'STAFF' as any): Promise<void> {
     const tenantId = this.tenantContext.requireTenantId();
+
+    const userExists = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+    if (!userExists) throw new NotFoundException('User not found');
+
     const existing = await this.prisma.tenantMembership.findUnique({
       where: { tenantId_userId: { tenantId, userId } },
       select: { status: true },
@@ -223,7 +236,7 @@ export class TenantsService {
     const tenantId = this.tenantContext.requireTenantId();
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { name: true, settings: true },
+      select: { name: true, settings: true, restaurantServiceMode: true },
     });
     if (!tenant) throw new NotFoundException('Tenant not found');
     const s = (tenant.settings as Record<string, unknown>) ?? {};
@@ -238,6 +251,7 @@ export class TenantsService {
       rfc:         s['rfc']         as string | undefined,
       timezone:    s['timezone']    as string | undefined,
       currency:    s['currency']    as string | undefined,
+      restaurantServiceMode: tenant.restaurantServiceMode as RestaurantServiceMode | undefined,
     };
   }
 
@@ -251,7 +265,7 @@ export class TenantsService {
     if (!tenant) throw new NotFoundException('Tenant not found');
 
     const current = (tenant.settings as Record<string, unknown>) ?? {};
-    const { name, ...scalars } = dto;
+    const { name, restaurantServiceMode, ...scalars } = dto;
     const merged: Record<string, unknown> = { ...current };
     for (const [k, v] of Object.entries(scalars)) {
       if (v !== undefined) merged[k] = v;
@@ -261,6 +275,7 @@ export class TenantsService {
       where: { id: tenantId },
       data: {
         ...(name ? { name } : {}),
+        ...(restaurantServiceMode ? { restaurantServiceMode } : {}),
         settings: merged as Prisma.InputJsonValue,
       },
     });
