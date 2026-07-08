@@ -84,11 +84,16 @@ describe('InventoryEngine', () => {
   });
 
   describe('applyProductStockDelta', () => {
-    it('delta 0 → no muta y devuelve true', async () => {
+    it('delta 0 → escribe increment 0 (preserva bump de updatedAt) y devuelve true', async () => {
       const tx = makeTx();
       const ok = await engine.applyProductStockDelta(tx as never, { productId: 'p1', delta: 0 });
       expect(ok).toBe(true);
-      expect(tx.product.update).not.toHaveBeenCalled();
+      // Sin corto-circuito: siempre se emite el UPDATE (increment 0) para conservar
+      // el comportamiento observable de una escritura de stock (updatedAt).
+      expect(tx.product.update).toHaveBeenCalledWith({
+        where: { id: 'p1' },
+        data: { stock: { increment: 0 } },
+      });
       expect(tx.product.updateMany).not.toHaveBeenCalled();
     });
 

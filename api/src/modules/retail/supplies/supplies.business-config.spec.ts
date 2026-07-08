@@ -5,6 +5,7 @@ import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { AuditContextService } from '../../../common/context/audit-context.service';
 import { BusinessConfigurationService } from '../../../common/business-config/business-configuration.service';
+import { InventoryEngine } from '../inventory/inventory.engine';
 
 // BR-02: supplies are a Restaurant-only capability gated behind `enableSupplies`.
 // Retail (feature off) cannot access the module; Restaurant (on) keeps full access.
@@ -26,6 +27,10 @@ describe('SuppliesService — BR-02 supplies gating', () => {
   };
   const mockAuditContext = { getUserId: jest.fn().mockReturnValue('user-1') };
   const mockBusinessConfig = { hasFeature: jest.fn() };
+  const mockInventoryEngine = {
+    applySupplyStockDelta: jest.fn().mockResolvedValue(true),
+    recordSupplyMovement: jest.fn().mockResolvedValue(undefined),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -36,6 +41,7 @@ describe('SuppliesService — BR-02 supplies gating', () => {
         { provide: TenantContextService, useValue: mockTenantContext },
         { provide: AuditContextService, useValue: mockAuditContext },
         { provide: BusinessConfigurationService, useValue: mockBusinessConfig },
+        { provide: InventoryEngine, useValue: mockInventoryEngine },
       ],
     }).compile();
     service = module.get(SuppliesService);

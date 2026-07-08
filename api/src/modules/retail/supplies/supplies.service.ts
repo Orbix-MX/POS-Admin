@@ -9,6 +9,7 @@ import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { AuditContextService } from '../../../common/context/audit-context.service';
 import { BusinessConfigurationService } from '../../../common/business-config/business-configuration.service';
+import { InventoryEngine } from '../inventory/inventory.engine';
 import { PaginatedResponse } from '../../../common/dto/pagination.dto';
 import { Prisma } from '@prisma/client';
 import { CreateSupplyDto } from './dto/create-supply.dto';
@@ -38,6 +39,10 @@ export class SuppliesService {
     // BR-02: supplies are a Restaurant-only capability. Availability is decided
     // exclusively through the business configuration facade — never BusinessProfile.
     private businessConfig: BusinessConfigurationService,
+    // Fase 2A: la escritura de stock y el asiento de movimiento se delegan al
+    // motor de inventario. Conversión de unidades y guard de stock permanecen
+    // en este servicio (lógica propia de Insumos).
+    private inventoryEngine: InventoryEngine,
   ) {}
 
   /**
@@ -232,26 +237,25 @@ export class SuppliesService {
     const newStock = Number(supply.stock) + quantityInBaseUnit;
     if (newStock < 0) throw new BadRequestException('Stock insuficiente');
 
+    // Fase 2A: stock y movimiento se delegan al InventoryEngine. El delta es
+    // quantityInBaseUnit (ya convertido); el stock final resultante es idéntico.
     return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.supply.update({
-        where: { id },
-        data: { stock: newStock },
-        include: SUPPLY_INCLUDE,
+      await this.inventoryEngine.applySupplyStockDelta(tx, {
+        supplyId: id,
+        delta: quantityInBaseUnit,
       });
 
-      await tx.supplyMovement.create({
-        data: {
-          tenantId,
-          supplyId: id,
-          type: 'ADJUSTMENT',
-          quantity: quantityInBaseUnit,
-          ...(branchId && { branchId }),
-          notes: dto.notes ? `${dto.notes}${conversionNote}` : conversionNote || null,
-          createdById: userId,
-        },
+      await this.inventoryEngine.recordSupplyMovement(tx, {
+        tenantId,
+        supplyId: id,
+        type: 'ADJUSTMENT',
+        quantity: quantityInBaseUnit,
+        branchId: branchId ?? null,
+        notes: dto.notes ? `${dto.notes}${conversionNote}` : conversionNote || null,
+        createdById: userId,
       });
 
-      return updated;
+      return tx.supply.findUniqueOrThrow({ where: { id }, include: SUPPLY_INCLUDE });
     });
   }
 

@@ -6,6 +6,7 @@ import { TenantContextService } from '../../../common/context/tenant-context.ser
 import { AuditService } from '../../../common/services/audit.service';
 import { R2Service } from '../../../storage/r2.service';
 import { BusinessConfigurationService } from '../../../common/business-config/business-configuration.service';
+import { InventoryEngine } from '../inventory/inventory.engine';
 import { SlugUtil } from '../../../common/utils/slug.util';
 
 describe('ProductsService', () => {
@@ -48,6 +49,10 @@ describe('ProductsService', () => {
   const mockAuditService = { log: jest.fn() };
   const mockR2Service = { upload: jest.fn(), delete: jest.fn(), buildKey: jest.fn().mockReturnValue('key') };
   const mockBusinessConfig = { hasFeature: jest.fn().mockResolvedValue(false) };
+  const mockInventoryEngine = {
+    applyProductStockDelta: jest.fn().mockResolvedValue(true),
+    recordProductMovement: jest.fn().mockResolvedValue(undefined),
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -58,6 +63,7 @@ describe('ProductsService', () => {
         { provide: AuditService, useValue: mockAuditService },
         { provide: R2Service, useValue: mockR2Service },
         { provide: BusinessConfigurationService, useValue: mockBusinessConfig },
+        { provide: InventoryEngine, useValue: mockInventoryEngine },
       ],
     }).compile();
 

@@ -11,6 +11,7 @@ import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { AuditService } from '../../../common/services/audit.service';
 import { BusinessConfigurationService } from '../../../common/business-config/business-configuration.service';
+import { InventoryEngine } from '../inventory/inventory.engine';
 import { R2Service } from '../../../storage/r2.service';
 import { SlugUtil } from '../../../common/utils/slug.util';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -48,6 +49,10 @@ export class ProductsService {
     // exclusively through the business configuration facade — the service never
     // reads BusinessProfile. Combos and SIMPLE/SERVICE products are unaffected.
     private businessConfig: BusinessConfigurationService,
+    // Fase 2A: la escritura de stock y el asiento de movimiento se delegan al
+    // motor de inventario de bajo nivel. Las validaciones de negocio (tipo
+    // SIMPLE, trackInventory, guard de stock) permanecen en este servicio.
+    private inventoryEngine: InventoryEngine,
   ) {}
 
   /**
@@ -446,26 +451,22 @@ export class ProductsService {
     if (newStock < 0) throw new BadRequestException('Insufficient stock');
 
     // Flujo de ajuste oficial: la baja/alta de stock y su movimiento AJUSTE van
-    // juntos en una transacción. Antes era una escritura "manual" sin ledger.
+    // juntos en una transacción. Fase 2A: ambas escrituras se delegan al
+    // InventoryEngine; el resultado (stock final y movimiento) es idéntico.
     const updated = await this.prisma.$transaction(async (tx) => {
-      const u = await tx.product.update({
-        where: { id, tenantId },
-        data: { stock: newStock },
-      });
+      await this.inventoryEngine.applyProductStockDelta(tx, { productId: id, delta: quantity });
       if (quantity !== 0) {
-        await tx.inventoryMovement.create({
-          data: {
-            tenantId,
-            type: 'AJUSTE',
-            productId: id,
-            quantity,
-            referenceId: id,
-            referenceType: 'PRODUCT_ADJUST',
-            notes: `Ajuste manual (${quantity >= 0 ? '+' : ''}${quantity})`,
-          },
+        await this.inventoryEngine.recordProductMovement(tx, {
+          tenantId,
+          type: 'AJUSTE',
+          productId: id,
+          quantity,
+          referenceId: id,
+          referenceType: 'PRODUCT_ADJUST',
+          notes: `Ajuste manual (${quantity >= 0 ? '+' : ''}${quantity})`,
         });
       }
-      return u;
+      return tx.product.findFirstOrThrow({ where: { id, tenantId } });
     });
 
     await this.audit.log({

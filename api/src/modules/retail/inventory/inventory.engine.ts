@@ -142,8 +142,6 @@ export class InventoryEngine {
     tx: Prisma.TransactionClient,
     { productId, delta, guardInsufficient }: ProductStockDelta,
   ): Promise<boolean> {
-    if (delta === 0) return true;
-
     if (delta < 0 && guardInsufficient) {
       const res = await tx.product.updateMany({
         where: { id: productId, stock: { gte: -delta } },
@@ -164,8 +162,6 @@ export class InventoryEngine {
     tx: Prisma.TransactionClient,
     { supplyId, delta, guardInsufficient }: SupplyStockDelta,
   ): Promise<boolean> {
-    if (delta === 0) return true;
-
     if (delta < 0 && guardInsufficient) {
       const res = await tx.supply.updateMany({
         where: { id: supplyId, stock: { gte: -delta } },
