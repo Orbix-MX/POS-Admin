@@ -11,4 +11,8 @@ class ApiEndpoints {
   static const meCapabilities = '/auth/me/capabilities';
   static String selectTenant(String slug) => '/auth/select-tenant/$slug';
   static String selectBranch(String branchId) => '/auth/select-branch/$branchId';
+
+  static const products = '/products';
+  static const categories = '/categories';
+  static const orders = '/orders';
 }

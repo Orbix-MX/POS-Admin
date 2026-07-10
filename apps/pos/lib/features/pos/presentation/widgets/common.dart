@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-
-import '../../theme.dart';
+import 'package:orbix_design_system/orbix_design_system.dart';
 
 /// Placeholder de imagen (equivalente al `image-slot` del diseño): rectángulo
 /// tintado con la etiqueta del producto centrada. Sin fotos reales disponibles.
@@ -41,10 +40,10 @@ class PlaceholderThumb extends StatelessWidget {
               maxLines: 2,
               textAlign: TextAlign.center,
               overflow: TextOverflow.ellipsis,
-              style: AppText.ui(
+              style: OrbixText.ui(
                 size: 11,
                 weight: FontWeight.w600,
-                color: AppColors.textMuted,
+                color: OrbixColors.textMuted,
               ),
             )
           : null,
@@ -54,7 +53,7 @@ class PlaceholderThumb extends StatelessWidget {
 
 /// Estrella (favorito) dibujada, como en el diseño (icono amarillo).
 class StarIcon extends StatelessWidget {
-  const StarIcon({super.key, this.size = 13, this.color = AppColors.star});
+  const StarIcon({super.key, this.size = 13, this.color = OrbixColors.star});
   final double size;
   final Color color;
 
@@ -65,7 +64,7 @@ class StarIcon extends StatelessWidget {
 
 /// Mini gráfico de línea (sparkline) sobre el viewBox 70x30 del diseño.
 class Sparkline extends StatelessWidget {
-  const Sparkline({super.key, required this.points, this.color = AppColors.primary});
+  const Sparkline({super.key, required this.points, this.color = OrbixColors.primary});
   final List<(double, double)> points;
   final Color color;
 
@@ -130,22 +129,22 @@ class QtyStepper extends StatelessWidget {
         _StepBtn(
           size: btn,
           radius: radius,
-          background: AppColors.fill,
-          foreground: AppColors.textPrimary,
+          background: OrbixColors.fill,
+          foreground: OrbixColors.textPrimary,
           icon: '–',
           onTap: onDec,
         ),
         Expanded(
           child: Center(
             child: Text('$qty',
-                style: AppText.mono(size: 13, weight: FontWeight.w700)),
+                style: OrbixText.mono(size: 13, weight: FontWeight.w700)),
           ),
         ),
         _StepBtn(
           size: btn,
           radius: radius,
-          background: compact ? AppColors.fill : AppColors.primary,
-          foreground: compact ? AppColors.textPrimary : Colors.white,
+          background: compact ? OrbixColors.fill : OrbixColors.primary,
+          foreground: compact ? OrbixColors.textPrimary : Colors.white,
           icon: '+',
           onTap: onInc,
         ),
@@ -185,7 +184,7 @@ class _StepBtn extends StatelessWidget {
           child: Center(
             child: Text(
               icon,
-              style: AppText.ui(size: 16, weight: FontWeight.w700, color: foreground),
+              style: OrbixText.ui(size: 16, weight: FontWeight.w700, color: foreground),
             ),
           ),
         ),

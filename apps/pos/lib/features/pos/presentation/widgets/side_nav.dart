@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:orbix_design_system/orbix_design_system.dart';
 
-import '../../data.dart';
-import '../../theme.dart';
+const _kNavLabels = <String>[
+  'Venta', 'Caja', 'Clientes', 'Productos', 'Inventario', 'Reportes', 'Más',
+];
 
 const _navIcons = <IconData>[
   Icons.shopping_cart_outlined, // Venta
@@ -33,7 +35,7 @@ class SideNav extends StatelessWidget {
           Align(
             alignment: Alignment.centerLeft,
             child: Material(
-              color: AppColors.primary,
+              color: OrbixColors.primary,
               borderRadius: BorderRadius.circular(16),
               elevation: 3,
               shadowColor: Colors.black26,
@@ -50,9 +52,9 @@ class SideNav extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           // Items
-          for (var i = 0; i < kNavLabels.length; i++)
+          for (var i = 0; i < _kNavLabels.length; i++)
             _NavItem(
-              label: kNavLabels[i],
+              label: _kNavLabels[i],
               icon: _navIcons[i],
               active: i == activeIndex,
               onTap: () => onSelect?.call(i),
@@ -94,11 +96,11 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = active ? AppColors.primaryText : AppColors.textSubtle;
+    final color = active ? OrbixColors.primaryText : OrbixColors.textSubtle;
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: Material(
-        color: active ? AppColors.primaryTint : Colors.transparent,
+        color: active ? OrbixColors.primaryTint : Colors.transparent,
         borderRadius: BorderRadius.circular(999),
         child: InkWell(
           borderRadius: BorderRadius.circular(999),
@@ -109,7 +111,7 @@ class _NavItem extends StatelessWidget {
               Icon(icon, size: 18, color: color),
               const SizedBox(width: 10),
               Text(label,
-                  style: AppText.ui(
+                  style: OrbixText.ui(
                       size: 13.5,
                       weight: active ? FontWeight.w700 : FontWeight.w600,
                       color: color)),
@@ -139,26 +141,26 @@ class _InfoCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: AppColors.fillAlt,
+        color: OrbixColors.fillAlt,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 16, color: AppColors.textMuted),
+          Icon(icon, size: 16, color: OrbixColors.textMuted),
           const SizedBox(width: 9),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title,
-                    style: AppText.ui(size: 11.5, weight: FontWeight.w700)),
+                    style: OrbixText.ui(size: 11.5, weight: FontWeight.w700)),
                 Row(children: [
                   Flexible(
                     child: Text(subtitle,
                         overflow: TextOverflow.ellipsis,
-                        style: AppText.ui(
-                            size: 11.5, color: AppColors.textMuted)),
+                        style: OrbixText.ui(
+                            size: 11.5, color: OrbixColors.textMuted)),
                   ),
                   if (online) ...[
                     const SizedBox(width: 5),
@@ -166,7 +168,7 @@ class _InfoCard extends StatelessWidget {
                       width: 6,
                       height: 6,
                       decoration: const BoxDecoration(
-                          color: AppColors.green, shape: BoxShape.circle),
+                          color: OrbixColors.green, shape: BoxShape.circle),
                     ),
                   ],
                 ]),
@@ -183,7 +185,7 @@ class _QuickActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.primaryTint,
+      color: OrbixColors.primaryTint,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
@@ -194,13 +196,13 @@ class _QuickActions extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.bolt, size: 15, color: AppColors.primaryText),
+                const Icon(Icons.bolt, size: 15, color: OrbixColors.primaryText),
                 const SizedBox(width: 7),
                 Text('Acciones rápidas',
-                    style: AppText.ui(
+                    style: OrbixText.ui(
                         size: 12.5,
                         weight: FontWeight.w700,
-                        color: AppColors.primaryText)),
+                        color: OrbixColors.primaryText)),
               ],
             ),
           ),

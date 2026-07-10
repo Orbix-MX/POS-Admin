@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-
-import '../../theme.dart';
+import 'package:orbix_design_system/orbix_design_system.dart';
 
 /// Encabezado superior (72px) del layout de tablet.
 class TopHeader extends StatelessWidget {
@@ -15,7 +14,7 @@ class TopHeader extends StatelessWidget {
       height: 72,
       padding: const EdgeInsets.symmetric(horizontal: 24),
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.border)),
+        border: Border(bottom: BorderSide(color: OrbixColors.border)),
       ),
       child: Row(
         children: [
@@ -25,7 +24,7 @@ class TopHeader extends StatelessWidget {
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: AppColors.primary,
+                color: OrbixColors.primary,
                 borderRadius: BorderRadius.circular(9),
               ),
               child: Center(
@@ -41,7 +40,7 @@ class TopHeader extends StatelessWidget {
             ),
             const SizedBox(width: 9),
             Text('Orbix',
-                style: AppText.ui(
+                style: OrbixText.ui(
                     size: 19, weight: FontWeight.w800, letterSpacing: -0.4)),
           ]),
           const SizedBox(width: 20),
@@ -51,25 +50,25 @@ class TopHeader extends StatelessWidget {
           InkWell(
             onTap: onMenu,
             child: Row(children: [
-              const Icon(Icons.menu, size: 20, color: AppColors.textPrimary),
+              const Icon(Icons.menu, size: 20, color: OrbixColors.textPrimary),
               const SizedBox(width: 10),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text('Venta actual',
-                      style: AppText.ui(size: 15, weight: FontWeight.w700)),
+                      style: OrbixText.ui(size: 15, weight: FontWeight.w700)),
                   Row(children: [
                     Container(
                       width: 6,
                       height: 6,
                       decoration: const BoxDecoration(
-                          color: AppColors.green, shape: BoxShape.circle),
+                          color: OrbixColors.green, shape: BoxShape.circle),
                     ),
                     const SizedBox(width: 5),
                     Text('Caja abierta · 02:15:36',
                         style:
-                            AppText.ui(size: 12, color: AppColors.textMuted)),
+                            OrbixText.ui(size: 12, color: OrbixColors.textMuted)),
                   ]),
                 ],
               ),
@@ -100,7 +99,7 @@ class TopHeader extends StatelessWidget {
   }
 
   Widget _divider() =>
-      Container(width: 1, height: 32, color: AppColors.border);
+      Container(width: 1, height: 32, color: OrbixColors.border);
 
   Widget _pill(IconData icon, String label) => Container(
         height: 38,
@@ -108,12 +107,12 @@ class TopHeader extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.borderInput),
+          border: Border.all(color: OrbixColors.borderInput),
         ),
         child: Row(children: [
-          Icon(icon, size: 16, color: AppColors.textPrimary),
+          Icon(icon, size: 16, color: OrbixColors.textPrimary),
           const SizedBox(width: 7),
-          Text(label, style: AppText.ui(size: 13, weight: FontWeight.w600)),
+          Text(label, style: OrbixText.ui(size: 13, weight: FontWeight.w600)),
         ]),
       );
 
@@ -134,13 +133,13 @@ class TopHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Carlos R.', style: AppText.ui(size: 13, weight: FontWeight.w700)),
+              Text('Carlos R.', style: OrbixText.ui(size: 13, weight: FontWeight.w700)),
               Text('Administrador',
-                  style: AppText.ui(size: 11, color: AppColors.textFaint)),
+                  style: OrbixText.ui(size: 11, color: OrbixColors.textFaint)),
             ],
           ),
           const SizedBox(width: 4),
-          const Icon(Icons.arrow_drop_down, size: 18, color: AppColors.textFaint),
+          const Icon(Icons.arrow_drop_down, size: 18, color: OrbixColors.textFaint),
         ]),
       );
 }
@@ -152,13 +151,13 @@ class PlaceholderThumbCircle extends StatelessWidget {
         width: 38,
         height: 38,
         decoration: const BoxDecoration(
-            color: AppColors.fill, shape: BoxShape.circle),
+            color: OrbixColors.fill, shape: BoxShape.circle),
         alignment: Alignment.center,
         child: Text('CR',
-            style: AppText.ui(
+            style: OrbixText.ui(
                 size: 12,
                 weight: FontWeight.w700,
-                color: AppColors.textMuted)),
+                color: OrbixColors.textMuted)),
       );
 }
 
@@ -169,18 +168,18 @@ class _SearchField extends StatelessWidget {
       height: 42,
       padding: const EdgeInsets.only(left: 14, right: 8),
       decoration: BoxDecoration(
-        color: AppColors.fill,
+        color: OrbixColors.fill,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(children: [
-        const Icon(Icons.search, size: 18, color: AppColors.textFaint),
+        const Icon(Icons.search, size: 18, color: OrbixColors.textFaint),
         const SizedBox(width: 10),
         Expanded(
           child: TextField(
-            style: AppText.ui(size: 13.5),
+            style: OrbixText.ui(size: 13.5),
             decoration: InputDecoration.collapsed(
               hintText: 'Buscar productos, SKU o código de barras',
-              hintStyle: AppText.ui(size: 13.5, color: AppColors.textFaint),
+              hintStyle: OrbixText.ui(size: 13.5, color: OrbixColors.textFaint),
             ),
           ),
         ),
@@ -190,10 +189,10 @@ class _SearchField extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppColors.borderInput),
+            border: Border.all(color: OrbixColors.borderInput),
           ),
           child: const Icon(Icons.qr_code_scanner,
-              size: 16, color: AppColors.textMuted),
+              size: 16, color: OrbixColors.textMuted),
         ),
       ]),
     );
@@ -211,11 +210,11 @@ class _NotificationBell extends StatelessWidget {
           width: 38,
           height: 38,
           decoration: BoxDecoration(
-            color: AppColors.fill,
+            color: OrbixColors.fill,
             borderRadius: BorderRadius.circular(10),
           ),
           child: const Icon(Icons.notifications_none,
-              size: 20, color: AppColors.textPrimary),
+              size: 20, color: OrbixColors.textPrimary),
         ),
         Positioned(
           top: -4,
@@ -224,10 +223,10 @@ class _NotificationBell extends StatelessWidget {
             width: 17,
             height: 17,
             decoration: const BoxDecoration(
-                color: AppColors.red, shape: BoxShape.circle),
+                color: OrbixColors.red, shape: BoxShape.circle),
             alignment: Alignment.center,
             child: Text('3',
-                style: AppText.ui(
+                style: OrbixText.ui(
                     size: 10, weight: FontWeight.w800, color: Colors.white)),
           ),
         ),

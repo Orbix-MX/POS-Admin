@@ -1,25 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:orbix_design_system/orbix_design_system.dart';
 
-import '../../pos_controller.dart';
-import '../../theme.dart';
+import '../../domain/entities/cart_line.dart';
+import '../providers/pos_sale_notifier.dart';
 import 'common.dart';
 
 /// Panel de ticket / pedido (392px en tablet, hoja completa en móvil).
-class TicketPanel extends StatelessWidget {
+class TicketPanel extends ConsumerWidget {
   const TicketPanel({
     super.key,
-    required this.controller,
     required this.onCobrar,
     this.onClose,
   });
 
-  final PosController controller;
   final VoidCallback onCobrar;
   final VoidCallback? onClose;
 
   @override
-  Widget build(BuildContext context) {
-    final lines = controller.cartLines;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final data = ref.watch(posSaleProvider).requireValue;
+    final lines = data.cartLines;
     return Container(
       color: Colors.white,
       child: Column(
@@ -29,28 +30,28 @@ class TicketPanel extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
             child: Row(children: [
               Text('Mesa / Pedido',
-                  style: AppText.ui(size: 15, weight: FontWeight.w800)),
+                  style: OrbixText.ui(size: 15, weight: FontWeight.w800)),
               const Spacer(),
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: AppColors.fill,
+                  color: OrbixColors.fill,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   const Icon(Icons.shopping_bag_outlined,
-                      size: 13, color: AppColors.textPrimary),
+                      size: 13, color: OrbixColors.textPrimary),
                   const SizedBox(width: 6),
                   Text('Para llevar',
-                      style: AppText.ui(size: 12, weight: FontWeight.w700)),
+                      style: OrbixText.ui(size: 12, weight: FontWeight.w700)),
                 ]),
               ),
               const SizedBox(width: 8),
               InkWell(
                 onTap: onClose,
                 child: Icon(onClose == null ? Icons.more_horiz : Icons.close,
-                    size: 20, color: AppColors.textFaint),
+                    size: 20, color: OrbixColors.textFaint),
               ),
             ]),
           ),
@@ -59,54 +60,53 @@ class TicketPanel extends StatelessWidget {
             child: lines.isEmpty
                 ? Center(
                     child: Text('Sin artículos',
-                        style: AppText.ui(color: AppColors.textFaint)),
+                        style: OrbixText.ui(color: OrbixColors.textFaint)),
                   )
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 14),
                     itemCount: lines.length,
-                    itemBuilder: (_, i) =>
-                        _CartLineTile(controller: controller, line: lines[i]),
+                    itemBuilder: (_, i) => _CartLineTile(line: lines[i]),
                   ),
           ),
           // Nota
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
             decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: AppColors.borderLight)),
+              border: Border(top: BorderSide(color: OrbixColors.borderLight)),
             ),
             child: Row(children: [
               const Icon(Icons.sticky_note_2_outlined,
-                  size: 15, color: AppColors.textMuted),
+                  size: 15, color: OrbixColors.textMuted),
               const SizedBox(width: 8),
               Text('Agregar nota o referencia',
-                  style: AppText.ui(
+                  style: OrbixText.ui(
                       size: 12.5,
                       weight: FontWeight.w600,
-                      color: AppColors.textMuted)),
+                      color: OrbixColors.textMuted)),
               const Spacer(),
               const Icon(Icons.chevron_right,
-                  size: 18, color: AppColors.textMuted),
+                  size: 18, color: OrbixColors.textMuted),
             ]),
           ),
           // Totales + acciones
-          _Totals(controller: controller, onCobrar: onCobrar),
+          _Totals(data: data, onCobrar: onCobrar),
         ],
       ),
     );
   }
 }
 
-class _CartLineTile extends StatelessWidget {
-  const _CartLineTile({required this.controller, required this.line});
-  final PosController controller;
-  final dynamic line; // CartLine
+class _CartLineTile extends ConsumerWidget {
+  const _CartLineTile({required this.line});
+  final CartLine line;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notifier = ref.read(posSaleProvider.notifier);
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.borderLight)),
+        border: Border(bottom: BorderSide(color: OrbixColors.borderLight)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -126,13 +126,13 @@ class _CartLineTile extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(line.product.name,
-                          style: AppText.ui(
+                          style: OrbixText.ui(
                               size: 13.5, weight: FontWeight.w700, height: 1.3)),
                     ),
                     InkWell(
-                      onTap: () => controller.remove(line.product.id),
+                      onTap: () => notifier.remove(line.product.id),
                       child: const Icon(Icons.close,
-                          size: 15, color: AppColors.textFaint),
+                          size: 15, color: OrbixColors.textFaint),
                     ),
                   ],
                 ),
@@ -146,13 +146,13 @@ class _CartLineTile extends StatelessWidget {
                       child: QtyStepper(
                         qty: line.qty,
                         compact: true,
-                        onDec: () => controller.decrement(line.product.id),
-                        onInc: () => controller.increment(line.product.id),
+                        onDec: () => notifier.decrement(line.product.id),
+                        onInc: () => notifier.increment(line.product.id),
                       ),
                     ),
-                    Text(money(line.lineTotal),
+                    Text(line.lineTotal.format(),
                         style:
-                            AppText.mono(size: 13.5, weight: FontWeight.w700)),
+                            OrbixText.mono(size: 13.5, weight: FontWeight.w700)),
                   ],
                 ),
               ],
@@ -165,8 +165,8 @@ class _CartLineTile extends StatelessWidget {
 }
 
 class _Totals extends StatelessWidget {
-  const _Totals({required this.controller, required this.onCobrar});
-  final PosController controller;
+  const _Totals({required this.data, required this.onCobrar});
+  final PosSaleData data;
   final VoidCallback onCobrar;
 
   @override
@@ -174,27 +174,26 @@ class _Totals extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
       decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: AppColors.border)),
+        border: Border(top: BorderSide(color: OrbixColors.border)),
       ),
       child: Column(
         children: [
-          _row('Subtotal', money(controller.subtotal)),
-          _row('Descuento', '–${money(PosController.discount)}',
-              color: AppColors.greenText),
-          _row('Impuestos (16%)', money(controller.taxes)),
+          _row('Subtotal', data.subtotal.format()),
+          _row('Descuento', '–${data.discount.format()}', color: OrbixColors.greenText),
+          _row('Impuestos (16%)', data.taxes.format()),
           Container(
             margin: const EdgeInsets.only(top: 10),
             padding: const EdgeInsets.only(top: 10),
             decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: AppColors.border)),
+              border: Border(top: BorderSide(color: OrbixColors.border)),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text('Total',
-                    style: AppText.ui(size: 15, weight: FontWeight.w800)),
-                Text(money(controller.total),
-                    style: AppText.mono(size: 21, weight: FontWeight.w800)),
+                    style: OrbixText.ui(size: 15, weight: FontWeight.w800)),
+                Text(data.total.format(),
+                    style: OrbixText.mono(size: 21, weight: FontWeight.w800)),
               ],
             ),
           ),
@@ -210,7 +209,7 @@ class _Totals extends StatelessWidget {
           const SizedBox(height: 10),
           // Cobrar
           Material(
-            color: AppColors.primary,
+            color: OrbixColors.primary,
             borderRadius: BorderRadius.circular(28),
             elevation: 2,
             shadowColor: Colors.black26,
@@ -225,12 +224,12 @@ class _Totals extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text('Cobrar',
-                        style: AppText.ui(
+                        style: OrbixText.ui(
                             size: 15,
                             weight: FontWeight.w700,
                             color: Colors.white)),
-                    Text(money(controller.total),
-                        style: AppText.mono(
+                    Text(data.total.format(),
+                        style: OrbixText.mono(
                             size: 15,
                             weight: FontWeight.w700,
                             color: Colors.white)),
@@ -245,17 +244,17 @@ class _Totals extends StatelessWidget {
             height: 46,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(23),
-              border: Border.all(color: AppColors.borderInput),
+              border: Border.all(color: OrbixColors.borderInput),
             ),
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               const Icon(Icons.bookmark_border,
-                  size: 15, color: AppColors.textSubtle),
+                  size: 15, color: OrbixColors.textSubtle),
               const SizedBox(width: 8),
               Text('Guardar venta',
-                  style: AppText.ui(
+                  style: OrbixText.ui(
                       size: 13.5,
                       weight: FontWeight.w700,
-                      color: AppColors.textSubtle)),
+                      color: OrbixColors.textSubtle)),
             ]),
           ),
         ],
@@ -263,14 +262,14 @@ class _Totals extends StatelessWidget {
     );
   }
 
-  Widget _row(String label, String value, {Color color = AppColors.textMuted}) =>
+  Widget _row(String label, String value, {Color color = OrbixColors.textMuted}) =>
       Padding(
         padding: const EdgeInsets.only(bottom: 6),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: AppText.ui(size: 13, color: color)),
-            Text(value, style: AppText.mono(size: 13, weight: FontWeight.w500, color: color)),
+            Text(label, style: OrbixText.ui(size: 13, color: color)),
+            Text(value, style: OrbixText.mono(size: 13, weight: FontWeight.w500, color: color)),
           ],
         ),
       );
@@ -280,17 +279,17 @@ class _Totals extends StatelessWidget {
           height: 48,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.borderInput),
+            border: Border.all(color: OrbixColors.borderInput),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 15, color: AppColors.textPrimary),
+              Icon(icon, size: 15, color: OrbixColors.textPrimary),
               const SizedBox(height: 2),
               Text(label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: AppText.ui(size: 11, weight: FontWeight.w700)),
+                  style: OrbixText.ui(size: 11, weight: FontWeight.w700)),
             ],
           ),
         ),

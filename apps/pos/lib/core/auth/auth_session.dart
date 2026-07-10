@@ -90,9 +90,15 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
 
   Future<void> selectTenant(String slug) async {
     final result = await _repository.selectTenant(slug);
-    result.fold(
-      (tenant) => state = state.copyWith(tenant: tenant),
-      (failure) => state = state.copyWith(errorMessage: failure.displayMessage),
+    await result.fold(
+      (selected) async {
+        // El token del login preliminar no trae `tenantId` — sin
+        // reemplazarlo aquí, todo endpoint tenant-scoped sigue devolviendo
+        // 403 aunque el usuario ya "eligió" empresa (ver `SelectTenantResult`).
+        await _secureStorage.writeTokens(accessToken: selected.accessToken);
+        state = state.copyWith(tenant: selected.tenant);
+      },
+      (failure) async => state = state.copyWith(errorMessage: failure.displayMessage),
     );
   }
 

@@ -1,23 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:orbix_design_system/orbix_design_system.dart';
 
-import '../../models.dart';
-import '../../pos_controller.dart';
-import '../../theme.dart';
+import '../../../../business/models/product.dart';
+import '../providers/pos_sale_notifier.dart';
 import 'common.dart';
 
 /// Grid de productos, responsivo: el número de columnas se ajusta al ancho.
-class ProductGrid extends StatelessWidget {
+class ProductGrid extends ConsumerWidget {
   const ProductGrid({
     super.key,
-    required this.controller,
     this.padding = const EdgeInsets.fromLTRB(6, 14, 20, 14),
   });
 
-  final PosController controller;
   final EdgeInsets padding;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final data = ref.watch(posSaleProvider).requireValue;
+    final notifier = ref.read(posSaleProvider.notifier);
+
     return LayoutBuilder(builder: (context, c) {
       final available = c.maxWidth - padding.horizontal;
       // Tarjetas de ~215px como en el diseño (grid de 3 en el panel de tablet).
@@ -31,15 +33,15 @@ class ProductGrid extends StatelessWidget {
           // Alto de la tarjeta: imagen (16/11) + bloque de texto/stepper (~118).
           mainAxisExtent: (available - (cols - 1) * 14) / cols * 11 / 16 + 118,
         ),
-        itemCount: controller.products.length,
+        itemCount: data.products.length,
         itemBuilder: (_, i) {
-          final p = controller.products[i];
+          final p = data.products[i];
           return ProductCard(
             product: p,
-            qty: controller.qtyOf(p.id),
-            onTap: () => controller.increment(p.id),
-            onInc: () => controller.increment(p.id),
-            onDec: () => controller.decrement(p.id),
+            qty: data.qtyOf(p.id),
+            onTap: () => notifier.increment(p.id),
+            onInc: () => notifier.increment(p.id),
+            onDec: () => notifier.decrement(p.id),
           );
         },
       );
@@ -74,7 +76,7 @@ class ProductCard extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: OrbixColors.border),
             boxShadow: const [
               BoxShadow(
                   color: Color(0x0F1E1408), blurRadius: 2, offset: Offset(0, 1))
@@ -119,15 +121,15 @@ class ProductCard extends StatelessWidget {
                     Text(product.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: AppText.ui(
+                        style: OrbixText.ui(
                             size: 13.5, weight: FontWeight.w700, height: 1.3)),
                     const SizedBox(height: 2),
-                    Text(money(product.price),
-                        style: AppText.mono(size: 13.5, weight: FontWeight.w700)),
+                    Text('\$${product.price.toStringAsFixed(2)}',
+                        style: OrbixText.mono(size: 13.5, weight: FontWeight.w700)),
                     const SizedBox(height: 2),
                     Text('Stock: ${product.stock}',
                         style:
-                            AppText.ui(size: 11.5, color: AppColors.textFaint)),
+                            OrbixText.ui(size: 11.5, color: OrbixColors.textFaint)),
                     const SizedBox(height: 8),
                     SizedBox(
                       height: 30,

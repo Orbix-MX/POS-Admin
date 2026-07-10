@@ -35,10 +35,23 @@ class ProfileResult {
   final Tenant? tenant;
 }
 
+/// Resultado de `PATCH /auth/select-tenant/:slug` — espejo de
+/// `SelectTenantResponseDto`. Trae un `accessToken` *nuevo* con `tenantId`
+/// embebido: el preliminar de `/auth/login` no lo tiene, así que hasta que
+/// este token reemplaza al guardado, cualquier endpoint tenant-scoped
+/// responde 403 "Forbidden resource" (`PermissionsGuard` no encuentra
+/// `tenantId` en el JWT).
+class SelectTenantResult {
+  const SelectTenantResult({required this.accessToken, required this.tenant});
+
+  final String accessToken;
+  final Tenant tenant;
+}
+
 abstract class AuthRepository {
   Future<Result<LoginResult>> login({required String email, required String password, String? tenantSlug});
 
-  Future<Result<Tenant>> selectTenant(String slug);
+  Future<Result<SelectTenantResult>> selectTenant(String slug);
 
   Future<Result<ProfileResult>> getProfile();
 
@@ -83,11 +96,16 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<Result<Tenant>> selectTenant(String slug) async {
+  Future<Result<SelectTenantResult>> selectTenant(String slug) async {
     try {
       final response = await _dio.patch<Map<String, dynamic>>(ApiEndpoints.selectTenant(slug));
       final data = response.data!;
-      return Result.ok(Tenant.fromJson(data['tenant'] as Map<String, dynamic>));
+      return Result.ok(
+        SelectTenantResult(
+          accessToken: data['accessToken'] as String,
+          tenant: Tenant.fromJson(data['tenant'] as Map<String, dynamic>),
+        ),
+      );
     } on DioException catch (e) {
       return Result.err(e.error is Failure ? e.error as Failure : const Failure.unknown('Error al seleccionar empresa.'));
     }
