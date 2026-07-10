@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import 'core/auth/auth_session.dart';
+import 'core/router/route_paths.dart';
 import 'pos_controller.dart';
 import 'theme.dart';
-import 'widgets/category_rail.dart';
-import 'widgets/product_grid.dart';
-import 'widgets/side_nav.dart';
-import 'widgets/stats_bar.dart';
-import 'widgets/ticket_panel.dart';
-import 'widgets/toolbar.dart';
-import 'widgets/top_header.dart';
+import 'shared/widgets/category_rail.dart';
+import 'shared/widgets/product_grid.dart';
+import 'shared/widgets/side_nav.dart';
+import 'shared/widgets/stats_bar.dart';
+import 'shared/widgets/ticket_panel.dart';
+import 'shared/widgets/toolbar.dart';
+import 'shared/widgets/top_header.dart';
 
 /// Pantalla "Venta actual". Tablet-first: layout de tres paneles que se adapta
 /// a tablet chica (sin sidebar) y a móvil (grid + ticket en hoja inferior).
@@ -61,7 +65,13 @@ class _PosSaleScreenState extends State<PosSaleScreen> {
   Widget _tabletLayout(double w) {
     return Column(
       children: [
-        TopHeader(onMenu: () => _scaffoldKey.currentState?.openDrawer()),
+        TopHeader(
+          onMenu: () => _scaffoldKey.currentState?.openDrawer(),
+          onLock: () => ProviderScope.containerOf(context, listen: false)
+              .read(authSessionProvider.notifier)
+              .lock(),
+          onSecuritySettings: () => context.push(RoutePaths.settings),
+        ),
         Expanded(
           child: Row(
             children: [

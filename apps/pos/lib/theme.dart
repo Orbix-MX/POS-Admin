@@ -1,88 +1,55 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:orbix_design_system/orbix_design_system.dart';
 
-/// Tokens del Orbix Design System.
-///
-/// El diseño original define colores en oklch; aquí están convertidos a sRGB
-/// (aproximación fiel) para usarse como [Color] de Flutter. El nombre conserva
-/// la intención semántica del token, no el valor oklch literal.
+/// Adaptador temporal sobre `orbix_design_system` — mantiene `AppColors`/
+/// `AppText`/`buildAppTheme()` funcionando para el código de `pos_sale_screen.dart`
+/// y sus widgets (`shared/widgets/*`) sin duplicar tokens mientras esos
+/// archivos no se migran a `features/pos/` (Fase 2 del roadmap de
+/// arquitectura). Se elimina en esa migración — nada nuevo debe importar
+/// este archivo, usar `orbix_design_system` directamente.
 class AppColors {
   AppColors._();
 
-  // Marca
-  static const primary = Color(0xFF1276CE); // oklch(56% 0.16 252)
-  static const primaryText = Color(0xFF2350AE); // oklch(40% 0.14 252)
-  static const primaryTint = Color(0xFFE4EAFB); // oklch(94% 0.035 252)
-  static const primaryTintBorder = Color(0xFFC5D4F5); // oklch(85% 0.06 252)
-
-  // Superficies
-  static const page = Color(0xFFE2E3E6); // oklch(90% 0.004 260)
-  static const surface = Color(0xFFFBFAF8); // oklch(98.5% 0.003 80)
-  static const white = Color(0xFFFFFFFF);
-  static const fill = Color(0xFFF3F0EC); // oklch(96% 0.006 80)
-  static const fillAlt = Color(0xFFF6F3EF); // oklch(97% 0.004 80)
-
-  // Texto
-  static const textPrimary = Color(0xFF302D28); // oklch(23% 0.012 80)
-  static const textSubtle = Color(0xFF514C45); // oklch(35% 0.012 80)
-  static const textMuted = Color(0xFF6D675F); // oklch(46% 0.012 80)
-  static const textFaint = Color(0xFF98928A); // oklch(62% 0.01 80)
-
-  // Bordes
-  static const border = Color(0xFFE7E3DE); // oklch(90% 0.006 80)
-  static const borderLight = Color(0xFFEDEAE6); // oklch(93% 0.004 80)
-  static const borderInput = Color(0xFFE4E0DA); // oklch(89% 0.007 80)
-
-  // Estado
-  static const green = Color(0xFF2FA96E); // oklch(62% 0.13 152)
-  static const greenText = Color(0xFF2C8F5C); // oklch(50% 0.13 152)
-  static const red = Color(0xFFD9463A); // oklch(58% 0.19 25)
-  static const star = Color(0xFFD89B34); // oklch(75% 0.15 85)
+  static const primary = OrbixColors.primary;
+  static const primaryText = OrbixColors.primaryText;
+  static const primaryTint = OrbixColors.primaryTint;
+  static const primaryTintBorder = OrbixColors.primaryTintBorder;
+  static const page = OrbixColors.page;
+  static const surface = OrbixColors.surface;
+  static const white = OrbixColors.white;
+  static const fill = OrbixColors.fill;
+  static const fillAlt = OrbixColors.fillAlt;
+  static const textPrimary = OrbixColors.textPrimary;
+  static const textSubtle = OrbixColors.textSubtle;
+  static const textMuted = OrbixColors.textMuted;
+  static const textFaint = OrbixColors.textFaint;
+  static const border = OrbixColors.border;
+  static const borderLight = OrbixColors.borderLight;
+  static const borderInput = OrbixColors.borderInput;
+  static const green = OrbixColors.green;
+  static const greenText = OrbixColors.greenText;
+  static const red = OrbixColors.red;
+  static const star = OrbixColors.star;
 }
 
-/// Helpers tipográficos. Inter para UI, JetBrains Mono para cifras/precios.
 class AppText {
   AppText._();
 
   static TextStyle ui({
     double size = 13,
     FontWeight weight = FontWeight.w500,
-    Color color = AppColors.textPrimary,
+    Color color = OrbixColors.textPrimary,
     double? height,
     double letterSpacing = 0,
   }) =>
-      GoogleFonts.inter(
-        fontSize: size,
-        fontWeight: weight,
-        color: color,
-        height: height,
-        letterSpacing: letterSpacing,
-      );
+      OrbixText.ui(size: size, weight: weight, color: color, height: height, letterSpacing: letterSpacing);
 
   static TextStyle mono({
     double size = 13,
     FontWeight weight = FontWeight.w700,
-    Color color = AppColors.textPrimary,
+    Color color = OrbixColors.textPrimary,
   }) =>
-      GoogleFonts.jetBrainsMono(
-        fontSize: size,
-        fontWeight: weight,
-        color: color,
-      );
+      OrbixText.mono(size: size, weight: weight, color: color);
 }
 
-ThemeData buildAppTheme() {
-  final base = ThemeData(
-    useMaterial3: true,
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: AppColors.primary,
-      primary: AppColors.primary,
-      surface: AppColors.surface,
-    ),
-    scaffoldBackgroundColor: AppColors.page,
-    splashFactory: InkRipple.splashFactory,
-  );
-  return base.copyWith(
-    textTheme: GoogleFonts.interTextTheme(base.textTheme),
-  );
-}
+ThemeData buildAppTheme() => buildOrbixTheme();

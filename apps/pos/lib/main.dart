@@ -1,20 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'pos_sale_screen.dart';
-import 'theme.dart';
+import 'app/app.dart';
+import 'app/bootstrap.dart';
 
-void main() => runApp(const OrbixPosApp());
+Future<void> main() async {
+  final container = await bootstrap();
 
-class OrbixPosApp extends StatelessWidget {
-  const OrbixPosApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Orbix POS',
-      debugShowCheckedModeBanner: false,
-      theme: buildAppTheme(),
-      home: const PosSaleScreen(),
-    );
-  }
+  runApp(
+    UncontrolledProviderScope(
+      container: container,
+      child: const OrbixApp(),
+    ),
+  );
 }

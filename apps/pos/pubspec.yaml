@@ -35,8 +35,39 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
-  # Fuentes del diseño: Inter (UI) + JetBrains Mono (cifras/precios).
-  google_fonts: ^6.2.1
+  # Design System de Orbix — paquete independiente (packages/orbix_design_system).
+  orbix_design_system:
+    path: ../../packages/orbix_design_system
+
+  # Estado
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+
+  # Routing
+  go_router: ^14.8.1
+
+  # Networking
+  dio: ^5.7.0
+  connectivity_plus: ^6.1.3
+  internet_connection_checker_plus: ^2.5.2
+
+  # Modelos inmutables / serialización
+  freezed_annotation: ^2.4.4
+  json_annotation: ^4.9.0
+
+  # Auth / almacenamiento seguro
+  flutter_secure_storage: ^9.2.4
+  local_auth: ^2.3.0
+  crypto: ^3.0.6
+
+  # Diagnóstico / soporte
+  device_info_plus: ^11.2.2
+  package_info_plus: ^8.1.3
+
+  # Logging
+  talker: ^4.7.5
+  talker_dio_logger: ^4.7.5
+  talker_riverpod_logger: ^4.7.5
 
 dev_dependencies:
   flutter_test:
@@ -48,6 +79,16 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+
+  # Codegen
+  build_runner: ^2.4.13
+  riverpod_generator: ^2.6.3
+  freezed: ^2.5.7
+  json_serializable: ^6.9.0
+
+  # Splash / íconos (fase de distribución, configuración diferida a un flavor real)
+  flutter_native_splash: ^2.4.4
+  flutter_launcher_icons: ^0.14.3
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
