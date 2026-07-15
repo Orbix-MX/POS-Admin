@@ -5,6 +5,7 @@ import 'package:orbix_design_system/orbix_design_system.dart';
 
 import '../../../../core/auth/auth_session.dart';
 import '../../../../core/error/failures.dart';
+import '../../../../core/platform/platform_service.dart';
 import '../../../../core/router/route_paths.dart';
 import '../providers/pos_sale_notifier.dart';
 import '../widgets/category_rail.dart';
@@ -27,8 +28,8 @@ class PosSaleScreen extends ConsumerStatefulWidget {
 class _PosSaleScreenState extends ConsumerState<PosSaleScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  // Umbrales
-  static const _wide = 1160.0; // sidebar + main + ticket
+  // Umbral tablet/móvil. El umbral de sidebar fijo ya no es de ancho — ver
+  // `platformServiceProvider().isDesktop` en `_buildLoaded`.
   static const _medium = 900.0; // main + ticket (sidebar en drawer)
 
   @override
@@ -49,38 +50,45 @@ class _PosSaleScreenState extends ConsumerState<PosSaleScreen> {
 
   Widget _buildLoaded(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
+    // El sidebar fijo (siempre visible, sin drawer) es exclusivo de
+    // desktop. En móvil y tablet el drawer permanece oculto por default y
+    // solo se abre con el botón de hamburguesa — independientemente del
+    // ancho de pantalla.
+    final isDesktop = ref.watch(platformServiceProvider).isDesktop;
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: OrbixColors.surface,
-      drawer: w >= _wide
+      drawer: isDesktop
           ? null
           : Drawer(
-              width: 200,
+              width: 300,
               backgroundColor: Colors.white,
               child: SafeArea(child: SideNav(onSelect: (_) => Navigator.pop(context))),
             ),
       body: SafeArea(
-        child: w >= _medium ? _tabletLayout(w) : _mobileLayout(),
+        child: w >= _medium ? _tabletLayout(isDesktop: isDesktop) : _mobileLayout(),
       ),
     );
   }
 
   // ── Tablet ────────────────────────────────────────────────────────────────
-  Widget _tabletLayout(double w) {
+  Widget _tabletLayout({required bool isDesktop}) {
     return Column(
       children: [
         TopHeader(
-          onMenu: () => _scaffoldKey.currentState?.openDrawer(),
+          // En desktop el sidebar es fijo — no hay drawer que abrir
+          // (`Scaffold.openDrawer()` truena si `drawer` es null).
+          onMenu: isDesktop ? null : () => _scaffoldKey.currentState?.openDrawer(),
           onLock: () => ref.read(authSessionProvider.notifier).lock(),
           onSecuritySettings: () => context.push(RoutePaths.settings),
         ),
         Expanded(
           child: Row(
             children: [
-              if (w >= _wide) const SideNav(),
+              if (isDesktop) const SideNav(),
               const Expanded(child: _MainColumn()),
               SizedBox(
-                width: 392,
+                width: 320,
                 child: DecoratedBox(
                   decoration: const BoxDecoration(
                     border: Border(left: BorderSide(color: OrbixColors.border)),

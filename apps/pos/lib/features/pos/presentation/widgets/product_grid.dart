@@ -4,7 +4,6 @@ import 'package:orbix_design_system/orbix_design_system.dart';
 
 import '../../../../business/models/product.dart';
 import '../providers/pos_sale_notifier.dart';
-import 'common.dart';
 
 /// Grid de productos, responsivo: el número de columnas se ajusta al ancho.
 class ProductGrid extends ConsumerWidget {
@@ -22,16 +21,15 @@ class ProductGrid extends ConsumerWidget {
 
     return LayoutBuilder(builder: (context, c) {
       final available = c.maxWidth - padding.horizontal;
-      // Tarjetas de ~215px como en el diseño (grid de 3 en el panel de tablet).
-      final cols = (available / 215).floor().clamp(1, 5);
+      // Tarjetas de ~160px (sin imagen, más compactas que el diseño anterior).
+      final cols = (available / 160).floor().clamp(1, 6);
       return GridView.builder(
         padding: padding,
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: cols,
           mainAxisSpacing: 14,
           crossAxisSpacing: 14,
-          // Alto de la tarjeta: imagen (16/11) + bloque de texto/stepper (~118).
-          mainAxisExtent: (available - (cols - 1) * 14) / cols * 11 / 16 + 118,
+          mainAxisExtent: 132,
         ),
         itemCount: data.products.length,
         itemBuilder: (_, i) {
@@ -49,6 +47,8 @@ class ProductGrid extends ConsumerWidget {
   }
 }
 
+/// Tarjeta de producto sin imagen: precio en badge + nombre + acciones
+/// (Personalizar / +) arriba y (–) abajo, como tarjeta de "quick add".
 class ProductCard extends StatelessWidget {
   const ProductCard({
     super.key,
@@ -74,6 +74,7 @@ class ProductCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         onTap: onTap,
         child: Container(
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: OrbixColors.border),
@@ -82,64 +83,89 @@ class ProductCard extends StatelessWidget {
                   color: Color(0x0F1E1408), blurRadius: 2, offset: Offset(0, 1))
             ],
           ),
-          clipBehavior: Clip.antiAlias,
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Imagen + favorito
-              AspectRatio(
-                aspectRatio: 16 / 11,
-                child: Stack(children: [
-                  Positioned.fill(child: PlaceholderThumb(label: product.name)),
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      width: 26,
-                      height: 26,
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                              color: Colors.black26,
-                              blurRadius: 3,
-                              offset: Offset(0, 1))
-                        ],
-                      ),
-                      child: const StarIcon(size: 13),
-                    ),
-                  ),
-                ]),
-              ),
-              // Info
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(product.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: OrbixText.ui(
-                            size: 13.5, weight: FontWeight.w700, height: 1.3)),
-                    const SizedBox(height: 2),
-                    Text('\$${product.price.toStringAsFixed(2)}',
-                        style: OrbixText.mono(size: 13.5, weight: FontWeight.w700)),
-                    const SizedBox(height: 2),
-                    Text('Stock: ${product.stock}',
-                        style:
-                            OrbixText.ui(size: 11.5, color: OrbixColors.textFaint)),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      height: 30,
-                      child: QtyStepper(qty: qty, onDec: onDec, onInc: onInc),
-                    ),
-                  ],
+              Expanded(
+                child: Text(
+                  product.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: OrbixText.ui(
+                      size: 13.5, weight: FontWeight.w700, height: 1.25),
                 ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: _PriceBadge(price: product.price)),
+                  const SizedBox(width: 8),
+                  _SquareIconButton(
+                    icon: Icons.add,
+                    background: OrbixColors.textPrimary,
+                    foreground: Colors.white,
+                    onTap: onInc,
+                  ),
+                ],
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Badge amarillo con el precio, como en el diseño de referencia.
+class _PriceBadge extends StatelessWidget {
+  const _PriceBadge({required this.price});
+
+  final double price;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      decoration: BoxDecoration(
+        // color: const Color(0xFFF6DF7A), // amarillo suave del badge de precio
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        '\$${price.toStringAsFixed(2)}',
+        overflow: TextOverflow.ellipsis,
+        style: OrbixText.mono(
+            size: 18, weight: FontWeight.w800, color: const Color.fromARGB(255, 136, 126, 102))
+      ),
+    );
+  }
+}
+
+class _SquareIconButton extends StatelessWidget {
+  const _SquareIconButton({
+    required this.icon,
+    required this.background,
+    required this.foreground,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color background;
+  final Color foreground;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: background,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: SizedBox(
+          width: 28,
+          height: 28,
+          child: Icon(icon, size: 16, color: foreground),
         ),
       ),
     );

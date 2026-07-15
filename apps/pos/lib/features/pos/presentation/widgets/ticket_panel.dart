@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:orbix_design_system/orbix_design_system.dart';
 
+import '../../../../business/models/money.dart';
 import '../../domain/entities/cart_line.dart';
 import '../providers/pos_sale_notifier.dart';
 import 'common.dart';
@@ -164,13 +165,15 @@ class _CartLineTile extends ConsumerWidget {
   }
 }
 
-class _Totals extends StatelessWidget {
+class _Totals extends ConsumerWidget {
   const _Totals({required this.data, required this.onCobrar});
   final PosSaleData data;
   final VoidCallback onCobrar;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notifier = ref.read(posSaleProvider.notifier);
+    final hasDiscount = data.effectiveDiscount.cents > 0;
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
       decoration: const BoxDecoration(
@@ -179,8 +182,14 @@ class _Totals extends StatelessWidget {
       child: Column(
         children: [
           _row('Subtotal', data.subtotal.format()),
-          _row('Descuento', '–${data.discount.format()}', color: OrbixColors.greenText),
-          _row('Impuestos (16%)', data.taxes.format()),
+          _row(
+            'Descuento',
+            hasDiscount ? '–${data.effectiveDiscount.format()}' : data.effectiveDiscount.format(),
+            color: hasDiscount ? OrbixColors.greenText : OrbixColors.textMuted,
+          ),
+          // Sin factura no se cobra ni se muestra impuesto — la fila ni
+          // siquiera aparece (regla de negocio explícita, no solo un $0).
+          if (data.requiresInvoice) _row('Impuestos (16%)', data.taxes.format()),
           Container(
             margin: const EdgeInsets.only(top: 10),
             padding: const EdgeInsets.only(top: 10),
@@ -200,11 +209,21 @@ class _Totals extends StatelessWidget {
           const SizedBox(height: 14),
           // Mini acciones
           Row(children: [
-            _mini(Icons.sell_outlined, 'Descuento'),
+            _mini(
+              Icons.sell_outlined,
+              'Descuento',
+              active: hasDiscount,
+              onTap: () => _showDiscountDialog(context, notifier, data),
+            ),
             const SizedBox(width: 8),
             _mini(Icons.person_outline, 'Cliente'),
             const SizedBox(width: 8),
-            _mini(Icons.more_horiz, 'Más acciones'),
+            _mini(
+              Icons.receipt_long_outlined,
+              'Factura',
+              active: data.requiresInvoice,
+              onTap: () => notifier.setRequiresInvoice(!data.requiresInvoice),
+            ),
           ]),
           const SizedBox(height: 10),
           // Cobrar
@@ -274,24 +293,79 @@ class _Totals extends StatelessWidget {
         ),
       );
 
-  Widget _mini(IconData icon, String label) => Expanded(
-        child: Container(
-          height: 48,
-          decoration: BoxDecoration(
+  Widget _mini(IconData icon, String label, {bool active = false, VoidCallback? onTap}) => Expanded(
+        child: Material(
+          color: active ? OrbixColors.primaryTint : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          child: InkWell(
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: OrbixColors.borderInput),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 15, color: OrbixColors.textPrimary),
-              const SizedBox(height: 2),
-              Text(label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: OrbixText.ui(size: 11, weight: FontWeight.w700)),
-            ],
+            onTap: onTap,
+            child: Container(
+              height: 48,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: active ? OrbixColors.primaryTintBorder : OrbixColors.borderInput),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 15, color: active ? OrbixColors.primaryText : OrbixColors.textPrimary),
+                  const SizedBox(height: 2),
+                  Text(label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: OrbixText.ui(
+                          size: 11,
+                          weight: FontWeight.w700,
+                          color: active ? OrbixColors.primaryText : OrbixColors.textPrimary)),
+                ],
+              ),
+            ),
           ),
         ),
       );
+
+  Future<void> _showDiscountDialog(
+    BuildContext context,
+    PosSaleNotifier notifier,
+    PosSaleData data,
+  ) async {
+    final controller = TextEditingController(
+      text: data.discount.cents > 0 ? data.discount.amount.toStringAsFixed(2) : '',
+    );
+    final result = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Descuento de la venta'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            prefixText: '\$ ',
+            hintText: '0.00',
+            helperText: 'Subtotal: ${data.subtotal.format()}',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          if (data.discount.cents > 0)
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 0.0),
+              child: const Text('Quitar'),
+            ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, double.tryParse(controller.text.trim()) ?? 0.0),
+            child: const Text('Aplicar'),
+          ),
+        ],
+      ),
+    );
+    if (result != null) {
+      notifier.setDiscount(Money.fromDouble(result < 0 ? 0 : result));
+    }
+  }
 }

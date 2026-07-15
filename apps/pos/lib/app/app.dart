@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:orbix_design_system/orbix_design_system.dart';
 
 import '../core/auth/auth_session.dart';
+import '../core/platform/platform_service.dart';
 import '../core/router/app_router.dart';
 
 /// Tiempo de inactividad tras el cual se bloquea la app sola (ver
@@ -62,6 +64,12 @@ class _LockTriggerState extends ConsumerState<_LockTrigger> with WidgetsBindingO
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       ref.read(authSessionProvider.notifier).lock();
+    }
+    // Android suele restaurar la chrome del sistema (status/nav bar) al
+    // volver de segundo plano — se reoculta aquí en vez de solo en
+    // `bootstrap()`, que corre una única vez al arrancar la app.
+    if (state == AppLifecycleState.resumed && const PlatformService().isMobile) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     }
   }
 

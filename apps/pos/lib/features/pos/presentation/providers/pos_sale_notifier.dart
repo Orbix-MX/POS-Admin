@@ -11,12 +11,6 @@ import '../../data/repositories/pos_repository_impl.dart';
 import '../../domain/entities/cart_line.dart';
 import '../../domain/entities/sale.dart';
 
-/// Descuento plano de la venta actual. Fase 2 solo reproduce el
-/// comportamiento del mock original (`PosController.discount`); un
-/// descuento real (por producto/cupón) es trabajo de un feature aparte.
-const _flatDiscount = 15.0;
-const _taxRate = 0.16;
-
 /// Estado inmutable de la pantalla de venta: catálogo (cargado una vez al
 /// entrar) + carrito (mutado localmente hasta el cobro).
 class PosSaleData {
@@ -25,6 +19,8 @@ class PosSaleData {
     required this.categories,
     required this.cart,
     required this.activeCategory,
+    this.discount = const Money(0),
+    this.requiresInvoice = false,
   });
 
   final List<Product> products;
@@ -32,11 +28,28 @@ class PosSaleData {
   final Map<String, int> cart;
   final String activeCategory;
 
-  PosSaleData copyWith({Map<String, int>? cart, String? activeCategory}) => PosSaleData(
+  /// Descuento manual de la venta — en cero salvo que el cajero lo agregue
+  /// explícitamente (ver `_DiscountButton` en `ticket_panel.dart`).
+  final Money discount;
+
+  /// Si el cliente requiere factura. Controla si se cobra/muestra impuesto
+  /// — no hay concepto de facturación (CFDI) en este backend todavía, es
+  /// puramente la regla de "sin factura, sin impuesto visible".
+  final bool requiresInvoice;
+
+  PosSaleData copyWith({
+    Map<String, int>? cart,
+    String? activeCategory,
+    Money? discount,
+    bool? requiresInvoice,
+  }) =>
+      PosSaleData(
         products: products,
         categories: categories,
         cart: cart ?? this.cart,
         activeCategory: activeCategory ?? this.activeCategory,
+        discount: discount ?? this.discount,
+        requiresInvoice: requiresInvoice ?? this.requiresInvoice,
       );
 
   int qtyOf(String productId) => cart[productId] ?? 0;
@@ -51,11 +64,13 @@ class PosSaleData {
         (acc, l) => acc + l.lineTotal,
       );
 
-  Money get discount => Money.fromDouble(_flatDiscount);
+  /// Descuento efectivo — nunca más que el subtotal (evita total negativo
+  /// si el cajero teclea un monto mayor al carrito).
+  Money get effectiveDiscount => discount.clamp(const Money(0), subtotal);
 
-  Money get taxes => (subtotal - discount) * _taxRate;
+  Money get taxes => requiresInvoice ? (subtotal - effectiveDiscount) * kPosTaxRate : const Money(0);
 
-  Money get total => subtotal - discount + taxes;
+  Money get total => subtotal - effectiveDiscount + taxes;
 }
 
 /// Reemplaza `PosController` (ChangeNotifier) — fuente única de la pantalla
@@ -103,6 +118,14 @@ class PosSaleNotifier extends AsyncNotifier<PosSaleData> {
 
   void setCategory(String category) => _mutate((d) => d.copyWith(activeCategory: category));
 
+  /// Descuento manual de la venta actual — cero hasta que el cajero lo
+  /// agregue explícitamente. Se clampa contra el subtotal al leerse
+  /// (`PosSaleData.effectiveDiscount`), aquí se guarda el valor tal cual se
+  /// tecleó para no perder lo escrito si el carrito cambia después.
+  void setDiscount(Money amount) => _mutate((d) => d.copyWith(discount: amount));
+
+  void setRequiresInvoice(bool value) => _mutate((d) => d.copyWith(requiresInvoice: value));
+
   void _mutate(PosSaleData Function(PosSaleData current) update) {
     final current = state.value;
     if (current == null) return;
@@ -118,14 +141,19 @@ class PosSaleNotifier extends AsyncNotifier<PosSaleData> {
     }
 
     final repository = ref.read(posRepositoryProvider);
-    final result = await repository.createSale(lines: current.cartLines, paymentMethod: paymentMethod);
+    final result = await repository.createSale(
+      lines: current.cartLines,
+      paymentMethod: paymentMethod,
+      discount: current.effectiveDiscount,
+      requiresInvoice: current.requiresInvoice,
+    );
 
     result.fold(
       (sale) {
         ref.read(eventBusProvider).publish(
               SaleCompletedEvent(saleId: sale.id, branchId: sale.branchId ?? '', totalCents: sale.total.cents),
             );
-        _mutate((d) => d.copyWith(cart: const {}));
+        _mutate((d) => d.copyWith(cart: const {}, discount: const Money(0), requiresInvoice: false));
       },
       (_) {},
     );

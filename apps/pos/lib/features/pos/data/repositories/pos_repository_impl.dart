@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../business/models/category.dart';
+import '../../../../business/models/money.dart';
 import '../../../../business/models/pagination.dart';
 import '../../../../business/models/product.dart';
 import '../../../../core/error/failures.dart';
@@ -52,18 +53,46 @@ class PosRepositoryImpl implements PosRepository {
   Future<Result<Sale>> createSale({
     required List<CartLine> lines,
     required String paymentMethod,
+    required Money discount,
+    required bool requiresInvoice,
   }) async {
     try {
+      // `POST /orders` (`CreateOrderItemDto`) solo acepta descuento/impuesto
+      // por línea, no a nivel de venta completa — se prorratea aquí por
+      // peso de línea (`Money.distribute`) para que el total que cobra el
+      // backend coincida exactamente con el que vio el cajero en el ticket.
+      final weights = lines.map((l) => l.lineTotal.cents).toList();
+      final discountPerLine = Money.distribute(discount, weights);
+      final subtotalAfterDiscount = <Money>[
+        for (var i = 0; i < lines.length; i++) lines[i].lineTotal - discountPerLine[i],
+      ];
+      final totalTax = requiresInvoice
+          ? subtotalAfterDiscount.fold(const Money(0), (acc, s) => acc + s) * kPosTaxRate
+          : const Money(0);
+      final taxPerLine = requiresInvoice
+          ? Money.distribute(totalTax, subtotalAfterDiscount.map((s) => s.cents).toList())
+          : List.filled(lines.length, const Money(0));
+
       final response = await _dio.post<Map<String, dynamic>>(
         ApiEndpoints.orders,
         data: {
-          'items': lines
-              .map((l) => {
-                    'productId': l.product.id,
-                    'quantity': l.qty,
-                    'price': l.product.price,
-                  })
-              .toList(),
+          'items': [
+            for (var i = 0; i < lines.length; i++)
+              {
+                'productId': lines[i].product.id,
+                'quantity': lines[i].qty,
+                'price': lines[i].product.price,
+                'discount': discountPerLine[i].amount,
+                // Sin factura: se fuerza 0 aunque el producto/tenant tengan
+                // taxRate configurado (`taxExempt`, ver `create-order.dto.ts`).
+                // Con factura: se manda el impuesto ya calculado en cliente
+                // (16% plano) para que preview y cobro coincidan exacto —
+                // el backend respeta un `tax` explícito > 0 sobre el
+                // derivado del producto.
+                'tax': taxPerLine[i].amount,
+                if (!requiresInvoice) 'taxExempt': true,
+              },
+          ],
           'paymentMethod': paymentMethod,
         },
       );

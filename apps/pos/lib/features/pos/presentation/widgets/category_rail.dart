@@ -15,7 +15,7 @@ class CategoryRail extends ConsumerWidget {
     final notifier = ref.read(posSaleProvider.notifier);
 
     return Container(
-      width: 150,
+      width: 200,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
       child: ListView(
         padding: EdgeInsets.zero,

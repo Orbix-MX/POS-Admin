@@ -161,12 +161,16 @@ export class OrdersService {
         itemDiscount,
       );
       const isProduct = !item.itemType || item.itemType === 'PRODUCT';
-      // Explicit per-item tax wins; otherwise derive from product/tenant rate
+      // Explicit per-item tax wins; otherwise derive from product/tenant rate.
+      // `taxExempt` fuerza 0 aunque el producto/tenant tengan taxRate — es
+      // el único caso en que un 0 explícito debe ganarle al derivado (un
+      // `tax: 0` sin este flag se sigue tratando como "no enviado", igual
+      // que antes, para no romper integraciones existentes).
       const explicitTax = roundMoney(item.tax ?? 0);
       const derivedTax = isProduct
         ? calculateTax(itemSubtotal, resolveTaxRate(item.productId))
         : 0;
-      const itemTax = explicitTax > 0 ? explicitTax : derivedTax;
+      const itemTax = item.taxExempt ? 0 : explicitTax > 0 ? explicitTax : derivedTax;
       lineMath.set(item, {
         discount: itemDiscount,
         tax: itemTax,
@@ -176,7 +180,14 @@ export class OrdersService {
     }
 
     const shippingCost = roundMoney(dto.shippingCost ?? 0);
-    discountAmount = roundMoney(discountAmount);
+    // El descuento por línea (`item.discount`) ya reducía `itemSubtotal`/
+    // `itemTotal` de cada renglón, pero antes no se reflejaba en
+    // `order.total` (solo el descuento de cupón lo hacía) — se suma aquí
+    // para que el campo "Descuento sobre el item" ya documentado en el DTO
+    // efectivamente reduzca el total cobrado, sin tocar el cálculo de
+    // cupón existente (ambos se suman, no se reemplazan).
+    const itemDiscountsTotal = sumMoney([...lineMath.values()].map((l) => l.discount));
+    discountAmount = roundMoney(discountAmount + itemDiscountsTotal);
     const tax = sumMoney([...lineMath.values()].map((l) => l.tax));
     const total = roundMoney(
       Math.max(0, subtotal - discountAmount + shippingCost + tax),

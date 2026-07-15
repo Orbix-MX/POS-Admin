@@ -50,8 +50,12 @@ class TopHeader extends StatelessWidget {
           InkWell(
             onTap: onMenu,
             child: Row(children: [
-              const Icon(Icons.menu, size: 20, color: OrbixColors.textPrimary),
-              const SizedBox(width: 10),
+              // Sin `onMenu` (desktop, sidebar fijo) no hay drawer que
+              // abrir — el ícono de hamburguesa no aplica ahí.
+              if (onMenu != null) ...[
+                const Icon(Icons.menu, size: 20, color: OrbixColors.textPrimary),
+                const SizedBox(width: 10),
+              ],
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
