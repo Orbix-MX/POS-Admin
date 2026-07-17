@@ -30,11 +30,16 @@ class CategoryRail extends ConsumerWidget {
             margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
             color: OrbixColors.borderLight,
           ),
+          _CategoryTile(
+            label: 'Todos',
+            active: data.activeCategory.isEmpty,
+            onTap: () => notifier.setCategory(''),
+          ),
           for (final c in data.categories)
             _CategoryTile(
               label: c.name,
-              active: data.activeCategory == c.name,
-              onTap: () => notifier.setCategory(c.name),
+              active: data.activeCategory == c.id,
+              onTap: () => notifier.setCategory(c.id),
             ),
           const SizedBox(height: 6),
           _seeMore(),
@@ -48,9 +53,12 @@ class CategoryRail extends ConsumerWidget {
         child: Row(children: [
           icon,
           const SizedBox(width: 8),
-          Text(label,
-              style: OrbixText.ui(
-                  size: 13, weight: FontWeight.w600, color: OrbixColors.textSubtle)),
+          Expanded(
+            child: Text(label,
+                overflow: TextOverflow.ellipsis,
+                style: OrbixText.ui(
+                    size: 13, weight: FontWeight.w600, color: OrbixColors.textSubtle)),
+          ),
         ]),
       );
 
