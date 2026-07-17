@@ -5,7 +5,10 @@ import 'package:orbix_design_system/orbix_design_system.dart';
 import '../../../../business/models/product.dart';
 import '../providers/pos_sale_notifier.dart';
 
-/// Grid de productos, responsivo: el número de columnas se ajusta al ancho.
+/// Grid de productos agrupado por categoría (una sección con título por
+/// cada categoría que tenga productos). Si hay un filtro activo
+/// (`data.activeCategory`, ver `CategoryRail`) solo se muestra esa sección.
+/// Responsivo: el número de columnas se ajusta al ancho.
 class ProductGrid extends ConsumerWidget {
   const ProductGrid({
     super.key,
@@ -18,32 +21,113 @@ class ProductGrid extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final data = ref.watch(posSaleProvider).requireValue;
     final notifier = ref.read(posSaleProvider.notifier);
+    final sections = _buildSections(data);
 
     return LayoutBuilder(builder: (context, c) {
       final available = c.maxWidth - padding.horizontal;
       // Tarjetas de ~160px (sin imagen, más compactas que el diseño anterior).
       final cols = (available / 160).floor().clamp(1, 6);
-      return GridView.builder(
+      return ListView.builder(
         padding: padding,
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: cols,
-          mainAxisSpacing: 14,
-          crossAxisSpacing: 14,
-          mainAxisExtent: 132,
-        ),
-        itemCount: data.products.length,
+        itemCount: sections.length,
         itemBuilder: (_, i) {
-          final p = data.products[i];
-          return ProductCard(
-            product: p,
-            qty: data.qtyOf(p.id),
-            onTap: () => notifier.increment(p.id),
-            onInc: () => notifier.increment(p.id),
-            onDec: () => notifier.decrement(p.id),
+          final section = sections[i];
+          return _CategorySection(
+            title: section.title,
+            products: section.products,
+            crossAxisCount: cols,
+            data: data,
+            notifier: notifier,
           );
         },
       );
     });
+  }
+
+  /// Agrupa `data.products` por categoría, en el orden de `data.categories`
+  /// (los sin categoría al final). Si `activeCategory` no está vacío
+  /// (filtro seleccionado en `CategoryRail`), devuelve solo esa sección.
+  List<_Section> _buildSections(PosSaleData data) {
+    final byCategoryId = <String, List<Product>>{};
+    for (final p in data.products) {
+      byCategoryId.putIfAbsent(p.categoryId ?? '', () => []).add(p);
+    }
+
+    final sections = <_Section>[];
+    for (final c in data.categories) {
+      if (data.activeCategory.isNotEmpty && data.activeCategory != c.id) continue;
+      final products = byCategoryId[c.id];
+      if (products != null && products.isNotEmpty) {
+        sections.add(_Section(title: c.name, products: products));
+      }
+    }
+    if (data.activeCategory.isEmpty) {
+      final uncategorized = byCategoryId[''];
+      if (uncategorized != null && uncategorized.isNotEmpty) {
+        sections.add(_Section(title: 'Sin categoría', products: uncategorized));
+      }
+    }
+    return sections;
+  }
+}
+
+class _Section {
+  _Section({required this.title, required this.products});
+  final String title;
+  final List<Product> products;
+}
+
+class _CategorySection extends StatelessWidget {
+  const _CategorySection({
+    required this.title,
+    required this.products,
+    required this.crossAxisCount,
+    required this.data,
+    required this.notifier,
+  });
+
+  final String title;
+  final List<Product> products;
+  final int crossAxisCount;
+  final PosSaleData data;
+  final PosSaleNotifier notifier;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(2, 4, 2, 12),
+          child: Text(
+            title,
+            style: OrbixText.ui(size: 15, weight: FontWeight.w800, color: OrbixColors.textPrimary),
+          ),
+        ),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            mainAxisSpacing: 14,
+            crossAxisSpacing: 14,
+            mainAxisExtent: 132,
+          ),
+          itemCount: products.length,
+          itemBuilder: (_, i) {
+            final p = products[i];
+            return ProductCard(
+              product: p,
+              qty: data.qtyOf(p.id),
+              onTap: () => notifier.increment(p.id),
+              onInc: () => notifier.increment(p.id),
+              onDec: () => notifier.decrement(p.id),
+            );
+          },
+        ),
+        const SizedBox(height: 20),
+      ],
+    );
   }
 }
 

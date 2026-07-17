@@ -288,11 +288,16 @@ class _MobileCategories extends ConsumerWidget {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: _catChip('Todos', data.activeCategory.isEmpty,
+                () => notifier.setCategory('')),
+          ),
           for (final c in data.categories)
             Padding(
               padding: const EdgeInsets.only(right: 8),
-              child: _catChip(c.name, data.activeCategory == c.name,
-                  () => notifier.setCategory(c.name)),
+              child: _catChip(c.name, data.activeCategory == c.id,
+                  () => notifier.setCategory(c.id)),
             ),
         ],
       ),

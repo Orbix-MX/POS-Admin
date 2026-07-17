@@ -26,6 +26,9 @@ class PosSaleData {
   final List<Product> products;
   final List<Category> categories;
   final Map<String, int> cart;
+
+  /// Categoría del filtro activo (id de `Category`), o `''` para "Todos"
+  /// (sin filtro — el grid muestra todas las categorías agrupadas).
   final String activeCategory;
 
   /// Descuento manual de la venta — en cero salvo que el cajero lo agregue
@@ -90,7 +93,9 @@ class PosSaleNotifier extends AsyncNotifier<PosSaleData> {
       products: products,
       categories: categories,
       cart: const {},
-      activeCategory: categories.isNotEmpty ? categories.first.name : '',
+      // Sin filtro por defecto: el grid muestra todas las categorías
+      // agrupadas (ver `ProductGrid`).
+      activeCategory: '',
     );
   }
 
