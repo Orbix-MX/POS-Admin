@@ -101,6 +101,10 @@ export enum SystemModule {
   CAJA_RESTAURANTE   = 'caja-restaurante',
   INSUMOS            = 'insumos',
   DINING_AREAS       = 'dining-areas',
+  /** Nodo de Caja: comandas completadas pasan a caja para cobro en vez de
+   *  cobrarse directo en la comandera. Off → cobro inmediato (comportamiento
+   *  histórico). Restaurant-only. */
+  CAJA_NODE          = 'caja-nodo',
   // Future verticals
   GYM           = 'gym',
   KITCHEN       = 'kitchen',
@@ -173,7 +177,7 @@ export const VERTICAL_DEFAULT_EXTRAS: Record<BusinessVertical, string[]> = {
 // Extend this map as new verticals are added — no other file needs to change.
 
 export const VERTICAL_INCOMPATIBLE_MODULES: Partial<Record<BusinessVertical, SystemModule[]>> = {
-  RETAIL:     [SystemModule.COMANDA, SystemModule.RESTAURANT_TABLES, SystemModule.KITCHEN, SystemModule.DINING_AREAS],
+  RETAIL:     [SystemModule.COMANDA, SystemModule.RESTAURANT_TABLES, SystemModule.KITCHEN, SystemModule.DINING_AREAS, SystemModule.CAJA_NODE],
   RESTAURANT: [SystemModule.POS],
 }
 

@@ -13,7 +13,7 @@ import { useTheme } from '@/providers/theme-provider';
 import { useResponsive } from '@/hooks/use-responsive';
 import { useBranchSelector } from '@/hooks/use-branch-selector';
 import { useCapabilities } from '@/hooks/use-nav-routes';
-import { hasTables, hasKitchen, hasAreas } from '@/lib/capabilities';
+import { hasTables, hasKitchen, hasAreas, hasCajaNode } from '@/lib/capabilities';
 import {
   fetchDiningAreas, fetchTables,
 } from '@/services/restaurant-service';
@@ -220,6 +220,7 @@ export default function TablesScreen() {
   const showCounter = serviceMode === 'HYBRID';
   const showAreas   = hasAreas(capabilities);
   const kitchenEnabled = hasKitchen(capabilities);
+  const cajaNodeEnabled = hasCajaNode(capabilities);
 
   const [areas, setAreas] = useState<DiningArea[]>([]);
   const [tables, setTables] = useState<RestaurantTable[]>([]);
@@ -400,6 +401,7 @@ export default function TablesScreen() {
             branchId={activeBranch?.id ?? ''}
             title={activeOrderTableName ?? 'Orden'}
             kitchenEnabled={kitchenEnabled}
+            cajaNodeEnabled={cajaNodeEnabled}
             onOrderCreated={handleOrderCreated}
             onClose={closeCapture}
           />

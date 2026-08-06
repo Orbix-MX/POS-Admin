@@ -23,7 +23,7 @@ import { useTheme } from '@/providers/theme-provider';
 import { useResponsive } from '@/hooks/use-responsive';
 import { useBranchSelector } from '@/hooks/use-branch-selector';
 import { useCapabilities } from '@/hooks/use-nav-routes';
-import { hasTables, hasKitchen, isHybrid } from '@/lib/capabilities';
+import { hasTables, hasKitchen, isHybrid, requiresCounterReference, hasCajaNode } from '@/lib/capabilities';
 import { fetchActiveOrders, fetchTables } from '@/services/restaurant-service';
 import type { DiningOrder, DiningOrderStatus, RestaurantTable } from '@/services/restaurant-service';
 
@@ -336,7 +336,7 @@ function NewOrderSheet({ visible, options, onClose }: { visible: boolean; option
 // ── Active order card ────────────────────────────────────────────────────────
 const PAYABLE: DiningOrderStatus[] = ['DELIVERED', 'READY_FOR_PAYMENT'];
 
-function ActiveOrderCard({ order, onPress, onCheckout }: { order: DiningOrder; onPress: () => void; onCheckout: () => void }) {
+function ActiveOrderCard({ order, cajaNodeEnabled, onPress, onCheckout }: { order: DiningOrder; cajaNodeEnabled: boolean; onPress: () => void; onCheckout: () => void }) {
   const theme = useTheme();
   const count = order.items.reduce((acc, i) => acc + i.quantity, 0);
   const type = orderType(order);
@@ -396,21 +396,29 @@ function ActiveOrderCard({ order, onPress, onCheckout }: { order: DiningOrder; o
         </View>
       </View>
 
-      {/* Row 3: charge action for accounts awaiting payment */}
+      {/* Row 3: charge action for accounts awaiting payment — hidden when Nodo de
+          Caja is active, the cuenta ya está en READY_FOR_PAYMENT esperando caja. */}
       {payable && (
-        <Pressable
-          onPress={(e) => { e.stopPropagation(); onCheckout(); }}
-          style={({ pressed }) => ({
-            backgroundColor: pressed ? theme.colors.primaryStrong : theme.colors.primary,
-            borderRadius: theme.radius.md,
-            paddingVertical: theme.spacing.sm,
-            alignItems: 'center',
-          })}
-        >
-          <Text variant="small" style={{ color: theme.colors.onPrimary, fontWeight: '700' }}>
-            Cobrar {formatCurrency(orderSubtotal(order))}
-          </Text>
-        </Pressable>
+        cajaNodeEnabled ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm, paddingVertical: theme.spacing.sm, borderRadius: theme.radius.md, backgroundColor: theme.colors.surfaceMuted }}>
+            <Icon name="bill" size={14} color={theme.colors.textSecondary} />
+            <Text variant="small" tone="secondary">Enviada a caja · {formatCurrency(orderSubtotal(order))}</Text>
+          </View>
+        ) : (
+          <Pressable
+            onPress={(e) => { e.stopPropagation(); onCheckout(); }}
+            style={({ pressed }) => ({
+              backgroundColor: pressed ? theme.colors.primaryStrong : theme.colors.primary,
+              borderRadius: theme.radius.md,
+              paddingVertical: theme.spacing.sm,
+              alignItems: 'center',
+            })}
+          >
+            <Text variant="small" style={{ color: theme.colors.onPrimary, fontWeight: '700' }}>
+              Cobrar {formatCurrency(orderSubtotal(order))}
+            </Text>
+          </Pressable>
+        )
       )}
     </Pressable>
   );
@@ -426,8 +434,12 @@ export default function ComandasScreen() {
   // flow; tables present → open the account from a table picker.
   const tablesEnabled = hasTables(capabilities);
   const kitchenEnabled = hasKitchen(capabilities);
+  const cajaNodeEnabled = hasCajaNode(capabilities);
   const counterOnly = !tablesEnabled;
   const hybrid = isHybrid(capabilities);
+  // Panel de Permisos → Comandas: si está desactivado, "+ Nueva orden" abre
+  // directo con referencia "Mostrador" sin pedir datos.
+  const askReference = requiresCounterReference(capabilities);
 
   const [orders, setOrders] = useState<DiningOrder[]>([]);
   const [tables, setTables] = useState<RestaurantTable[]>([]);
@@ -507,14 +519,20 @@ export default function ComandasScreen() {
   }, []);
 
   // New-order entry point — adapts to the tenant operation model:
-  //   counter-only → straight to the reference modal (no intermediate screen).
+  //   counter-only → straight to the reference modal (no intermediate screen),
+  //     unless "Órdenes con referencia" está desactivado: abre directo con
+  //     referencia "Mostrador" sin pedir datos.
   //   table/hybrid → an option sheet (Mesa / Captura Manual, or Mesa / Mostrador
   //   / Para Llevar) so the waiter starts in ≤2 taps.
   const onPressNew = useCallback(() => {
     setError(null);
-    if (counterOnly) setRefModalVisible(true);
-    else setSheetVisible(true);
-  }, [counterOnly]);
+    if (counterOnly) {
+      if (askReference) setRefModalVisible(true);
+      else startCounterDraft('Mostrador');
+    } else {
+      setSheetVisible(true);
+    }
+  }, [counterOnly, askReference, startCounterDraft]);
 
   // Option-sheet choices, derived from the service mode.
   const newOrderOptions = useMemo<NewOrderOption[]>(() => {
@@ -633,6 +651,7 @@ export default function ComandasScreen() {
             branchId={activeBranch?.id ?? ''}
             title={activeTitle ?? 'Orden'}
             kitchenEnabled={kitchenEnabled}
+            cajaNodeEnabled={cajaNodeEnabled}
             onOrderCreated={() => void load(true)}
             onClose={closeCapture}
           />
@@ -708,6 +727,7 @@ export default function ComandasScreen() {
               <ActiveOrderCard
                 key={o.id}
                 order={o}
+                cajaNodeEnabled={cajaNodeEnabled}
                 onPress={() => handleOpenExisting(o)}
                 onCheckout={() => setCheckoutOrder(o)}
               />

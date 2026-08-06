@@ -1277,6 +1277,7 @@ export function Configuracion() {
     ...(showBranches    ? [{ id: "sucursales",  label: "Sucursales" }] : []),
     ...(showRestaurant  ? [{ id: "restaurante", label: "Restaurante" }] : []),
     { id: "impresoras",     label: "Impresoras" },
+    { id: "permisos",       label: "Panel de Permisos" },
     { id: "licencia",       label: "Licencia y dispositivos" },
     { id: "facturacion",    label: "Facturación" },
     { id: "notificaciones", label: "Notificaciones" },
@@ -1386,6 +1387,39 @@ export function Configuracion() {
     try { const updated = await updateSettings(posSettings); setPosSettings(updated); setPosSaved(true); setTimeout(() => setPosSaved(false), 2500) }
     catch { setPosError('Error al guardar configuración') }
     finally { setPosSaving(false) }
+  }
+
+  // ─── Panel de Permisos (decisiones de negocio, no RBAC) ───────────────────
+  const [permisosSettings, setPermisosSettings] = useState<TenantSettings>({})
+  const [permisosLoading, setPermisosLoading] = useState(false)
+  const [permisosSaving, setPermisosSaving]   = useState(false)
+  const [permisosSaved, setPermisosSaved]     = useState(false)
+  const [permisosError, setPermisosError]     = useState<string | null>(null)
+
+  useEffect(() => {
+    if (activeSection !== 'permisos') return
+    setPermisosLoading(true)
+    fetchSettings()
+      .then(s => setPermisosSettings(s))
+      .catch(() => setPermisosError('Error al cargar configuración'))
+      .finally(() => setPermisosLoading(false))
+  }, [activeSection])
+
+  async function handleSavePermiso(patch: Partial<TenantSettings>) {
+    setPermisosSaving(true); setPermisosError(null); setPermisosSaved(false)
+    const previous = permisosSettings
+    setPermisosSettings(p => ({ ...p, ...patch })) // optimista
+    try {
+      const updated = await updateSettings(patch)
+      setPermisosSettings(updated)
+      setPermisosSaved(true)
+      setTimeout(() => setPermisosSaved(false), 2000)
+    } catch {
+      setPermisosSettings(previous)
+      setPermisosError('Error al guardar el permiso')
+    } finally {
+      setPermisosSaving(false)
+    }
   }
 
   return (
@@ -1536,6 +1570,37 @@ export function Configuracion() {
           </div>
         )}
 
+        {/* ── PANEL DE PERMISOS ───────────────────────────────────────────── */}
+        {activeSection === "permisos" && (
+          <div>
+            <div className="text-base font-bold text-foreground mb-1">Panel de Permisos</div>
+            <div className="text-xs text-muted-foreground mb-6">
+              Decisiones de negocio individuales: cada interruptor cambia cómo se comporta la app para tu equipo.
+              (Distinto de Roles y Permisos — aquí no se decide <em>quién</em> puede hacer algo, sino <em>cómo</em> funciona.)
+            </div>
+
+            {permisosLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Cargando…</div>
+            ) : (
+              <div className="max-w-xl flex flex-col gap-6">
+                <div>
+                  <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-3">Comandas</div>
+                  <ToggleRow
+                    label="Órdenes con referencia"
+                    description={'Al crear una nueva orden de mostrador, pedir una referencia de cuenta (ej. nombre del cliente). Si se desactiva, la orden se abre directo con la referencia "Mostrador".'}
+                    checked={permisosSettings.requireCounterReference ?? true}
+                    disabled={permisosSaving}
+                    onChange={(v) => void handleSavePermiso({ requireCounterReference: v })}
+                  />
+                </div>
+
+                {permisosError && <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{permisosError}</div>}
+                {permisosSaved && <div className="text-xs text-green-600">✓ Guardado</div>}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── SUCURSALES ───────────────────────────────────────────────────── */}
         {activeSection === "sucursales" && showBranches && (
           <SucursalesSection plan={plan ?? 'PRO'} />
@@ -1564,6 +1629,31 @@ export function Configuracion() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function ToggleRow({ label, description, checked, onChange, disabled = false }: {
+  label: string; description: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4 py-3 border-b border-border last:border-b-0">
+      <div className="flex-1">
+        <div className="text-[13px] font-semibold text-foreground">{label}</div>
+        <div className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{description}</div>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        disabled={disabled}
+        onClick={() => onChange(!checked)}
+        className={`relative shrink-0 w-10 h-6 rounded-full border-none cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+          ${checked ? 'bg-primary' : 'bg-muted'}`}
+      >
+        <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform
+          ${checked ? 'translate-x-4' : 'translate-x-0'}`} />
+      </button>
     </div>
   )
 }

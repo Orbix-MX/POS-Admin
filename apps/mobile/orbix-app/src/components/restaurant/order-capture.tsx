@@ -179,13 +179,16 @@ interface OrderCaptureProps {
   branchId: string;
   title: string;
   kitchenEnabled: boolean;
+  /** Nodo de Caja activo: oculta "Cobrar" — la cuenta se queda en
+   *  READY_FOR_PAYMENT esperando a que la cobren desde la estación de Caja. */
+  cajaNodeEnabled: boolean;
   onClose: () => void;
   /** Fired when a draft is materialized into a real DiningOrder (first item /
    *  explicit save) so the parent can refresh tables/orders. */
   onOrderCreated?: (order: DiningOrder) => void;
 }
 
-export function OrderCapture({ visible, target, branchId, title, kitchenEnabled, onClose, onOrderCreated }: OrderCaptureProps) {
+export function OrderCapture({ visible, target, branchId, title, kitchenEnabled, cajaNodeEnabled, onClose, onOrderCreated }: OrderCaptureProps) {
   const theme = useTheme();
   const { isTablet } = useResponsive();
   const { isConnected } = useNetwork();
@@ -1052,6 +1055,12 @@ export function OrderCapture({ visible, target, branchId, title, kitchenEnabled,
               : <Text variant="bodyStrong" style={{ color: theme.colors.onPrimary }}>{kitchenEnabled ? 'Enviar a Cocina' : 'Enviar a Caja'}</Text>
             }
           </Pressable>
+        ) : isPayable && cajaNodeEnabled ? (
+          // Nodo de Caja activo: no se cobra aquí — la cuenta espera en caja.
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm, paddingVertical: theme.spacing.md, borderRadius: theme.radius.md, backgroundColor: theme.colors.surfaceMuted }}>
+            <Icon name="bill" size={16} color={theme.colors.textSecondary} />
+            <Text variant="label" tone="secondary">Enviada a caja</Text>
+          </View>
         ) : isPayable ? (
           // Cuenta lista para cobro → cobrar (genera Order + pago + ticket).
           <Pressable

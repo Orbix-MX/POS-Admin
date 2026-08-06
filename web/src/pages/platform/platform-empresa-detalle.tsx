@@ -32,7 +32,7 @@ type FullTenant = PlatformTenant & {
 const PLANS: TenantPlan[] = ['FREE', 'STARTER', 'PRO', 'PLUS', 'ENTERPRISE']
 
 const VERTICAL_INCOMPATIBLE: Partial<Record<string, string[]>> = {
-  RETAIL:     ['comanda', 'restaurant-tables', 'kitchen'],
+  RETAIL:     ['comanda', 'restaurant-tables', 'kitchen', 'caja-nodo'],
   RESTAURANT: ['pos'],
 }
 
@@ -48,7 +48,7 @@ const MODULE_LABELS: Record<string, string> = {
   usuarios: 'Usuarios', roles: 'Roles', configuracion: 'Configuración',
   branches: 'Sucursales', empleados: 'Empleados', comanda: 'Comandas',
   insumos: 'Insumos', 'dining-areas': 'Áreas Restaurante', 'restaurant-tables': 'Mesas', gym: 'Gym', kitchen: 'Kitchen', delivery: 'Delivery',
-  memberships: 'Membresías', 'access-control': 'Control Acceso',
+  memberships: 'Membresías', 'access-control': 'Control Acceso', 'caja-nodo': 'Nodo de Caja',
 }
 
 const PLAN_ORDER: TenantPlan[] = ['FREE', 'STARTER', 'PRO', 'PLUS', 'ENTERPRISE']

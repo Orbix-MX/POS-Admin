@@ -16,3 +16,5 @@ export { Stepper } from './stepper';
 export { FloatingActionButton } from './floating-action-button';
 export { Grid } from './grid';
 export type { GridProps } from './grid';
+export { ToggleSwitch } from './toggle-switch';
+export type { ToggleSwitchProps } from './toggle-switch';

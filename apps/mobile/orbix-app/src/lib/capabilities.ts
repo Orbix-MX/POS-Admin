@@ -13,7 +13,7 @@
  *   - COUNTER_SERVICE        → no tables, order opens with a manual reference.
  */
 import { SystemModule } from '@/types';
-import type { DeviceTenant, RestaurantServiceMode } from '@/services/device-service';
+import type { DeviceTenant, RestaurantServiceMode, TenantBusinessSettings } from '@/services/device-service';
 
 /** Canonical permission keys (mirror api permissions.constants.ts). */
 export const PERMISSION = {
@@ -22,12 +22,15 @@ export const PERMISSION = {
   tablesView: 'restaurant.tables:view',
   areasView: 'restaurant.areas:view',
   kitchenView: 'kitchen:view',
+  productsView: 'products:view',
+  settingsManage: 'settings:manage',
 } as const;
 
 export interface Capabilities {
   modules: string[];
   serviceMode: RestaurantServiceMode;
   permissions: string[];
+  businessSettings: TenantBusinessSettings;
 }
 
 /**
@@ -53,6 +56,7 @@ export function buildCapabilities(
     modules: deriveModules(tenant),
     serviceMode: tenant?.restaurantServiceMode ?? 'TABLE_SERVICE',
     permissions,
+    businessSettings: tenant?.businessSettings ?? {},
   };
 }
 
@@ -86,6 +90,16 @@ export function hasKitchen(c: Capabilities): boolean {
   return hasModule(c, SystemModule.KITCHEN);
 }
 
+/**
+ * Nodo de Caja: comandas listas para cobro se envían a caja en vez de cobrarse
+ * directo en la comandera. Off (default) → el mesero cobra en ese momento, como
+ * hoy. On → se oculta "Cobrar"; la cuenta queda en READY_FOR_PAYMENT y la cobra
+ * la estación de Caja (web Caja Restaurante), que ya lista/cobra esas cuentas.
+ */
+export function hasCajaNode(c: Capabilities): boolean {
+  return hasModule(c, SystemModule.CAJA_NODE);
+}
+
 /** Tenant runs both table and counter operations → order-type selector needed. */
 export function isHybrid(c: Capabilities): boolean {
   return hasTables(c) && c.serviceMode === 'HYBRID';
@@ -99,6 +113,25 @@ export function hasOrders(c: Capabilities): boolean {
 /** Creating an order is gated by the same comanda permission server-side. */
 export function canCreateOrders(c: Capabilities): boolean {
   return hasOrders(c);
+}
+
+/** Catálogo de artículos (solo lectura) — no depende de módulo, solo permiso. */
+export function hasProducts(c: Capabilities): boolean {
+  return hasPermission(c, PERMISSION.productsView);
+}
+
+/**
+ * Comandas: pedir referencia de cuenta al abrir una orden de mostrador. Toggle de
+ * negocio (Configuración → Panel de Permisos), no un permiso RBAC. Default true
+ * (comportamiento actual) cuando el tenant aún no lo ha configurado.
+ */
+export function requiresCounterReference(c: Capabilities): boolean {
+  return c.businessSettings.requireCounterReference ?? true;
+}
+
+/** Puede abrir Configuración → Panel de Permisos y cambiar los toggles. */
+export function canManageSettings(c: Capabilities): boolean {
+  return hasPermission(c, PERMISSION.settingsManage);
 }
 
 /**

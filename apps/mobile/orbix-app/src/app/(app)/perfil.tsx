@@ -1,11 +1,15 @@
-import { ScrollView, View } from 'react-native';
+import { useState } from 'react';
+import { ScrollView, View, Modal } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { Screen, Card, Text, Button, SegmentedControl } from '@/components/ui';
+import { ConfiguracionPanel } from '@/components/settings/configuracion-panel';
 import { useTheme } from '@/providers/theme-provider';
 import { useAppStore, type ColorSchemePreference } from '@/store/app-store';
 import { useDeviceSession } from '@/hooks/use-device-session';
 import { useDeviceStore } from '@/store/device-store';
+import { useCapabilities } from '@/hooks/use-nav-routes';
+import { canManageSettings } from '@/lib/capabilities';
 
 const THEME_OPTIONS: { value: ColorSchemePreference; label: string }[] = [
   { value: 'system', label: 'Sistema' },
@@ -24,6 +28,9 @@ export default function ProfileScreen() {
   const { operator, tenant, branch, role } = useDeviceSession();
   const signOutOperator = useDeviceStore((s) => s.signOutOperator);
   const unlinkDevice = useDeviceStore((s) => s.unlinkDevice);
+  const capabilities = useCapabilities();
+  const showSettings = canManageSettings(capabilities);
+  const [settingsVisible, setSettingsVisible] = useState(false);
 
   return (
     <Screen>
@@ -71,9 +78,21 @@ export default function ProfileScreen() {
           <SegmentedControl options={THEME_OPTIONS} value={colorScheme} onChange={setColorScheme} />
         </Card>
 
+        {showSettings && (
+          <Button label="Configuración" variant="secondary" icon="settings" fullWidth onPress={() => setSettingsVisible(true)} />
+        )}
         <Button label="Cerrar turno" variant="secondary" icon="logout" fullWidth onPress={signOutOperator} />
         <Button label="Desvincular dispositivo" variant="danger" fullWidth onPress={() => void unlinkDevice()} />
       </ScrollView>
+
+      <Modal
+        visible={settingsVisible}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setSettingsVisible(false)}
+      >
+        <ConfiguracionPanel onClose={() => setSettingsVisible(false)} />
+      </Modal>
     </Screen>
   );
 }

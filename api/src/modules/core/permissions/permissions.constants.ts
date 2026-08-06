@@ -78,6 +78,7 @@ export const ALL_PERMISSIONS: PermissionDef[] = [
   // cash sessions (Corte de caja)
   { key: 'cash:view', name: 'Ver caja', description: 'Ver sesiones y cortes de caja', module: 'cash', action: 'view' },
   { key: 'cash:manage', name: 'Gestionar caja', description: 'Abrir y cerrar sesiones de caja', module: 'cash', action: 'manage' },
+  { key: 'caja:charge', name: 'Cobrar en Caja', description: 'Cobrar cuentas de comanda desde la estación de Caja (requiere el módulo Nodo de Caja activo)', module: 'cash', action: 'charge' },
   // branches (sucursales)
   { key: 'branches:view', name: 'Ver sucursales', description: 'Ver listado y detalle de sucursales', module: 'branches', action: 'view' },
   { key: 'branches:manage', name: 'Gestionar sucursales', description: 'Crear, editar y eliminar sucursales', module: 'branches', action: 'manage' },

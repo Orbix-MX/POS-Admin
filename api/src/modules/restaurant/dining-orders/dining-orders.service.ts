@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { DiningOrderStatus, Prisma, RestaurantVisibilityMode } from '@prisma/client';
 import { getModulesForPlan, SystemModule } from '@orbix/types';
 import { PrismaService } from '../../../database/prisma.service';
@@ -478,6 +478,63 @@ export class DiningOrdersService {
     return effective.has(SystemModule.KITCHEN);
   }
 
+  /** True when the tenant's effective modules include CAJA_NODE (Nodo de Caja). */
+  private async isCajaNodeEnabled(tenantId: string): Promise<boolean> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { plan: true, enabledModules: true },
+    });
+    if (!tenant) return false;
+    const planModules = getModulesForPlan(tenant.plan) as unknown as string[];
+    const effective = new Set([...planModules, ...tenant.enabledModules]);
+    return effective.has(SystemModule.CAJA_NODE);
+  }
+
+  /** Effective permission keys for a web User (role assignments ∪ grants, minus revokes). */
+  private async getEffectivePermissions(userId: string, tenantId: string): Promise<string[]> {
+    const assignments = await this.prisma.userRoleAssignment.findMany({
+      where: { userId, tenantId },
+      include: { role: { include: { permissions: { include: { permission: true } } } } },
+    });
+    const keys = new Set<string>();
+    for (const a of assignments) {
+      for (const rp of a.role.permissions) keys.add(rp.permission.key);
+    }
+    const grants = await this.prisma.userPermissionGrant.findMany({
+      where: { userId, tenantId },
+      include: { permission: true },
+    });
+    for (const g of grants) {
+      if (g.granted) keys.add(g.permission.key);
+      else keys.delete(g.permission.key);
+    }
+    return [...keys];
+  }
+
+  /**
+   * Nodo de Caja activo → cobrar requiere el permiso dedicado `caja:charge`
+   * (estación de Caja), no basta con `orders:create` (el permiso del mesero).
+   * Módulo inactivo → sin restricción adicional (comportamiento histórico).
+   */
+  private async assertCanCharge(
+    tenantId: string,
+    actor: { id?: string; role?: string; tenantId?: string; permissions?: string[] } | undefined,
+  ): Promise<void> {
+    if (!(await this.isCajaNodeEnabled(tenantId))) return;
+    if (!actor?.id) throw new ForbiddenException('No se pudo identificar al usuario.');
+    if (actor.role === 'SUPER_ADMIN') return;
+
+    const permissions = actor.role === 'DEVICE_OPERATOR'
+      ? (actor.permissions ?? [])
+      : await this.getEffectivePermissions(actor.id, tenantId);
+
+    if (!permissions.includes('caja:charge')) {
+      throw new ForbiddenException(
+        'Esta cuenta debe cobrarse desde la estación de Caja (Nodo de Caja activo).',
+      );
+    }
+  }
+
   /**
    * Advance a dining order along its lifecycle. The valid graph depends on the
    * KITCHEN module: with kitchen the order routes through preparation states;
@@ -587,10 +644,16 @@ export class DiningOrdersService {
    * path that takes a dining order to PAID and the one that makes mobile comandas
    * produce the same financial footprint as POS and Restaurant Web.
    */
-  async checkout(branchId: string, orderId: string, dto: CheckoutDiningOrderDto) {
+  async checkout(
+    branchId: string,
+    orderId: string,
+    dto: CheckoutDiningOrderDto,
+    actor?: { id?: string; role?: string; tenantId?: string; permissions?: string[] },
+  ) {
     const tenantId = this.tenantContext.requireTenantId();
     await assertBranchBelongs(this.prisma, tenantId, branchId);
     const userId = this.auditContext.getUserId() ?? null;
+    await this.assertCanCharge(tenantId, actor);
 
     const order = await this.prisma.diningOrder.findFirst({
       where: { id: orderId, tenantId, branchId },

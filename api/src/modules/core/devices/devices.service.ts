@@ -19,7 +19,20 @@ export interface TenantSummary {
    * checks. See SystemModule for the canonical keys.
    */
   modules: string[];
+  /**
+   * Individual business-decision toggles the tenant owner sets in Configuración →
+   * Panel de Permisos (web `/tenants/current/settings`). Distinct from RBAC: these
+   * gate app *behavior*, not who can do it. Add new keys here as the panel grows.
+   */
+  businessSettings: TenantBusinessSettings;
 }
+
+export interface TenantBusinessSettings {
+  /** Comandas: pedir referencia de cuenta al abrir una orden de mostrador.
+   *  false → se abre directo con referencia "Mostrador", sin modal. */
+  requireCounterReference: boolean;
+}
+
 export interface BranchSummary { id: string; name: string }
 
 /**
@@ -44,11 +57,12 @@ export class DevicesService {
   private async tenantSummary(tenantId: string): Promise<TenantSummary | null> {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { id: true, name: true, slug: true, restaurantServiceMode: true, plan: true, enabledModules: true },
+      select: { id: true, name: true, slug: true, restaurantServiceMode: true, plan: true, enabledModules: true, settings: true },
     });
     if (!tenant) return null;
     const planModules = getModulesForPlan(tenant.plan) as unknown as string[];
     const effective = new Set([...planModules, ...tenant.enabledModules]);
+    const settings = (tenant.settings as Record<string, unknown> | null) ?? {};
     return {
       id: tenant.id,
       name: tenant.name,
@@ -56,6 +70,10 @@ export class DevicesService {
       restaurantServiceMode: tenant.restaurantServiceMode,
       kitchenEnabled: effective.has(SystemModule.KITCHEN),
       modules: [...effective],
+      businessSettings: {
+        // Unset → true (preserva el comportamiento actual: siempre pide referencia).
+        requireCounterReference: settings.requireCounterReference !== false,
+      },
     };
   }
 

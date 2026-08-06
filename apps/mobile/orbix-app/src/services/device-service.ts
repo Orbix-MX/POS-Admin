@@ -14,6 +14,16 @@ export interface LicenseStatus {
 }
 export type RestaurantServiceMode = 'TABLE_SERVICE' | 'COUNTER_SERVICE' | 'HYBRID';
 
+/**
+ * Individual business-decision toggles set by the tenant owner in Configuración →
+ * Panel de Permisos (web). Distinct from RBAC permissions: these gate app
+ * *behavior*, not who can do it. May be undefined on a stale offline cache —
+ * callers default each key (see capabilities.ts).
+ */
+export interface TenantBusinessSettings {
+  requireCounterReference?: boolean;
+}
+
 export interface DeviceTenant {
   id: string;
   name: string;
@@ -26,6 +36,7 @@ export interface DeviceTenant {
    * when booting from a stale offline cache (see deriveModules in capabilities).
    */
   modules?: string[];
+  businessSettings?: TenantBusinessSettings;
 }
 export interface DeviceBranch { id: string; name: string }
 

@@ -20,6 +20,7 @@ import {
   type DeviceBranch,
   type LicenseStatus,
   type Operator,
+  type TenantBusinessSettings,
 } from '@/services/device-service';
 import { setDeviceAuthToken, persistTokens, clearTokens, getApiErrorMessage } from '@/services/api-client';
 import { deviceStorage } from '@/services/device-storage';
@@ -50,6 +51,9 @@ interface DeviceState {
   signOutOperator: () => void;
   unlinkDevice: () => Promise<void>;
   clearError: () => void;
+  /** Aplica al instante un cambio del Panel de Permisos (ya persistido en el
+   *  servidor) sin esperar al próximo PIN login que revalida el tenant completo. */
+  patchBusinessSettings: (patch: Partial<TenantBusinessSettings>) => void;
 }
 
 export const useDeviceStore = create<DeviceState>((set, get) => ({
@@ -185,6 +189,17 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
   },
 
   clearError: () => set({ error: null }),
+
+  patchBusinessSettings: (patch) => {
+    const { tenant, deviceToken, branch } = get();
+    if (!tenant) return;
+    const updated: DeviceTenant = {
+      ...tenant,
+      businessSettings: { ...tenant.businessSettings, ...patch },
+    };
+    set({ tenant: updated });
+    if (deviceToken) void deviceStorage.saveCredentials(deviceToken, updated, branch);
+  },
 }));
 
 async function activate(

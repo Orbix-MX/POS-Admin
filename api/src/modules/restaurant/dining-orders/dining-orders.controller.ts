@@ -5,6 +5,7 @@ import { OpenDiningOrderDto, AddDiningItemDto, UpdateDiningItemDto, ChangeDining
 import { CheckoutDiningOrderDto } from './dto/checkout-dining-order.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
 import { RequireModule } from '../../../common/guards/require-module.guard';
+import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 
 @ApiTags('Dining Orders')
 @ApiBearerAuth()
@@ -120,8 +121,9 @@ export class DiningOrdersController {
     @Param('branchId', ParseUUIDPipe) branchId: string,
     @Param('orderId', ParseUUIDPipe) orderId: string,
     @Body() dto: CheckoutDiningOrderDto,
+    @CurrentUser() user: { id?: string; role?: string; permissions?: string[] },
   ) {
-    return this.service.checkout(branchId, orderId, dto);
+    return this.service.checkout(branchId, orderId, dto, user);
   }
 
   @Delete(':orderId')
