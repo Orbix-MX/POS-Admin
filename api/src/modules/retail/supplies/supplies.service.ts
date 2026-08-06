@@ -3,10 +3,13 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { AuditContextService } from '../../../common/context/audit-context.service';
+import { BusinessConfigurationService } from '../../../common/business-config/business-configuration.service';
+import { InventoryEngine } from '../inventory/inventory.engine';
 import { PaginatedResponse } from '../../../common/dto/pagination.dto';
 import { Prisma } from '@prisma/client';
 import { CreateSupplyDto } from './dto/create-supply.dto';
@@ -33,9 +36,32 @@ export class SuppliesService {
     private prisma: PrismaService,
     private tenantContext: TenantContextService,
     private auditContext: AuditContextService,
+    // BR-02: supplies are a Restaurant-only capability. Availability is decided
+    // exclusively through the business configuration facade — never BusinessProfile.
+    private businessConfig: BusinessConfigurationService,
+    // Fase 2A: la escritura de stock y el asiento de movimiento se delegan al
+    // motor de inventario. Conversión de unidades y guard de stock permanecen
+    // en este servicio (lógica propia de Insumos).
+    private inventoryEngine: InventoryEngine,
   ) {}
 
+  /**
+   * BR-02: gate the whole supplies module behind the `enableSupplies` feature.
+   * Throws when the tenant's configuration does not support supplies (e.g.
+   * RETAIL). Restaurant (feature on) keeps full access. Called at every entry
+   * point so the module is uniformly unavailable when disabled. No shared
+   * engine, sale or inventory-consumption flow passes through here.
+   */
+  private async assertSuppliesEnabled(): Promise<void> {
+    if (!(await this.businessConfig.hasFeature('enableSupplies'))) {
+      throw new ForbiddenException(
+        'Los insumos no están disponibles para este tipo de negocio',
+      );
+    }
+  }
+
   async create(dto: CreateSupplyDto) {
+    await this.assertSuppliesEnabled();
     const tenantId = this.tenantContext.requireTenantId();
     const userId = this.auditContext.getUserId() ?? null;
 
@@ -66,6 +92,7 @@ export class SuppliesService {
   }
 
   async findAll(queryDto: QuerySupplyDto): Promise<PaginatedResponse<any>> {
+    await this.assertSuppliesEnabled();
     const { skip, limit, page, search, status, branchId } = queryDto;
     const tenantId = this.tenantContext.requireTenantId();
     const where: Prisma.SupplyWhereInput = { tenantId };
@@ -97,6 +124,7 @@ export class SuppliesService {
   }
 
   async findOne(id: string) {
+    await this.assertSuppliesEnabled();
     const tenantId = this.tenantContext.requireTenantId();
     const supply = await this.prisma.supply.findFirst({
       where: { id, tenantId },
@@ -110,6 +138,7 @@ export class SuppliesService {
   }
 
   async update(id: string, dto: UpdateSupplyDto) {
+    await this.assertSuppliesEnabled();
     const tenantId = this.tenantContext.requireTenantId();
     const userId = this.auditContext.getUserId() ?? null;
 
@@ -140,6 +169,7 @@ export class SuppliesService {
   }
 
   async remove(id: string): Promise<void> {
+    await this.assertSuppliesEnabled();
     const tenantId = this.tenantContext.requireTenantId();
     const supply = await this.prisma.supply.findFirst({
       where: { id, tenantId },
@@ -157,6 +187,7 @@ export class SuppliesService {
   }
 
   async adjustStock(id: string, dto: AdjustStockDto) {
+    await this.assertSuppliesEnabled();
     const tenantId = this.tenantContext.requireTenantId();
     const userId = this.auditContext.getUserId() ?? null;
     const branchId = this.tenantContext.getBranchId() ?? null;
@@ -206,30 +237,30 @@ export class SuppliesService {
     const newStock = Number(supply.stock) + quantityInBaseUnit;
     if (newStock < 0) throw new BadRequestException('Stock insuficiente');
 
+    // Fase 2A: stock y movimiento se delegan al InventoryEngine. El delta es
+    // quantityInBaseUnit (ya convertido); el stock final resultante es idéntico.
     return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.supply.update({
-        where: { id },
-        data: { stock: newStock },
-        include: SUPPLY_INCLUDE,
+      await this.inventoryEngine.applySupplyStockDelta(tx, {
+        supplyId: id,
+        delta: quantityInBaseUnit,
       });
 
-      await tx.supplyMovement.create({
-        data: {
-          tenantId,
-          supplyId: id,
-          type: 'ADJUSTMENT',
-          quantity: quantityInBaseUnit,
-          ...(branchId && { branchId }),
-          notes: dto.notes ? `${dto.notes}${conversionNote}` : conversionNote || null,
-          createdById: userId,
-        },
+      await this.inventoryEngine.recordSupplyMovement(tx, {
+        tenantId,
+        supplyId: id,
+        type: 'ADJUSTMENT',
+        quantity: quantityInBaseUnit,
+        branchId: branchId ?? null,
+        notes: dto.notes ? `${dto.notes}${conversionNote}` : conversionNote || null,
+        createdById: userId,
       });
 
-      return updated;
+      return tx.supply.findUniqueOrThrow({ where: { id }, include: SUPPLY_INCLUDE });
     });
   }
 
   async getLowStock() {
+    await this.assertSuppliesEnabled();
     const tenantId = this.tenantContext.requireTenantId();
     return this.prisma.supply.findMany({
       where: { tenantId, status: 'ACTIVE' },
@@ -239,6 +270,7 @@ export class SuppliesService {
   }
 
   async getMovements(id: string) {
+    await this.assertSuppliesEnabled();
     const tenantId = this.tenantContext.requireTenantId();
     const supply = await this.prisma.supply.findFirst({ where: { id, tenantId } });
     if (!supply) throw new NotFoundException('Insumo no encontrado');

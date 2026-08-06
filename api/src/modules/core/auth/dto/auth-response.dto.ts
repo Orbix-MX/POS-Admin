@@ -1,5 +1,6 @@
-import { UserRole, UserStatus, TenantRole, TenantPlan, BusinessVertical, PosOperationMode, TenantFeature } from '@prisma/client';
+import { UserRole, UserStatus, TenantRole, TenantPlan, BusinessVertical, BusinessProfile, PosOperationMode, TenantFeature } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import type { BusinessFeatures } from '../../../../common/business-config/business-features';
 
 export class UserResponseDto {
   @ApiProperty() id: string;
@@ -56,8 +57,10 @@ export class SelectTenantResponseDto {
   @ApiProperty({ enum: TenantPlan }) plan: TenantPlan;
   @ApiProperty({ type: [String] }) enabledModules: string[];
   @ApiProperty({ enum: BusinessVertical }) businessVertical: BusinessVertical;
+  @ApiProperty({ enum: BusinessProfile }) businessProfile: BusinessProfile;
   @ApiProperty({ enum: PosOperationMode }) posOperationMode: PosOperationMode;
   @ApiProperty({ type: [String] }) enabledFeatures: TenantFeature[];
+  @ApiProperty({ description: 'Capabilities derived from businessProfile' }) businessFeatures: BusinessFeatures;
   @ApiProperty({ type: TenantSummaryDto }) tenant: TenantSummaryDto;
 }
 
@@ -70,8 +73,10 @@ export class CapabilitiesResponseDto {
   @ApiProperty() activeUsers: number;
   @ApiProperty() overUserLimit: boolean;
   @ApiProperty({ enum: BusinessVertical }) businessVertical: BusinessVertical;
+  @ApiProperty({ enum: BusinessProfile }) businessProfile: BusinessProfile;
   @ApiProperty({ enum: PosOperationMode }) posOperationMode: PosOperationMode;
   @ApiProperty({ type: [String] }) enabledFeatures: TenantFeature[];
+  @ApiProperty({ description: 'Capabilities derived from businessProfile' }) businessFeatures: BusinessFeatures;
 }
 
 export class SelectBranchResponseDto {

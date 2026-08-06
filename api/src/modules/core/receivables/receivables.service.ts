@@ -97,6 +97,7 @@ export class ReceivablesService {
     const newStatus: AccountReceivableStatus = isZeroMoney(newBalance) ? 'PAGADO' : 'PARCIAL';
 
     const userId = this.auditContext.getUserId();
+    const branchId = this.tenantContext.getBranchId() ?? null;
 
     return this.prisma.$transaction(async (tx) => {
       const payment = await tx.accountReceivablePayment.create({
@@ -116,9 +117,11 @@ export class ReceivablesService {
         });
       }
 
-      // Create CashMovement for this CxC payment
+      // Create CashMovement for this CxC payment. La sesión debe ser la de la
+      // sucursal del cobro; sin branchId el pago caía en cualquier caja abierta del
+      // tenant (cruce entre sucursales). Con branch null se conserva el comportamiento.
       const activeSession = await tx.cashSession.findFirst({
-        where: { tenantId, status: 'ABIERTA' },
+        where: { tenantId, branchId: branchId ?? undefined, status: 'ABIERTA' },
         select: { id: true },
       });
       await tx.cashMovement.create({

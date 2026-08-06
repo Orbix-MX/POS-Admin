@@ -15,6 +15,7 @@ describe('OrdersService', () => {
   const mockPrismaService = {
     order: {
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       findMany: jest.fn(),
       update: jest.fn(),
       count: jest.fn(),
@@ -101,7 +102,7 @@ describe('OrdersService', () => {
         payment: null,
       };
 
-      mockPrismaService.order.findUnique.mockResolvedValue(mockOrder);
+      mockPrismaService.order.findFirst.mockResolvedValue(mockOrder);
 
       const result = await service.findOne(orderId);
 
@@ -110,7 +111,7 @@ describe('OrdersService', () => {
     });
 
     it('should throw NotFoundException if order not found', async () => {
-      mockPrismaService.order.findUnique.mockResolvedValue(null);
+      mockPrismaService.order.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne('invalid-id')).rejects.toThrow(
         NotFoundException,
@@ -129,7 +130,7 @@ describe('OrdersService', () => {
 
       const updatedOrder = { ...mockOrder, status: newStatus };
 
-      mockPrismaService.order.findUnique.mockResolvedValue(mockOrder);
+      mockPrismaService.order.findFirst.mockResolvedValue(mockOrder);
       mockPrismaService.order.update.mockResolvedValue(updatedOrder);
 
       const result = await service.updateStatus(orderId, newStatus);
@@ -138,7 +139,7 @@ describe('OrdersService', () => {
     });
 
     it('should throw NotFoundException if order not found', async () => {
-      mockPrismaService.order.findUnique.mockResolvedValue(null);
+      mockPrismaService.order.findFirst.mockResolvedValue(null);
 
       await expect(service.updateStatus('invalid-id', 'CONFIRMED' as any)).rejects.toThrow(
         NotFoundException,

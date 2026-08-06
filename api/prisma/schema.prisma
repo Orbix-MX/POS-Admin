@@ -80,6 +80,19 @@ enum BusinessVertical {
   SERVICES
 }
 
+// Base architecture of the tenant, fixed at provisioning time and NOT editable
+// from the ERP. Distinct from BusinessVertical (operational behaviour): the
+// profile describes the structural shape the tenant was created with. Pure
+// persistence for now — no behaviour is derived from it yet (BP-01).
+enum BusinessProfile {
+  RETAIL
+  RETAIL_MANUFACTURING
+  RESTAURANT
+  MANUFACTURING
+  SERVICES
+  WORKSHOP
+}
+
 enum PosOperationMode {
   QUICK_SALE
   TABLE_SERVICE
@@ -120,6 +133,7 @@ model Tenant {
   plan             TenantPlan       @default(FREE)
   enabledModules   String[]         @default([])
   businessVertical BusinessVertical @default(RETAIL)     @map("business_vertical")
+  businessProfile  BusinessProfile  @default(RETAIL)     @map("business_profile")
   posOperationMode      PosOperationMode      @default(QUICK_SALE)    @map("pos_operation_mode")
   restaurantServiceMode RestaurantServiceMode @default(TABLE_SERVICE) @map("restaurant_service_mode")
   enabledFeatures  TenantFeature[]  @default([])         @map("enabled_features")

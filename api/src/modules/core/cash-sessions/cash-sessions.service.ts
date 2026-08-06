@@ -230,9 +230,14 @@ export class CashSessionsService {
   async createManualMovement(dto: import('./dto/create-movement.dto').CreateManualMovementDto) {
     const tenantId = this.tenantContext.requireTenantId();
     const userId = this.auditContext.getUserId();
+    const branchId = this.tenantContext.getBranchId() ?? null;
 
+    // La sesión debe ser la de la sucursal del operador. Sin el filtro branchId, un
+    // movimiento manual caía en cualquier sesión abierta del tenant (cruce entre
+    // sucursales). Con branch null (token sin sucursal) Prisma ignora el filtro y se
+    // conserva el comportamiento previo.
     const activeSession = await this.prisma.cashSession.findFirst({
-      where: { tenantId, status: 'ABIERTA' },
+      where: { tenantId, branchId: branchId ?? undefined, status: 'ABIERTA' },
     });
 
     const currency = dto.currency ?? 'MXN';

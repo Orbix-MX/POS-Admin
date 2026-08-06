@@ -29,8 +29,9 @@ import {
 import { JwtPayload } from './strategies/jwt.strategy';
 import { PlanLimitsService } from '../../../common/services/plan-limits.service';
 import { LicenseService } from '../../../common/services/license.service';
-import { TenantMembership, Tenant, TenantRole, TenantPlan, BusinessVertical, PosOperationMode, TenantFeature } from '@prisma/client';
+import { TenantMembership, Tenant, TenantRole, TenantPlan, BusinessVertical, BusinessProfile, PosOperationMode, TenantFeature } from '@prisma/client';
 import { getModulesForPlan, getAllowedModulesForVertical } from '@orbix/types';
+import { buildFeaturesForProfile } from '../../../common/business-config/business-features';
 
 type MembershipWithTenant = TenantMembership & { tenant: Tenant };
 
@@ -407,8 +408,12 @@ export class AuthService {
       plan,
       enabledModules: effectiveModules,
       businessVertical: membership.tenant.businessVertical,
+      businessProfile: membership.tenant.businessProfile,
       posOperationMode: membership.tenant.posOperationMode,
       enabledFeatures: membership.tenant.enabledFeatures,
+      // Convergence: capabilities derived from the (immutable) business profile.
+      // Pure derivation — no request scope needed in the auth flow.
+      businessFeatures: buildFeaturesForProfile(membership.tenant.businessProfile),
       tenant: this.mapMembership(membership),
     };
   }
@@ -497,6 +502,7 @@ export class AuthService {
     let activeUsers = 0;
     let overUserLimit = false;
     let businessVertical: BusinessVertical = 'RETAIL';
+    let businessProfile: BusinessProfile = 'RETAIL';
     let posOperationMode: PosOperationMode = 'QUICK_SALE';
     let enabledFeatures: TenantFeature[] = [];
 
@@ -505,7 +511,7 @@ export class AuthService {
         this.planLimits.getCapacity(tenantId),
         this.prisma.tenant.findUnique({
           where: { id: tenantId },
-          select: { businessVertical: true, posOperationMode: true, enabledFeatures: true, enabledModules: true },
+          select: { businessVertical: true, businessProfile: true, posOperationMode: true, enabledFeatures: true, enabledModules: true },
         }),
       ]);
       maxUsers = cap.maxUsers;
@@ -513,6 +519,7 @@ export class AuthService {
       overUserLimit = cap.overUserLimit;
       if (tenant) {
         businessVertical = tenant.businessVertical;
+        businessProfile = tenant.businessProfile;
         posOperationMode = tenant.posOperationMode;
         enabledFeatures = tenant.enabledFeatures;
         effectiveEnabledModules = tenant.enabledModules;
@@ -521,7 +528,10 @@ export class AuthService {
 
     const effectiveModules = [...new Set([...planModules, ...effectiveEnabledModules])];
 
-    return { plan, enabledModules: effectiveEnabledModules, effectiveModules, maxUsers, activeUsers, overUserLimit, businessVertical, posOperationMode, enabledFeatures };
+    // Convergence: expose capabilities derived from the immutable business profile.
+    const businessFeatures = buildFeaturesForProfile(businessProfile);
+
+    return { plan, enabledModules: effectiveEnabledModules, effectiveModules, maxUsers, activeUsers, overUserLimit, businessVertical, businessProfile, posOperationMode, enabledFeatures, businessFeatures };
   }
 
   private generateToken(payload: JwtPayload): string {

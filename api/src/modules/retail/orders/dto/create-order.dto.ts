@@ -5,6 +5,7 @@
   IsArray,
   ValidateNested,
   IsNumber,
+  IsBoolean,
   Min,
   IsNotEmpty,
   MaxLength,
@@ -110,6 +111,14 @@ export class CreateOrderItemDto {
   @IsNumber()
   @Min(0)
   tax?: number;
+
+  @ApiPropertyOptional({
+    default: false,
+    description: 'Forzar impuesto en 0 para este item (ignora taxRate del producto/tenant). Útil cuando el cliente no requiere factura.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  taxExempt?: boolean;
 }
 
 export class CreateOrderDto {

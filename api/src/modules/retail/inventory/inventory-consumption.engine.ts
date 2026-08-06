@@ -389,6 +389,12 @@ export class InventoryConsumptionEngine {
    * Decrement (delta < 0) or increment (delta > 0) per-branch inventory. Mirrors
    * the legacy upsert behaviour: when no branch row exists yet it seeds from the
    * product's current global stock so the branch figure stays consistent.
+   *
+   * The per-branch figure is kept non-negative. Global stock is the authoritative
+   * guard (consume() already blocked any oversell before reaching here); a branch
+   * row that holds less than the decrement is under-tracked, so it is clamped to 0
+   * instead of going negative. The sale is never failed here, so observable
+   * behaviour for every channel is unchanged — only the branch ledger is fixed.
    */
   private async applyBranchInventoryDelta(
     tx: Prisma.TransactionClient,
@@ -398,11 +404,28 @@ export class InventoryConsumptionEngine {
   ): Promise<void> {
     if (!ctx.branchId) return;
 
-    const updated = await tx.branchInventory.updateMany({
-      where: { branchId: ctx.branchId, productId },
-      data: { stock: { increment: delta } },
-    });
-    if (updated.count > 0) return;
+    if (delta < 0) {
+      // Guarded decrement: only when the branch row holds enough.
+      const decremented = await tx.branchInventory.updateMany({
+        where: { branchId: ctx.branchId, productId, stock: { gte: -delta } },
+        data: { stock: { increment: delta } },
+      });
+      if (decremented.count > 0) return;
+
+      // Row exists but holds less than needed → clamp to 0 (never negative).
+      const clamped = await tx.branchInventory.updateMany({
+        where: { branchId: ctx.branchId, productId },
+        data: { stock: 0 },
+      });
+      if (clamped.count > 0) return;
+      // No row yet → fall through to seed.
+    } else {
+      const incremented = await tx.branchInventory.updateMany({
+        where: { branchId: ctx.branchId, productId },
+        data: { stock: { increment: delta } },
+      });
+      if (incremented.count > 0) return;
+    }
 
     const product = await tx.product.findUnique({
       where: { id: productId },

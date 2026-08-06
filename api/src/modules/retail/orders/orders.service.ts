@@ -35,12 +35,15 @@ export class OrdersService {
       throw new BadRequestException('La venta debe tener al menos un item');
     }
 
+    const tenantId = this.tenantContext.requireTenantId();
     const customerId: string | null = dto.customerId ?? null;
     let addressId: string | null = null;
 
     if (customerId) {
-      const customer = await this.prisma.customer.findUnique({
-        where: { id: customerId },
+      // Aislamiento multi-tenant: el id viene del cliente; sin filtro tenantId un
+      // operador podría referenciar un Customer de otra organización.
+      const customer = await this.prisma.customer.findFirst({
+        where: { id: customerId, tenantId },
         include: { addresses: true },
       });
       if (!customer) {
@@ -58,7 +61,9 @@ export class OrdersService {
     const productIds = [...new Set(productItems.map((i) => i.productId).filter(Boolean) as string[])];
     const products = productIds.length
       ? await this.prisma.product.findMany({
-          where: { id: { in: productIds } },
+          // Aislamiento multi-tenant: ids controlados por el cliente — un producto
+          // de otro tenant decrementaría su stock. Filtrar por tenantId.
+          where: { id: { in: productIds }, tenantId },
           include: {
             category: true,
             recipe: {
@@ -83,14 +88,20 @@ export class OrdersService {
     // Optionally validate services from catalog
     const catalogServiceIds = [...new Set(serviceItems.map((i) => i.serviceId).filter(Boolean) as string[])];
     const catalogServices = catalogServiceIds.length
-      ? await this.prisma.service.findMany({ where: { id: { in: catalogServiceIds } } })
+      ? await this.prisma.service.findMany({ where: { id: { in: catalogServiceIds }, tenantId } })
       : [];
+    // Un serviceId del catálogo debe pertenecer al tenant. Si tras el filtro falta
+    // alguno, es una referencia cruzada entre organizaciones → se rechaza.
+    if (catalogServices.length !== catalogServiceIds.length) {
+      const found = new Set(catalogServices.map((s) => s.id));
+      const missing = catalogServiceIds.filter((id) => !found.has(id));
+      throw new NotFoundException(`Servicios no encontrados: ${missing.join(', ')}`);
+    }
     const serviceMap = new Map(catalogServices.map((s) => [s.id, s]));
 
     const productMap = new Map(products.map((p) => [p.id, p]));
 
     // Tenant default tax rate (percent) from settings JSON; product.taxRate overrides per item
-    const tenantId = this.tenantContext.requireTenantId();
     const tenantRow = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { settings: true },
@@ -150,12 +161,16 @@ export class OrdersService {
         itemDiscount,
       );
       const isProduct = !item.itemType || item.itemType === 'PRODUCT';
-      // Explicit per-item tax wins; otherwise derive from product/tenant rate
+      // Explicit per-item tax wins; otherwise derive from product/tenant rate.
+      // `taxExempt` fuerza 0 aunque el producto/tenant tengan taxRate — es
+      // el único caso en que un 0 explícito debe ganarle al derivado (un
+      // `tax: 0` sin este flag se sigue tratando como "no enviado", igual
+      // que antes, para no romper integraciones existentes).
       const explicitTax = roundMoney(item.tax ?? 0);
       const derivedTax = isProduct
         ? calculateTax(itemSubtotal, resolveTaxRate(item.productId))
         : 0;
-      const itemTax = explicitTax > 0 ? explicitTax : derivedTax;
+      const itemTax = item.taxExempt ? 0 : explicitTax > 0 ? explicitTax : derivedTax;
       lineMath.set(item, {
         discount: itemDiscount,
         tax: itemTax,
@@ -165,7 +180,14 @@ export class OrdersService {
     }
 
     const shippingCost = roundMoney(dto.shippingCost ?? 0);
-    discountAmount = roundMoney(discountAmount);
+    // El descuento por línea (`item.discount`) ya reducía `itemSubtotal`/
+    // `itemTotal` de cada renglón, pero antes no se reflejaba en
+    // `order.total` (solo el descuento de cupón lo hacía) — se suma aquí
+    // para que el campo "Descuento sobre el item" ya documentado en el DTO
+    // efectivamente reduzca el total cobrado, sin tocar el cálculo de
+    // cupón existente (ambos se suman, no se reemplazan).
+    const itemDiscountsTotal = sumMoney([...lineMath.values()].map((l) => l.discount));
+    discountAmount = roundMoney(discountAmount + itemDiscountsTotal);
     const tax = sumMoney([...lineMath.values()].map((l) => l.tax));
     const total = roundMoney(
       Math.max(0, subtotal - discountAmount + shippingCost + tax),
@@ -353,18 +375,21 @@ export class OrdersService {
 
       const remainingBalance = Math.max(0, total - paidNow);
 
-      if (isCredit && customerId) {
+      if (isCredit && customerId && remainingBalance > 0) {
         const dueDate = dto.dueDate
           ? new Date(dto.dueDate)
           : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
+        // Pago mixto (efectivo/tarjeta/transferencia + crédito): la CxC sólo debe
+        // reflejar el SALDO a crédito, no el total. paidNow ya excluye los CREDITO,
+        // así que remainingBalance = lo realmente financiado. Espejo de apartados.
         await tx.accountReceivable.create({
           data: {
             tenantId,
             orderId: newOrder.id,
             customerId,
             totalAmount: total,
-            balance: total,
+            balance: remainingBalance,
             status: 'PENDIENTE',
             dueDate,
           },
@@ -554,6 +579,7 @@ export class OrdersService {
       include: {
         items: true,
         payments: true,
+        refunds: { include: { items: true } },
         accountReceivable: { include: { payments: true } },
       },
     });
@@ -564,15 +590,31 @@ export class OrdersService {
 
     const before = { status: order.status, paymentStatus: order.paymentStatus };
 
+    // Cantidades ya devueltas al stock por reembolsos por línea previos. La reversa
+    // solo debe restaurar el remanente no reembolsado; restaurar de nuevo lo que un
+    // refund ya repuso genera stock fantasma / doble devolución.
+    const refundedQtyByItem = new Map<string, number>();
+    for (const r of order.refunds) {
+      for (const ri of r.items) {
+        refundedQtyByItem.set(
+          ri.orderItemId,
+          (refundedQtyByItem.get(ri.orderItemId) ?? 0) + ri.quantity,
+        );
+      }
+    }
+    const restorableItems = order.items
+      .map((it) => ({
+        productId: it.productId,
+        itemType: it.itemType,
+        quantity: it.quantity - (refundedQtyByItem.get(it.id) ?? 0),
+      }))
+      .filter((it) => it.quantity > 0);
+
     return this.prisma.$transaction(async (tx) => {
-      // 1. Restore stock symmetrically (SIMPLE / RECIPE / COMBO) via the engine.
+      // 1. Restaurar SOLO el remanente no reembolsado (engine: SIMPLE/RECIPE/COMBO).
       await this.inventory.restore(
         tx,
-        order.items.map((it) => ({
-          productId: it.productId,
-          quantity: it.quantity,
-          itemType: it.itemType,
-        })),
+        restorableItems,
         {
           tenantId,
           branchId: order.branchId ?? null,
@@ -583,7 +625,9 @@ export class OrdersService {
         },
       );
 
-      // 2. Reverse cash movements tied to this order
+      // 2. Reversar el efectivo de la venta MENOS lo que reembolsos previos ya
+      // sacaron de la caja. Sin esto, un refund parcial (efectivo ya devuelto)
+      // seguido de una reversa sacaría el dinero dos veces (doble salida).
       const activeSession = await tx.cashSession.findFirst({
         where: {
           tenantId,
@@ -595,7 +639,26 @@ export class OrdersService {
       const orderMovements = await tx.cashMovement.findMany({
         where: { tenantId, referenceId: order.id, referenceType: { in: ['ORDER', 'CHANGE_OUT'] } },
       });
+      const priorRefundMovements = await tx.cashMovement.findMany({
+        where: { tenantId, referenceId: order.id, referenceType: 'REFUND' },
+      });
+      const mxnValue = (m: (typeof orderMovements)[number]): number =>
+        Number(m.amountMxnEquivalent ?? m.amount);
+
+      const alreadyRefundedMxn = priorRefundMovements.reduce((s, m) => s + mxnValue(m), 0);
+      let reverseBudgetMxn = Math.max(
+        0,
+        orderMovements.reduce((s, m) => s + mxnValue(m), 0) - alreadyRefundedMxn,
+      );
+
       for (const m of orderMovements) {
+        if (reverseBudgetMxn <= 0.001) break;
+        const movMxn = mxnValue(m);
+        // Fracción de este movimiento aún por reversar (acotada por el presupuesto).
+        const fraction = movMxn > 0 ? Math.min(1, reverseBudgetMxn / movMxn) : 1;
+        const reverseAmount = roundMoney(Number(m.amount) * fraction);
+        if (reverseAmount <= 0) continue;
+        reverseBudgetMxn -= movMxn * fraction;
         // SALE (cash in) → reverse with EXPENSE; CHANGE_OUT (cash out) → reverse with INCOME
         const reverseType = m.type === 'EXPENSE' ? 'INCOME' : 'EXPENSE';
         await tx.cashMovement.create({
@@ -604,10 +667,14 @@ export class OrdersService {
             cashSessionId: activeSession?.id ?? null,
             type: reverseType,
             currency: m.currency,
-            amount: m.amount,
+            amount: reverseAmount,
             ...(m.exchangeRateUsed != null && { exchangeRateUsed: m.exchangeRateUsed }),
-            ...(m.amountOriginalCurrency != null && { amountOriginalCurrency: m.amountOriginalCurrency }),
-            ...(m.amountMxnEquivalent != null && { amountMxnEquivalent: m.amountMxnEquivalent }),
+            ...(m.amountOriginalCurrency != null && {
+              amountOriginalCurrency: roundMoney(Number(m.amountOriginalCurrency) * fraction),
+            }),
+            ...(m.amountMxnEquivalent != null && {
+              amountMxnEquivalent: roundMoney(Number(m.amountMxnEquivalent) * fraction),
+            }),
             paymentMethod: m.paymentMethod,
             referenceId: order.id,
             referenceType: `REVERSAL_${mode}`,
@@ -738,10 +805,13 @@ export class OrdersService {
         });
       }
 
-      // Create cash movements for non-credit, non-card payments
+      // Create cash movements for non-credit payments — paridad con create():
+      // CARD también genera CashMovement SALE (no afecta el efectivo esperado, pero
+      // alimenta totals.sales.card del corte). Sin él, abonos/liquidaciones con
+      // tarjeta vía addPayment no aparecían en el resumen de caja. CREDITO se excluye.
       // Use sale amount (net) — amountReceived/changeGiven are metadata only (for tickets/audit)
       for (const p of dto.payments) {
-        if (!p.method || p.method === 'CREDITO' || p.method === 'CARD') continue;
+        if (!p.method || p.method === 'CREDITO') continue;
         const isUsd = (p.currency ?? 'MXN') === 'USD';
         const netAmount = roundMoney(Number(p.amount));
         const amountMxnEquivalent = isUsd ? convertMoney(netAmount, sessionRate) : netAmount;

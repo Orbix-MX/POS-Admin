@@ -4,11 +4,14 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import sharp from 'sharp';
 import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { AuditService } from '../../../common/services/audit.service';
+import { BusinessConfigurationService } from '../../../common/business-config/business-configuration.service';
+import { InventoryEngine } from '../inventory/inventory.engine';
 import { R2Service } from '../../../storage/r2.service';
 import { SlugUtil } from '../../../common/utils/slug.util';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -42,7 +45,29 @@ export class ProductsService {
     private tenantContext: TenantContextService,
     private audit: AuditService,
     private r2: R2Service,
+    // BR-02: recipes are a Restaurant-only capability. Availability is decided
+    // exclusively through the business configuration facade — the service never
+    // reads BusinessProfile. Combos and SIMPLE/SERVICE products are unaffected.
+    private businessConfig: BusinessConfigurationService,
+    // Fase 2A: la escritura de stock y el asiento de movimiento se delegan al
+    // motor de inventario de bajo nivel. Las validaciones de negocio (tipo
+    // SIMPLE, trackInventory, guard de stock) permanecen en este servicio.
+    private inventoryEngine: InventoryEngine,
   ) {}
+
+  /**
+   * BR-02: gate recipe capabilities behind the `enableRecipes` feature. Throws
+   * when the tenant's business configuration does not support recipes (e.g.
+   * RETAIL). Restaurant (feature on) is unaffected. Only recipe entry points
+   * call this — no sale/inventory/combo flow goes through here.
+   */
+  private async assertRecipesEnabled(): Promise<void> {
+    if (!(await this.businessConfig.hasFeature('enableRecipes'))) {
+      throw new ForbiddenException(
+        'Las recetas no están disponibles para este tipo de negocio',
+      );
+    }
+  }
 
   private async resolveNormalizedQty(
     db: any,
@@ -111,6 +136,9 @@ export class ProductsService {
 
     // RECIPE/COMBO/SERVICE don't track product stock
     const type = productData.type ?? 'SIMPLE';
+    // BR-02: only RECIPE products require the recipes capability. COMBO and
+    // SERVICE remain available on every vertical (combos stay independent).
+    if (type === 'RECIPE') await this.assertRecipesEnabled();
     if (type !== 'SIMPLE') {
       productData.trackInventory = false;
       productData.stock = 0;
@@ -422,9 +450,23 @@ export class ProductsService {
 
     if (newStock < 0) throw new BadRequestException('Insufficient stock');
 
-    const updated = await this.prisma.product.update({
-      where: { id, tenantId },
-      data: { stock: newStock },
+    // Flujo de ajuste oficial: la baja/alta de stock y su movimiento AJUSTE van
+    // juntos en una transacción. Fase 2A: ambas escrituras se delegan al
+    // InventoryEngine; el resultado (stock final y movimiento) es idéntico.
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await this.inventoryEngine.applyProductStockDelta(tx, { productId: id, delta: quantity });
+      if (quantity !== 0) {
+        await this.inventoryEngine.recordProductMovement(tx, {
+          tenantId,
+          type: 'AJUSTE',
+          productId: id,
+          quantity,
+          referenceId: id,
+          referenceType: 'PRODUCT_ADJUST',
+          notes: `Ajuste manual (${quantity >= 0 ? '+' : ''}${quantity})`,
+        });
+      }
+      return tx.product.findFirstOrThrow({ where: { id, tenantId } });
     });
 
     await this.audit.log({
@@ -458,6 +500,7 @@ export class ProductsService {
   }
 
   async getRecipe(productId: string) {
+    await this.assertRecipesEnabled();
     const tenantId = this.tenantContext.requireTenantId();
     const product = await this.prisma.product.findFirst({
       where: { id: productId, tenantId, type: 'RECIPE' },
@@ -475,6 +518,7 @@ export class ProductsService {
     items: Array<{ supplyId: string; quantity: number; unit: string; unitId?: string }>,
     notes?: string,
   ) {
+    await this.assertRecipesEnabled();
     const tenantId = this.tenantContext.requireTenantId();
     const product = await this.prisma.product.findFirst({
       where: { id: productId, tenantId, type: 'RECIPE' },
