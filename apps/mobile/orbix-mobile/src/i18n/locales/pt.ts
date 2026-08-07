@@ -1,0 +1,183 @@
+import type { TranslationSchema } from './es';
+
+/** Portuguese (pt-BR). Typed against the Spanish schema. */
+export const pt: TranslationSchema = {
+  common: {
+    continue: 'Continuar',
+    back: 'Voltar',
+    skip: 'Pular',
+    start: 'Começar',
+    retry: 'Tentar de novo',
+    cancel: 'Cancelar',
+    close: 'Fechar',
+    loading: 'Carregando…',
+    show: 'Mostrar',
+    hide: 'Ocultar',
+    or: 'ou continue com',
+    offline: 'Sem conexão com a internet',
+    genericError: 'Algo deu errado. Tente novamente.',
+  },
+
+  splash: {
+    tagline: 'Gerencie seu negócio, em qualquer lugar',
+  },
+
+  onboarding: {
+    slide1: {
+      title: 'Gerencie seu negócio de qualquer lugar',
+      description: 'Controle sua operação pelo celular, onde quer que esteja.',
+    },
+    slide2: {
+      title: 'Controle vendas, estoque e clientes',
+      description: 'Tudo o que você precisa para operar seu negócio, em um só lugar.',
+    },
+    slide3: {
+      title: 'Tudo sincronizado em tempo real',
+      description: 'As mudanças aparecem na hora em todos os seus dispositivos.',
+    },
+  },
+
+  auth: {
+    signUp: {
+      title: 'Crie sua conta',
+      subtitle: 'Cadastre-se para começar a usar o Orbix.',
+      submit: 'Criar conta',
+      haveAccount: 'Já tem uma conta?',
+      signIn: 'Entrar',
+    },
+    signIn: {
+      title: 'Bem-vindo de volta',
+      subtitle: 'Entre para continuar.',
+      submit: 'Entrar',
+      noAccount: 'Não tem uma conta?',
+      signUp: 'Criar conta',
+      forgotPassword: 'Esqueceu sua senha?',
+    },
+    google: {
+      button: 'Continuar com o Google',
+      unavailable: 'O login com Google ainda não está disponível.',
+      notConfigured: 'Faltam as credenciais do Google.',
+    },
+    fields: {
+      name: 'Nome',
+      namePlaceholder: 'Seu nome completo',
+      email: 'E-mail',
+      emailPlaceholder: 'voce@email.com',
+      password: 'Senha',
+      passwordPlaceholder: 'Mínimo de 6 caracteres',
+    },
+    errors: {
+      invalidCredentials: 'E-mail ou senha incorretos.',
+      emailTaken: 'Já existe uma conta com este e-mail.',
+      tooManyAttempts: 'Muitas tentativas. Aguarde um minuto e tente de novo.',
+    },
+  },
+
+  validation: {
+    nameRequired: 'Escreva seu nome.',
+    nameTooShort: 'O nome deve ter pelo menos 2 caracteres.',
+    emailRequired: 'Escreva seu e-mail.',
+    emailInvalid: 'Escreva um e-mail válido.',
+    passwordRequired: 'Escreva sua senha.',
+    passwordTooShort: 'A senha deve ter pelo menos 6 caracteres.',
+    companyNameRequired: 'Escreva o nome da empresa.',
+    ownerNameRequired: 'Escreva o nome do proprietário.',
+    phoneRequired: 'Escreva seu telefone.',
+    phoneInvalid: 'O telefone deve ter 10 dígitos.',
+    businessTypeRequired: 'Escolha um tipo de negócio.',
+    otpIncomplete: 'Digite os 6 dígitos.',
+  },
+
+  wizard: {
+    stepLabel: 'Passo {{current}} de {{total}}',
+    step1: {
+      title: 'Informações básicas',
+      subtitle: 'Conte-nos sobre seu negócio.',
+      companyName: 'Nome da empresa',
+      companyNamePlaceholder: 'Ex. Padaria Luna',
+      ownerName: 'Nome do proprietário',
+      ownerNamePlaceholder: 'Seu nome',
+      phone: 'Telefone',
+      phonePlaceholder: '10 dígitos',
+      country: 'País',
+      currency: 'Moeda',
+    },
+    step2: {
+      title: 'Tipo de negócio',
+      subtitle: 'Escolha a opção que melhor descreve você.',
+    },
+    step3: {
+      title: 'Verifique seu telefone',
+      subtitle: 'Enviamos um código de 6 dígitos para o número terminado em ••{{last2}}.',
+      resend: 'Reenviar código',
+      resendIn: 'Reenviar código em {{seconds}}s',
+      verifying: 'Verificando…',
+      verified: 'Verificado!',
+      invalidCode: 'O código não é válido. Tente de novo.',
+    },
+    success: {
+      title: 'Sua empresa está pronta!',
+      subtitle: 'Agora você pode vender, controlar o estoque e gerenciar clientes pelo Orbix.',
+      enter: 'Entrar no sistema',
+      entering: 'Entrando…',
+    },
+    draftRestored: 'Recuperamos o progresso que você tinha deixado.',
+  },
+
+  home: {
+    welcome: 'Bem-vindo, {{name}}',
+    kpiSales: 'Vendas de hoje',
+    kpiCustomers: 'Clientes',
+    kpiProducts: 'Produtos em estoque',
+    firstSteps: 'Primeiros passos',
+    addProducts: 'Adicione seus primeiros produtos',
+    inviteTeam: 'Convide sua equipe',
+    setupPos: 'Configure seu primeiro ponto de venda',
+    goToDashboard: 'Ir para o dashboard completo',
+  },
+
+  tenant: {
+    selectTitle: 'Escolha sua empresa',
+    selectSubtitle: 'Sua conta pertence a mais de uma empresa.',
+    createNew: 'Criar uma nova empresa',
+    switching: 'Trocando de empresa…',
+  },
+
+  businessTypes: {
+    tienda: 'Comércio / Loja',
+    restaurante: 'Restaurante',
+    cafeteria: 'Cafeteria',
+    belleza: 'Beleza',
+    salud: 'Saúde',
+    gimnasio: 'Academia',
+    servicios: 'Serviços',
+    distribuidora: 'Distribuidora',
+    educacion: 'Educação',
+    otro: 'Outro',
+  },
+
+  countries: {
+    MX: 'México',
+    CO: 'Colômbia',
+    AR: 'Argentina',
+    CL: 'Chile',
+    PE: 'Peru',
+    US: 'Estados Unidos',
+  },
+
+  errors: {
+    notImplemented: 'Este recurso ainda não está disponível no servidor.',
+    network: 'Não conseguimos falar com o Orbix. Verifique sua conexão.',
+    timeout: 'A solicitação demorou demais. Tente novamente.',
+    server: 'O Orbix teve um problema. Tente em alguns minutos.',
+    forbidden: 'Você não tem permissão para fazer isso.',
+  },
+
+  a11y: {
+    back: 'Voltar',
+    togglePassword: 'Mostrar ou ocultar a senha',
+    otpDigit: 'Dígito {{index}} de {{total}}',
+    selectBusinessType: 'Selecionar {{label}}',
+    progress: 'Passo {{current}} de {{total}}',
+  },
+};
