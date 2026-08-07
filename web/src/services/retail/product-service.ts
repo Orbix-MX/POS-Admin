@@ -44,6 +44,12 @@ export interface ComboItem {
   child?: { id: string; name: string; sku: string; images?: ProductImage[] }
 }
 
+export interface ProductAttributeValue {
+  attributeId: string
+  value: string
+  attribute?: { id: string; name: string; slug: string; type: 'TEXT' | 'SELECT'; options: string[] }
+}
+
 export interface Product {
   id?: string
   type: ProductType
@@ -63,10 +69,12 @@ export interface Product {
   taxRate: number
   taxCode: string
   slug: string
+  isEcommerce: boolean
   images?: ProductImage[]
   category?: { id: string; name: string } | null
   recipe?: { id: string; notes?: string; items: RecipeItem[] } | null
   comboItems?: ComboItem[]
+  attributeValues?: ProductAttributeValue[]
 }
 
 export async function fetchProducts(): Promise<ListResponse<Product>> {
@@ -92,6 +100,7 @@ export async function createProduct(data: Product): Promise<Product> {
     metaDescription: data.metaDescription,
     taxRate: data.taxRate,
     taxCode: data.taxCode,
+    isEcommerce: data.isEcommerce,
     recipeItems: data.recipe?.items?.map((i) => ({
       supplyId: i.supplyId,
       quantity: i.quantity,
@@ -102,6 +111,9 @@ export async function createProduct(data: Product): Promise<Product> {
       childProductId: ci.childProductId,
       quantity: ci.quantity,
     })),
+    attributeValues: data.attributeValues
+      ?.filter((av) => av.value.trim() !== '')
+      .map((av) => ({ attributeId: av.attributeId, value: av.value })),
   }
   const { data: result } = await api.post<Product>('products', body)
   return result
@@ -124,6 +136,7 @@ export async function updateProduct(id: string, data: Product): Promise<Product>
     metaDescription: data.metaDescription,
     taxRate: data.taxRate,
     taxCode: data.taxCode,
+    isEcommerce: data.isEcommerce,
     recipeItems: data.recipe?.items?.map((i) => ({
       supplyId: i.supplyId,
       quantity: i.quantity,
@@ -134,6 +147,9 @@ export async function updateProduct(id: string, data: Product): Promise<Product>
       childProductId: ci.childProductId,
       quantity: ci.quantity,
     })),
+    attributeValues: data.attributeValues
+      ?.filter((av) => av.value.trim() !== '')
+      .map((av) => ({ attributeId: av.attributeId, value: av.value })),
   }
   const { data: result } = await api.patch<Product>(`products/${id}`, body)
   return result

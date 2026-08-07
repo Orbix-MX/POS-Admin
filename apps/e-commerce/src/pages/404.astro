@@ -1,0 +1,80 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base
+  title="Página no encontrada · RootGarden"
+  description="La página que buscas no existe o cambió de dirección."
+  path="/404"
+  pagina="error"
+  headerSolid={true}
+  extraCss={['/css/catalogo.css']}
+>
+  <div class="pagina-error">
+    <div class="contenedor">
+      <img
+        class="pagina-error__logo"
+        src="/assets/logo.png"
+        alt="Logotipo de RootGarden"
+        width="168"
+        height="180"
+      />
+      <p class="pagina-error__codigo">404</p>
+      <h1 class="pagina-error__titulo">Esta rama no llegó a echar raíz</h1>
+      <p class="pagina-error__texto">
+        La página que buscas no existe o cambió de dirección. Vuelve al inicio o explora el
+        catálogo completo de plantas, raíces y hardscape.
+      </p>
+      <div class="pagina-error__acciones">
+        <a class="boton boton--primario" href="/">Volver al inicio</a>
+        <a class="boton boton--contorno" href="/catalogo">Ver catálogo</a>
+      </div>
+    </div>
+  </div>
+</Base>
+
+<style>
+  .pagina-error {
+    min-height: 100svh;
+    display: grid;
+    place-items: center;
+    padding: calc(var(--header-alto) + 48px) 0 72px;
+    text-align: center;
+  }
+
+  .pagina-error__logo {
+    width: clamp(120px, 18vw, 168px);
+    height: auto;
+    margin: 0 auto 26px;
+  }
+
+  .pagina-error__codigo {
+    font-size: clamp(3.4rem, 12vw, 6rem);
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.04em;
+    background: linear-gradient(135deg, var(--verde-700), var(--verde-500));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .pagina-error__titulo {
+    margin-top: 12px;
+    font-size: clamp(1.5rem, 3.4vw, 2.2rem);
+    color: var(--verde-900);
+  }
+
+  .pagina-error__texto {
+    max-width: 48ch;
+    margin: 16px auto 32px;
+    color: var(--tinta-suave);
+  }
+
+  .pagina-error__acciones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    justify-content: center;
+  }
+</style>

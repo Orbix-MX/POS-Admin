@@ -28,10 +28,12 @@ import { PrinterConfigsModule } from './modules/core/printer-configs/printer-con
 import { DevicesModule } from './modules/core/devices/devices.module';
 import { LicenseModule } from './modules/core/license/license.module';
 import { StaffModule } from './modules/core/staff/staff.module';
+import { StoreModule } from './modules/core/store/store.module';
 
 // Retail modules — retail/POS vertical
 import { CategoriesModule } from './modules/retail/categories/categories.module';
 import { ProductsModule } from './modules/retail/products/products.module';
+import { ProductAttributesModule } from './modules/retail/product-attributes/product-attributes.module';
 import { OrdersModule } from './modules/retail/orders/orders.module';
 import { CouponsModule } from './modules/retail/coupons/coupons.module';
 import { SuppliersModule } from './modules/retail/suppliers/suppliers.module';
@@ -72,10 +74,12 @@ import { PlatformModule } from './modules/platform/platform.module';
     DevicesModule,
     LicenseModule,
     StaffModule,
+    StoreModule,
 
     // Retail
     CategoriesModule,
     ProductsModule,
+    ProductAttributesModule,
     OrdersModule,
     CouponsModule,
     SuppliersModule,

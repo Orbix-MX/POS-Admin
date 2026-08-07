@@ -1,0 +1,334 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="Nuevo producto · Panel de productos">
+  <div class="admin-topbar">
+    <div class="admin-topbar__marca">
+      <img src="/assets/logo-mark.png" alt="Emblema" />
+      <span>Panel de productos</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:14px;">
+      <span class="admin-topbar__tenant" data-tenant-label></span>
+      <button type="button" class="admin-topbar__salir" data-logout>Cerrar sesión</button>
+    </div>
+  </div>
+
+  <div class="admin-shell">
+    <div class="admin-encabezado">
+      <h1 class="admin-encabezado__titulo">Nuevo producto</h1>
+      <p class="admin-encabezado__texto">
+        Este panel solo da de alta productos. Todo lo que crees aquí se publica directamente en
+        la tienda en línea.
+      </p>
+    </div>
+
+    <div class="admin-tarjeta">
+      <div class="admin-alerta admin-alerta--error" data-form-error hidden></div>
+      <div class="admin-alerta admin-alerta--exito" data-form-exito hidden></div>
+
+      <form data-product-form novalidate>
+        <div class="campo">
+          <label class="campo__etiqueta" for="name">Nombre</label>
+          <input class="campo__control" type="text" id="name" name="name" required />
+        </div>
+
+        <div class="campos-fila">
+          <div class="campo">
+            <label class="campo__etiqueta" for="sku">SKU</label>
+            <input class="campo__control" type="text" id="sku" name="sku" required minlength="2" maxlength="100" />
+            <p class="campo__ayuda">Se sugiere automáticamente a partir del nombre; puedes editarlo.</p>
+          </div>
+          <div class="campo">
+            <label class="campo__etiqueta" for="categoryId">Categoría</label>
+            <select class="campo__control" id="categoryId" name="categoryId" data-category-select>
+              <option value="">— Sin categoría —</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="campo">
+          <label class="campo__etiqueta" for="description">Descripción</label>
+          <textarea class="campo__control" id="description" name="description"></textarea>
+        </div>
+
+        <div class="campos-fila">
+          <div class="campo">
+            <label class="campo__etiqueta" for="price">Precio (MXN)</label>
+            <input class="campo__control" type="number" id="price" name="price" min="0" step="0.01" required />
+          </div>
+          <div class="campo">
+            <label class="campo__etiqueta" for="stock">Stock inicial</label>
+            <input class="campo__control" type="number" id="stock" name="stock" min="0" step="1" value="0" />
+          </div>
+        </div>
+
+        <div class="campo">
+          <label class="campo__etiqueta" for="image">Fotografía (opcional)</label>
+          <input class="campo__control" type="file" id="image" name="image" accept="image/jpeg,image/png,image/webp" />
+        </div>
+
+        <div class="admin-seccion" data-attributes-section hidden>
+          <p class="admin-seccion__titulo">Atributos (talla, color, tipo…)</p>
+          <div class="admin-atributos" data-attributes-container></div>
+        </div>
+
+        <div class="admin-acciones">
+          <button type="submit" class="boton boton--primario" data-submit-btn>Crear producto</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</AdminLayout>
+
+<script>
+  import { authFetch, requireSession, logout } from '../../lib/admin-session';
+
+  interface CategoryOption {
+    id: string;
+    name: string;
+    status: 'ACTIVE' | 'INACTIVE';
+  }
+
+  interface ProductAttribute {
+    id: string;
+    name: string;
+    type: 'TEXT' | 'SELECT';
+    options: string[];
+    isActive: boolean;
+    sortOrder: number;
+  }
+
+  if (requireSession()) {
+    void bootstrap();
+  }
+
+  async function bootstrap() {
+    wireLogout();
+    void loadTenantLabel();
+    await Promise.all([loadCategories(), loadAttributes()]);
+    wireSkuSuggestion();
+    wireSubmit();
+  }
+
+  function wireLogout() {
+    const btn = document.querySelector('[data-logout]');
+    btn?.addEventListener('click', () => {
+      void logout();
+    });
+  }
+
+  async function loadTenantLabel() {
+    const label = document.querySelector('[data-tenant-label]');
+    if (!(label instanceof HTMLElement)) return;
+    try {
+      const res = await authFetch('/api/auth/me');
+      if (!res.ok) return;
+      const profile = (await res.json()) as {
+        user?: { firstName?: string };
+        currentTenant?: { name?: string };
+      };
+      const parts = [profile.user?.firstName, profile.currentTenant?.name].filter(Boolean);
+      label.textContent = parts.join(' · ');
+    } catch {
+      // session errors are already handled by authFetch (redirect on 401)
+    }
+  }
+
+  async function loadCategories() {
+    const select = document.querySelector('[data-category-select]');
+    if (!(select instanceof HTMLSelectElement)) return;
+    try {
+      const res = await authFetch('/api/categories');
+      if (!res.ok) return;
+      const categories = (await res.json()) as CategoryOption[];
+      categories
+        .filter((c) => c.status === 'ACTIVE')
+        .forEach((c) => {
+          const option = document.createElement('option');
+          option.value = c.id;
+          option.textContent = c.name;
+          select.appendChild(option);
+        });
+    } catch {
+      // no session redirect needed here — form still usable without categories
+    }
+  }
+
+  let attributeDefs: ProductAttribute[] = [];
+
+  async function loadAttributes() {
+    const section = document.querySelector('[data-attributes-section]');
+    const container = document.querySelector('[data-attributes-container]');
+    if (!(section instanceof HTMLElement) || !(container instanceof HTMLElement)) return;
+
+    try {
+      const res = await authFetch('/api/product-attributes');
+      if (!res.ok) return;
+      const attributes = (await res.json()) as ProductAttribute[];
+      attributeDefs = attributes.filter((a) => a.isActive).sort((a, b) => a.sortOrder - b.sortOrder);
+
+      if (attributeDefs.length === 0) return;
+      section.hidden = false;
+
+      attributeDefs.forEach((attr) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'campo';
+
+        const label = document.createElement('label');
+        label.className = 'campo__etiqueta';
+        label.textContent = attr.name;
+        label.setAttribute('for', `attr-${attr.id}`);
+        wrapper.appendChild(label);
+
+        if (attr.type === 'SELECT') {
+          const select = document.createElement('select');
+          select.className = 'campo__control';
+          select.id = `attr-${attr.id}`;
+          select.dataset.attributeId = attr.id;
+          const empty = document.createElement('option');
+          empty.value = '';
+          empty.textContent = '— Selecciona —';
+          select.appendChild(empty);
+          attr.options.forEach((o) => {
+            const opt = document.createElement('option');
+            opt.value = o;
+            opt.textContent = o;
+            select.appendChild(opt);
+          });
+          wrapper.appendChild(select);
+        } else {
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'campo__control';
+          input.id = `attr-${attr.id}`;
+          input.dataset.attributeId = attr.id;
+          wrapper.appendChild(input);
+        }
+
+        container.appendChild(wrapper);
+      });
+    } catch {
+      // attributes are optional — the product can still be created without them
+    }
+  }
+
+  function slugifySku(name: string): string {
+    const base = name
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 24);
+    const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
+    return base ? `EC-${base}-${suffix}` : `EC-${suffix}`;
+  }
+
+  function wireSkuSuggestion() {
+    const nameInput = document.querySelector('#name');
+    const skuInput = document.querySelector('#sku');
+    if (!(nameInput instanceof HTMLInputElement) || !(skuInput instanceof HTMLInputElement)) return;
+
+    let skuTouched = false;
+    skuInput.addEventListener('input', () => { skuTouched = true; });
+    nameInput.addEventListener('blur', () => {
+      if (skuTouched || skuInput.value.trim() !== '' || nameInput.value.trim() === '') return;
+      skuInput.value = slugifySku(nameInput.value);
+    });
+  }
+
+  function collectAttributeValues(): Array<{ attributeId: string; value: string }> {
+    const inputs = document.querySelectorAll('[data-attribute-id]');
+    const values: Array<{ attributeId: string; value: string }> = [];
+    inputs.forEach((node) => {
+      if (!(node instanceof HTMLInputElement) && !(node instanceof HTMLSelectElement)) return;
+      const attributeId = node.dataset.attributeId;
+      const value = node.value.trim();
+      if (attributeId && value) values.push({ attributeId, value });
+    });
+    return values;
+  }
+
+  function wireSubmit() {
+    const form = document.querySelector('[data-product-form]');
+    const errorBox = document.querySelector('[data-form-error]');
+    const successBox = document.querySelector('[data-form-exito]');
+    const submitBtn = document.querySelector('[data-submit-btn]');
+    if (
+      !(form instanceof HTMLFormElement) ||
+      !(errorBox instanceof HTMLElement) ||
+      !(successBox instanceof HTMLElement) ||
+      !(submitBtn instanceof HTMLButtonElement)
+    ) {
+      return;
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      errorBox.hidden = true;
+      successBox.hidden = true;
+      submitBtn.disabled = true;
+      const originalLabel = submitBtn.textContent;
+      submitBtn.textContent = 'Guardando…';
+
+      const data = new FormData(form);
+      const categoryId = String(data.get('categoryId') || '');
+      const imageFile = data.get('image');
+
+      const body: Record<string, unknown> = {
+        type: 'SIMPLE',
+        status: 'ACTIVE',
+        trackInventory: true,
+        isEcommerce: true,
+        name: String(data.get('name') || ''),
+        sku: String(data.get('sku') || ''),
+        description: String(data.get('description') || ''),
+        price: Number(data.get('price') || 0),
+        stock: Number(data.get('stock') || 0),
+        attributeValues: collectAttributeValues(),
+      };
+      if (categoryId) body.categoryId = categoryId;
+
+      try {
+        const res = await authFetch('/api/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        if (!res.ok) {
+          const errBody = (await res.json().catch(() => ({}))) as { message?: string | string[] };
+          const message = Array.isArray(errBody.message) ? errBody.message.join(', ') : errBody.message;
+          throw new Error(message || 'No se pudo crear el producto.');
+        }
+
+        const created = (await res.json()) as { id: string };
+
+        if (imageFile instanceof File && imageFile.size > 0) {
+          const imageForm = new FormData();
+          imageForm.append('file', imageFile);
+          await authFetch(`/api/products/${created.id}/image`, {
+            method: 'POST',
+            body: imageForm,
+          }).catch(() => {
+            // product already exists — a failed image upload isn't fatal here
+          });
+        }
+
+        successBox.textContent = 'Producto creado y publicado en la tienda.';
+        successBox.hidden = false;
+        form.reset();
+        document.querySelectorAll('[data-attribute-id]').forEach((node) => {
+          if (node instanceof HTMLInputElement || node instanceof HTMLSelectElement) node.value = '';
+        });
+      } catch (err) {
+        errorBox.textContent = err instanceof Error ? err.message : 'No se pudo crear el producto.';
+        errorBox.hidden = false;
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalLabel;
+      }
+    });
+  }
+</script>

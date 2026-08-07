@@ -1,0 +1,211 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base
+  title="RootGarden · Naturaleza para tu acuario"
+  description="Plantas acuáticas cultivadas, raíz de manzanita y hardscape para aquascaping. Asesoría y pedidos por WhatsApp en Ciudad Juárez."
+  path="/"
+  pagina="inicio"
+  headerSolid={false}
+>
+  <!-- ================= PORTADA ================= -->
+  <section class="portada" id="portada">
+    <div class="portada__fondo" role="presentation"></div>
+    <div class="portada__velo" role="presentation"></div>
+
+    <div class="contenedor portada__contenido">
+      <div class="portada__marca">
+        <img
+          class="portada__logo"
+          src="/assets/logo.png"
+          alt="Logotipo de RootGarden"
+          width="226"
+          height="242"
+          fetchpriority="high"
+        />
+      </div>
+
+      <h1 class="portada__titulo"><strong>Root</strong>Garden</h1>
+      <p class="portada__slogan">Naturaleza para tu acuario.</p>
+
+      <div class="portada__especialidades">
+        <p class="portada__especialidades-titulo">Especialistas en</p>
+        <ul class="pastillas">
+          <li class="pastilla">
+            <span class="pastilla__icono" aria-hidden="true">🌿</span> Plantas Acuáticas
+          </li>
+          <li class="pastilla">
+            <span class="pastilla__icono" aria-hidden="true">🪵</span> Raíz de Manzanita
+          </li>
+          <li class="pastilla">
+            <span class="pastilla__icono" aria-hidden="true">🪨</span> Hardscape
+            <span class="proximamente proximamente--claro">Próximamente</span>
+          </li>
+        </ul>
+      </div>
+
+      <div class="portada__acciones">
+        <a class="boton boton--claro" href="#catalogo">Explorar catálogo</a>
+        <a class="boton boton--fantasma" href="/tienda">Hacer un pedido</a>
+      </div>
+    </div>
+
+    <a class="portada__indicador" href="#catalogo" aria-label="Bajar al catálogo">
+      <span>Desliza</span>
+      <span class="portada__indicador-linea" aria-hidden="true"></span>
+    </a>
+  </section>
+
+  <!-- ================= ESPECIALIDADES ================= -->
+  <section class="seccion seccion--clara">
+    <div class="contenedor">
+      <div class="seccion__encabezado revelar">
+        <span class="seccion__etiqueta">Nuestro oficio</span>
+        <h2 class="seccion__titulo">Todo lo que tu layout necesita</h2>
+        <p class="seccion__descripcion">
+          Cultivamos, seleccionamos y preparamos cada pieza pensando en acuarios plantados
+          reales, no en escaparates.
+        </p>
+      </div>
+
+      <div class="especialidades">
+        <article class="especialidad revelar">
+          <div class="especialidad__icono" aria-hidden="true">🌿</div>
+          <h3 class="especialidad__titulo">Plantas Acuáticas</h3>
+          <p class="especialidad__texto">
+            Más de cincuenta especies cultivadas en nuestras piletas, desde tapizantes
+            exigentes hasta rizomatosas de bajo mantenimiento. Libres de caracoles y algas.
+          </p>
+        </article>
+
+        <article class="especialidad revelar">
+          <div class="especialidad__icono" aria-hidden="true">🪵</div>
+          <h3 class="especialidad__titulo">Raíz de Manzanita</h3>
+          <p class="especialidad__texto">
+            Ramas curadas, lavadas y listas para sumergir. Seleccionamos cada pieza por su
+            silueta para que tu bosque submarino tenga carácter propio.
+          </p>
+        </article>
+
+        <article class="especialidad revelar">
+          <div class="especialidad__icono" aria-hidden="true">🪨</div>
+          <h3 class="especialidad__titulo">
+            Hardscape <span class="proximamente">Próximamente</span>
+          </h3>
+          <p class="especialidad__texto">
+            Seiryu, roca dragón, lava negra y sustratos técnicos. Estamos preparando la
+            selección; escríbenos por WhatsApp si buscas una pieza en particular.
+          </p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= CATÁLOGO DESTACADO ================= -->
+  <section class="seccion" id="catalogo">
+    <div class="contenedor">
+      <div class="seccion__encabezado revelar">
+        <span class="seccion__etiqueta">Catálogo</span>
+        <h2 class="seccion__titulo">Selección destacada</h2>
+        <p class="seccion__descripcion">
+          Una muestra de lo que tenemos disponible esta temporada. El catálogo completo incluye
+          plantas, raíces y hardscape con precios actualizados.
+        </p>
+      </div>
+
+      <div class="grid-productos" data-catalogo></div>
+
+      <div class="estado" data-catalogo-error hidden>
+        <div class="estado__icono" aria-hidden="true">🌱</div>
+        <h3 class="estado__titulo">No pudimos cargar el catálogo</h3>
+        <p class="estado__texto">
+          Revisa tu conexión y vuelve a intentarlo. Si el problema continúa, escríbenos por
+          WhatsApp y con gusto te compartimos la disponibilidad.
+        </p>
+        <a class="boton boton--primario" href="https://wa.me/526562016886">Escribir por WhatsApp</a>
+      </div>
+
+      <div class="portada__acciones revelar" style="margin-top: 48px">
+        <a class="boton boton--primario" href="/catalogo">Ver catálogo completo</a>
+        <a class="boton boton--contorno" href="/tienda">Ir a la tienda</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= VALORES ================= -->
+  <section class="seccion seccion--clara">
+    <div class="contenedor">
+      <div class="seccion__encabezado revelar">
+        <span class="seccion__etiqueta">Por qué RootGarden</span>
+        <h2 class="seccion__titulo">Plantas que llegan vivas y listas</h2>
+      </div>
+
+      <div class="valores">
+        <div class="valor revelar">
+          <span class="valor__icono" aria-hidden="true">💧</span>
+          <div>
+            <h3 class="valor__titulo">Cultivo propio</h3>
+            <p class="valor__texto">
+              Cultivamos sumergido, así la planta no sufre conversión al entrar a tu acuario.
+            </p>
+          </div>
+        </div>
+
+        <div class="valor revelar">
+          <span class="valor__icono" aria-hidden="true">🧪</span>
+          <div>
+            <h3 class="valor__titulo">Libre de plagas</h3>
+            <p class="valor__texto">
+              Cada lote se revisa y enjuaga antes de salir. Sin caracoles, planaria ni algas.
+            </p>
+          </div>
+        </div>
+
+        <div class="valor revelar">
+          <span class="valor__icono" aria-hidden="true">📦</span>
+          <div>
+            <h3 class="valor__titulo">Empaque protegido</h3>
+            <p class="valor__texto">
+              Humedad controlada y aislante térmico para que el viaje no marchite nada.
+            </p>
+          </div>
+        </div>
+
+        <div class="valor revelar">
+          <span class="valor__icono" aria-hidden="true">💬</span>
+          <div>
+            <h3 class="valor__titulo">Asesoría real</h3>
+            <p class="valor__texto">
+              Te ayudamos a elegir según tu luz, tu sustrato y si usas CO₂ o no.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= FRANJA DE CONTACTO ================= -->
+  <section class="seccion">
+    <div class="contenedor">
+      <div class="franja revelar">
+        <h2 class="franja__titulo">¿No sabes por dónde empezar?</h2>
+        <p class="franja__texto">
+          Cuéntanos las medidas de tu acuario, tu iluminación y el estilo que buscas. Te
+          armamos una lista de plantas y hardscape a la medida, sin compromiso.
+        </p>
+        <div class="franja__acciones">
+          <a
+            class="boton boton--whatsapp"
+            href="https://wa.me/526562016886"
+            target="_blank"
+            rel="noopener"
+          >
+            <span aria-hidden="true">💬</span> Asesoría por WhatsApp
+          </a>
+          <a class="boton boton--claro" href="/tienda">Armar mi pedido</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</Base>

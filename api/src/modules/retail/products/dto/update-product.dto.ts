@@ -2,7 +2,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { ProductStatus, TaxCode, ProductType } from '@prisma/client';
 import { Type, Transform } from 'class-transformer';
-import { RecipeItemDto, ComboItemDto } from './create-product.dto';
+import { RecipeItemDto, ComboItemDto, ProductAttributeValueDto } from './create-product.dto';
 
 export class UpdateProductDto {
   @ApiPropertyOptional({ enum: ProductType })
@@ -93,6 +93,13 @@ export class UpdateProductDto {
   @IsEnum(TaxCode)
   taxCode?: TaxCode;
 
+  @ApiPropertyOptional({
+    description: 'Publica el producto en la tienda en línea (habilita la captura de atributos)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isEcommerce?: boolean;
+
   @ApiPropertyOptional({ type: [RecipeItemDto] })
   @IsOptional()
   @IsArray()
@@ -106,4 +113,11 @@ export class UpdateProductDto {
   @ValidateNested({ each: true })
   @Type(() => ComboItemDto)
   comboItems?: ComboItemDto[];
+
+  @ApiPropertyOptional({ type: [ProductAttributeValueDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProductAttributeValueDto)
+  attributeValues?: ProductAttributeValueDto[];
 }

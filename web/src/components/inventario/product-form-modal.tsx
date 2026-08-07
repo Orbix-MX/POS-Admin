@@ -3,8 +3,9 @@ import { FormField } from '@/components/shared/form-modal'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { STATUS_OPTIONS, TAX_CODES, TAX_RATE_MAP, PRODUCT_TYPE_OPTIONS } from '@/hooks/retail/use-products'
-import type { Product, RecipeItem, ComboItem } from '@/services/retail/product-service'
+import type { Product, RecipeItem, ComboItem, ProductAttributeValue } from '@/services/retail/product-service'
 import type { Category } from '@/services/retail/categories-service'
+import { fetchProductAttributes, type ProductAttribute } from '@/services/retail/product-attributes-service'
 import { uploadProductImage, deleteProductImage } from '@/services/retail/product-service'
 import { ImageViewer } from '@/components/shared/image-viewer'
 import { fetchSupplies, type Supply } from '@/services/retail/supplies-service'
@@ -473,6 +474,72 @@ function ComboEditor({
   )
 }
 
+// ── E-commerce Attributes Editor ────────────────────────────────────────────
+
+function AttributesEditor({
+  values,
+  onChange,
+}: {
+  values: ProductAttributeValue[]
+  onChange: (values: ProductAttributeValue[]) => void
+}) {
+  const [attributes, setAttributes] = useState<ProductAttribute[]>([])
+
+  useEffect(() => {
+    fetchProductAttributes()
+      .then((attrs) => setAttributes(attrs.filter((a) => a.isActive)))
+      .catch(() => {})
+  }, [])
+
+  const valueOf = (attributeId: string) => values.find((v) => v.attributeId === attributeId)?.value ?? ''
+
+  const setValue = (attributeId: string, value: string) => {
+    const exists = values.some((v) => v.attributeId === attributeId)
+    onChange(
+      exists
+        ? values.map((v) => (v.attributeId === attributeId ? { ...v, value } : v))
+        : [...values, { attributeId, value }],
+    )
+  }
+
+  if (attributes.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground text-center py-3 border border-dashed border-border rounded-lg">
+        No hay atributos configurados. Créalos en la pestaña "Atributos" de Inventario.
+      </p>
+    )
+  }
+
+  return (
+    <div className="grid grid-cols-2 gap-x-4">
+      {attributes.map((attr) => (
+        <div key={attr.id} className="mb-3.5">
+          <label className="block text-xs font-semibold text-muted-foreground mb-1.5">{attr.name}</label>
+          {attr.type === 'SELECT' ? (
+            <select
+              value={valueOf(attr.id!)}
+              onChange={(e) => setValue(attr.id!, e.target.value)}
+              className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
+            >
+              <option value="">— Selecciona —</option>
+              {attr.options.map((o) => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="text"
+              value={valueOf(attr.id!)}
+              onChange={(e) => setValue(attr.id!, e.target.value)}
+              className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
+            />
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function ProductFormModal({
@@ -735,6 +802,31 @@ export function ProductFormModal({
               </SelectContent>
             </Select>
           </div>
+
+          {/* E-commerce */}
+          <div className="col-span-2 flex items-center gap-2 mb-3.5">
+            <input
+              type="checkbox"
+              id="isEcommerce"
+              checked={form.isEcommerce}
+              onChange={e => setForm(p => ({ ...p, isEcommerce: e.target.checked }))}
+            />
+            <label htmlFor="isEcommerce" className="text-xs text-muted-foreground cursor-pointer">
+              ¿Publicar este producto en la tienda en línea (e-commerce)?
+            </label>
+          </div>
+
+          {form.isEcommerce && (
+            <div className="col-span-2 mb-3.5">
+              <label className="block text-xs font-semibold text-muted-foreground mb-2">
+                Atributos de e-commerce (talla, color, tipo, ...)
+              </label>
+              <AttributesEditor
+                values={form.attributeValues ?? []}
+                onChange={(vals) => setForm(p => ({ ...p, attributeValues: vals }))}
+              />
+            </div>
+          )}
 
           {/* Stock — solo para SIMPLE */}
           {showStock && (

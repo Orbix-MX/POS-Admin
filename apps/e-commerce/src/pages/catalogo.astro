@@ -1,0 +1,101 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base
+  title="Catálogo · RootGarden"
+  description="Catálogo completo de RootGarden: plantas acuáticas, raíz de manzanita y hardscape, con dificultad, requerimiento de luz y precio."
+  path="/catalogo"
+  pagina="catalogo"
+  headerSolid={true}
+  extraCss={['/css/catalogo.css']}
+>
+  <!-- ================= ENCABEZADO DE PÁGINA ================= -->
+  <section class="pagina-encabezado">
+    <div class="contenedor pagina-encabezado__contenido">
+      <nav class="migas" aria-label="Ruta de navegación">
+        <a href="/">Inicio</a>
+        <span class="migas__separador" aria-hidden="true">/</span>
+        <span>Catálogo</span>
+      </nav>
+      <h1 class="pagina-encabezado__titulo">Catálogo <strong>completo</strong></h1>
+      <p class="pagina-encabezado__texto">
+        Busca por nombre comercial o científico. Cada ficha indica dificultad, requerimiento
+        de luz y precio en pesos mexicanos.
+      </p>
+    </div>
+  </section>
+
+  <!-- ================= BARRA DE FILTROS ================= -->
+  <div class="barra-catalogo">
+    <div class="contenedor barra-catalogo__interno">
+      <div class="filtros" role="group" aria-label="Filtrar por categoría" data-buscador-filtros>
+        <button class="filtro is-activo" type="button" data-categoria="todas" aria-pressed="true">
+          Todo
+        </button>
+        <button class="filtro" type="button" data-categoria="plantas" aria-pressed="false">
+          <span class="filtro__icono" aria-hidden="true">🌿</span> Plantas Acuáticas
+        </button>
+        <button class="filtro" type="button" data-categoria="raices" aria-pressed="false">
+          <span class="filtro__icono" aria-hidden="true">🪵</span> Raíz de Manzanita
+        </button>
+        <button class="filtro" type="button" data-categoria="hardscape" aria-pressed="false">
+          <span class="filtro__icono" aria-hidden="true">🪨</span> Hardscape
+        </button>
+      </div>
+
+      <p class="resultados" data-catalogo-resultados aria-live="polite"></p>
+    </div>
+  </div>
+
+  <!-- ================= CATÁLOGO ================= -->
+  <section class="catalogo" id="catalogo" aria-label="Productos">
+    <div class="contenedor">
+      <div class="grid-productos" data-catalogo></div>
+
+      <div class="estado" data-catalogo-vacio hidden>
+        <div class="estado__icono" aria-hidden="true">🔍</div>
+        <h2 class="estado__titulo">Sin coincidencias</h2>
+        <p class="estado__texto">
+          No encontramos productos con esos términos. Prueba con otro nombre o cambia la
+          categoría seleccionada.
+        </p>
+        <a class="boton boton--contorno" href="/catalogo">Ver todo el catálogo</a>
+      </div>
+
+      <div class="estado estado--error" data-catalogo-error hidden>
+        <div class="estado__icono" aria-hidden="true">🌱</div>
+        <h2 class="estado__titulo">No pudimos cargar el catálogo</h2>
+        <p class="estado__texto">
+          Vuelve a cargar la página o escríbenos por WhatsApp y te compartimos la
+          disponibilidad al momento.
+        </p>
+        <a class="boton boton--primario" href="https://wa.me/526562016886">Escribir por WhatsApp</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= FRANJA ================= -->
+  <section class="seccion">
+    <div class="contenedor">
+      <div class="franja revelar">
+        <h2 class="franja__titulo">¿Listo para armar tu pedido?</h2>
+        <p class="franja__texto">
+          En la tienda puedes elegir cantidades y enviarnos la lista completa por WhatsApp en un
+          solo mensaje.
+        </p>
+        <div class="franja__acciones">
+          <a class="boton boton--claro" href="/tienda">Ir a la tienda</a>
+          <a
+            class="boton boton--whatsapp"
+            href="https://wa.me/526562016886"
+            target="_blank"
+            rel="noopener"
+          >
+            <span aria-hidden="true">💬</span> Preguntar disponibilidad
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+</Base>

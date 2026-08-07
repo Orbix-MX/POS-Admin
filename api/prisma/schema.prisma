@@ -159,6 +159,7 @@ model Tenant {
   customers          Customer[]
   categories         Category[]
   products           Product[]
+  productAttributes  ProductAttribute[]
   coupons            Coupon[]
   orders             Order[]
   orderRefunds       OrderRefund[]
@@ -602,6 +603,9 @@ model Product {
   metaDescription String?
   lastCost        Decimal?      @db.Decimal(10, 2)
   avgCost         Decimal?      @db.Decimal(10, 2)
+  // Gates visibility on the public storefront (see StoreService) and whether
+  // the admin product form asks for attribute values (size/color/type/...).
+  isEcommerce     Boolean       @default(false)
 
   createdById String?
   updatedById String?
@@ -621,6 +625,7 @@ model Product {
   recipe               Recipe?
   comboItems           ComboItem[]          @relation("ComboItems")
   inCombos             ComboItem[]          @relation("ComboChildItems")
+  attributeValues      ProductAttributeValue[]
   createdBy            User?                @relation("ProductCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy            User?                @relation("ProductUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
@@ -644,6 +649,48 @@ model ProductImage {
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@map("product_images")
+}
+
+// ============= Product Attributes (e-commerce) =============
+// Scalable, tenant-defined catalog of attribute types (Talla, Color, Tipo, ...).
+// New attribute kinds are added by tenants at runtime — no schema change needed.
+enum ProductAttributeType {
+  TEXT
+  SELECT
+}
+
+model ProductAttribute {
+  id        String               @id @default(uuid())
+  tenantId  String
+  name      String
+  slug      String
+  type      ProductAttributeType @default(TEXT)
+  // Predefined choices when type = SELECT (e.g. ["S", "M", "L"]). Ignored for TEXT.
+  options   String[]             @default([])
+  sortOrder Int                  @default(0)
+  isActive  Boolean              @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  values ProductAttributeValue[]
+
+  @@unique([tenantId, slug])
+  @@map("product_attributes")
+}
+
+model ProductAttributeValue {
+  id          String @id @default(uuid())
+  productId   String
+  attributeId String
+  value       String
+
+  product   Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  attribute ProductAttribute @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, attributeId])
+  @@map("product_attribute_values")
 }
 
 // ============= Measurement Units =============

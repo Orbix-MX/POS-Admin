@@ -35,6 +35,7 @@ const PRODUCT_INCLUDE = {
     },
   },
   comboItems: { include: { child: true } },
+  attributeValues: { include: { attribute: true } },
   _count: { select: { orderItems: true } },
 } satisfies Prisma.ProductInclude;
 
@@ -66,6 +67,20 @@ export class ProductsService {
       throw new ForbiddenException(
         'Las recetas no están disponibles para este tipo de negocio',
       );
+    }
+  }
+
+  /** Guards against attaching another tenant's ProductAttribute ids. */
+  private async assertAttributesBelongToTenant(
+    tenantId: string,
+    attributeValues: Array<{ attributeId: string }>,
+  ): Promise<void> {
+    const attributeIds = [...new Set(attributeValues.map((av) => av.attributeId))];
+    const count = await this.prisma.productAttribute.count({
+      where: { id: { in: attributeIds }, tenantId },
+    });
+    if (count !== attributeIds.length) {
+      throw new NotFoundException('One or more product attributes were not found');
     }
   }
 
@@ -104,7 +119,7 @@ export class ProductsService {
 
   async create(createProductDto: CreateProductDto): Promise<Product> {
     const tenantId = this.tenantContext.requireTenantId();
-    const { recipeItems, comboItems, ...productData } = createProductDto;
+    const { recipeItems, comboItems, attributeValues, ...productData } = createProductDto;
 
     const existingProduct = await this.prisma.product.findUnique({
       where: { tenantId_sku: { tenantId, sku: productData.sku } },
@@ -122,6 +137,10 @@ export class ProductsService {
       if (!category) {
         throw new NotFoundException('Category not found');
       }
+    }
+
+    if (attributeValues?.length) {
+      await this.assertAttributesBelongToTenant(tenantId, attributeValues);
     }
 
     const existingSlugs = await this.prisma.product.findMany({
@@ -150,6 +169,8 @@ export class ProductsService {
         include: PRODUCT_INCLUDE,
       });
 
+      let needsRefetch = false;
+
       if (type === 'RECIPE' && recipeItems?.length) {
         const normalizedItems = await Promise.all(
           recipeItems.map(async (i) => ({
@@ -166,7 +187,7 @@ export class ProductsService {
             items: { create: normalizedItems },
           },
         });
-        return tx.product.findUnique({ where: { id: created.id }, include: PRODUCT_INCLUDE }) as Promise<Product>;
+        needsRefetch = true;
       }
 
       if (type === 'COMBO' && comboItems?.length) {
@@ -177,10 +198,23 @@ export class ProductsService {
             quantity: ci.quantity ?? 1,
           })),
         });
-        return tx.product.findUnique({ where: { id: created.id }, include: PRODUCT_INCLUDE }) as Promise<Product>;
+        needsRefetch = true;
       }
 
-      return created;
+      if (attributeValues?.length) {
+        await tx.productAttributeValue.createMany({
+          data: attributeValues.map((av) => ({
+            productId: created.id,
+            attributeId: av.attributeId,
+            value: av.value,
+          })),
+        });
+        needsRefetch = true;
+      }
+
+      return needsRefetch
+        ? (tx.product.findUnique({ where: { id: created.id }, include: PRODUCT_INCLUDE }) as Promise<Product>)
+        : created;
     });
 
     return product;
@@ -242,7 +276,7 @@ export class ProductsService {
 
     if (!product) throw new NotFoundException('Product not found');
 
-    const { recipeItems, comboItems, ...productData } = updateProductDto;
+    const { recipeItems, comboItems, attributeValues, ...productData } = updateProductDto;
 
     if (productData.categoryId) {
       const category = await this.prisma.category.findUnique({
@@ -250,6 +284,10 @@ export class ProductsService {
       });
 
       if (!category) throw new NotFoundException('Category not found');
+    }
+
+    if (attributeValues?.length) {
+      await this.assertAttributesBelongToTenant(tenantId, attributeValues);
     }
 
     let slug = product.slug;
@@ -323,6 +361,20 @@ export class ProductsService {
               comboProductId: id,
               childProductId: ci.childProductId,
               quantity: ci.quantity ?? 1,
+            })),
+          });
+        }
+      }
+
+      // Sync attribute values (full replace — mirrors combo items above)
+      if (attributeValues !== undefined) {
+        await tx.productAttributeValue.deleteMany({ where: { productId: id } });
+        if (attributeValues.length > 0) {
+          await tx.productAttributeValue.createMany({
+            data: attributeValues.map((av) => ({
+              productId: id,
+              attributeId: av.attributeId,
+              value: av.value,
             })),
           });
         }

@@ -1,0 +1,69 @@
+---
+interface Props {
+  solid?: boolean;
+}
+
+const { solid = false } = Astro.props;
+---
+
+<header class={`header${solid ? ' header--solido' : ''}`} data-header>
+  <div class="header__interno">
+    <a class="marca" href="/" aria-label="RootGarden, inicio">
+      <img
+        class="marca__emblema"
+        src="/assets/logo-mark.png"
+        alt="Emblema de RootGarden"
+        width="40"
+        height="40"
+      />
+      <span>
+        <span class="marca__texto"><strong>Root</strong>Garden</span>
+        <span class="marca__slogan">Aquascaping</span>
+      </span>
+    </a>
+
+    <button
+      class="header__toggle"
+      type="button"
+      data-menu-boton
+      aria-expanded="false"
+      aria-controls="menu-principal"
+      aria-label="Abrir menú"
+    >
+      <span></span>
+    </button>
+
+    <div class="header__panel" id="menu-principal" data-menu-panel>
+      <nav class="nav" aria-label="Navegación principal">
+        <a class="nav__enlace" href="/" data-nav-enlace="inicio">Inicio</a>
+        <a class="nav__enlace" href="/catalogo" data-nav-enlace="catalogo">Catálogo</a>
+        <a class="nav__enlace" href="/tienda" data-nav-enlace="tienda">Tienda</a>
+      </nav>
+
+      <form class="busqueda" role="search" data-buscador-form>
+        <svg class="busqueda__icono" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"></circle>
+          <path d="m16.5 16.5 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+        </svg>
+        <label class="solo-lectores" for="campo-busqueda">Buscar por nombre comercial o científico</label>
+        <input
+          class="busqueda__campo"
+          id="campo-busqueda"
+          type="search"
+          placeholder="Buscar planta…"
+          autocomplete="off"
+          data-buscador-campo
+        />
+        <button
+          class="busqueda__limpiar"
+          type="button"
+          data-buscador-limpiar
+          aria-label="Limpiar búsqueda"
+          hidden
+        >
+          ✕
+        </button>
+      </form>
+    </div>
+  </div>
+</header>

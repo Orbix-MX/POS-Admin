@@ -58,8 +58,10 @@ export const EMPTY_FORM: Product = {
   taxRate: 0,
   taxCode: "IVA_16",
   slug: "",
+  isEcommerce: false,
   recipe: null,
   comboItems: [],
+  attributeValues: [],
 }
 
 export function useProducts() {
