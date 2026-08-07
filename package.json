@@ -24,7 +24,6 @@
       "msw",
       "prisma",
       "puppeteer",
-      "react-native-nitro-modules",
       "unrs-resolver"
     ]
   }
