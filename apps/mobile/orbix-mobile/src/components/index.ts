@@ -24,6 +24,8 @@ export { OrbixBottomSheet, type OrbixBottomSheetRef } from './ui/orbix-bottom-sh
 export { OrbixAvatar, initialsOf } from './ui/orbix-avatar';
 export { OrbixToast, toast, toastConfig } from './ui/orbix-toast';
 
+export { AppDrawer } from './navigation/app-drawer';
+
 export { Confetti } from './animations/confetti';
 export { AnimatedProgressBar, AnimatedSuccessCheck } from './animations/animated-progress';
 export { Ripple, useRipple } from './animations/ripple';

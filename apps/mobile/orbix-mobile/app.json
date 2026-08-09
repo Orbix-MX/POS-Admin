@@ -47,7 +47,8 @@
         {
           "color": "#2563C9"
         }
-      ]
+      ],
+      "./plugins/withImmersiveMode.js"
     ],
     "experiments": {
       "typedRoutes": true,

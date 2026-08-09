@@ -122,6 +122,10 @@ const MODULES_BY_TIER: Array<{ plan: TenantPlan; modules: SystemModule[] }> = [
     modules: [
       SystemModule.DASHBOARD,
       SystemModule.VENTAS,
+      // Selling anything requires a product catalog — INVENTARIO can't be a
+      // paid upgrade while VENTAS is free, or FREE tenants could never create
+      // a sellable product in the first place.
+      SystemModule.INVENTARIO,
       SystemModule.CLIENTES,
       SystemModule.CAJA,
       SystemModule.USUARIOS,
@@ -133,7 +137,7 @@ const MODULES_BY_TIER: Array<{ plan: TenantPlan; modules: SystemModule[] }> = [
   },
   {
     plan: 'STARTER',
-    modules: [SystemModule.INVENTARIO, SystemModule.INSUMOS],
+    modules: [SystemModule.INSUMOS],
   },
   {
     plan: 'PRO',

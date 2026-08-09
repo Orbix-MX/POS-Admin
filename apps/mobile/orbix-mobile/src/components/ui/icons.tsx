@@ -203,6 +203,118 @@ export const CreditCardIcon = memo(function CreditCardIcon({
   );
 });
 
+/* ── Drawer / settings ───────────────────────────────────────────────────── */
+
+export const PlusIcon = memo(function PlusIcon({ size = 18, color, strokeWidth = 2 }: IconProps) {
+  const stroke = { stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Line x1={12} y1={5} x2={12} y2={19} {...stroke} />
+      <Line x1={5} y1={12} x2={19} y2={12} {...stroke} />
+    </Svg>
+  );
+});
+
+export const SearchIcon = memo(function SearchIcon({ size = 16, color, strokeWidth = 2 }: IconProps) {
+  const stroke = { stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx={11} cy={11} r={7} {...stroke} />
+      <Line x1={21} y1={21} x2={16.65} y2={16.65} {...stroke} />
+    </Svg>
+  );
+});
+
+export const TrashIcon = memo(function TrashIcon({ size = 16, color, strokeWidth = 2 }: IconProps) {
+  const stroke = { stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M3 6h18" {...stroke} />
+      <Path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" {...stroke} />
+      <Path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" {...stroke} />
+      <Line x1={10} y1={11} x2={10} y2={17} {...stroke} />
+      <Line x1={14} y1={11} x2={14} y2={17} {...stroke} />
+    </Svg>
+  );
+});
+
+export const LogOutIcon = memo(function LogOutIcon({ size = 18, color, strokeWidth = 2 }: IconProps) {
+  const stroke = { stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" {...stroke} />
+      <Path d="M16 17l5-5-5-5" {...stroke} />
+      <Line x1={21} y1={12} x2={9} y2={12} {...stroke} />
+    </Svg>
+  );
+});
+
+export const XIcon = memo(function XIcon({ size = 18, color, strokeWidth = 2 }: IconProps) {
+  const stroke = { stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Line x1={18} y1={6} x2={6} y2={18} {...stroke} />
+      <Line x1={6} y1={6} x2={18} y2={18} {...stroke} />
+    </Svg>
+  );
+});
+
+export const HomeIcon = memo(function HomeIcon({ size = 18, color, strokeWidth = 2 }: IconProps) {
+  const stroke = { stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M3 11.5 12 4l9 7.5" {...stroke} />
+      <Path d="M5.5 10v9a1 1 0 0 0 1 1H9a1 1 0 0 0 1-1v-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v4a1 1 0 0 0 1 1h2.5a1 1 0 0 0 1-1v-9" {...stroke} />
+    </Svg>
+  );
+});
+
+export const MenuIcon = memo(function MenuIcon({ size = 22, color, strokeWidth = 2 }: IconProps) {
+  const stroke = { stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Line x1={3} y1={6} x2={21} y2={6} {...stroke} />
+      <Line x1={3} y1={12} x2={21} y2={12} {...stroke} />
+      <Line x1={3} y1={18} x2={21} y2={18} {...stroke} />
+    </Svg>
+  );
+});
+
+export const SettingsIcon = memo(function SettingsIcon({ size = 20, color, strokeWidth = 2 }: IconProps) {
+  const stroke = { stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx={12} cy={12} r={3} {...stroke} />
+      <Path
+        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+        {...stroke}
+      />
+    </Svg>
+  );
+});
+
+export const ChartIcon = memo(function ChartIcon({ size = 14, color, strokeWidth = 2 }: IconProps) {
+  const stroke = { stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Line x1={18} y1={20} x2={18} y2={10} {...stroke} />
+      <Line x1={12} y1={20} x2={12} y2={4} {...stroke} />
+      <Line x1={6} y1={20} x2={6} y2={14} {...stroke} />
+    </Svg>
+  );
+});
+
+export const ShoppingBagIcon = memo(function ShoppingBagIcon({ size = 14, color, strokeWidth = 2 }: IconProps) {
+  const stroke = { stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" {...stroke} />
+      <Line x1={3} y1={6} x2={21} y2={6} {...stroke} />
+      <Path d="M16 10a4 4 0 0 1-8 0" {...stroke} />
+    </Svg>
+  );
+});
+
 /* ── Feedback ────────────────────────────────────────────────────────────── */
 
 /** The 42×42 success check, drawn with a dash offset so it can be animated. */

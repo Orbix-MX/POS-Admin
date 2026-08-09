@@ -70,3 +70,27 @@ export const TenantFeature = {
   APPOINTMENTS: 'APPOINTMENTS',
 } as const;
 export type TenantFeature = (typeof TenantFeature)[keyof typeof TenantFeature];
+
+export const ProductType = {
+  SIMPLE: 'SIMPLE',
+  RECIPE: 'RECIPE',
+  COMBO: 'COMBO',
+  SERVICE: 'SERVICE',
+} as const;
+export type ProductType = (typeof ProductType)[keyof typeof ProductType];
+
+export const ProductStatus = {
+  DRAFT: 'DRAFT',
+  ACTIVE: 'ACTIVE',
+  INACTIVE: 'INACTIVE',
+  ARCHIVED: 'ARCHIVED',
+} as const;
+export type ProductStatus = (typeof ProductStatus)[keyof typeof ProductStatus];
+
+export const TaxCode = {
+  IVA_16: 'IVA_16',
+  IVA_11: 'IVA_11',
+  IVA_8: 'IVA_8',
+  EXCENTO: 'EXCENTO',
+} as const;
+export type TaxCode = (typeof TaxCode)[keyof typeof TaxCode];

@@ -6,15 +6,17 @@
  * zeros, so an empty shop and a loading shop never look the same.
  */
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import {
+  AppDrawer,
   CreditCardIcon,
   KpiCard,
   ListRow,
+  MenuIcon,
   OrbixAvatar,
   OrbixButton,
   OrbixCard,
@@ -38,6 +40,7 @@ export default function HomeScreen() {
   const { session } = useAuth();
 
   const { data, isLoading } = useDashboardStats();
+  const [drawerVisible, setDrawerVisible] = useState(false);
 
   const formatCurrency = useCallback(
     (value: number) =>
@@ -76,7 +79,24 @@ export default function HomeScreen() {
             </OrbixText>
           ) : null}
         </View>
+        <Pressable
+          onPress={() => setDrawerVisible(true)}
+          accessibilityRole="button"
+          accessibilityLabel={t('drawer.title')}
+          hitSlop={8}
+          style={({ pressed }) => ({
+            width: 40,
+            height: 40,
+            borderRadius: theme.radius.full,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: pressed ? theme.colors.border : theme.colors.muted,
+          })}
+        >
+          <MenuIcon size={20} color={theme.colors.foreground} />
+        </Pressable>
       </View>
+      <AppDrawer visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
 
       <Animated.View entering={FadeInDown.duration(240)} style={{ gap: theme.spacing.md }}>
         <View style={{ flexDirection: 'row', gap: theme.spacing.md }}>

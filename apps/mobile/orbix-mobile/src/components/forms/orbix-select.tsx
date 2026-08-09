@@ -4,13 +4,12 @@
  * A native picker was rejected because it cannot be themed per tenant, and the
  * prototype's `<select>` renders as a bordered 44 px field on both platforms.
  */
-import type BottomSheet from '@gorhom/bottom-sheet';
 import { useCallback, useRef } from 'react';
 import { Controller, type Control, type FieldPath, type FieldValues } from 'react-hook-form';
 import { Pressable, View } from 'react-native';
 import Animated, { FadeInDown, FadeOut, LinearTransition } from 'react-native-reanimated';
 
-import { OrbixBottomSheet } from '@/components/ui/orbix-bottom-sheet';
+import { OrbixBottomSheet, type OrbixBottomSheetRef } from '@/components/ui/orbix-bottom-sheet';
 import { OrbixText } from '@/components/ui/orbix-text';
 import { ChevronDownIcon, CheckIcon } from '@/components/ui/icons';
 import { useTheme } from '@/hooks/use-theme';
@@ -39,7 +38,7 @@ export function OrbixSelect<TValues extends FieldValues>({
   sheetTitle,
 }: OrbixSelectProps<TValues>) {
   const theme = useTheme();
-  const sheetRef = useRef<BottomSheet>(null);
+  const sheetRef = useRef<OrbixBottomSheetRef>(null);
 
   const open = useCallback(() => sheetRef.current?.expand(), []);
   const close = useCallback(() => sheetRef.current?.close(), []);

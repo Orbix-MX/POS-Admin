@@ -87,7 +87,7 @@ export function OrbixScaffold({
   if (background === 'surface') {
     return (
       <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-        <StatusBar style={resolvedStatusBar} />
+        <StatusBar style={resolvedStatusBar} hidden />
         {content}
       </View>
     );
