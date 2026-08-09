@@ -8,10 +8,15 @@ import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { AuditContextService } from '../../../common/context/audit-context.service';
 import { PlanLimitsService } from '../../../common/services/plan-limits.service';
+import { LicenseService } from '../../../common/services/license.service';
 import { PasswordUtil } from '../../../common/utils/password.util';
+import { SlugUtil } from '../../../common/utils/slug.util';
 import { R2Service } from '../../../storage/r2.service';
+import { AuthService } from '../auth/auth.service';
+import { ALL_PERMISSIONS } from '../../core/permissions/permissions.constants';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
+import { CreateTenantOnboardingDto, OnboardTenantResponseDto } from './dto/onboard-tenant.dto';
 import { Prisma, Tenant } from '@prisma/client';
 
 export type RestaurantServiceMode = 'TABLE_SERVICE' | 'COUNTER_SERVICE' | 'HYBRID';
@@ -41,6 +46,8 @@ export class TenantsService {
     private tenantContext: TenantContextService,
     private auditContext: AuditContextService,
     private planLimits: PlanLimitsService,
+    private licenseService: LicenseService,
+    private authService: AuthService,
     private r2: R2Service,
   ) {}
 
@@ -94,6 +101,105 @@ export class TenantsService {
 
       return tenant;
     });
+  }
+
+  /**
+   * Self-service registration: caller is an already-authenticated user
+   * without a tenant yet. Always provisions on the FREE plan with only the
+   * essentials (name, owner, vertical, branch principal) — everything else
+   * (billing details, branding, extra branches, roles finos) se completa
+   * después desde platform, como hasta ahora.
+   */
+  async onboard(
+    dto: CreateTenantOnboardingDto,
+    userId: string,
+    userEmail: string,
+  ): Promise<OnboardTenantResponseDto> {
+    const ownsFreeTenant = await this.prisma.tenant.findFirst({
+      where: { ownerUserId: userId, plan: 'FREE', status: { in: ['ACTIVE', 'TRIAL'] } },
+      select: { id: true },
+    });
+    if (ownsFreeTenant) {
+      throw new ConflictException('Ya tienes una empresa registrada en el plan FREE.');
+    }
+
+    let slug = SlugUtil.generate(dto.name);
+    let suffix = 1;
+    while (await this.prisma.tenant.findUnique({ where: { slug }, select: { id: true } })) {
+      slug = `${SlugUtil.generate(dto.name)}-${suffix++}`;
+    }
+
+    // Seed any missing permissions before assigning them to the Owner role.
+    await this.prisma.permission.createMany({
+      data: ALL_PERMISSIONS.map((perm) => ({
+        key: perm.key,
+        name: perm.name,
+        description: perm.description ?? null,
+        module: perm.module,
+        action: perm.action,
+      })),
+      skipDuplicates: true,
+    });
+    const permissions = await this.prisma.permission.findMany();
+
+    const { tenant, branch } = await this.prisma.$transaction(async (tx) => {
+      const tenant = await tx.tenant.create({
+        data: {
+          name: dto.name,
+          slug,
+          plan: 'FREE',
+          status: 'ACTIVE',
+          businessVertical: dto.businessVertical,
+          businessProfile: dto.businessProfile,
+          settings: {
+            currency: dto.currency,
+            timezone: dto.timezone,
+            phone: dto.phone,
+            countryCode: dto.countryCode,
+            ...(dto.businessTypeId && { businessTypeId: dto.businessTypeId }),
+          },
+        },
+      });
+
+      const branch = await tx.branch.create({
+        data: {
+          tenantId: tenant.id,
+          name: 'Principal',
+          code: 'MAIN',
+          phone: dto.phone,
+          isMain: true,
+          status: 'ACTIVE',
+        },
+      });
+
+      await tx.tenantMembership.create({
+        data: { tenantId: tenant.id, userId, role: 'OWNER', status: 'ACTIVE' },
+      });
+
+      await tx.tenant.update({ where: { id: tenant.id }, data: { ownerUserId: userId } });
+
+      const ownerRole = await tx.role.create({
+        data: {
+          tenantId: tenant.id,
+          name: 'Owner',
+          description: 'Acceso total a la empresa',
+          isSystem: true,
+          color: '#ef4444',
+          permissions: { create: permissions.map((p) => ({ permissionId: p.id })) },
+        },
+      });
+
+      await tx.userRoleAssignment.create({
+        data: { userId, roleId: ownerRole.id, tenantId: tenant.id },
+      });
+
+      return { tenant, branch };
+    });
+
+    await this.licenseService.createLicense(tenant.id, { plan: 'FREE', status: 'ACTIVE' });
+
+    const selectResult = await this.authService.selectTenant(userId, userEmail, tenant.slug);
+    return { ...selectResult, branchId: branch.id };
   }
 
   async findAll(): Promise<Tenant[]> {

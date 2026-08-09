@@ -53,31 +53,23 @@ Limitar por usuario **y** por número: el cooldown del cliente no es confiable.
 
 ---
 
-## 3. `POST /api/tenants/onboarding`
+## 3. `POST /api/tenants/onboarding` — ✅ resuelto (2026-08-07)
 
-**Por qué falta:** `POST /api/tenants` sí existe, pero está protegido con
-`@UseGuards(RolesGuard) @Roles('SUPER_ADMIN')`, así que un usuario recién
-registrado no puede llamarlo. Además solo crea el `Tenant`: no crea la membresía
-del dueño, ni la sucursal por defecto, ni los roles.
+Implementado en `pos-admin/api/src/modules/core/tenants/{tenants.controller,tenants.service}.ts`
+(`TenantsService.onboard`). Bearer, cualquier usuario autenticado sin tenant aún.
 
-| | |
-|---|---|
-| Auth | Bearer, **cualquier usuario autenticado** |
-| Request | `CreateTenantOnboardingRequestDto` |
-| Response | `{ tenant, accessToken, branchId }` |
+En una sola transacción: crea el `Tenant` en plan **FREE** fijo (slug derivado
+de `name` con unicidad), la `Branch` principal (`code: 'MAIN'`), el
+`TenantMembership` OWNER, fija `Tenant.ownerUserId`, y crea un rol "Owner" con
+todos los permisos (no hay roles por vertical aún — mismo patrón que
+`PlatformTenantsService.provision`). Fuera de la tx emite la licencia FREE
+(`LicenseService.createLicense`) y arma la respuesta reusando
+`AuthService.selectTenant` (token ya scoped al tenant nuevo + `branchId`).
 
-Debe hacer, en una sola transacción:
-
-1. crear el `Tenant` (slug derivado de `name`, con unicidad),
-2. crear el `TenantMembership` del dueño con `TenantRole.OWNER`,
-3. fijar `Tenant.ownerUserId`,
-4. crear la `Branch` por defecto,
-5. sembrar los `Role` por defecto del vertical,
-6. devolver un access token **ya scoped al tenant nuevo**, para ahorrar el
-   `PATCH /auth/select-tenant/:slug`.
-
-El wizard mapea la selección del usuario a `BusinessVertical` y `BusinessProfile`
-(ver `src/constants/business-types.ts`), que es lo que el schema Prisma ya entiende.
+Rechaza con 409 si el usuario ya es dueño de otro tenant en plan FREE activo —
+el resto de datos (branding, sucursales extra, roles finos, upgrade de plan) se
+sigue completando desde `platform`, como hasta ahora. `ownerName` se acepta en
+el DTO pero no se persiste todavía (el nombre ya se captura en `POST /auth/register`).
 
 ---
 

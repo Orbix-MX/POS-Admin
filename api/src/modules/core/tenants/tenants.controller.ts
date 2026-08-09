@@ -21,10 +21,13 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes, ApiBody } from '@nes
 import { TenantsService } from './tenants.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
+import { CreateTenantOnboardingDto } from './dto/onboard-tenant.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import type { TenantInfo } from './tenants.service';
+import type { User } from '@prisma/client';
 
 const MAX_BRANDING_SIZE = 5 * 1024 * 1024;
 
@@ -33,6 +36,14 @@ const MAX_BRANDING_SIZE = 5 * 1024 * 1024;
 @Controller('tenants')
 export class TenantsController {
   constructor(private readonly tenantsService: TenantsService) {}
+
+  // ── Self-service onboarding (any authenticated user, no tenant yet) ────────
+
+  @Post('onboarding')
+  @ApiOperation({ summary: 'Self-service: register a company (FREE plan, essentials only)' })
+  onboard(@Body() dto: CreateTenantOnboardingDto, @CurrentUser() user: User) {
+    return this.tenantsService.onboard(dto, user.id, user.email);
+  }
 
   // ── Super-admin endpoints ──────────────────────────────────────────────────
 

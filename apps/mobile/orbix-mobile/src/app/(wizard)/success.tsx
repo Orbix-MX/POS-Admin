@@ -4,10 +4,6 @@
  * The confetti and the drawn check fire immediately (the wizard's data is
  * complete at this point), while the actual tenant creation happens when the
  * user taps "Entrar al sistema".
- *
- * ⚠️ `POST /tenants/onboarding` does not exist yet, so that tap surfaces the
- * missing-endpoint error instead of silently pretending a company was created.
- * Nothing local is faked: no tenant is written to the session.
  */
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
