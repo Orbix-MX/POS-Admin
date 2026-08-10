@@ -1,5 +1,5 @@
 /**
- * RootGarden · carrito.js
+ * Manzanitas · carrito.js
  * Estado del pedido y su interfaz (botón flotante + panel lateral).
  *
  * `RG.carrito` guarda y calcula; `RG.carritoUI` sólo pinta y escucha eventos.

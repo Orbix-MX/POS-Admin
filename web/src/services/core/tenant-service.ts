@@ -14,6 +14,8 @@ export interface TenantInfo {
   timezone?: string
   currency?: string
   restaurantServiceMode?: RestaurantServiceMode
+  primaryColor?: string
+  secondaryColor?: string
 }
 
 export async function fetchTenantInfo(): Promise<TenantInfo> {

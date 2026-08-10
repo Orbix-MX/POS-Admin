@@ -1,5 +1,5 @@
 /**
- * RootGarden · whatsapp.js
+ * Manzanitas · whatsapp.js
  * Construcción del pedido que se envía por WhatsApp.
  *
  * El mensaje se arma como texto plano y se codifica con encodeURIComponent
@@ -48,7 +48,7 @@ RG.whatsapp = (function () {
     return [
       'Hola, buen día. 😊',
       '',
-      'Me interesa realizar el siguiente pedido de RootGarden.',
+      'Me interesa realizar el siguiente pedido de Manzanitas.',
       '',
       lineas.map(bloqueDeLinea).join('\n\n'),
       '',

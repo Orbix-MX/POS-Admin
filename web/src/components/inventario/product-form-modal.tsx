@@ -3,7 +3,7 @@ import { FormField } from '@/components/shared/form-modal'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { STATUS_OPTIONS, TAX_CODES, TAX_RATE_MAP, PRODUCT_TYPE_OPTIONS } from '@/hooks/retail/use-products'
-import type { Product, RecipeItem, ComboItem, ProductAttribute } from '@/services/retail/product-service'
+import type { Product, RecipeItem, ComboItem, ProductAttribute, ProductFeature } from '@/services/retail/product-service'
 import type { Category } from '@/services/retail/categories-service'
 import { uploadProductImage, deleteProductImage } from '@/services/retail/product-service'
 import { ImageViewer } from '@/components/shared/image-viewer'
@@ -557,6 +557,80 @@ function AttributesEditor({
   )
 }
 
+// ── Features Editor (ficha técnica opcional: característica + valor) ───────────
+
+function FeaturesEditor({
+  items,
+  onChange,
+}: {
+  items: ProductFeature[]
+  onChange: (items: ProductFeature[]) => void
+}) {
+  const addItem = () => onChange([...items, { feature: '', value: '' }])
+
+  const removeItem = (idx: number) => onChange(items.filter((_, i) => i !== idx))
+
+  const updateItem = (idx: number, patch: Partial<ProductFeature>) =>
+    onChange(items.map((item, i) => (i !== idx ? item : { ...item, ...patch })))
+
+  return (
+    <div className="col-span-2 mb-3.5">
+      <div className="flex items-center justify-between mb-2">
+        <label className="text-xs font-semibold text-muted-foreground">Ficha técnica (opcional)</label>
+        <button
+          type="button"
+          onClick={addItem}
+          className="flex items-center gap-1 px-2 py-1 text-[11px] bg-primary/10 text-primary rounded-md hover:bg-primary/20 transition-colors cursor-pointer"
+        >
+          <Plus className="w-3 h-3" /> Agregar
+        </button>
+      </div>
+
+      {items.length === 0 ? (
+        <p className="text-xs text-muted-foreground text-center py-4 border border-dashed border-border rounded-lg">
+          Sin características. Agrega una si quieres documentar especificaciones (material, peso, origen...).
+        </p>
+      ) : (
+        <>
+          <div className="grid grid-cols-[1fr_1fr_1.75rem] gap-1.5 px-1 mb-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Característica</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Valor</span>
+            <span />
+          </div>
+
+          <div className="space-y-1.5">
+            {items.map((item, idx) => (
+              <div key={idx} className="grid grid-cols-[1fr_1fr_1.75rem] gap-1.5 items-center">
+                <input
+                  type="text"
+                  placeholder="Ej. Material"
+                  value={item.feature}
+                  onChange={(e) => updateItem(idx, { feature: e.target.value })}
+                  className="w-full px-2 py-1.5 border border-border rounded-md text-[12px] bg-card outline-none focus:border-primary"
+                />
+                <input
+                  type="text"
+                  placeholder="Ej. Algodón"
+                  value={item.value}
+                  onChange={(e) => updateItem(idx, { value: e.target.value })}
+                  className="w-full px-2 py-1.5 border border-border rounded-md text-[12px] bg-card outline-none focus:border-primary"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeItem(idx)}
+                  className="p-1 text-muted-foreground hover:text-destructive transition-colors flex items-center justify-center"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function ProductFormModal({
@@ -839,6 +913,11 @@ export function ProductFormModal({
               onChange={(items) => setForm(p => ({ ...p, attributes: items }))}
             />
           )}
+
+          <FeaturesEditor
+            items={form.features ?? []}
+            onChange={(items) => setForm(p => ({ ...p, features: items }))}
+          />
 
           {/* Stock — solo para SIMPLE */}
           {showStock && (

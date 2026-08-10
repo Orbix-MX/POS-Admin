@@ -1507,6 +1507,25 @@ export function Configuracion() {
                       </div>
                     </div>
                     {imageError && <p className="text-xs text-destructive mt-2">{imageError}</p>}
+
+                    <div className="mt-5">
+                      <div className="text-xs font-semibold text-foreground mb-2">Colores de la tienda en línea</div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <ColorField
+                          label="Color primario"
+                          value={info?.primaryColor ?? '#1b5e20'}
+                          disabled={!canEdit}
+                          onChange={v => setField('primaryColor', v)}
+                        />
+                        <ColorField
+                          label="Color secundario"
+                          value={info?.secondaryColor ?? '#66bb6a'}
+                          disabled={!canEdit}
+                          onChange={v => setField('secondaryColor', v)}
+                        />
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-2">Se aplican a los botones, precios y acentos de tu tienda en línea (e-commerce).</p>
+                    </div>
                   </div>
                 )}
 
@@ -1514,7 +1533,10 @@ export function Configuracion() {
                   <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-3">Datos Generales</div>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-3.5">
                     <Field label="Nombre empresa" value={info?.name ?? ''} disabled={!canEdit} onChange={v => setField('name', v)} />
-                    <Field label="Nombre a mostrar" value={info?.displayName ?? ''} disabled={!canEdit} onChange={v => setField('displayName', v)} placeholder="Alias o nombre corto" />
+                    <div>
+                      <Field label="Nombre a mostrar" value={info?.displayName ?? ''} disabled={!canEdit} onChange={v => setField('displayName', v)} placeholder="Alias o nombre corto" />
+                      <p className="text-[11px] text-muted-foreground mt-1">Este es el nombre que se muestra en tu tienda en línea. Si se deja vacío, se usa el nombre de la empresa.</p>
+                    </div>
                     <Field label="RFC" value={info?.rfc ?? ''} disabled={!canEdit} onChange={v => setField('rfc', v)} />
                     <Field label="Teléfono" value={info?.phone ?? ''} disabled={!canEdit} onChange={v => setField('phone', v)} />
                     <Field label="Email" type="email" value={info?.email ?? ''} disabled={!canEdit} onChange={v => setField('email', v)} />
@@ -1666,6 +1688,22 @@ function Field({ label, value, onChange, disabled = false, type = 'text', placeh
       <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">{label}</label>
       <input type={type} value={value} onChange={e => onChange(e.target.value)} disabled={disabled} placeholder={placeholder}
         className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary disabled:opacity-50 disabled:cursor-not-allowed" />
+    </div>
+  )
+}
+
+function ColorField({ label, value, onChange, disabled = false }: {
+  label: string; value: string; onChange: (v: string) => void; disabled?: boolean
+}) {
+  return (
+    <div>
+      <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">{label}</label>
+      <div className="flex items-center gap-2.5 px-2.5 py-2 border border-border rounded-lg bg-card disabled:opacity-50">
+        <input type="color" value={value} onChange={e => onChange(e.target.value)} disabled={disabled}
+          className="w-8 h-8 rounded border border-border cursor-pointer disabled:cursor-not-allowed bg-transparent p-0" />
+        <input type="text" value={value} onChange={e => onChange(e.target.value)} disabled={disabled}
+          className="flex-1 text-[13px] text-foreground bg-transparent outline-none disabled:cursor-not-allowed font-mono" />
+      </div>
     </div>
   )
 }

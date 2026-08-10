@@ -1,5 +1,5 @@
 /**
- * RootGarden · app.js
+ * Manzanitas · app.js
  * Arranque de la aplicación y comportamientos compartidos por todas las páginas:
  * header, menú móvil, buscador del header, scroll suave y animaciones de entrada.
  */

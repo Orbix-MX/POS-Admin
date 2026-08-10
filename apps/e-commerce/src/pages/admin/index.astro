@@ -79,6 +79,17 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
           </p>
         </div>
 
+        <div class="admin-seccion">
+          <div class="admin-atributos__cabecera">
+            <p class="admin-seccion__titulo" style="margin:0;">Ficha técnica (opcional)</p>
+            <button type="button" class="admin-atributos__agregar" data-add-feature-btn>+ Agregar característica</button>
+          </div>
+          <div data-features-container></div>
+          <p class="admin-atributos__vacio" data-features-empty>
+            Sin características. Agrega una si quieres documentar especificaciones (material, peso, origen…).
+          </p>
+        </div>
+
         <div class="admin-acciones">
           <button type="submit" class="boton boton--primario" data-submit-btn>Crear producto</button>
         </div>
@@ -105,6 +116,7 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
     void loadTenantLabel();
     await loadCategories();
     wireAttributeRows();
+    wireFeatureRows();
     wireSkuSuggestion();
     wireSubmit();
   }
@@ -217,6 +229,60 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
     updateEmptyState();
   }
 
+  /**
+   * Ficha técnica opcional: pares característica/valor ligados a ESTE
+   * producto (sin costo/precio, a diferencia de los atributos de arriba).
+   */
+  function wireFeatureRows() {
+    const container = document.querySelector('[data-features-container]');
+    const addBtn = document.querySelector('[data-add-feature-btn]');
+    const emptyMsg = document.querySelector('[data-features-empty]');
+    if (!(container instanceof HTMLElement) || !(addBtn instanceof HTMLElement) || !(emptyMsg instanceof HTMLElement)) {
+      return;
+    }
+
+    const updateEmptyState = () => {
+      emptyMsg.hidden = container.children.length > 0;
+    };
+
+    const addRow = () => {
+      const row = document.createElement('div');
+      row.className = 'admin-atributos__fila';
+      row.dataset.featureRow = '';
+      row.style.gridTemplateColumns = '1fr 1fr 2rem';
+
+      const feature = document.createElement('input');
+      feature.type = 'text';
+      feature.className = 'campo__control';
+      feature.placeholder = 'Ej. Material';
+      feature.dataset.featureName = '';
+
+      const value = document.createElement('input');
+      value.type = 'text';
+      value.className = 'campo__control';
+      value.placeholder = 'Ej. Algodón';
+      value.dataset.featureValue = '';
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'admin-atributos__quitar';
+      remove.setAttribute('aria-label', 'Quitar característica');
+      remove.textContent = '✕';
+      remove.addEventListener('click', () => {
+        row.remove();
+        updateEmptyState();
+      });
+
+      row.append(feature, value, remove);
+      container.appendChild(row);
+      updateEmptyState();
+      feature.focus();
+    };
+
+    addBtn.addEventListener('click', addRow);
+    updateEmptyState();
+  }
+
   function slugifySku(name: string): string {
     const base = name
       .normalize('NFD')
@@ -261,6 +327,21 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
     return attributes;
   }
 
+  function collectFeatures(): Array<{ feature: string; value: string }> {
+    const rows = document.querySelectorAll('[data-feature-row]');
+    const features: Array<{ feature: string; value: string }> = [];
+    rows.forEach((row) => {
+      const name = row.querySelector('[data-feature-name]');
+      const value = row.querySelector('[data-feature-value]');
+      if (!(name instanceof HTMLInputElement) || !(value instanceof HTMLInputElement)) return;
+      const trimmedName = name.value.trim();
+      const trimmedValue = value.value.trim();
+      if (!trimmedName || !trimmedValue) return;
+      features.push({ feature: trimmedName, value: trimmedValue });
+    });
+    return features;
+  }
+
   function wireSubmit() {
     const form = document.querySelector('[data-product-form]');
     const errorBox = document.querySelector('[data-form-error]');
@@ -298,6 +379,7 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
         price: Number(data.get('price') || 0),
         stock: Number(data.get('stock') || 0),
         attributes: collectAttributes(),
+        features: collectFeatures(),
       };
       if (categoryId) body.categoryId = categoryId;
 
@@ -331,8 +413,11 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
         successBox.hidden = false;
         form.reset();
         document.querySelectorAll('[data-attribute-row]').forEach((row) => row.remove());
-        const emptyMsg = document.querySelector('[data-attributes-empty]');
-        if (emptyMsg instanceof HTMLElement) emptyMsg.hidden = false;
+        document.querySelectorAll('[data-feature-row]').forEach((row) => row.remove());
+        const emptyAttrs = document.querySelector('[data-attributes-empty]');
+        if (emptyAttrs instanceof HTMLElement) emptyAttrs.hidden = false;
+        const emptyFeatures = document.querySelector('[data-features-empty]');
+        if (emptyFeatures instanceof HTMLElement) emptyFeatures.hidden = false;
       } catch (err) {
         errorBox.textContent = err instanceof Error ? err.message : 'No se pudo crear el producto.';
         errorBox.hidden = false;

@@ -36,6 +36,7 @@ const PRODUCT_INCLUDE = {
   },
   comboItems: { include: { child: true } },
   attributes: true,
+  features: true,
   _count: { select: { orderItems: true } },
 } satisfies Prisma.ProductInclude;
 
@@ -105,7 +106,7 @@ export class ProductsService {
 
   async create(createProductDto: CreateProductDto): Promise<Product> {
     const tenantId = this.tenantContext.requireTenantId();
-    const { recipeItems, comboItems, attributes, ...productData } = createProductDto;
+    const { recipeItems, comboItems, attributes, features, ...productData } = createProductDto;
 
     const existingProduct = await this.prisma.product.findUnique({
       where: { tenantId_sku: { tenantId, sku: productData.sku } },
@@ -195,6 +196,17 @@ export class ProductsService {
         needsRefetch = true;
       }
 
+      if (features?.length) {
+        await tx.productFeature.createMany({
+          data: features.map((f) => ({
+            productId: created.id,
+            feature: f.feature,
+            value: f.value,
+          })),
+        });
+        needsRefetch = true;
+      }
+
       return needsRefetch
         ? (tx.product.findUnique({ where: { id: created.id }, include: PRODUCT_INCLUDE }) as Promise<Product>)
         : created;
@@ -259,7 +271,7 @@ export class ProductsService {
 
     if (!product) throw new NotFoundException('Product not found');
 
-    const { recipeItems, comboItems, attributes, ...productData } = updateProductDto;
+    const { recipeItems, comboItems, attributes, features, ...productData } = updateProductDto;
 
     if (productData.categoryId) {
       const category = await this.prisma.category.findUnique({
@@ -355,6 +367,20 @@ export class ProductsService {
               name: a.name,
               cost: a.cost ?? 0,
               price: a.price ?? 0,
+            })),
+          });
+        }
+      }
+
+      // Sync features (full replace — optional spec sheet)
+      if (features !== undefined) {
+        await tx.productFeature.deleteMany({ where: { productId: id } });
+        if (features.length > 0) {
+          await tx.productFeature.createMany({
+            data: features.map((f) => ({
+              productId: id,
+              feature: f.feature,
+              value: f.value,
             })),
           });
         }

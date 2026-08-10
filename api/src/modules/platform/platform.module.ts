@@ -4,8 +4,9 @@ import { PlatformTenantsModule } from './tenants/platform-tenants.module';
 import { PlatformBranchesModule } from './branches/platform-branches.module';
 import { PlatformDashboardsModule } from './dashboards/platform-dashboards.module';
 import { PlatformLicensesModule } from './licenses/platform-licenses.module';
+import { PlatformDomainsModule } from './domains/platform-domains.module';
 
 @Module({
-  imports: [PlatformAuthModule, PlatformTenantsModule, PlatformBranchesModule, PlatformDashboardsModule, PlatformLicensesModule],
+  imports: [PlatformAuthModule, PlatformTenantsModule, PlatformBranchesModule, PlatformDashboardsModule, PlatformLicensesModule, PlatformDomainsModule],
 })
 export class PlatformModule {}

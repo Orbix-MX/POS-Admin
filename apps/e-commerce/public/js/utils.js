@@ -1,5 +1,5 @@
 /**
- * RootGarden · utils.js
+ * Manzanitas · utils.js
  * Utilidades compartidas por todas las páginas.
  *
  * Los archivos JS se cargan como scripts clásicos (no `type="module"`) porque

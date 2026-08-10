@@ -1,5 +1,5 @@
 /**
- * RootGarden · buscador.js
+ * Manzanitas · buscador.js
  * Filtrado instantáneo por nombre comercial, nombre científico y categoría.
  */
 window.RG = window.RG || {};

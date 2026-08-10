@@ -28,7 +28,6 @@ const canonical = new URL(path, Astro.site).toString();
 const ogImage = new URL('/assets/og-image.jpg', Astro.site).toString();
 
 const apiUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:3001';
-const tenantId = import.meta.env.PUBLIC_TENANT_ID || 'dcecadd5-b9c2-4152-98d0-9024c4bd5804';
 ---
 
 <html lang="es-MX">
@@ -38,7 +37,7 @@ const tenantId = import.meta.env.PUBLIC_TENANT_ID || 'dcecadd5-b9c2-4152-98d0-90
 
     <title>{title}</title>
     <meta name="description" content={description} />
-    <meta name="author" content="RootGarden" />
+    <meta name="author" content="Manzanitas" />
     <meta name="theme-color" content="#1B5E20" />
     <link rel="canonical" href={canonical} />
 
@@ -47,7 +46,7 @@ const tenantId = import.meta.env.PUBLIC_TENANT_ID || 'dcecadd5-b9c2-4152-98d0-90
     <link rel="manifest" href="/manifest.json" />
 
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="RootGarden" />
+    <meta property="og:site_name" content="Manzanitas" />
     <meta property="og:locale" content="es_MX" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
@@ -72,9 +71,10 @@ const tenantId = import.meta.env.PUBLIC_TENANT_ID || 'dcecadd5-b9c2-4152-98d0-90
     {extraCss.map((href) => <link rel="stylesheet" href={href} />)}
     <link rel="stylesheet" href="/css/animations.css" />
 
-    <script is:inline define:vars={{ apiUrl, tenantId }}>
-      window.RG_CONFIG = { apiUrl, tenantId };
+    <script is:inline define:vars={{ apiUrl }}>
+      window.RG_CONFIG = { apiUrl };
     </script>
+    <script src="/js/branding.js" defer></script>
     <script src="/js/utils.js" defer></script>
     <script src="/js/storage.js" defer></script>
     <script src="/js/whatsapp.js" defer></script>

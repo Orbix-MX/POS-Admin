@@ -1,5 +1,5 @@
 /**
- * RootGarden · catalogo.js
+ * Manzanitas · catalogo.js
  * Carga del catálogo desde la API de Orbix y construcción de las tarjetas de
  * producto.
  *
@@ -21,7 +21,7 @@ RG.catalogo = (function () {
 
   // El modelo Product de la API no tiene un campo "destacado": se decide aquí,
   // en el cliente, con la misma selección que tenía data/plantas.json en
-  // RootGarden. Coincide con el campo `slug` que devuelve /api/store/:tenantId/products.
+  // Manzanitas. Coincide con el campo `slug` que devuelve /api/store/products.
   const DESTACADOS = new Set([
     'espada',
     'red-flame',
@@ -43,12 +43,11 @@ RG.catalogo = (function () {
 
   /* --- Datos --------------------------------------------------------------- */
 
-  const aSlug = (valor) => RG.utils.normalizarTexto(valor).replace(/[^a-z0-9]+/g, '-');
-
   const rutaProductos = () => {
     const config = window.RG_CONFIG || {};
-    if (!config.apiUrl || !config.tenantId) return null;
-    return `${config.apiUrl}/api/store/${config.tenantId}/products`;
+    if (!config.apiUrl) return null;
+    // Sin tenantId: la API resuelve el tenant por el Origin de esta página.
+    return `${config.apiUrl}/api/store/products`;
   };
 
   /**
@@ -115,14 +114,14 @@ RG.catalogo = (function () {
     return catalogo;
   };
 
-  /** Obtiene el catálogo desde la API pública de Orbix (GET /api/store/:tenantId/products). */
+  /** Obtiene el catálogo desde la API pública de Orbix (GET /api/store/products). */
   const cargar = () => {
     if (promesaCarga) return promesaCarga;
 
     const ruta = rutaProductos();
     if (!ruta) {
       promesaCarga = Promise.reject(
-        new Error('Falta configurar window.RG_CONFIG.apiUrl / tenantId')
+        new Error('Falta configurar window.RG_CONFIG.apiUrl')
       );
       return promesaCarga;
     }
@@ -164,14 +163,6 @@ RG.catalogo = (function () {
     });
 
     return imagen;
-  };
-
-  const crearAtributo = (etiqueta, valor, modificador) => {
-    const { crear } = RG.utils;
-    return crear('li', { clase: `atributo atributo--${modificador}`, 'data-nivel': aSlug(valor) }, [
-      crear('span', { clase: 'atributo__clave', texto: etiqueta }),
-      crear('span', { clase: 'atributo__valor', texto: valor })
-    ]);
   };
 
   const crearContador = (producto) => {
@@ -222,11 +213,7 @@ RG.catalogo = (function () {
     const cuerpo = crear('div', { clase: 'tarjeta__cuerpo' }, [
       crear('h3', { clase: 'tarjeta__nombre', texto: producto.nombre }),
       crear('p', { clase: 'tarjeta__cientifico', texto: producto.cientifico }),
-      crear('p', { clase: 'tarjeta__descripcion', texto: producto.descripcion }),
-      crear('ul', { clase: 'tarjeta__atributos' }, [
-        crearAtributo('Dificultad', producto.dificultad, 'dificultad'),
-        crearAtributo('Luz', producto.luz, 'luz')
-      ])
+      crear('p', { clase: 'tarjeta__descripcion', texto: producto.descripcion })
     ]);
 
     const pie = crear('div', { clase: 'tarjeta__pie' }, [
@@ -390,7 +377,7 @@ RG.catalogo = (function () {
         if (vacio) vacio.hidden = true;
         if (resultados) resultados.textContent = '';
         if (error) error.hidden = false;
-        console.error('[RootGarden] Catálogo no disponible:', fallo);
+        console.error('[Manzanitas] Catálogo no disponible:', fallo);
         return [];
       });
   };

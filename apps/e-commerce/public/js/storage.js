@@ -1,5 +1,5 @@
 /**
- * RootGarden · storage.js
+ * Manzanitas · storage.js
  * Capa de persistencia sobre localStorage.
  *
  * Aísla al resto de la aplicación de dos problemas: el prefijo de claves y los

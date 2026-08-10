@@ -192,7 +192,27 @@ model Tenant {
 
   owner User? @relation("TenantOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
 
+  domains Domain[]
+
   @@map("tenants")
+}
+
+// Maps a public hostname (custom domain or dev origin, e.g. "manzanitas.mx",
+// "localhost:4321") to a tenant. Used to resolve which tenant an unauthenticated
+// storefront request belongs to, based on the request's Origin header — the
+// e-commerce codebase itself never needs to know its own tenantId.
+model Domain {
+  id        String   @id @default(uuid())
+  tenantId  String
+  hostname  String   @unique
+  verified  Boolean  @default(false)
+  isPrimary Boolean  @default(false) @map("is_primary")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("domains")
 }
 
 model TenantMembership {
@@ -625,6 +645,7 @@ model Product {
   comboItems           ComboItem[]          @relation("ComboItems")
   inCombos             ComboItem[]          @relation("ComboChildItems")
   attributes           ProductAttribute[]
+  features             ProductFeature[]
   createdBy            User?                @relation("ProductCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy            User?                @relation("ProductUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
@@ -666,6 +687,24 @@ model ProductAttribute {
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@map("product_attributes")
+}
+
+// ============= Product Features (specs) =============
+// Free-form key/value spec sheet for a product (e.g. "Material" → "Algodón").
+// Always owned by exactly one Product. Purely descriptive — no cost/price,
+// unlike ProductAttribute (which models priced variants).
+model ProductFeature {
+  id        String @id @default(uuid())
+  productId String
+  feature   String
+  value     String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("product_features")
 }
 
 // ============= Measurement Units =============

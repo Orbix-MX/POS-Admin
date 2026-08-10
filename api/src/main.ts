@@ -4,9 +4,11 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter, AllExceptionsFilter } from './common/filters/http-exception.filter';
+import { DomainResolverService } from './common/services/domain-resolver.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const domainResolver = app.get(DomainResolverService);
 
   // Disable Express ETag to prevent stale 304 responses on multi-tenant data
   app.getHttpAdapter().getInstance().set('etag', false);
@@ -18,18 +20,29 @@ async function bootstrap() {
     }),
   );
 
-  // Enable CORS — CORS_ORIGIN admite lista separada por comas, "*" o vacío
+  // Enable CORS — CORS_ORIGIN cubre las apps internas (ERP web, POS, panel
+  // admin del e-commerce): lista separada por comas, "*" o vacío. Cualquier
+  // otro origen se valida dinámicamente contra la tabla `Domain` — así un
+  // dominio de tienda nuevo no requiere redeploy del API, solo una fila en
+  // esa tabla + su DNS.
   const allowedOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:3000,http://localhost:5173,http://localhost:4321')
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean);
 
   app.enableCors({
-    origin: (origin, callback) => {
+    origin: async (origin, callback) => {
       // Permitir requests sin Origin (curl, server-to-server, healthchecks)
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
         return callback(null, true);
+      }
+      try {
+        if (await domainResolver.isKnownStorefrontOrigin(origin)) {
+          return callback(null, true);
+        }
+      } catch {
+        // fall through to reject below
       }
       return callback(new Error(`Origin not allowed by CORS: ${origin}`), false);
     },

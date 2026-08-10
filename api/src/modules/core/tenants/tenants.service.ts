@@ -33,6 +33,8 @@ export interface TenantInfo {
   timezone?: string;
   currency?: string;
   restaurantServiceMode?: RestaurantServiceMode;
+  primaryColor?: string;
+  secondaryColor?: string;
 }
 
 const MAX_BRANDING_SIZE = 5 * 1024 * 1024;
@@ -358,6 +360,8 @@ export class TenantsService {
       timezone:    s['timezone']    as string | undefined,
       currency:    s['currency']    as string | undefined,
       restaurantServiceMode: tenant.restaurantServiceMode as RestaurantServiceMode | undefined,
+      primaryColor:   s['primaryColor']   as string | undefined,
+      secondaryColor: s['secondaryColor'] as string | undefined,
     };
   }
 

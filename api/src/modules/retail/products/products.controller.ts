@@ -8,6 +8,7 @@ import {
   Param,
   Delete,
   Query,
+  Res,
   UseInterceptors,
   UploadedFile,
   ParseFilePipe,
@@ -17,7 +18,9 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { memoryStorage } from 'multer';
+import type { Response } from 'express';
 import { ProductsService } from './products.service';
+import { ProductsImportService } from './products-import.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { QueryProductDto } from './dto/query-product.dto';
@@ -26,12 +29,17 @@ import { RequireModule } from '../../../common/guards/require-module.guard';
 import { RecipeItemDto, ComboItemDto } from './dto/create-product.dto';
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
+const MAX_IMPORT_SIZE = 10 * 1024 * 1024; // 10 MB
+const XLSX_MIME = /^application\/(vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet|vnd\.ms-excel|octet-stream)$/;
 
 @RequireModule('inventario')
 @ApiTags('Products')
 @Controller('products')
 export class ProductsController {
-  constructor(private readonly productsService: ProductsService) {}
+  constructor(
+    private readonly productsService: ProductsService,
+    private readonly productsImportService: ProductsImportService,
+  ) {}
 
   @Post()
   @ApiBearerAuth()
@@ -55,6 +63,41 @@ export class ProductsController {
   @ApiOperation({ summary: 'Get products with low stock' })
   getLowStock() {
     return this.productsService.getLowStock();
+  }
+
+  @Get('import/template')
+  @ApiBearerAuth()
+  @RequirePermissions('products:create|products:edit')
+  @ApiOperation({ summary: 'Download the .xlsx template for bulk product import' })
+  async downloadImportTemplate(@Res() res: Response) {
+    const buffer = await this.productsImportService.buildTemplate();
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': 'attachment; filename="plantilla-productos.xlsx"',
+      'Content-Length': buffer.length,
+    });
+    res.end(buffer);
+  }
+
+  @Post('import')
+  @ApiBearerAuth()
+  @RequirePermissions('products:create|products:edit')
+  @ApiOperation({ summary: 'Bulk create/update products from a filled .xlsx template' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  importFile(
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: MAX_IMPORT_SIZE }),
+          new FileTypeValidator({ fileType: XLSX_MIME }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    return this.productsImportService.importFile(file.buffer);
   }
 
   @Get(':id')

@@ -51,6 +51,25 @@ export interface ProductAttribute {
   price: number
 }
 
+export interface ProductFeature {
+  id?: string
+  feature: string
+  value: string
+}
+
+export interface ImportRowError {
+  row: number
+  sku?: string
+  message: string
+}
+
+export interface ImportResult {
+  totalRows: number
+  created: number
+  updated: number
+  errors: ImportRowError[]
+}
+
 export interface Product {
   id?: string
   type: ProductType
@@ -76,6 +95,7 @@ export interface Product {
   recipe?: { id: string; notes?: string; items: RecipeItem[] } | null
   comboItems?: ComboItem[]
   attributes?: ProductAttribute[]
+  features?: ProductFeature[]
 }
 
 export async function fetchProducts(): Promise<ListResponse<Product>> {
@@ -115,6 +135,9 @@ export async function createProduct(data: Product): Promise<Product> {
     attributes: data.attributes
       ?.filter((a) => a.name.trim() !== '')
       .map((a) => ({ name: a.name, cost: a.cost, price: a.price })),
+    features: data.features
+      ?.filter((f) => f.feature.trim() !== '' && f.value.trim() !== '')
+      .map((f) => ({ feature: f.feature, value: f.value })),
   }
   const { data: result } = await api.post<Product>('products', body)
   return result
@@ -151,6 +174,9 @@ export async function updateProduct(id: string, data: Product): Promise<Product>
     attributes: data.attributes
       ?.filter((a) => a.name.trim() !== '')
       .map((a) => ({ name: a.name, cost: a.cost, price: a.price })),
+    features: data.features
+      ?.filter((f) => f.feature.trim() !== '' && f.value.trim() !== '')
+      .map((f) => ({ feature: f.feature, value: f.value })),
   }
   const { data: result } = await api.patch<Product>(`products/${id}`, body)
   return result
@@ -171,4 +197,25 @@ export async function uploadProductImage(productId: string, file: File): Promise
 
 export async function deleteProductImage(productId: string, imageId: string): Promise<void> {
   await api.delete(`products/${productId}/images/${imageId}`)
+}
+
+export async function downloadProductImportTemplate(): Promise<void> {
+  const res = await api.get('products/import/template', { responseType: 'blob' })
+  const url = URL.createObjectURL(res.data as Blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'plantilla-productos.xlsx'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+export async function importProductsFromExcel(file: File): Promise<ImportResult> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const { data } = await api.post<ImportResult>('products/import', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return data
 }

@@ -25,6 +25,20 @@ export class ProductAttributeDto {
   price?: number;
 }
 
+export class ProductFeatureDto {
+  @ApiProperty({ description: 'Ej. "Material", "Peso", "Origen"' })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  feature: string;
+
+  @ApiProperty({ description: 'Ej. "Algodón", "500 g", "México"' })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  value: string;
+}
+
 export class RecipeItemDto {
   @ApiProperty()
   @IsUUID()
@@ -188,4 +202,11 @@ export class CreateProductDto {
   @ValidateNested({ each: true })
   @Type(() => ProductAttributeDto)
   attributes?: ProductAttributeDto[];
+
+  @ApiPropertyOptional({ type: [ProductFeatureDto], description: 'Ficha técnica opcional (característica/valor)' })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProductFeatureDto)
+  features?: ProductFeatureDto[];
 }

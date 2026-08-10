@@ -8,16 +8,16 @@ const { solid = false } = Astro.props;
 
 <header class={`header${solid ? ' header--solido' : ''}`} data-header>
   <div class="header__interno">
-    <a class="marca" href="/" aria-label="RootGarden, inicio">
+    <a class="marca" href="/" aria-label="Manzanitas, inicio" data-marca-aria>
       <img
         class="marca__emblema"
         src="/assets/logo-mark.png"
-        alt="Emblema de RootGarden"
+        alt="Emblema de Manzanitas"
         width="40"
         height="40"
       />
       <span>
-        <span class="marca__texto"><strong>Root</strong>Garden</span>
+        <span class="marca__texto" data-marca-texto><strong>Manza</strong>nitas</span>
         <span class="marca__slogan">Aquascaping</span>
       </span>
     </a>

@@ -2,7 +2,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { ProductStatus, TaxCode, ProductType } from '@prisma/client';
 import { Type, Transform } from 'class-transformer';
-import { RecipeItemDto, ComboItemDto, ProductAttributeDto } from './create-product.dto';
+import { RecipeItemDto, ComboItemDto, ProductAttributeDto, ProductFeatureDto } from './create-product.dto';
 
 export class UpdateProductDto {
   @ApiPropertyOptional({ enum: ProductType })
@@ -120,4 +120,11 @@ export class UpdateProductDto {
   @ValidateNested({ each: true })
   @Type(() => ProductAttributeDto)
   attributes?: ProductAttributeDto[];
+
+  @ApiPropertyOptional({ type: [ProductFeatureDto], description: 'Ficha técnica opcional (característica/valor)' })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProductFeatureDto)
+  features?: ProductFeatureDto[];
 }

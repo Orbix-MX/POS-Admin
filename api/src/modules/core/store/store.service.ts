@@ -25,26 +25,32 @@ const STORE_PRODUCT_SELECT = {
   attributes: { select: { id: true, name: true, price: true } },
 } satisfies Prisma.ProductSelect;
 
-const ORDERABLE_TENANT_STATUSES = ['ACTIVE', 'TRIAL'];
+// Tenant existence + orderable status are already enforced by StoreDomainGuard
+// (it only resolves a tenantId once the Domain lookup confirms both), so these
+// queries trust the tenantId they're given.
 
 @Injectable()
 export class StoreService {
   constructor(private prisma: PrismaService) {}
 
-  private async assertStorefrontTenant(tenantId: string): Promise<void> {
+  async getBranding(tenantId: string) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { id: true, status: true },
+      select: { name: true, settings: true },
     });
+    if (!tenant) throw new NotFoundException('Tienda no encontrada');
 
-    if (!tenant || !ORDERABLE_TENANT_STATUSES.includes(tenant.status)) {
-      throw new NotFoundException('Tienda no encontrada');
-    }
+    const s = (tenant.settings as Record<string, unknown>) ?? {};
+    return {
+      name: (s['displayName'] as string) || tenant.name,
+      logoUrl: s['logoUrl'] as string | undefined,
+      bannerUrl: s['bannerUrl'] as string | undefined,
+      primaryColor: s['primaryColor'] as string | undefined,
+      secondaryColor: s['secondaryColor'] as string | undefined,
+    };
   }
 
   async getCategories(tenantId: string) {
-    await this.assertStorefrontTenant(tenantId);
-
     return this.prisma.category.findMany({
       where: { tenantId, status: 'ACTIVE' },
       select: { id: true, name: true, slug: true, description: true },
@@ -53,8 +59,6 @@ export class StoreService {
   }
 
   async getProducts(tenantId: string, query: QueryStoreProductsDto) {
-    await this.assertStorefrontTenant(tenantId);
-
     const where: Prisma.ProductWhereInput = {
       tenantId,
       status: 'ACTIVE',
