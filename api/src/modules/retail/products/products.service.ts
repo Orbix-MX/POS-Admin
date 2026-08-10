@@ -35,7 +35,7 @@ const PRODUCT_INCLUDE = {
     },
   },
   comboItems: { include: { child: true } },
-  attributeValues: { include: { attribute: true } },
+  attributes: true,
   _count: { select: { orderItems: true } },
 } satisfies Prisma.ProductInclude;
 
@@ -67,20 +67,6 @@ export class ProductsService {
       throw new ForbiddenException(
         'Las recetas no están disponibles para este tipo de negocio',
       );
-    }
-  }
-
-  /** Guards against attaching another tenant's ProductAttribute ids. */
-  private async assertAttributesBelongToTenant(
-    tenantId: string,
-    attributeValues: Array<{ attributeId: string }>,
-  ): Promise<void> {
-    const attributeIds = [...new Set(attributeValues.map((av) => av.attributeId))];
-    const count = await this.prisma.productAttribute.count({
-      where: { id: { in: attributeIds }, tenantId },
-    });
-    if (count !== attributeIds.length) {
-      throw new NotFoundException('One or more product attributes were not found');
     }
   }
 
@@ -119,7 +105,7 @@ export class ProductsService {
 
   async create(createProductDto: CreateProductDto): Promise<Product> {
     const tenantId = this.tenantContext.requireTenantId();
-    const { recipeItems, comboItems, attributeValues, ...productData } = createProductDto;
+    const { recipeItems, comboItems, attributes, ...productData } = createProductDto;
 
     const existingProduct = await this.prisma.product.findUnique({
       where: { tenantId_sku: { tenantId, sku: productData.sku } },
@@ -137,10 +123,6 @@ export class ProductsService {
       if (!category) {
         throw new NotFoundException('Category not found');
       }
-    }
-
-    if (attributeValues?.length) {
-      await this.assertAttributesBelongToTenant(tenantId, attributeValues);
     }
 
     const existingSlugs = await this.prisma.product.findMany({
@@ -201,12 +183,13 @@ export class ProductsService {
         needsRefetch = true;
       }
 
-      if (attributeValues?.length) {
-        await tx.productAttributeValue.createMany({
-          data: attributeValues.map((av) => ({
+      if (attributes?.length) {
+        await tx.productAttribute.createMany({
+          data: attributes.map((a) => ({
             productId: created.id,
-            attributeId: av.attributeId,
-            value: av.value,
+            name: a.name,
+            cost: a.cost ?? 0,
+            price: a.price ?? 0,
           })),
         });
         needsRefetch = true;
@@ -276,7 +259,7 @@ export class ProductsService {
 
     if (!product) throw new NotFoundException('Product not found');
 
-    const { recipeItems, comboItems, attributeValues, ...productData } = updateProductDto;
+    const { recipeItems, comboItems, attributes, ...productData } = updateProductDto;
 
     if (productData.categoryId) {
       const category = await this.prisma.category.findUnique({
@@ -284,10 +267,6 @@ export class ProductsService {
       });
 
       if (!category) throw new NotFoundException('Category not found');
-    }
-
-    if (attributeValues?.length) {
-      await this.assertAttributesBelongToTenant(tenantId, attributeValues);
     }
 
     let slug = product.slug;
@@ -366,15 +345,16 @@ export class ProductsService {
         }
       }
 
-      // Sync attribute values (full replace — mirrors combo items above)
-      if (attributeValues !== undefined) {
-        await tx.productAttributeValue.deleteMany({ where: { productId: id } });
-        if (attributeValues.length > 0) {
-          await tx.productAttributeValue.createMany({
-            data: attributeValues.map((av) => ({
+      // Sync attributes (full replace — mirrors combo items above)
+      if (attributes !== undefined) {
+        await tx.productAttribute.deleteMany({ where: { productId: id } });
+        if (attributes.length > 0) {
+          await tx.productAttribute.createMany({
+            data: attributes.map((a) => ({
               productId: id,
-              attributeId: av.attributeId,
-              value: av.value,
+              name: a.name,
+              cost: a.cost ?? 0,
+              price: a.price ?? 0,
             })),
           });
         }

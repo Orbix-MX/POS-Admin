@@ -21,12 +21,8 @@ const STORE_PRODUCT_SELECT = {
     select: { id: true, url: true, altText: true, isPrimary: true, sortOrder: true },
     orderBy: { sortOrder: 'asc' as const },
   },
-  attributeValues: {
-    select: {
-      value: true,
-      attribute: { select: { id: true, name: true, slug: true, type: true } },
-    },
-  },
+  // `cost` is deliberately excluded — internal margin data, never public.
+  attributes: { select: { id: true, name: true, price: true } },
 } satisfies Prisma.ProductSelect;
 
 const ORDERABLE_TENANT_STATUSES = ['ACTIVE', 'TRIAL'];

@@ -33,7 +33,6 @@ import { StoreModule } from './modules/core/store/store.module';
 // Retail modules — retail/POS vertical
 import { CategoriesModule } from './modules/retail/categories/categories.module';
 import { ProductsModule } from './modules/retail/products/products.module';
-import { ProductAttributesModule } from './modules/retail/product-attributes/product-attributes.module';
 import { OrdersModule } from './modules/retail/orders/orders.module';
 import { CouponsModule } from './modules/retail/coupons/coupons.module';
 import { SuppliersModule } from './modules/retail/suppliers/suppliers.module';
@@ -79,7 +78,6 @@ import { PlatformModule } from './modules/platform/platform.module';
     // Retail
     CategoriesModule,
     ProductsModule,
-    ProductAttributesModule,
     OrdersModule,
     CouponsModule,
     SuppliersModule,

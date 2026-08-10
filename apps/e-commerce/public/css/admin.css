@@ -178,10 +178,51 @@ textarea.campo__control {
   margin-bottom: 14px;
 }
 
-.admin-atributos {
+.admin-atributos__cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.admin-atributos__agregar {
+  background: transparent;
+  border: none;
+  color: var(--verde-700);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.admin-atributos__agregar:hover {
+  color: var(--verde-900);
+}
+
+.admin-atributos__fila {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  grid-template-columns: 1fr 6.5rem 6.5rem 2rem;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.admin-atributos__quitar {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 1px solid var(--linea-fuerte);
+  border-radius: var(--radio-sm);
+  color: var(--tinta-tenue);
+  cursor: pointer;
+  transition: color var(--transicion), border-color var(--transicion);
+}
+
+.admin-atributos__quitar:hover {
+  color: #9b3f1f;
+  border-color: rgba(198, 92, 60, 0.4);
 }
 
 .admin-atributos__vacio {
@@ -191,6 +232,12 @@ textarea.campo__control {
   border: 1px dashed var(--linea-fuerte);
   border-radius: var(--radio-sm);
   text-align: center;
+}
+
+@media (max-width: 640px) {
+  .admin-atributos__fila {
+    grid-template-columns: 1fr 1fr 1fr auto;
+  }
 }
 
 .admin-acciones {
@@ -236,8 +283,7 @@ textarea.campo__control {
 }
 
 @media (max-width: 640px) {
-  .campos-fila,
-  .admin-atributos {
+  .campos-fila {
     grid-template-columns: 1fr;
   }
 }

@@ -2,15 +2,12 @@
 import { DataTable, Pagination, type Column } from '@/components/shared/data-table'
 import { CategoryFormModal } from '@/components/inventario/category-form-modal'
 import { ProductFormModal } from '@/components/inventario/product-form-modal'
-import { ProductAttributeFormModal } from '@/components/inventario/product-attribute-form-modal'
-import { Search, Plus, Pencil, Trash2, Loader2, Package, Tag, SlidersHorizontal } from 'lucide-react'
+import { Search, Plus, Pencil, Trash2, Loader2, Package, Tag } from 'lucide-react'
 import { useProducts } from '@/hooks/retail/use-products'
 import { useCategories } from '@/hooks/retail/use-categories'
-import { useProductAttributes } from '@/hooks/retail/use-product-attributes'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { Product } from '@/services/retail/product-service'
 import type { Category } from '@/hooks/retail/use-categories'
-import type { ProductAttribute } from '@/hooks/retail/use-product-attributes'
 
 const PER_PAGE = 7
 
@@ -46,7 +43,7 @@ const STATUS_CAT_BADGE: Record<string, string> = {
 // ── Main component ───────────────────────────────────────────────────────────
 
 export function Inventario() {
-  const [activeTab, setActiveTab] = useState<'productos' | 'categorias' | 'atributos'>('productos')
+  const [activeTab, setActiveTab] = useState<'productos' | 'categorias'>('productos')
 
   // ── Products ──
   const {
@@ -69,20 +66,6 @@ export function Inventario() {
     handleDelete: handleCatDelete, handleOpenNew: handleCatOpenNew,
     handleCloseModal: handleCatCloseModal, loadCategories,
   } = useCategories()
-
-  // ── Product Attributes ──
-  const {
-    loading: attrLoading, error: attrError,
-    search: attrSearch, setSearch: setAttrSearch,
-    page: attrPage, setPage: setAttrPage,
-    modalOpen: attrModalOpen, editingId: attrEditingId,
-    form: attrForm, setForm: setAttrForm, setName: setAttrName,
-    filtered: attrFiltered, pageData: attrPageData,
-    stats: attrStats, perPage: attrPerPage,
-    handleSave: handleAttrSave, handleEdit: handleAttrEdit,
-    handleDelete: handleAttrDelete, handleOpenNew: handleAttrOpenNew,
-    handleCloseModal: handleAttrCloseModal, loadAttributes,
-  } = useProductAttributes()
 
   const TYPE_BADGE: Record<string, { label: string; cls: string }> = {
     SIMPLE:  { label: 'Simple',   cls: 'bg-gray-100 text-gray-600' },
@@ -198,52 +181,6 @@ export function Inventario() {
     ]
   }, [categories, handleCatEdit, handleCatDelete])
 
-  // ── Attribute columns ─────────────────────────────────────────────────────
-  const attrColumns: Column<ProductAttribute>[] = useMemo(() => [
-    {
-      label: "Atributo", render: r => (
-        <div>
-          <div className="font-semibold text-[13px] text-foreground">{r.name}</div>
-          <div className="text-[11px] font-mono text-muted-foreground">{r.slug}</div>
-        </div>
-      )
-    },
-    {
-      label: "Tipo", render: r => (
-        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${r.type === 'SELECT' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
-          {r.type === 'SELECT' ? 'Lista' : 'Texto libre'}
-        </span>
-      )
-    },
-    {
-      label: "Opciones", render: r => (
-        <span className="text-xs text-muted-foreground max-w-[220px] overflow-hidden text-ellipsis block">
-          {r.type === 'SELECT' ? (r.options.length ? r.options.join(', ') : '—') : 'N/A'}
-        </span>
-      )
-    },
-    {
-      label: "Estado", render: r => (
-        <span className={`text-[10px] px-2 py-1 rounded-full font-medium ${r.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-          {r.isActive ? 'Activo' : 'Inactivo'}
-        </span>
-      )
-    },
-    { label: "Orden", align: "center", render: r => <span className="text-xs font-semibold text-muted-foreground">{r.sortOrder}</span> },
-    {
-      label: "Acciones", render: r => (
-        <div className="flex gap-1">
-          <button onClick={() => handleAttrEdit(r)} className="p-1.5 hover:bg-muted rounded cursor-pointer">
-            <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
-          </button>
-          <button onClick={() => handleAttrDelete(r.id!)} className="p-1.5 hover:bg-muted rounded cursor-pointer">
-            <Trash2 className="w-3.5 h-3.5 text-red-500" />
-          </button>
-        </div>
-      )
-    },
-  ], [handleAttrEdit, handleAttrDelete])
-
   return (
     <div className="p-7 flex flex-col gap-5">
 
@@ -252,7 +189,6 @@ export function Inventario() {
         {([
           { id: 'productos', label: 'Productos', icon: Package },
           { id: 'categorias', label: 'Categorías', icon: Tag },
-          { id: 'atributos', label: 'Atributos', icon: SlidersHorizontal },
         ] as const).map(({ id, label, icon: Icon }) => (
           <button key={id} onClick={() => setActiveTab(id)}
             className={`flex items-center gap-1.5 px-4 py-1.5 border-none rounded-md text-xs font-semibold cursor-pointer transition-all
@@ -370,53 +306,6 @@ export function Inventario() {
             </>
       )}
 
-      {/* ── ATRIBUTOS TAB ──────────────────────────────────────────────── */}
-      {activeTab === 'atributos' && (
-        attrLoading ? <LoadingState label="Cargando atributos..." /> :
-          attrError ? <ErrorState message={attrError} onRetry={loadAttributes} /> :
-            <>
-              <div className="flex gap-3.5">
-                {[
-                  { label: "Total Atributos", value: attrStats.total, color: "text-primary" },
-                  { label: "Activos", value: attrStats.active, color: "text-green-600" },
-                  { label: "Inactivos", value: attrStats.inactive, color: "text-gray-500" },
-                ].map((s, i) => (
-                  <div key={i} className="flex-1 bg-card border border-border rounded-[10px] px-4.5 py-3.5">
-                    <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">{s.label}</div>
-                    <div className={`text-[28px] font-extrabold ${s.color}`}>{s.value}</div>
-                  </div>
-                ))}
-              </div>
-
-              <p className="text-xs text-muted-foreground -mt-2">
-                Define los atributos (talla, color, tipo, ...) que se podrán capturar al dar de alta un producto para e-commerce.
-              </p>
-
-              <div className="bg-card border border-border rounded-xl overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-3.5 border-b border-border gap-3">
-                  <div className="flex items-center gap-2 bg-muted rounded-lg px-3 py-1.5">
-                    <Search className="w-3.5 h-3.5 text-muted-foreground" />
-                    <input value={attrSearch} onChange={e => { setAttrSearch(e.target.value); setAttrPage(1) }} placeholder="Buscar atributo…"
-                      className="border-none bg-transparent outline-none text-xs text-foreground w-44" />
-                  </div>
-                  <button onClick={handleAttrOpenNew} className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground border-none rounded-lg text-xs font-semibold cursor-pointer">
-                    <Plus className="w-3.5 h-3.5" /> Nuevo Atributo
-                  </button>
-                </div>
-                {attrFiltered.length === 0 ? (
-                  <div className="p-12 text-center">
-                    <p className="text-muted-foreground text-sm">No se encontraron atributos</p>
-                  </div>
-                ) : (
-                  <>
-                    <DataTable columns={attrColumns} rows={attrPageData} />
-                    <Pagination page={attrPage} total={attrFiltered.length} perPage={attrPerPage} onChange={setAttrPage} />
-                  </>
-                )}
-              </div>
-            </>
-      )}
-
       <ProductFormModal
         open={modalOpen}
         onClose={handleCloseModal}
@@ -437,16 +326,6 @@ export function Inventario() {
         setName={setCatName}
         categories={categories}
         onSave={handleCatSave}
-      />
-
-      <ProductAttributeFormModal
-        open={attrModalOpen}
-        onClose={handleAttrCloseModal}
-        editingId={attrEditingId}
-        form={attrForm}
-        setForm={setAttrForm}
-        setName={setAttrName}
-        onSave={handleAttrSave}
       />
 
     </div>

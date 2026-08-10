@@ -159,7 +159,6 @@ model Tenant {
   customers          Customer[]
   categories         Category[]
   products           Product[]
-  productAttributes  ProductAttribute[]
   coupons            Coupon[]
   orders             Order[]
   orderRefunds       OrderRefund[]
@@ -625,7 +624,7 @@ model Product {
   recipe               Recipe?
   comboItems           ComboItem[]          @relation("ComboItems")
   inCombos             ComboItem[]          @relation("ComboChildItems")
-  attributeValues      ProductAttributeValue[]
+  attributes           ProductAttribute[]
   createdBy            User?                @relation("ProductCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy            User?                @relation("ProductUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
@@ -652,45 +651,21 @@ model ProductImage {
 }
 
 // ============= Product Attributes (e-commerce) =============
-// Scalable, tenant-defined catalog of attribute types (Talla, Color, Tipo, ...).
-// New attribute kinds are added by tenants at runtime — no schema change needed.
-enum ProductAttributeType {
-  TEXT
-  SELECT
-}
-
+// Per-product line (variant/modifier): always owned by exactly one Product,
+// with its own cost and price. Not a reusable cross-product catalog.
 model ProductAttribute {
-  id        String               @id @default(uuid())
-  tenantId  String
+  id        String   @id @default(uuid())
+  productId String
   name      String
-  slug      String
-  type      ProductAttributeType @default(TEXT)
-  // Predefined choices when type = SELECT (e.g. ["S", "M", "L"]). Ignored for TEXT.
-  options   String[]             @default([])
-  sortOrder Int                  @default(0)
-  isActive  Boolean              @default(true)
+  cost      Decimal  @default(0) @db.Decimal(10, 2)
+  price     Decimal  @default(0) @db.Decimal(10, 2)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  values ProductAttributeValue[]
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  @@unique([tenantId, slug])
   @@map("product_attributes")
-}
-
-model ProductAttributeValue {
-  id          String @id @default(uuid())
-  productId   String
-  attributeId String
-  value       String
-
-  product   Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
-  attribute ProductAttribute @relation(fields: [attributeId], references: [id], onDelete: Cascade)
-
-  @@unique([productId, attributeId])
-  @@map("product_attribute_values")
 }
 
 // ============= Measurement Units =============

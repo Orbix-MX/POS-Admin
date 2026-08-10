@@ -61,7 +61,7 @@ export const EMPTY_FORM: Product = {
   isEcommerce: false,
   recipe: null,
   comboItems: [],
-  attributeValues: [],
+  attributes: [],
 }
 
 export function useProducts() {

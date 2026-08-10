@@ -44,10 +44,11 @@ export interface ComboItem {
   child?: { id: string; name: string; sku: string; images?: ProductImage[] }
 }
 
-export interface ProductAttributeValue {
-  attributeId: string
-  value: string
-  attribute?: { id: string; name: string; slug: string; type: 'TEXT' | 'SELECT'; options: string[] }
+export interface ProductAttribute {
+  id?: string
+  name: string
+  cost: number
+  price: number
 }
 
 export interface Product {
@@ -74,7 +75,7 @@ export interface Product {
   category?: { id: string; name: string } | null
   recipe?: { id: string; notes?: string; items: RecipeItem[] } | null
   comboItems?: ComboItem[]
-  attributeValues?: ProductAttributeValue[]
+  attributes?: ProductAttribute[]
 }
 
 export async function fetchProducts(): Promise<ListResponse<Product>> {
@@ -111,9 +112,9 @@ export async function createProduct(data: Product): Promise<Product> {
       childProductId: ci.childProductId,
       quantity: ci.quantity,
     })),
-    attributeValues: data.attributeValues
-      ?.filter((av) => av.value.trim() !== '')
-      .map((av) => ({ attributeId: av.attributeId, value: av.value })),
+    attributes: data.attributes
+      ?.filter((a) => a.name.trim() !== '')
+      .map((a) => ({ name: a.name, cost: a.cost, price: a.price })),
   }
   const { data: result } = await api.post<Product>('products', body)
   return result
@@ -147,9 +148,9 @@ export async function updateProduct(id: string, data: Product): Promise<Product>
       childProductId: ci.childProductId,
       quantity: ci.quantity,
     })),
-    attributeValues: data.attributeValues
-      ?.filter((av) => av.value.trim() !== '')
-      .map((av) => ({ attributeId: av.attributeId, value: av.value })),
+    attributes: data.attributes
+      ?.filter((a) => a.name.trim() !== '')
+      .map((a) => ({ name: a.name, cost: a.cost, price: a.price })),
   }
   const { data: result } = await api.patch<Product>(`products/${id}`, body)
   return result

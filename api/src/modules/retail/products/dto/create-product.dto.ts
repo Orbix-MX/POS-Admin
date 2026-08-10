@@ -3,16 +3,26 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ProductStatus, TaxCode, ProductType } from '@prisma/client';
 import { Type, Transform } from 'class-transformer';
 
-export class ProductAttributeValueDto {
-  @ApiProperty({ description: 'ProductAttribute id' })
-  @IsUUID()
-  attributeId: string;
-
-  @ApiProperty()
+export class ProductAttributeDto {
+  @ApiProperty({ description: 'Ej. "Talla M", "Extra queso"' })
   @IsString()
   @MinLength(1)
   @MaxLength(200)
-  value: string;
+  name: string;
+
+  @ApiPropertyOptional({ default: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  cost?: number;
+
+  @ApiPropertyOptional({ default: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  price?: number;
 }
 
 export class RecipeItemDto {
@@ -172,10 +182,10 @@ export class CreateProductDto {
   @Type(() => ComboItemDto)
   comboItems?: ComboItemDto[];
 
-  @ApiPropertyOptional({ type: [ProductAttributeValueDto] })
+  @ApiPropertyOptional({ type: [ProductAttributeDto] })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => ProductAttributeValueDto)
-  attributeValues?: ProductAttributeValueDto[];
+  @Type(() => ProductAttributeDto)
+  attributes?: ProductAttributeDto[];
 }

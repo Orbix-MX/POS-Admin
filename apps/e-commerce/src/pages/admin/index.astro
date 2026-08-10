@@ -68,9 +68,15 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
           <input class="campo__control" type="file" id="image" name="image" accept="image/jpeg,image/png,image/webp" />
         </div>
 
-        <div class="admin-seccion" data-attributes-section hidden>
-          <p class="admin-seccion__titulo">Atributos (talla, color, tipo…)</p>
-          <div class="admin-atributos" data-attributes-container></div>
+        <div class="admin-seccion">
+          <div class="admin-atributos__cabecera">
+            <p class="admin-seccion__titulo" style="margin:0;">Atributos (talla, color, tipo…)</p>
+            <button type="button" class="admin-atributos__agregar" data-add-attribute-btn>+ Agregar atributo</button>
+          </div>
+          <div data-attributes-container></div>
+          <p class="admin-atributos__vacio" data-attributes-empty>
+            Sin atributos. Agrega uno si este producto tiene variantes con costo/precio propio.
+          </p>
         </div>
 
         <div class="admin-acciones">
@@ -90,15 +96,6 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
     status: 'ACTIVE' | 'INACTIVE';
   }
 
-  interface ProductAttribute {
-    id: string;
-    name: string;
-    type: 'TEXT' | 'SELECT';
-    options: string[];
-    isActive: boolean;
-    sortOrder: number;
-  }
-
   if (requireSession()) {
     void bootstrap();
   }
@@ -106,7 +103,8 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
   async function bootstrap() {
     wireLogout();
     void loadTenantLabel();
-    await Promise.all([loadCategories(), loadAttributes()]);
+    await loadCategories();
+    wireAttributeRows();
     wireSkuSuggestion();
     wireSubmit();
   }
@@ -155,62 +153,68 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
     }
   }
 
-  let attributeDefs: ProductAttribute[] = [];
-
-  async function loadAttributes() {
-    const section = document.querySelector('[data-attributes-section]');
+  /**
+   * Atributos son filas nombre/costo/precio ligadas a ESTE producto — no hay
+   * catálogo compartido entre productos, así que se editan localmente y se
+   * envían en el mismo POST /api/products que crea el producto.
+   */
+  function wireAttributeRows() {
     const container = document.querySelector('[data-attributes-container]');
-    if (!(section instanceof HTMLElement) || !(container instanceof HTMLElement)) return;
-
-    try {
-      const res = await authFetch('/api/product-attributes');
-      if (!res.ok) return;
-      const attributes = (await res.json()) as ProductAttribute[];
-      attributeDefs = attributes.filter((a) => a.isActive).sort((a, b) => a.sortOrder - b.sortOrder);
-
-      if (attributeDefs.length === 0) return;
-      section.hidden = false;
-
-      attributeDefs.forEach((attr) => {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'campo';
-
-        const label = document.createElement('label');
-        label.className = 'campo__etiqueta';
-        label.textContent = attr.name;
-        label.setAttribute('for', `attr-${attr.id}`);
-        wrapper.appendChild(label);
-
-        if (attr.type === 'SELECT') {
-          const select = document.createElement('select');
-          select.className = 'campo__control';
-          select.id = `attr-${attr.id}`;
-          select.dataset.attributeId = attr.id;
-          const empty = document.createElement('option');
-          empty.value = '';
-          empty.textContent = '— Selecciona —';
-          select.appendChild(empty);
-          attr.options.forEach((o) => {
-            const opt = document.createElement('option');
-            opt.value = o;
-            opt.textContent = o;
-            select.appendChild(opt);
-          });
-          wrapper.appendChild(select);
-        } else {
-          const input = document.createElement('input');
-          input.type = 'text';
-          input.className = 'campo__control';
-          input.id = `attr-${attr.id}`;
-          input.dataset.attributeId = attr.id;
-          wrapper.appendChild(input);
-        }
-
-        container.appendChild(wrapper);
-      });
-    } catch {
-      // attributes are optional — the product can still be created without them
+    const addBtn = document.querySelector('[data-add-attribute-btn]');
+    const emptyMsg = document.querySelector('[data-attributes-empty]');
+    if (!(container instanceof HTMLElement) || !(addBtn instanceof HTMLElement) || !(emptyMsg instanceof HTMLElement)) {
+      return;
     }
+
+    const updateEmptyState = () => {
+      emptyMsg.hidden = container.children.length > 0;
+    };
+
+    const addRow = () => {
+      const row = document.createElement('div');
+      row.className = 'admin-atributos__fila';
+      row.dataset.attributeRow = '';
+
+      const name = document.createElement('input');
+      name.type = 'text';
+      name.className = 'campo__control';
+      name.placeholder = 'Ej. Talla M';
+      name.dataset.attrName = '';
+
+      const cost = document.createElement('input');
+      cost.type = 'number';
+      cost.className = 'campo__control';
+      cost.placeholder = 'Costo';
+      cost.min = '0';
+      cost.step = '0.01';
+      cost.dataset.attrCost = '';
+
+      const price = document.createElement('input');
+      price.type = 'number';
+      price.className = 'campo__control';
+      price.placeholder = 'Precio';
+      price.min = '0';
+      price.step = '0.01';
+      price.dataset.attrPrice = '';
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'admin-atributos__quitar';
+      remove.setAttribute('aria-label', 'Quitar atributo');
+      remove.textContent = '✕';
+      remove.addEventListener('click', () => {
+        row.remove();
+        updateEmptyState();
+      });
+
+      row.append(name, cost, price, remove);
+      container.appendChild(row);
+      updateEmptyState();
+      name.focus();
+    };
+
+    addBtn.addEventListener('click', addRow);
+    updateEmptyState();
   }
 
   function slugifySku(name: string): string {
@@ -238,16 +242,23 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
     });
   }
 
-  function collectAttributeValues(): Array<{ attributeId: string; value: string }> {
-    const inputs = document.querySelectorAll('[data-attribute-id]');
-    const values: Array<{ attributeId: string; value: string }> = [];
-    inputs.forEach((node) => {
-      if (!(node instanceof HTMLInputElement) && !(node instanceof HTMLSelectElement)) return;
-      const attributeId = node.dataset.attributeId;
-      const value = node.value.trim();
-      if (attributeId && value) values.push({ attributeId, value });
+  function collectAttributes(): Array<{ name: string; cost: number; price: number }> {
+    const rows = document.querySelectorAll('[data-attribute-row]');
+    const attributes: Array<{ name: string; cost: number; price: number }> = [];
+    rows.forEach((row) => {
+      const name = row.querySelector('[data-attr-name]');
+      const cost = row.querySelector('[data-attr-cost]');
+      const price = row.querySelector('[data-attr-price]');
+      if (!(name instanceof HTMLInputElement)) return;
+      const trimmedName = name.value.trim();
+      if (!trimmedName) return;
+      attributes.push({
+        name: trimmedName,
+        cost: cost instanceof HTMLInputElement ? Number(cost.value) || 0 : 0,
+        price: price instanceof HTMLInputElement ? Number(price.value) || 0 : 0,
+      });
     });
-    return values;
+    return attributes;
   }
 
   function wireSubmit() {
@@ -286,7 +297,7 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
         description: String(data.get('description') || ''),
         price: Number(data.get('price') || 0),
         stock: Number(data.get('stock') || 0),
-        attributeValues: collectAttributeValues(),
+        attributes: collectAttributes(),
       };
       if (categoryId) body.categoryId = categoryId;
 
@@ -319,9 +330,9 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
         successBox.textContent = 'Producto creado y publicado en la tienda.';
         successBox.hidden = false;
         form.reset();
-        document.querySelectorAll('[data-attribute-id]').forEach((node) => {
-          if (node instanceof HTMLInputElement || node instanceof HTMLSelectElement) node.value = '';
-        });
+        document.querySelectorAll('[data-attribute-row]').forEach((row) => row.remove());
+        const emptyMsg = document.querySelector('[data-attributes-empty]');
+        if (emptyMsg instanceof HTMLElement) emptyMsg.hidden = false;
       } catch (err) {
         errorBox.textContent = err instanceof Error ? err.message : 'No se pudo crear el producto.';
         errorBox.hidden = false;

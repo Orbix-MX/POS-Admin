@@ -19,7 +19,7 @@ async function bootstrap() {
   );
 
   // Enable CORS — CORS_ORIGIN admite lista separada por comas, "*" o vacío
-  const allowedOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:3000,http://localhost:4321')
+  const allowedOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:3000,http://localhost:5173,http://localhost:4321')
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean);

@@ -3,9 +3,8 @@ import { FormField } from '@/components/shared/form-modal'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { STATUS_OPTIONS, TAX_CODES, TAX_RATE_MAP, PRODUCT_TYPE_OPTIONS } from '@/hooks/retail/use-products'
-import type { Product, RecipeItem, ComboItem, ProductAttributeValue } from '@/services/retail/product-service'
+import type { Product, RecipeItem, ComboItem, ProductAttribute } from '@/services/retail/product-service'
 import type { Category } from '@/services/retail/categories-service'
-import { fetchProductAttributes, type ProductAttribute } from '@/services/retail/product-attributes-service'
 import { uploadProductImage, deleteProductImage } from '@/services/retail/product-service'
 import { ImageViewer } from '@/components/shared/image-viewer'
 import { fetchSupplies, type Supply } from '@/services/retail/supplies-service'
@@ -474,68 +473,86 @@ function ComboEditor({
   )
 }
 
-// ── E-commerce Attributes Editor ────────────────────────────────────────────
+// ── Attributes Editor (variantes ligadas al producto: nombre + costo + precio) ─
 
 function AttributesEditor({
-  values,
+  items,
   onChange,
 }: {
-  values: ProductAttributeValue[]
-  onChange: (values: ProductAttributeValue[]) => void
+  items: ProductAttribute[]
+  onChange: (items: ProductAttribute[]) => void
 }) {
-  const [attributes, setAttributes] = useState<ProductAttribute[]>([])
+  const addItem = () => onChange([...items, { name: '', cost: 0, price: 0 }])
 
-  useEffect(() => {
-    fetchProductAttributes()
-      .then((attrs) => setAttributes(attrs.filter((a) => a.isActive)))
-      .catch(() => {})
-  }, [])
+  const removeItem = (idx: number) => onChange(items.filter((_, i) => i !== idx))
 
-  const valueOf = (attributeId: string) => values.find((v) => v.attributeId === attributeId)?.value ?? ''
-
-  const setValue = (attributeId: string, value: string) => {
-    const exists = values.some((v) => v.attributeId === attributeId)
-    onChange(
-      exists
-        ? values.map((v) => (v.attributeId === attributeId ? { ...v, value } : v))
-        : [...values, { attributeId, value }],
-    )
-  }
-
-  if (attributes.length === 0) {
-    return (
-      <p className="text-xs text-muted-foreground text-center py-3 border border-dashed border-border rounded-lg">
-        No hay atributos configurados. Créalos en la pestaña "Atributos" de Inventario.
-      </p>
-    )
-  }
+  const updateItem = (idx: number, patch: Partial<ProductAttribute>) =>
+    onChange(items.map((item, i) => (i !== idx ? item : { ...item, ...patch })))
 
   return (
-    <div className="grid grid-cols-2 gap-x-4">
-      {attributes.map((attr) => (
-        <div key={attr.id} className="mb-3.5">
-          <label className="block text-xs font-semibold text-muted-foreground mb-1.5">{attr.name}</label>
-          {attr.type === 'SELECT' ? (
-            <select
-              value={valueOf(attr.id!)}
-              onChange={(e) => setValue(attr.id!, e.target.value)}
-              className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
-            >
-              <option value="">— Selecciona —</option>
-              {attr.options.map((o) => (
-                <option key={o} value={o}>{o}</option>
-              ))}
-            </select>
-          ) : (
-            <input
-              type="text"
-              value={valueOf(attr.id!)}
-              onChange={(e) => setValue(attr.id!, e.target.value)}
-              className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
-            />
-          )}
-        </div>
-      ))}
+    <div className="col-span-2 mb-3.5">
+      <div className="flex items-center justify-between mb-2">
+        <label className="text-xs font-semibold text-muted-foreground">Atributos (talla, color, tipo...)</label>
+        <button
+          type="button"
+          onClick={addItem}
+          className="flex items-center gap-1 px-2 py-1 text-[11px] bg-primary/10 text-primary rounded-md hover:bg-primary/20 transition-colors cursor-pointer"
+        >
+          <Plus className="w-3 h-3" /> Agregar
+        </button>
+      </div>
+
+      {items.length === 0 ? (
+        <p className="text-xs text-muted-foreground text-center py-4 border border-dashed border-border rounded-lg">
+          Sin atributos. Agrega uno si este producto tiene variantes con costo/precio propio.
+        </p>
+      ) : (
+        <>
+          <div className="grid grid-cols-[1fr_6rem_6rem_1.75rem] gap-1.5 px-1 mb-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Nombre</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground text-right">Costo</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground text-right">Precio</span>
+            <span />
+          </div>
+
+          <div className="space-y-1.5">
+            {items.map((item, idx) => (
+              <div key={idx} className="grid grid-cols-[1fr_6rem_6rem_1.75rem] gap-1.5 items-center">
+                <input
+                  type="text"
+                  placeholder="Ej. Talla M"
+                  value={item.name}
+                  onChange={(e) => updateItem(idx, { name: e.target.value })}
+                  className="w-full px-2 py-1.5 border border-border rounded-md text-[12px] bg-card outline-none focus:border-primary"
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={item.cost}
+                  onChange={(e) => updateItem(idx, { cost: Number(e.target.value) || 0 })}
+                  className="w-full px-2 py-1.5 border border-border rounded-md text-[12px] bg-card outline-none focus:border-primary text-right"
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={item.price}
+                  onChange={(e) => updateItem(idx, { price: Number(e.target.value) || 0 })}
+                  className="w-full px-2 py-1.5 border border-border rounded-md text-[12px] bg-card outline-none focus:border-primary text-right"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeItem(idx)}
+                  className="p-1 text-muted-foreground hover:text-destructive transition-colors flex items-center justify-center"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -817,15 +834,10 @@ export function ProductFormModal({
           </div>
 
           {form.isEcommerce && (
-            <div className="col-span-2 mb-3.5">
-              <label className="block text-xs font-semibold text-muted-foreground mb-2">
-                Atributos de e-commerce (talla, color, tipo, ...)
-              </label>
-              <AttributesEditor
-                values={form.attributeValues ?? []}
-                onChange={(vals) => setForm(p => ({ ...p, attributeValues: vals }))}
-              />
-            </div>
+            <AttributesEditor
+              items={form.attributes ?? []}
+              onChange={(items) => setForm(p => ({ ...p, attributes: items }))}
+            />
           )}
 
           {/* Stock — solo para SIMPLE */}
