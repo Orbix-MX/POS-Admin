@@ -16,16 +16,34 @@ import {
   type SessionSummary,
   type OpenSessionInput,
   type CloseSessionInput,
+  type CashSessionStatus,
 } from '@/services/core/caja-service'
 
 // ---- helpers ----
 
-function StatusBadge({ status }: { status: 'ABIERTA' | 'CERRADA' }) {
+function StatusBadge({ status }: { status: CashSessionStatus }) {
   if (status === 'ABIERTA') {
     return (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">
         <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
         Abierta
+      </span>
+    )
+  }
+  // Estados intermedios: la caja no opera, pero tampoco está cerrada (CASH-011).
+  if (status === 'EN_ARQUEO') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+        En arqueo
+      </span>
+    )
+  }
+  if (status === 'PENDIENTE_REVISION') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
+        <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
+        Pendiente de revisión
       </span>
     )
   }
@@ -585,6 +603,8 @@ export function Caja() {
           }}
           onViewDetail={() => hook.handleOpenDetail(hook.activeSession!)}
           onWithdraw={() => hook.setWithdrawVisible(true)}
+          onStartCount={hook.handleStartCount}
+          onResume={hook.handleResume}
         />
       ) : (
         <NoSessionBanner onOpen={() => hook.setOpenModalVisible(true)} />
@@ -711,11 +731,15 @@ function ActiveSessionBanner({
   onClose,
   onViewDetail,
   onWithdraw,
+  onStartCount,
+  onResume,
 }: {
   session: ApiCashSession
   onClose: () => void
   onViewDetail: () => void
   onWithdraw: () => void
+  onStartCount: () => void
+  onResume: () => void
 }) {
   const expectedCash = session.summary?.expectedCash ?? Number(session.openingAmount)
   const expectedCashUsd = session.summary?.expectedCashUsd ?? Number(session.openingAmountUsd ?? 0)
@@ -728,7 +752,7 @@ function ActiveSessionBanner({
       <div className="flex items-start justify-between mb-4">
         <div>
           <div className="flex items-center gap-2.5 mb-1">
-            <StatusBadge status="ABIERTA" />
+            <StatusBadge status={session.status} />
             <span className="text-[13px] font-bold text-foreground">Sesión activa</span>
             <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
               TC: {fmtMoney(tc)}/USD
@@ -745,12 +769,32 @@ function ActiveSessionBanner({
           >
             <Eye className="w-3.5 h-3.5" /> Ver detalle
           </button>
-          <button
-            onClick={onWithdraw}
-            className="flex items-center gap-1.5 px-3 py-1.5 border border-amber-300 dark:border-amber-700 rounded-lg text-[12px] text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20"
-          >
-            <Banknote className="w-3.5 h-3.5" /> Retirar
-          </button>
+          {/* Con la caja en arqueo no se retira ni se opera: solo se cuenta,
+              se reanuda o se cierra (CASH-011). */}
+          {session.status === 'ABIERTA' && (
+            <>
+              <button
+                onClick={onWithdraw}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-amber-300 dark:border-amber-700 rounded-lg text-[12px] text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+              >
+                <Banknote className="w-3.5 h-3.5" /> Retirar
+              </button>
+              <button
+                onClick={onStartCount}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-border rounded-lg text-[12px] text-muted-foreground hover:bg-muted/50"
+              >
+                <Clock className="w-3.5 h-3.5" /> Arquear
+              </button>
+            </>
+          )}
+          {session.status === 'EN_ARQUEO' && (
+            <button
+              onClick={onResume}
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-border rounded-lg text-[12px] text-muted-foreground hover:bg-muted/50"
+            >
+              <ArrowUpRight className="w-3.5 h-3.5" /> Reanudar
+            </button>
+          )}
           <button
             onClick={onClose}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-[12px] font-semibold hover:opacity-90"

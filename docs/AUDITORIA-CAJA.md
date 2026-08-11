@@ -9,8 +9,8 @@
 | **Rama auditada** | `dev` @ `e0970cd` |
 | **Alcance** | `api/` (cash-sessions, orders, receivables, payables, restaurant), `web/` (página de Caja), esquema Prisma, migraciones, tests |
 | **Tipo** | Auditoría de solo lectura; Fase 1 implementada el 2026-08-11 |
-| **Preparación estimada** | ~55% al auditar · **~98% tras Fases 1–8** |
-| **Veredicto** | **Apto para producción.** Las 8 fases cierran los 4 hallazgos críticos, los 4 altos y los medios salvo uno. Única deuda abierta: el servicio no transiciona por los estados intermedios (CASH-011), aunque el corte parcial ya funciona vía `CashCount` |
+| **Preparación estimada** | ~55% al auditar · **100% del plan tras Fases 1–8** |
+| **Veredicto** | **Apto para producción.** Las 8 fases cierran los 13 hallazgos: 4 críticos, 4 altos y 5 medios. Sin deuda abierta del plan original |
 
 ### Límites conocidos de esta auditoría
 
@@ -33,7 +33,7 @@
 
 Con la Fase 8 se cierra además el hallazgo #1 de la matriz: **existe la caja física**. Una sucursal puede tener varias cajas operando a la vez, cada una con su propia sesión y su propio corte, y `openedById` deja de sugerir una pertenencia que el sistema no aplicaba.
 
-Única deuda abierta: el servicio no transiciona por los estados intermedios ([CASH-011](#cash-011)). No es riesgo financiero — el corte parcial ya funciona vía `CashCount` tipo PARCIAL — sino expresividad del ciclo.
+Con CASH-011 cerrado, **el plan de la auditoría queda completo**: el ciclo recorre sus estados, la caja se congela mientras se cuenta, y un corte descuadrado no se da por cerrado sin que alguien lo autorice.
 
 ### Lo que sí está bien
 
@@ -93,7 +93,7 @@ esperado = fondoInicial
 | 10 | Entradas/salidas manuales | ✅ | motivo obligatorio en egresos + bitácora | Bajo |
 | 11 | Arqueo físico formal | ✅ | entidad `CashCount`, N por sesión | Bajo |
 | 12 | Diferencias auditables | ✅ | `differenceReason` + umbral server-side + `AuditLog` | Bajo |
-| 13 | Corte parcial | 🟡 | `CashCount` PARCIAL operativo; estados creados pero el servicio no los transiciona | Medio |
+| 13 | Corte parcial | ✅ | `start-count`/`resume` + corte que queda en revisión si excede el umbral | Bajo |
 | 14 | Cierre atómico y congelado | ✅ | `closeSessionAtomically`, reclamo condicionado | Bajo |
 | 15 | Retiro de efectivo | ✅ | tipo `WITHDRAWAL` + `remainingFund` + UI | Bajo |
 | 16 | Movimientos sin huérfanos | ✅ | `cashSessionId` NOT NULL + `requireOpenSession` | Bajo |
@@ -102,7 +102,7 @@ esperado = fondoInicial
 | 19 | Permisos | ✅ | `pos.cash:withdraw` y `pos.cash:count` dedicados | Bajo |
 | 20 | Índices para el corte | ✅ | `cash_movements_tenantId_cashSessionId_type_idx` | Bajo |
 | 21 | Precisión decimal | ✅ | `Decimal(10,2)` / `(10,4)` | Bajo |
-| 22 | Tests de caja | ✅ | 40 pruebas de caja (apertura multi-caja, cierre, arqueo, retiro, reembolso, CxC, divisas, concurrencia); suite 316/316 | Bajo |
+| 22 | Tests de caja | ✅ | 52 pruebas de caja (ciclo de estados, apertura multi-caja, cierre, arqueo, retiro, reembolso, CxC, divisas, concurrencia); suite 328/328 | Bajo |
 
 ---
 
@@ -298,13 +298,31 @@ where: { tenantId, status: 'ABIERTA' }
 ---
 
 ### CASH-011
-**Severidad: MEDIO · Estado: 🟡 Parcial (Fase 5) — estados creados en BD; el servicio aún no los transiciona**
+**Severidad: MEDIO · Estado: ✅ Resuelto**
 
 **Problema.** `CashSessionStatus` solo tiene `ABIERTA` / `CERRADA`. No existe `COUNTING` ni `PENDING_REVIEW`.
 
 **Impacto.** No puede representarse «arqueo hecho, caja sigue abierta» ni «cierre pendiente de revisión». No hay corte parcial.
 
-**🟡 Parcial (Fase 5).** Se agregaron `EN_ARQUEO` y `PENDIENTE_REVISION` al enum y se amplió el índice único a `status <> 'CERRADA'` —si no, una sesión en arqueo dejaba de bloquear y podía abrirse una segunda caja en la misma sucursal—. **El corte parcial ya es posible** vía `CashCount` tipo PARCIAL, que cuenta sin cerrar. Lo que falta es que el servicio transicione la sesión a esos estados; hoy sigue yendo de ABIERTA a CERRADA directo.
+**✅ Resolución.** El ciclo recorre sus estados:
+
+```
+ABIERTA ──start-count──► EN_ARQUEO ──resume──► ABIERTA
+   │                         │
+   └───────── close ─────────┘
+                │
+      ┌─────────┴──────────┐
+ dentro del umbral    fuera del umbral
+      │                    │
+   CERRADA      PENDIENTE_REVISION ──closeWithAuth──► CERRADA
+```
+
+- `PATCH :id/start-count` y `PATCH :id/resume` con transición atómica: el `where` filtra por los estados de origen admitidos, así que un cambio inválido no afecta filas y se reporta con el estado actual.
+- **Congelar la caja no necesitó código nuevo**: `requireOpenSession` solo acepta `ABIERTA`, así que en `EN_ARQUEO` o `PENDIENTE_REVISION` ningún movimiento entra y el efectivo no se mueve mientras se cuenta.
+- El cierre reclama a `PENDIENTE_REVISION` en vez de saltar a `CERRADA`: el estado final depende de la diferencia, que no se conoce hasta después del reclamo. Si queda dentro del umbral —o viene autorizado— pasa a `CERRADA`; si no, se queda en revisión con el arqueo ya registrado y `closedAt` nulo.
+- `closeWithAuth` admite reclamar una sesión en revisión: es la vía por la que un autorizador finaliza lo que el cajero dejó parado.
+
+Dos ajustes que el cambio destapó: `getActive` filtraba por `ABIERTA`, así que una caja en arqueo desaparecía de la pantalla sin dejar dónde reanudarla; y el frontend cerraba la tarjeta al confirmar el corte, ofreciendo «Abrir caja» sobre una sesión que seguía viva.
 
 ---
 
@@ -322,7 +340,7 @@ where: { tenantId, status: 'ABIERTA' }
 ---
 
 ### CASH-013
-**Severidad: MEDIO · Estado: 🟡 Parcial (Fase 1) · índice y RESTRICT resueltos; etiquetado de reembolsos y `closingAmount` siguen pendientes (Fase 8)**
+**Severidad: MEDIO · Estado: ✅ Resuelto (Fases 1 y 8)**
 
 Riesgos de esquema y reporte:
 
@@ -465,6 +483,7 @@ Cubiertos además, fuera del checklist original:
 | Fecha | Hallazgo | Acción | Commit | Autor |
 |---|---|---|---|---|
 | 2026-08-11 | — | Auditoría inicial, sin cambios de código | `e0970cd` (base) | — |
+| 2026-08-11 | CASH-011 | **Ciclo de estados implementado.** `start-count` y `resume` con transición atómica; el cierre reclama a PENDIENTE_REVISION y solo pasa a CERRADA si la diferencia está dentro del umbral o viene autorizada; `closeWithAuth` finaliza lo que quedó en revisión. Corregidos dos efectos que el cambio destapó: `getActive` filtraba por ABIERTA (la caja en arqueo desaparecía) y el frontend vaciaba la tarjeta tras el corte. Nueva `cash-sessions.lifecycle.spec.ts` (12 pruebas). **Suite: 40/40 suites, 328/328.** E2E: arqueo → badge «En arqueo» y caja congelada → corte con faltante de $50 → «Pendiente de revisión» con `closedAt` nulo y arqueo FINAL registrado. | pendiente | — |
 | 2026-08-11 | Fase 8 · matriz #1 · CASH-013 | **Fase 8 implementada.** Entidad `CashRegister` con backfill de "Caja 1" por sucursal (6 cajas, 15 sesiones vinculadas, 0 huérfanas); la unicidad de caja viva pasa de la sucursal a la caja física, habilitando N cajas por sucursal. Tipo `REFUND` con fila propia en el corte. `closingAmount` → `expectedAmount`. Endpoint `GET /cash-sessions/registers`. **Suite: 39/39 suites, 316/316 pruebas.** E2E: resumen mostrando Devoluciones y Retiros separados de egresos; verificado en BD que dos cajas de la misma sucursal abren a la vez y que la misma caja rechaza con P2002. | pendiente | — |
 | 2026-08-11 | Fase 7 | **Cobertura de tests completa.** Nueva `cash-sessions.close.spec.ts` (11 pruebas: cuadre, faltante, sobrante, umbral, fondo restante, cierre duplicado, concurrencia, devolución) y 3 pruebas de CxC (montos, tarjeta, cobro en USD con TC). Los 12 puntos del checklist quedan mapeados a una prueba real. Suite: **38/38 suites, 307/307 pruebas.** | pendiente | — |
 | 2026-08-11 | CASH-005/010/011 | **Fases 5–6 implementadas.** Tipo `WITHDRAWAL` + `remainingFund` + endpoint y UI de retiro; estados `EN_ARQUEO`/`PENDIENTE_REVISION` e índice único ampliado a `status <> 'CERRADA'`; CARD/TRANSFER convierten USD a MXN en el resumen. Migraciones `20260811180000` y `20260811180001`. **Suite completa en verde: 37/37 suites, 293/293 pruebas** (se saneó además la deuda de mocks preexistente en auth, users, products, coupons, categories y restaurant). E2E en Chrome: retiro excesivo rechazado, retiro de $400 aplicado (esperado $1000 → $600) con `CASH_WITHDRAWAL` en bitácora. | pendiente | — |

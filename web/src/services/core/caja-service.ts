@@ -1,6 +1,6 @@
 import { api } from '@/lib/api-client'
 
-export type CashSessionStatus = 'ABIERTA' | 'CERRADA'
+export type CashSessionStatus = 'ABIERTA' | 'EN_ARQUEO' | 'PENDIENTE_REVISION' | 'CERRADA'
 export type CashMovementType = 'SALE' | 'CXC_PAYMENT' | 'SUPPLIER_PAYMENT' | 'INCOME' | 'EXPENSE'
 
 export interface ApiCashMovement {
@@ -101,6 +101,18 @@ export interface ApiCashCount {
 }
 
 /** Arqueo sobre la caja abierta. Puede repetirse en el mismo día. */
+/** ABIERTA → EN_ARQUEO: congela la caja para contar. */
+export async function startCashCount(id: string): Promise<ApiCashSession> {
+  const { data } = await api.patch<ApiCashSession>(`/cash-sessions/${id}/start-count`)
+  return data
+}
+
+/** EN_ARQUEO → ABIERTA: vuelve a operar tras un arqueo de control. */
+export async function resumeCashSession(id: string): Promise<ApiCashSession> {
+  const { data } = await api.patch<ApiCashSession>(`/cash-sessions/${id}/resume`)
+  return data
+}
+
 export async function createCashCount(input: CashCountInput): Promise<ApiCashCount> {
   const { data } = await api.post<ApiCashCount>('/cash-sessions/active/count', input)
   return data

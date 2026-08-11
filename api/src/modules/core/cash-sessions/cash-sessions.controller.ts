@@ -43,6 +43,20 @@ export class CashSessionsController {
     return this.cashSessionsService.withdrawForSupplies(dto);
   }
 
+  @Patch(':id/start-count')
+  @RequirePermissions('pos.cash:count')
+  @ApiOperation({ summary: 'Congelar la caja para arquear (ABIERTA → EN_ARQUEO)' })
+  startCount(@Param('id') id: string) {
+    return this.cashSessionsService.startCount(id);
+  }
+
+  @Patch(':id/resume')
+  @RequirePermissions('pos.cash:count')
+  @ApiOperation({ summary: 'Volver a operar tras un arqueo de control (EN_ARQUEO → ABIERTA)' })
+  resumeOperation(@Param('id') id: string) {
+    return this.cashSessionsService.resumeOperation(id);
+  }
+
   @Get('registers')
   @RequirePermissions('cash:view')
   @ApiOperation({ summary: 'Cajas físicas de la sucursal, con su sesión viva si la hay' })

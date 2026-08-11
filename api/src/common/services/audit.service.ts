@@ -17,7 +17,10 @@ export type AuditAction =
   | 'CASH_SESSION_CLOSE'
   | 'CASH_MOVEMENT_CREATE'
   | 'CASH_WITHDRAWAL'
-  | 'CASH_COUNT';
+  | 'CASH_COUNT'
+  // Transiciones del ciclo de caja (CASH-011).
+  | 'CASH_COUNT_START'
+  | 'CASH_COUNT_RESUME';
 
 interface AuditEntry {
   action: AuditAction;

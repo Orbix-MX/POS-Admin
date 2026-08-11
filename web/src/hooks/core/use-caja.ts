@@ -6,6 +6,8 @@ import {
   openCashSession,
   closeCashSession,
   withdrawCash,
+  startCashCount,
+  resumeCashSession,
   type ApiCashSession,
   type OpenSessionInput,
   type CloseSessionInput,
@@ -122,7 +124,11 @@ export function useCaja() {
     setCloseError(null)
     try {
       await closeCashSession(activeSession.id, closeForm)
-      setActiveSession(null)
+      // No se asume que quedó cerrada: si la diferencia supera el umbral, el
+      // corte queda PENDIENTE_REVISION y la caja sigue viva. Se relee el estado
+      // real en vez de vaciarla, o el operador vería "Abrir caja" sobre una
+      // sesión que aún existe (CASH-011).
+      await loadActive()
       setCloseModalVisible(false)
       setCloseForm({ cashCounted: 0, cashCountedUsd: 0, differenceReason: '', notes: '' })
       loadHistory(1)
@@ -131,7 +137,25 @@ export function useCaja() {
     } finally {
       setClosing(false)
     }
-  }, [activeSession, closeForm, loadHistory])
+  }, [activeSession, closeForm, loadHistory, loadActive])
+
+  const [transitioning, setTransitioning] = useState(false)
+
+  /** ABIERTA → EN_ARQUEO: congela la caja para contar sin que el efectivo se mueva. */
+  const handleStartCount = useCallback(async () => {
+    if (!activeSession) return
+    setTransitioning(true)
+    try { await startCashCount(activeSession.id); await loadActive() }
+    finally { setTransitioning(false) }
+  }, [activeSession, loadActive])
+
+  /** EN_ARQUEO → ABIERTA: el arqueo fue de control y la caja sigue operando. */
+  const handleResume = useCallback(async () => {
+    if (!activeSession) return
+    setTransitioning(true)
+    try { await resumeCashSession(activeSession.id); await loadActive() }
+    finally { setTransitioning(false) }
+  }, [activeSession, loadActive])
 
   /** Retiro de efectivo del cajón: baja el esperado y recarga la sesión. */
   const handleWithdraw = useCallback(async () => {
@@ -190,6 +214,8 @@ export function useCaja() {
     closeForm, setCloseForm,
     closing, closeError,
     handleCloseSession,
+    // ciclo de arqueo
+    transitioning, handleStartCount, handleResume,
     // withdraw
     withdrawVisible, setWithdrawVisible,
     withdrawForm, setWithdrawForm,
