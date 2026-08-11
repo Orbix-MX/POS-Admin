@@ -22,6 +22,7 @@ export type TextTone =
   | 'primaryForeground'
   | 'destructive'
   | 'successFg'
+  | 'warningFg'
   | 'dangerFg'
   | 'onDark'
   | 'onDarkMuted';

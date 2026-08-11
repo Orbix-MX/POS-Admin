@@ -28,6 +28,8 @@ type BlurHandler = NonNullable<TextInputProps['onBlur']>;
 
 export interface OrbixInputProps extends Omit<TextInputProps, 'style'> {
   hasError?: boolean;
+  /** Rendered inside the field, on the left — e.g. the POS search glass. */
+  leftAdornment?: React.ReactNode;
   /** Rendered inside the field, on the right — e.g. the show/hide toggle. */
   rightAdornment?: React.ReactNode;
   containerStyle?: StyleProp<ViewStyle>;
@@ -37,6 +39,7 @@ export interface OrbixInputProps extends Omit<TextInputProps, 'style'> {
 export const OrbixInput = forwardRef<TextInput, OrbixInputProps>(function OrbixInput(
   {
     hasError = false,
+    leftAdornment,
     rightAdornment,
     containerStyle,
     height = 44,
@@ -114,6 +117,7 @@ export const OrbixInput = forwardRef<TextInput, OrbixInputProps>(function OrbixI
           borderStyle,
         ]}
       >
+        {leftAdornment ? <View style={{ marginRight: theme.spacing.sm }}>{leftAdornment}</View> : null}
         <TextInput
           ref={ref}
           onFocus={handleFocus}

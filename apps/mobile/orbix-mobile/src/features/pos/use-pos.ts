@@ -50,6 +50,16 @@ export function useOpenCashSession() {
   });
 }
 
+/** Emails the ticket for a just-closed sale. Read-only on the order, hence `orders:view`. */
+export function useSendReceipt() {
+  const { t } = useTranslation();
+
+  return useMutation<void, unknown, { orderId: string; email: string }>({
+    mutationFn: ({ orderId, email }) => ordersRepository.sendReceipt(orderId, email),
+    meta: { errorMessage: (error: unknown) => toUserMessage(error, t) },
+  });
+}
+
 export function useCreateSaleOrder() {
   const { session } = useAuth();
   const queryClient = useQueryClient();

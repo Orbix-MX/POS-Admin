@@ -14,9 +14,13 @@ expo-env.d.ts
 *.mobileprovision
 *.orig.*
 
-# Secrets — never commit real credentials.
+# Secrets and per-developer config — never commit.
+# `.env.development` holds a LAN address that differs per machine, so it is
+# untracked too; `.env.example` stays in git as the documented template.
 .env
 .env.local
+.env.development
+.env.production
 .env.development.local
 .env.production.local
 

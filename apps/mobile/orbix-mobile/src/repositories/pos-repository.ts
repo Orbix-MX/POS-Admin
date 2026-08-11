@@ -19,6 +19,8 @@ export interface CashSession {
   status: 'ABIERTA' | 'CERRADA';
   branchId: string | null;
   openingAmount: number;
+  /** USD half of the float. `exchangeRateUsdMxn` is fixed for the whole session. */
+  openingAmountUsd: number;
   exchangeRateUsdMxn: number;
   openedAt: string;
 }
@@ -28,6 +30,14 @@ export interface Order {
   orderNumber: string;
   status: string;
   paymentStatus: string;
+  /**
+   * Server-computed money. The POS preview can only estimate tax from each
+   * product's own `taxRate`; the tenant-default rate lives in `tenant.settings`
+   * and never reaches the client, so these are the authoritative figures and
+   * are what the success screen shows.
+   */
+  subtotal: number;
+  tax: number;
   total: number;
   createdAt: string;
 }
@@ -54,6 +64,7 @@ export const cashSessionsRepository = {
       status: dto.status as 'ABIERTA' | 'CERRADA',
       branchId: dto.branchId ?? null,
       openingAmount: toNumber(dto.openingAmount),
+      openingAmountUsd: toNumber(dto.openingAmountUsd),
       exchangeRateUsdMxn: toNumber(dto.exchangeRateUsdMxn),
       openedAt: dto.openedAt as string,
     };
@@ -66,6 +77,7 @@ export const cashSessionsRepository = {
       status: dto.status,
       branchId: dto.branchId,
       openingAmount: toNumber(dto.openingAmount),
+      openingAmountUsd: toNumber(dto.openingAmountUsd),
       exchangeRateUsdMxn: toNumber(dto.exchangeRateUsdMxn),
       openedAt: dto.openedAt,
     };
@@ -80,8 +92,17 @@ export const ordersRepository = {
       orderNumber: dto.orderNumber,
       status: dto.status,
       paymentStatus: dto.paymentStatus,
+      subtotal: toNumber(dto.subtotal),
+      tax: toNumber(dto.tax),
       total: toNumber(dto.total),
       createdAt: dto.createdAt,
     };
+  },
+
+  /** `POST /orders/:id/send-receipt` — emails the ticket. Requires `orders:view`. */
+  async sendReceipt(orderId: string, email: string): Promise<void> {
+    await http.post<{ success: boolean; message: string }>(`/orders/${orderId}/send-receipt`, {
+      email,
+    });
   },
 } as const;
