@@ -215,6 +215,15 @@ export const PlusIcon = memo(function PlusIcon({ size = 18, color, strokeWidth =
   );
 });
 
+export const MinusIcon = memo(function MinusIcon({ size = 18, color, strokeWidth = 2 }: IconProps) {
+  const stroke = { stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Line x1={5} y1={12} x2={19} y2={12} {...stroke} />
+    </Svg>
+  );
+});
+
 export const SearchIcon = memo(function SearchIcon({ size = 16, color, strokeWidth = 2 }: IconProps) {
   const stroke = { stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
   return (

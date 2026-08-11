@@ -237,6 +237,26 @@ export const en: TranslationSchema = {
     },
   },
 
+  pos: {
+    title: 'Sales',
+    noCashSession: 'No cash session open',
+    noCashSessionHint: 'Open the register with a starting float to start selling.',
+    openingAmountPlaceholder: 'Starting float (MXN)',
+    openCashSession: 'Open register',
+    searchPlaceholder: 'Search product',
+    noProducts: 'No products available.',
+    outOfStock: 'Out of stock',
+    total: 'Total',
+    charge: 'Charge ({{count}})',
+    checkout: 'Confirm sale',
+    confirmSale: 'Charge',
+    cash: 'Cash',
+    card: 'Card',
+    amountReceivedPlaceholder: 'Cash received (optional)',
+    change: 'Change',
+    saleCompleted: 'Sale {{number}} recorded',
+  },
+
   businessTypes: {
     tienda: 'Retail / Store',
     restaurante: 'Restaurant',

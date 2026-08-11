@@ -50,7 +50,7 @@ interface DrawerModule {
   labelKey: 'ventas' | 'inventario' | 'clientes' | 'empleados' | 'reportes' | 'caja';
   Icon: ComponentType<IconProps>;
   /** Live destination; undefined rows render as "Próx." placeholders. */
-  route?: '/(app)/products';
+  route?: '/(app)/products' | '/(app)/pos';
 }
 
 const STATIC_MODULES: Omit<DrawerModule, 'route'>[] = [
@@ -167,15 +167,15 @@ function AppDrawerComponent({ visible, onClose }: AppDrawerProps) {
     if (visible) void refresh();
   }, [visible, refresh]);
 
-  // Inventario is the one module wired to a real screen; gated on the
-  // tenant/role's actual `products:view` access, not just presence in the list.
+  // Inventario and Ventas are wired to real screens; each gated on its own
+  // permission, not just presence in the list.
   const drawerModules = useMemo<DrawerModule[]>(
     () =>
-      STATIC_MODULES.map((mod) =>
-        mod.key === 'inventario' && can('products:view')
-          ? { ...mod, route: '/(app)/products' as const }
-          : mod,
-      ),
+      STATIC_MODULES.map((mod) => {
+        if (mod.key === 'inventario' && can('products:view')) return { ...mod, route: '/(app)/products' as const };
+        if (mod.key === 'ventas' && can('orders:create')) return { ...mod, route: '/(app)/pos' as const };
+        return mod;
+      }),
     [can],
   );
   const signOut = useSignOut();

@@ -239,6 +239,26 @@ export const es = {
     },
   },
 
+  pos: {
+    title: 'Ventas',
+    noCashSession: 'No hay caja abierta',
+    noCashSessionHint: 'Abre la caja con el fondo inicial para empezar a vender.',
+    openingAmountPlaceholder: 'Fondo inicial (MXN)',
+    openCashSession: 'Abrir caja',
+    searchPlaceholder: 'Buscar producto',
+    noProducts: 'No hay productos disponibles.',
+    outOfStock: 'Sin existencias',
+    total: 'Total',
+    charge: 'Cobrar ({{count}})',
+    checkout: 'Confirmar venta',
+    confirmSale: 'Cobrar',
+    cash: 'Efectivo',
+    card: 'Tarjeta',
+    amountReceivedPlaceholder: 'Efectivo recibido (opcional)',
+    change: 'Cambio',
+    saleCompleted: 'Venta {{number}} registrada',
+  },
+
   businessTypes: {
     tienda: 'Comercio / Tienda',
     restaurante: 'Restaurante',

@@ -237,6 +237,26 @@ export const pt: TranslationSchema = {
     },
   },
 
+  pos: {
+    title: 'Vendas',
+    noCashSession: 'Nenhum caixa aberto',
+    noCashSessionHint: 'Abra o caixa com o fundo inicial para começar a vender.',
+    openingAmountPlaceholder: 'Fundo inicial (MXN)',
+    openCashSession: 'Abrir caixa',
+    searchPlaceholder: 'Buscar produto',
+    noProducts: 'Nenhum produto disponível.',
+    outOfStock: 'Sem estoque',
+    total: 'Total',
+    charge: 'Cobrar ({{count}})',
+    checkout: 'Confirmar venda',
+    confirmSale: 'Cobrar',
+    cash: 'Dinheiro',
+    card: 'Cartão',
+    amountReceivedPlaceholder: 'Valor recebido (opcional)',
+    change: 'Troco',
+    saleCompleted: 'Venda {{number}} registrada',
+  },
+
   businessTypes: {
     tienda: 'Comércio / Loja',
     restaurante: 'Restaurante',
