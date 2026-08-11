@@ -1,0 +1,427 @@
+# Auditoría del módulo de Caja — Orbix ERP
+
+> **Documento de seguimiento.** Registra el diagnóstico previo a la implementación.
+> Actualiza la columna **Estado** y la sección [Bitácora](#bitácora-de-seguimiento) conforme se corrija cada hallazgo.
+
+| | |
+|---|---|
+| **Fecha de auditoría** | 2026-08-11 |
+| **Rama auditada** | `dev` @ `e0970cd` |
+| **Alcance** | `api/` (cash-sessions, orders, receivables, payables, restaurant), `web/` (página de Caja), esquema Prisma, migraciones, tests |
+| **Tipo** | Solo lectura — no se modificó código |
+| **Preparación estimada** | ~55% |
+| **Veredicto** | **No apto para producción financiera sin las correcciones P0** |
+
+### Límites conocidos de esta auditoría
+
+- No se ejecutaron los tests ni se reprodujeron las condiciones de carrera en runtime. Las conclusiones de concurrencia derivan de lectura de código (ausencia de transacción y de guard en el `where`), evidencia suficiente pero no equivalente a un test que falle.
+- No se revisó el flujo de caja en `apps/pos` (Flutter) ni el de restaurante, que también escriben movimientos (`restaurant.service.ts:215,328`). **Pendiente de auditoría propia.**
+
+---
+
+## 1. Pregunta central
+
+> ¿Podemos confiar en que el saldo esperado que muestra Orbix representa el dinero que debería existir físicamente, y que cualquier diferencia puede explicarse y auditarse sin alterar el historial?
+
+**NO.** Por tres razones demostrables:
+
+1. **Movimientos huérfanos silenciosos** — dinero cobrado que no pertenece a ninguna caja ([CASH-001](#cash-001)).
+2. **Alteración de cortes pasados** — movimientos que se insertan en sesiones ya cerradas ([CASH-003](#cash-003)).
+3. **Ausencia total de bitácora** — el módulo no escribe `AuditLog` ([CASH-004](#cash-004)).
+
+### Lo que sí está bien
+
+Conviene no perderlo de vista al refactorizar:
+
+- La fórmula de efectivo esperado es conceptualmente correcta y **derivada**, no un saldo almacenado (`cash-sessions.service.ts:510`).
+- Los **pagos mixtos** se registran por split y omiten `CREDITO` (`orders.service.ts:416-450`).
+- El flujo **CxC** separa correctamente venta a crédito de cobro posterior.
+- Las **devoluciones** descuentan del efectivo esperado.
+- La **apertura** tiene protección real de concurrencia: índice único parcial en BD (`cash_sessions_one_open_per_branch_key`) + traducción de P2002, con 5 tests que lo cubren.
+- **Todos los montos son `Decimal`** (10,2) y el TC `Decimal(10,4)`. **No hay floats.**
+
+---
+
+## 2. Arquitectura actual
+
+**Stack:** monorepo con `api/` (NestJS 11 + Prisma 7 + PostgreSQL vía `@prisma/adapter-pg`), `web/` (React 19 + Vite), `apps/mobile/orbix-mobile` (Expo/RN), `apps/pos` (Flutter), `packages/types`.
+
+**Multi-tenancy:** `AsyncLocalStorage` (`TenantContextService`, `AuditContextService`) poblado por `AuditContextInterceptor`. Autorización global en dos capas: `JwtAuthGuard` → `PermissionsGuard` con `@RequirePermissions`.
+
+**Modelo de caja real:**
+
+```
+CashSession (schema.prisma:1552)   status: ABIERTA | CERRADA
+   └── CashMovement (1622)         type: SALE | CXC_PAYMENT | SUPPLIER_PAYMENT
+                                         | INCOME | EXPENSE
+```
+
+**No existen** como entidades: `CashRegister`, `CashCount`, `CashDifference`, `Withdrawal`, `Opening`.
+La apertura son columnas de `CashSession`; el arqueo son dos columnas (`cashCounted`, `cashCountedUsd`); la diferencia son dos columnas calculadas al cerrar.
+
+> **Aclaración de lectura.** Este inventario mapea *conceptos* contra el checklist de la auditoría; no implica que los cinco deban ser tablas. Sólo la ausencia de `CashRegister` y de `CashCount` constituye un hallazgo. `Opening` y `CashDifference` están correctamente modelados como columnas, y `Withdrawal` corresponde a un tipo de movimiento. El razonamiento está en [§7.1](#71-criterio-entidad-vs-columna).
+
+**Cálculo del esperado** (`calculateExpectedCash`, `cash-sessions.service.ts:510-528`):
+
+```
+esperado = fondoInicial
+         + Σ (SALE | CXC_PAYMENT | INCOME)      donde paymentMethod = CASH y moneda coincide
+         − Σ (SUPPLIER_PAYMENT | EXPENSE)       donde paymentMethod = CASH y moneda coincide
+```
+
+---
+
+## 3. Matriz de cumplimiento
+
+| # | Requisito | Estado | Evidencia | Riesgo |
+|---|---|---|---|---|
+| 1 | Caja física vs sesión | ❌ | No existe `CashRegister`; 1 sesión por sucursal | Alto |
+| 2 | Apertura | ✅ | `cash-sessions.service.ts:43` | Bajo |
+| 3 | Concurrencia en apertura | ✅ | `cash-sessions.open.spec.ts` | Bajo |
+| 4 | Fondo inicial inmutable | ✅ | Sin endpoint de update | Bajo |
+| 5 | Fórmula efectivo esperado | ✅ | `service.ts:510-528` | Bajo |
+| 6 | Separación de métodos de pago | ⚠️ | `buildSummary:530` | Medio |
+| 7 | Pagos mixtos | ✅ | `orders.service.ts:416-450` | Bajo |
+| 8 | CxC (crédito → cobro) | ✅ | `receivables.service.ts:127` | Bajo |
+| 9 | Devoluciones | ⚠️ | `orders.service.ts:1003` | Medio |
+| 10 | Entradas/salidas manuales | ⚠️ | `service.ts:230` | Medio |
+| 11 | Arqueo físico formal | ❌ | `close-session.dto.ts` | Alto |
+| 12 | Diferencias auditables | ❌ | Sin motivo ni bitácora | **Crítico** |
+| 13 | Corte parcial | ❌ | Solo ABIERTA/CERRADA | Alto |
+| 14 | Cierre atómico y congelado | ❌ | `service.ts:136` | **Crítico** |
+| 15 | Retiro de efectivo | ❌ | Concepto inexistente | Alto |
+| 16 | Movimientos sin huérfanos | ❌ | `cashSessionId` nullable | **Crítico** |
+| 17 | Auditoría del módulo | ❌ | No usa `AuditService` | **Crítico** |
+| 18 | Multi-moneda | ⚠️ | Falla en CxC/payables | Alto |
+| 19 | Permisos | ⚠️ | Retiro bajo `pos:access` | Alto |
+| 20 | Índices para el corte | ❌ | Sin índice en `cashSessionId` | Medio |
+| 21 | Precisión decimal | ✅ | `Decimal(10,2)` / `(10,4)` | Bajo |
+| 22 | Tests de cierre | ❌ | 0 tests | Alto |
+
+---
+
+## 4. Flujo actual vs objetivo
+
+**Actual**
+```
+Apertura ──► Operación ──► [captura de contado] ──► Cierre
+             movimientos    sin arqueo formal       no atómico
+                            sin motivo              no congela
+```
+
+**Objetivo**
+```
+Apertura ─► Operación ─► Cálculo esperado ─► Arqueo ─► Diferencia
+   ─► Revisión/autorización ─► Retiro ─► Cierre (congelado + auditado)
+```
+
+Faltan cuatro etapas: cálculo confirmado, arqueo, revisión y retiro.
+
+---
+
+## 5. Hallazgos
+
+Leyenda de estado: ⬜ Pendiente · 🟡 En curso · ✅ Resuelto
+
+---
+
+### CASH-001
+**Severidad: CRÍTICO · Estado: ⬜ Pendiente · Fase 1**
+
+**Problema.** `CashMovement.cashSessionId` es nullable (`schema.prisma:1624`) y tres rutas escriben `null` sin error cuando no hay caja abierta:
+
+| Ruta | Ubicación |
+|---|---|
+| Cobro de CxC | `api/src/modules/core/receivables/receivables.service.ts:127` |
+| Pago a proveedor | `api/src/modules/core/payables/payables.service.ts:106` |
+| Movimiento manual | `api/src/modules/core/cash-sessions/cash-sessions.service.ts:250` |
+
+Las tres usan el patrón `cashSessionId: activeSession?.id ?? null`.
+
+**Impacto.** Un cobro de CxC en efectivo sin caja abierta se registra, reduce el saldo del cliente **y no aparece en ningún corte, jamás**. El dinero existe físicamente pero es invisible para la conciliación. No hay alerta ni reporte de huérfanos.
+
+**Contraste.** Las ventas **sí** están protegidas (`orders.service.ts:216` lanza `BadRequestException`). La regla existe pero se aplica en 1 de 4 rutas.
+
+**Comportamiento esperado.** Ninguna operación de efectivo debe poder registrarse sin sesión abierta.
+
+**Corrección conceptual.** `cashSessionId` a `NOT NULL`; exigir sesión abierta en las tres rutas como ya hace `orders.create`. Decidir explícitamente la regla para métodos no-efectivo. Migrar los huérfanos existentes antes de aplicar la restricción.
+
+---
+
+### CASH-002
+**Severidad: CRÍTICO · Estado: ⬜ Pendiente · Fase 1**
+
+**Problema.** `close()` (`cash-sessions.service.ts:106-156`) hace lectura → cálculo → update **sin transacción** y con `where: { id }` **sin condición de estado**:
+
+```ts
+if (session.status === 'CERRADA') throw ...              // :115  check
+// ── ventana de carrera ──
+return this.prisma.cashSession.update({ where: { id } }) // :136  act
+```
+
+`closeWithAuth()` (`:325`) tiene el mismo defecto.
+
+**Impacto.**
+1. **Doble cierre:** dos peticiones simultáneas pasan ambas el check y ambas escriben; gana la última y la primera diferencia se pierde sin rastro.
+2. **Movimientos perdidos del corte:** un movimiento insertado entre `:110` y `:136` queda asociado a la sesión pero fuera del `expectedCash` ya calculado.
+
+**Comportamiento esperado.** El cierre debe ser una operación atómica que falle si la sesión ya no está abierta.
+
+**Corrección conceptual.** Envolver en `$transaction`; update condicional (`where: { id, status: 'ABIERTA' }`) verificando filas afectadas.
+
+---
+
+### CASH-003
+**Severidad: CRÍTICO · Estado: ⬜ Pendiente · Fase 1**
+
+**Problema.** Ningún punto de escritura valida que la sesión esté `ABIERTA` **en el instante del insert**. En ventas la sesión se lee **antes** de la transacción (`orders.service.ts:212`, comentario explícito «pre-transaction read») y se usa dentro (`:414`, `:435`).
+
+**Impacto.** Si la caja se cierra durante el checkout, la venta se adjunta a una sesión `CERRADA` con corte ya emitido. **Esto altera el pasado:** un corte impreso y firmado deja de coincidir con la base de datos.
+
+**Comportamiento esperado.** Una sesión cerrada es inmutable; ningún movimiento posterior puede asociarse a ella.
+
+**Corrección conceptual.** Validar estado dentro de la misma transacción del insert; reforzar con `CHECK`/trigger en BD que rechace movimientos contra sesiones cerradas.
+
+---
+
+### CASH-004
+**Severidad: CRÍTICO · Estado: ⬜ Pendiente · Fase 2**
+
+**Problema.** `AuditService` existe (`api/src/common/services/audit.service.ts`) y lo usan `orders`, `users`, `products`, `branches`. **`cash-sessions` no lo importa en ningún punto.**
+
+**Impacto.** No se puede responder quién cerró una caja con faltante, quién registró un egreso manual, ni qué había antes. Se conservan `closedById`/`authorizedById` en la sesión, pero los movimientos manuales solo llevan `createdById`, sin motivo obligatorio ni trazabilidad de cambios. Una diferencia no puede explicarse *a posteriori*.
+
+**Comportamiento esperado.** Toda operación que mueva dinero o cambie el estado de la caja deja rastro con actor, momento, motivo y estado previo/nuevo.
+
+**Corrección conceptual.** Emitir `AuditLog` en apertura, cierre, cierre autorizado, movimiento manual y retiro, con `before`/`after` y `reason`.
+
+---
+
+### CASH-005
+**Severidad: ALTO · Estado: ⬜ Pendiente · Fase 5**
+
+**Problema.** `CashMovementType` no incluye `WITHDRAWAL`. `CloseCashSessionDto` no acepta retiro. El cierre no distingue *efectivo contado* de *fondo que permanece*.
+
+`withdrawForSupplies()` (`service.ts:389`) **no es esto**: es compra de insumos, se tipa `EXPENSE` y afecta el esperado.
+
+**Impacto.** No puede modelarse `Fondo restante = Contado − Retiro`. La caja siguiente abre con un fondo capturado a mano, sin encadenar con el cierre anterior: se rompe la continuidad entre sesiones.
+
+**Corrección conceptual.** Tipo `WITHDRAWAL` en `CashMovement` — no una tabla aparte, para conservar un libro mayor único (ver [§7.1](#71-criterio-entidad-vs-columna)) — más una columna de fondo restante en el cierre que alimente la apertura siguiente.
+
+---
+
+### CASH-006
+**Severidad: ALTO · Estado: ⬜ Pendiente · Fase 4**
+
+**Problema.** El «arqueo» es un solo número por moneda (`close-session.dto.ts`): sin denominaciones, sin doble conteo y **sin motivo obligatorio** de diferencia.
+
+Además **`close()` acepta cualquier diferencia sin autorización**. La elección entre `close()` y `closeWithAuth()` la hace el cliente; no hay umbral en backend. Un cajero con `pos.cash:close` cierra con −$5,000 llamando al endpoint sin autorización.
+
+**Comportamiento esperado.** Diferencias por encima de un umbral exigen autorización y motivo, validado en servidor.
+
+**Corrección conceptual.** Entidad `CashCount` con cardinalidad N por sesión — el negocio puede requerir más de un arqueo al día (turnos, recuento tras diferencia); umbral configurable por tenant validado en backend que fuerce la ruta autorizada; `differenceReason` obligatorio, persistido en el arqueo que produjo la diferencia.
+
+---
+
+### CASH-007
+**Severidad: ALTO · Estado: ⬜ Pendiente · Fase 3**
+
+**Problema.** `payables.service.ts:102-103` busca la sesión activa **sin filtrar sucursal**:
+
+```ts
+where: { tenantId, status: 'ABIERTA' }
+```
+
+`receivables` y `createManualMovement` sí filtran, con comentarios que documentan haber corregido justo este bug. **Payables quedó fuera de esa corrección.**
+
+**Impacto.** En tenants multi-sucursal, un pago a proveedor descuenta efectivo de la caja de otra sucursal. Ambos cortes quedan mal.
+
+**Corrección conceptual.** Añadir `branchId` al filtro, igual que en `receivables.service.ts:124`.
+
+---
+
+### CASH-008
+**Severidad: ALTO · Estado: ⬜ Pendiente · Fase 3**
+
+**Problema.** `POST /cash-sessions/active/withdraw-supplies` está bajo `@RequirePermissions('pos:access')` (`cash-sessions.controller.ts:36-37`), mientras abrir y cerrar exigen `pos.cash:open` / `pos.cash:close`.
+
+**Impacto.** Cualquier operador de POS puede sacar efectivo del cajón. Sacar dinero es más sensible que cerrar la caja y tiene un permiso más débil.
+
+**Corrección conceptual.** Permiso propio (p. ej. `pos.cash:withdraw`) y registro en bitácora.
+
+---
+
+### CASH-009
+**Severidad: ALTO · Estado: ⬜ Pendiente · Fase 3**
+
+**Problema.** Ni `receivables` ni `payables` pasan `currency` ni `exchangeRateUsed` (`receivables.service.ts:129-137`, `payables.service.ts:108-117`). El campo cae en el default `"MXN"`.
+
+**Impacto.** Un cobro de CxC de **100 USD se registra como 100 MXN**. El faltante aparece en el corte sin explicación posible.
+
+**Corrección conceptual.** Capturar moneda y TC de sesión en ambos flujos, como ya hace `orders.service.ts:439-443`.
+
+---
+
+### CASH-010
+**Severidad: MEDIO · Estado: ⬜ Pendiente · Fase 6**
+
+**Problema.** En `buildSummary` (`service.ts:555-556`), las ramas CARD/TRANSFER suman `amt` crudo sin distinguir moneda, mientras la rama CASH sí separa (`sales.cashUsd` vs `sales.cash`).
+
+**Impacto.** Una venta con tarjeta en USD suma dólares al total de tarjeta en pesos. El desglose por método no es confiable en multi-moneda.
+
+---
+
+### CASH-011
+**Severidad: MEDIO · Estado: ⬜ Pendiente · Fase 5**
+
+**Problema.** `CashSessionStatus` solo tiene `ABIERTA` / `CERRADA`. No existe `COUNTING` ni `PENDING_REVIEW`.
+
+**Impacto.** No puede representarse «arqueo hecho, caja sigue abierta» ni «cierre pendiente de revisión». No hay corte parcial.
+
+---
+
+### CASH-012
+**Severidad: MEDIO · Estado: ⬜ Pendiente · Fase 2**
+
+**Problema.** `CreateManualMovementDto.reason` es `@IsOptional()`.
+
+**Impacto.** Un `EXPENSE` puede sacar dinero del cajón sin justificación registrada.
+
+**Corrección conceptual.** `reason` obligatorio al menos para egresos.
+
+---
+
+### CASH-013
+**Severidad: MEDIO · Estado: ⬜ Pendiente · Fase 1 / 8**
+
+Riesgos de esquema y reporte:
+
+- **Sin índice** en `cash_movements(cashSessionId)` ni `(tenantId, cashSessionId)`. El corte carga todos los movimientos por sesión; degrada linealmente.
+- `onDelete: SetNull` en `cashSession` → borrar una sesión **huérfana sus movimientos en silencio** en vez de impedirlo. Debería ser `Restrict`.
+- Las devoluciones se tipan `EXPENSE` y el frontend etiqueta `EXPENSE` como «Egresos manuales» (`web/src/pages/caja.tsx:74`): un reembolso aparece como gasto manual. Recuperable vía `referenceType: 'REFUND'`, pero el reporte engaña.
+- `closingAmount` guarda el **esperado**, no el cierre — nombre engañoso (`service.ts:140`).
+
+---
+
+## 6. Riesgos financieros
+
+| Riesgo | ¿Existe? | Vía |
+|---|---|---|
+| Dinero omitido del corte | **Sí** | CASH-001, CASH-002 |
+| Alteración de cortes pasados | **Sí** | CASH-003 |
+| Diferencias no auditables | **Sí** | CASH-004, CASH-006 |
+| Errores por moneda | **Sí** | CASH-009, CASH-010 |
+| Movimientos en caja equivocada | **Sí** | CASH-007 |
+| Extracción de efectivo con permiso débil | **Sí** | CASH-008 |
+| Dinero duplicado | No detectado | Splits correctos |
+| Ventas que no llegan a caja | No | Bloqueadas sin sesión |
+| Errores de pagos mixtos | No | `orders.service.ts:416-450` correcto |
+
+---
+
+## 7. Arquitectura objetivo
+
+Adaptada a Orbix, no plantilla genérica.
+
+### 7.1 Criterio: entidad vs columna
+
+Sobre-modelar tiene costo real: cada tabla extra es un join más en el corte, más superficie transaccional que mantener atómica y un lugar más donde el saldo esperado puede divergir. Como los hallazgos críticos son de **integridad** y no de expresividad del modelo, sólo se promueve a entidad lo que lo justifique.
+
+Un concepto merece tabla propia cuando cumple varias de estas condiciones:
+
+1. Tiene identidad y ciclo de vida independientes de su padre.
+2. Se repite: cardinalidad > 1 respecto del padre.
+3. Necesita su propio actor, timestamp y motivo.
+4. Es referenciado desde otras partes del sistema.
+
+Aplicado a los cinco conceptos del checklist:
+
+| Concepto | ¿Entidad? | Razón |
+|---|---|---|
+| **CashRegister** | **Sí** | Vive por encima de las sesiones: la misma caja física acumula N sesiones a lo largo del tiempo. Identidad propia y referenciada desde la sesión. Sin ella no puede haber dos cajas en una sucursal. |
+| **CashCount** | **Sí** | Cardinalidad 1:N confirmada: el negocio puede requerir **más de un arqueo al día** (corte parcial por turno, recuento tras diferencia, doble conteo a ciegas). Cada arqueo necesita su propio usuario, momento y resultado. |
+| **CashDifference** | **No** | Es un valor derivado (`contado − esperado`). Modelar un cálculo como tabla es ruido. Lo que falta no es la entidad sino la **explicación**: motivo y autorizador, que son columnas del arqueo o de la sesión. |
+| **Withdrawal** | **No** | Un retiro *es* dinero saliendo del cajón, es decir un `CashMovement` de tipo `WITHDRAWAL`. Una tabla aparte partiría el libro mayor en dos y obligaría a `calculateExpectedCash` a leer de dos fuentes — justo lo que hoy funciona bien. Basta el tipo nuevo más una columna de fondo restante en el cierre. |
+| **Opening** | **No** | Relación 1:1 con la sesión, mismo ciclo de vida y misma identidad. No existe apertura sin sesión ni dos aperturas para una. Las columnas actuales son la modelación correcta. |
+
+**Resultado: dos tablas nuevas** (`CashRegister`, `CashCount`). El resto son columnas y tipos de movimiento.
+
+### 7.2 Modelo propuesto
+
+```
+CashRegister (NUEVO)            caja física: nombre, branchId, activa
+   └── CashSession              existe; añadir cashRegisterId
+        ├── openingAmount / openingAmountUsd / exchangeRate    (ya existe = Opening)
+        ├── CashMovement        cashSessionId NOT NULL — libro mayor único
+        │     SALE | CXC_PAYMENT | SUPPLIER_PAYMENT | INCOME
+        │     | EXPENSE | REFUND (nuevo) | WITHDRAWAL (nuevo)
+        ├── CashCount (NUEVO)   N por sesión: contado por moneda, denominaciones,
+        │                       usuario, timestamp, tipo (PARCIAL | FINAL)
+        │      └── difference + differenceReason + authorizedById   (columnas)
+        └── remainingFund       fondo restante tras el retiro          (columna)
+```
+
+Estados: `ABIERTA → EN_ARQUEO → PENDIENTE_REVISION → CERRADA`
+
+**Notas de diseño:**
+
+- El **retiro** es un `CashMovement` tipo `WITHDRAWAL`, no una tabla. Así el efectivo esperado se sigue calculando de una sola fuente.
+- La **diferencia** se calcula y se persiste en el `CashCount` que la produjo, junto con su motivo y autorizador. Un arqueo parcial con diferencia queda registrado aunque la caja siga abierta.
+- El **fondo restante** encadena con la apertura de la sesión siguiente en la misma `CashRegister`.
+
+**Invariantes en base de datos, no solo en servicio:**
+
+- `cash_movements.cashSessionId NOT NULL`, `onDelete: Restrict`
+- Índice `(tenantId, cashSessionId, type)`
+- Trigger o `CHECK` que rechace movimientos contra sesiones no abiertas
+- Migrar el índice único parcial de sesión abierta a `(tenantId, cashRegisterId)`
+
+**Fuente de verdad:** el efectivo esperado sigue siendo **derivado** de los movimientos (como hoy). No almacenar saldo.
+
+---
+
+## 8. Plan de implementación
+
+| Fase | Contenido | Hallazgos | Depende de | Riesgo | Prioridad | Estado |
+|---|---|---|---|---|---|---|
+| **1 — Integridad** | `cashSessionId NOT NULL`; bloquear huérfanos; cierre atómico con guard de estado; validar sesión dentro del insert; índices; `onDelete: Restrict` | 001, 002, 003, 013 | — | Alto (migrar huérfanos existentes) | **P0** | ⬜ |
+| **2 — Auditoría** | Integrar `AuditService`; `reason` obligatorio en egresos | 004, 012 | F1 | Bajo | **P0** | ⬜ |
+| **3 — Bugs puntuales** | `branchId` en payables; `currency` + TC en CxC/payables; permiso propio de retiro | 007, 008, 009 | — | Bajo | **P0** | ⬜ |
+| **4 — Arqueo y diferencias** | Entidad `CashCount` (N por sesión, con denominaciones); motivo de diferencia; umbral server-side que fuerce cierre autorizado | 006 | F1 | Medio | P1 | ⬜ |
+| **5 — Retiro y cierre** | `WITHDRAWAL`; fondo restante encadenado; estados intermedios | 005, 011 | F4 | Medio | P1 | ⬜ |
+| **6 — Multi-moneda** | Divisas en columnas CARD/TRANSFER del resumen | 010 | F3 | Bajo | P1 | ⬜ |
+| **7 — Tests** | Cierre, diferencias, doble cierre concurrente, retiro, huérfanos, multi-moneda | — | F1-F5 | Bajo | P1 | ⬜ |
+| **8 — Caja física y UX** | `CashRegister` + multi-caja por sucursal; separar reembolsos de egresos; visibilidad de huérfanos | 013 | F1 | Alto | P2 | ⬜ |
+
+### Cobertura de tests pendiente (Fase 7)
+
+- [ ] Caso normal: fondo 1,000 + venta efectivo 5,000 → contado 6,000 → cuadra
+- [ ] Faltante: esperado 6,000, contado 5,800 → −200
+- [ ] Sobrante: esperado 6,000, contado 6,200 → +200
+- [ ] Venta a crédito → caja 0, CxC 1,000
+- [ ] Pago CxC efectivo → caja +1,000, CxC −1,000
+- [ ] Pago mixto: efectivo 400 + tarjeta 600
+- [ ] Devolución: venta 1,000, devolución 300 → esperado 700
+- [ ] Retiro: contado 5,500, retiro 4,500, fondo restante 1,000
+- [ ] Cierre duplicado rechazado
+- [ ] Concurrencia: dos cierres simultáneos, solo uno prospera
+- [ ] Movimiento sin sesión abierta → rechazado
+- [ ] Cobro CxC en USD → moneda y TC correctos
+
+---
+
+## Bitácora de seguimiento
+
+| Fecha | Hallazgo | Acción | Commit | Autor |
+|---|---|---|---|---|
+| 2026-08-11 | — | Auditoría inicial, sin cambios de código | `e0970cd` (base) | — |
+| 2026-08-11 | §2, §7, 005, 006 | Se añade criterio entidad vs columna (§7.1). `Withdrawal` deja de proponerse como tabla y pasa a tipo de `CashMovement` — corrige una inconsistencia con el principio de libro mayor único. `CashCount` se confirma como entidad con cardinalidad N por sesión: el negocio puede requerir más de un arqueo al día. `Opening` y `CashDifference` se documentan como correctamente modelados en columnas. | — | Decisión de producto |
+
+---
+
+## Pendientes de auditoría
+
+- [ ] Flujo de caja en `apps/pos` (Flutter)
+- [ ] Escrituras de caja desde restaurante (`restaurant.service.ts:215,328`)
+- [ ] `order-checkout.engine.ts:76` — motor de checkout alterno
+- [ ] Reversas de venta (`orders.service.ts:664`) y `addPayment` (`:818`)
