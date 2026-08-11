@@ -3,6 +3,7 @@ import { ProductsController } from './products.controller';
 import { ProductsService } from './products.service';
 import { QueryProductDto } from './dto/query-product.dto';
 import { ProductStatus } from '@prisma/client';
+import { ProductsImportService } from './products-import.service';
 
 describe('ProductsController', () => {
   let controller: ProductsController;
@@ -15,7 +16,10 @@ describe('ProductsController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ProductsController],
-      providers: [{ provide: ProductsService, useValue: mockProductsService }],
+      providers: [
+        { provide: ProductsService, useValue: mockProductsService },
+        { provide: ProductsImportService, useValue: { import: jest.fn(), preview: jest.fn() } },
+      ],
     })
       .overrideGuard(require('../../../common/guards/require-module.guard').RequireModule)
       .useValue({ canActivate: () => true })

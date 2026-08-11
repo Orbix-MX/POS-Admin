@@ -299,7 +299,10 @@ describe('RestaurantService', () => {
       expect(ctx).toEqual(expect.objectContaining({ referenceId: ORDER_ID, referenceType: 'ORDER' }));
     });
 
-    it('completes checkout: delegates payment to engine, updates order to DELIVERED+PAID', async () => {
+    // `checkoutComanda` crea el pago y el movimiento de caja en línea dentro de
+    // su transacción; no delega en OrderCheckoutEngine (solo le pide la sesión
+    // activa). La prueba afirmaba la delegación y por eso fallaba.
+    it('completes checkout: registers payment and cash movement, updates order to DELIVERED+PAID', async () => {
       const order = makeOrder({ items: [] });
       mockPrismaService.order.findFirst.mockResolvedValue(order);
       const finalOrder = makeOrder({ status: 'DELIVERED', paymentStatus: 'PAID' });
@@ -307,8 +310,11 @@ describe('RestaurantService', () => {
 
       const result = await service.checkoutComanda(ORDER_ID, dto);
 
-      expect(mockCheckout.createPayments).toHaveBeenCalledTimes(1);
-      expect(mockCheckout.createCashMovements).toHaveBeenCalledTimes(1);
+      expect(mockCheckout.resolveActiveCashSession).toHaveBeenCalledTimes(1);
+      expect(txMock.payment.create).toHaveBeenCalledTimes(1);
+      expect(txMock.cashMovement.create).toHaveBeenCalledTimes(1);
+      // Todo movimiento debe quedar atado a la sesión abierta (CASH-001).
+      expect(txMock.cashMovement.create.mock.calls[0][0].data.cashSessionId).toBe('session-1');
       expect(txMock.order.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ status: 'DELIVERED', paymentStatus: 'PAID' }),

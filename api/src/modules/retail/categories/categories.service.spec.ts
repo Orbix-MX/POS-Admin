@@ -3,6 +3,7 @@ import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { CategoriesService } from './categories.service';
 import { PrismaService } from '../../../database/prisma.service';
 import { SlugUtil } from '../../../common/utils/slug.util';
+import { TenantContextService } from '../../../common/context/tenant-context.service';
 
 describe('CategoriesService', () => {
   let service: CategoriesService;
@@ -11,6 +12,7 @@ describe('CategoriesService', () => {
   const mockPrismaService = {
     category: {
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
@@ -23,6 +25,7 @@ describe('CategoriesService', () => {
       providers: [
         CategoriesService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: TenantContextService, useValue: { requireTenantId: () => 'tenant-1', getBranchId: () => null } },
       ],
     }).compile();
 
@@ -72,6 +75,7 @@ describe('CategoriesService', () => {
       };
 
       mockPrismaService.category.findUnique.mockResolvedValue(null);
+      mockPrismaService.category.findFirst.mockResolvedValue(null);
 
       await expect(service.create(createCategoryDto)).rejects.toThrow(
         NotFoundException,
@@ -158,6 +162,7 @@ describe('CategoriesService', () => {
       };
 
       mockPrismaService.category.findUnique.mockResolvedValue(mockCategory);
+      mockPrismaService.category.findFirst.mockResolvedValue(mockCategory);
 
       const result = await service.findOne(categoryId);
 
@@ -167,6 +172,7 @@ describe('CategoriesService', () => {
 
     it('should throw NotFoundException if category not found', async () => {
       mockPrismaService.category.findUnique.mockResolvedValue(null);
+      mockPrismaService.category.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne('invalid-id')).rejects.toThrow(
         NotFoundException,
@@ -187,6 +193,7 @@ describe('CategoriesService', () => {
       const updatedCategory = { ...mockCategory, name: 'Updated Category' };
 
       mockPrismaService.category.findUnique.mockResolvedValue(mockCategory);
+      mockPrismaService.category.findFirst.mockResolvedValue(mockCategory);
       mockPrismaService.category.findMany.mockResolvedValue([]);
       mockPrismaService.category.update.mockResolvedValue(updatedCategory);
       jest
@@ -204,6 +211,7 @@ describe('CategoriesService', () => {
       const mockCategory = { id: categoryId };
 
       mockPrismaService.category.findUnique.mockResolvedValue(mockCategory);
+      mockPrismaService.category.findFirst.mockResolvedValue(mockCategory);
 
       await expect(service.update(categoryId, updateDto)).rejects.toThrow(
         BadRequestException,
@@ -221,6 +229,7 @@ describe('CategoriesService', () => {
       };
 
       mockPrismaService.category.findUnique.mockResolvedValue(mockCategory);
+      mockPrismaService.category.findFirst.mockResolvedValue(mockCategory);
       mockPrismaService.category.delete.mockResolvedValue(mockCategory);
 
       await service.remove(categoryId);
@@ -239,6 +248,7 @@ describe('CategoriesService', () => {
       };
 
       mockPrismaService.category.findUnique.mockResolvedValue(mockCategory);
+      mockPrismaService.category.findFirst.mockResolvedValue(mockCategory);
 
       await expect(service.remove(categoryId)).rejects.toThrow(
         BadRequestException,
@@ -254,6 +264,7 @@ describe('CategoriesService', () => {
       };
 
       mockPrismaService.category.findUnique.mockResolvedValue(mockCategory);
+      mockPrismaService.category.findFirst.mockResolvedValue(mockCategory);
 
       await expect(service.remove(categoryId)).rejects.toThrow(
         BadRequestException,

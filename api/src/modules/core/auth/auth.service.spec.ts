@@ -8,6 +8,7 @@ import { PasswordUtil } from '../../../common/utils/password.util';
 import { RefreshTokenService } from './services/refresh-token.service';
 import { LicenseService } from '../../../common/services/license.service';
 import { PlanLimitsService } from '../../../common/services/plan-limits.service';
+import { TokenBlacklistService } from './services/token-blacklist.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -61,6 +62,7 @@ describe('AuthService', () => {
         { provide: RefreshTokenService, useValue: mockRefreshTokenService },
         { provide: LicenseService, useValue: mockLicenseService },
         { provide: PlanLimitsService, useValue: mockPlanLimitsService },
+        { provide: TokenBlacklistService, useValue: { isBlacklisted: jest.fn().mockResolvedValue(false), add: jest.fn(), revoke: jest.fn() } },
       ],
     }).compile();
 
@@ -143,6 +145,10 @@ describe('AuthService', () => {
         lastName: 'User',
         role: 'STAFF',
         status: 'ACTIVE',
+        // El login filtra las membresías por estado del tenant.
+        tenantMemberships: [
+          { tenantId: 'tenant-1', role: 'STAFF', tenant: { id: 'tenant-1', slug: 'demo', name: 'Demo', status: 'ACTIVE' } },
+        ],
         createdAt: new Date(),
         updatedAt: new Date(),
       };

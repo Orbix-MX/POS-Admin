@@ -2,6 +2,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { CouponsService } from './coupons.service';
 import { PrismaService } from '../../../database/prisma.service';
+import { TenantContextService } from '../../../common/context/tenant-context.service';
 
 describe('CouponsService', () => {
   let service: CouponsService;
@@ -10,6 +11,7 @@ describe('CouponsService', () => {
   const mockPrismaService = {
     coupon: {
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
@@ -18,6 +20,7 @@ describe('CouponsService', () => {
     },
     customer: {
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
     },
     order: {
       count: jest.fn(),
@@ -28,6 +31,7 @@ describe('CouponsService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CouponsService,
+        { provide: TenantContextService, useValue: { requireTenantId: () => 'tenant-1', getBranchId: () => null } },
         { provide: PrismaService, useValue: mockPrismaService },
       ],
     }).compile();
@@ -60,6 +64,7 @@ describe('CouponsService', () => {
       };
 
       mockPrismaService.coupon.findUnique.mockResolvedValue(null);
+      mockPrismaService.coupon.findFirst.mockResolvedValue(null);
       mockPrismaService.coupon.create.mockResolvedValue(mockCoupon);
 
       const result = await service.create(createCouponDto);
@@ -78,6 +83,7 @@ describe('CouponsService', () => {
       };
 
       mockPrismaService.coupon.findUnique.mockResolvedValue({ id: '1' });
+      mockPrismaService.coupon.findFirst.mockResolvedValue({ id: '1' });
 
       await expect(service.create(createCouponDto)).rejects.toThrow(
         BadRequestException,
@@ -94,6 +100,7 @@ describe('CouponsService', () => {
       };
 
       mockPrismaService.coupon.findUnique.mockResolvedValue(null);
+      mockPrismaService.coupon.findFirst.mockResolvedValue(null);
 
       await expect(service.create(createCouponDto)).rejects.toThrow(
         BadRequestException,
@@ -146,6 +153,7 @@ describe('CouponsService', () => {
       };
 
       mockPrismaService.coupon.findUnique.mockResolvedValue(mockCoupon);
+      mockPrismaService.coupon.findFirst.mockResolvedValue(mockCoupon);
 
       const result = await service.findOne('1');
 
@@ -154,6 +162,7 @@ describe('CouponsService', () => {
 
     it('should throw NotFoundException if coupon not found', async () => {
       mockPrismaService.coupon.findUnique.mockResolvedValue(null);
+      mockPrismaService.coupon.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne('invalid-id')).rejects.toThrow(
         NotFoundException,
@@ -185,6 +194,7 @@ describe('CouponsService', () => {
       };
 
       mockPrismaService.coupon.findUnique.mockResolvedValue(mockCoupon);
+      mockPrismaService.coupon.findFirst.mockResolvedValue(mockCoupon);
 
       const result = await service.validateCoupon({
         code: 'TEST10',
@@ -205,6 +215,7 @@ describe('CouponsService', () => {
       };
 
       mockPrismaService.coupon.findUnique.mockResolvedValue(mockCoupon);
+      mockPrismaService.coupon.findFirst.mockResolvedValue(mockCoupon);
 
       const result = await service.validateCoupon({ code: 'EXPIRED' });
 
@@ -220,6 +231,7 @@ describe('CouponsService', () => {
       };
 
       mockPrismaService.coupon.findUnique.mockResolvedValue(mockCoupon);
+      mockPrismaService.coupon.findFirst.mockResolvedValue(mockCoupon);
 
       const result = await service.validateCoupon({ code: 'INACTIVE' });
 
@@ -229,6 +241,7 @@ describe('CouponsService', () => {
 
     it('should return invalid for non-existent coupon', async () => {
       mockPrismaService.coupon.findUnique.mockResolvedValue(null);
+      mockPrismaService.coupon.findFirst.mockResolvedValue(null);
 
       const result = await service.validateCoupon({ code: 'NOTFOUND' });
 
@@ -254,6 +267,7 @@ describe('CouponsService', () => {
       };
 
       mockPrismaService.coupon.findUnique.mockResolvedValue(mockCoupon);
+      mockPrismaService.coupon.findFirst.mockResolvedValue(mockCoupon);
       mockPrismaService.coupon.update.mockResolvedValue(updatedCoupon);
 
       const result = await service.update('1', updateDto);
@@ -270,6 +284,7 @@ describe('CouponsService', () => {
       };
 
       mockPrismaService.coupon.findUnique.mockResolvedValue(mockCoupon);
+      mockPrismaService.coupon.findFirst.mockResolvedValue(mockCoupon);
       mockPrismaService.coupon.delete.mockResolvedValue(mockCoupon);
 
       await service.remove('1');
