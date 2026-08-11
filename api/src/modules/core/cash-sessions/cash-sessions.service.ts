@@ -427,12 +427,12 @@ export class CashSessionsService {
     const user = await this.prisma.user.findFirst({ where: { email: dto.authEmail } });
     // Always run bcrypt regardless of whether user exists — prevents timing oracle
     const passwordValid = await bcrypt.compare(dto.authPassword, user?.password ?? TIMING_SAFE_DUMMY_HASH);
-    if (!user || !passwordValid) throw new UnauthorizedException('Credenciales incorrectas');
+    if (!user || !passwordValid) throw new ForbiddenException('Credenciales del autorizador incorrectas');
 
     const membership = await this.prisma.tenantMembership.findFirst({
       where: { userId: user.id, tenantId },
     });
-    if (!membership) throw new UnauthorizedException('El usuario autorizador no pertenece a esta organización');
+    if (!membership) throw new ForbiddenException('El usuario autorizador no pertenece a esta organización');
 
     if (user.role !== 'SUPER_ADMIN') {
       const perms = await this.getEffectivePermissions(user.id, tenantId);
@@ -454,13 +454,13 @@ export class CashSessionsService {
     });
     // Always run bcrypt regardless of whether user exists — prevents timing oracle
     const passwordValid = await bcrypt.compare(dto.authPassword, adminUser?.password ?? TIMING_SAFE_DUMMY_HASH);
-    if (!adminUser || !passwordValid) throw new UnauthorizedException('Credenciales incorrectas');
+    if (!adminUser || !passwordValid) throw new ForbiddenException('Credenciales del autorizador incorrectas');
 
     // Ensure authorizer belongs to the same tenant
     const membership = await this.prisma.tenantMembership.findFirst({
       where: { userId: adminUser.id, tenantId },
     });
-    if (!membership) throw new UnauthorizedException('El usuario autorizador no pertenece a esta organización');
+    if (!membership) throw new ForbiddenException('El usuario autorizador no pertenece a esta organización');
 
     // Check authorizer has pos.cash:close permission (SUPER_ADMIN bypasses)
     if (adminUser.role !== 'SUPER_ADMIN') {
@@ -478,6 +478,11 @@ export class CashSessionsService {
    * Verifica credenciales de un autorizador (admin): email + password + que
    * pertenezca al tenant y tenga el permiso requerido (SUPER_ADMIN lo omite).
    * Devuelve el usuario autorizador.
+   *
+   * Los fallos se reportan como 403 y no como 401 a propósito: un 401 significa
+   * "tu propia sesión no es válida" y el interceptor del frontend responde
+   * cerrando la sesión del operador. Escribir mal la contraseña del autorizador
+   * dejaba al cajero fuera de la aplicación.
    */
   private async verifyAuthorizer(
     tenantId: string,
@@ -486,16 +491,16 @@ export class CashSessionsService {
     requiredPermission: string,
   ) {
     const user = await this.prisma.user.findFirst({ where: { email: authEmail } });
-    if (!user) throw new UnauthorizedException('Credenciales incorrectas');
+    if (!user) throw new ForbiddenException('Credenciales del autorizador incorrectas');
 
     const passwordValid = await bcrypt.compare(authPassword, user.password);
-    if (!passwordValid) throw new UnauthorizedException('Credenciales incorrectas');
+    if (!passwordValid) throw new ForbiddenException('Credenciales del autorizador incorrectas');
 
     const membership = await this.prisma.tenantMembership.findFirst({
       where: { userId: user.id, tenantId },
     });
     if (!membership) {
-      throw new UnauthorizedException('El usuario autorizador no pertenece a esta organización');
+      throw new ForbiddenException('El usuario autorizador no pertenece a esta organización');
     }
 
     if (user.role !== 'SUPER_ADMIN') {

@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 
 import { CashSessionsService } from './cash-sessions.service';
 import { requireOpenSession } from '../../../common/helpers/cash-session.helper';
@@ -204,5 +204,47 @@ describe('Ciclo de caja — revisión del corte (CASH-011)', () => {
     await expect(requireOpenSession(prisma as never, TENANT, null)).rejects.toThrow(
       BadRequestException,
     );
+  });
+});
+
+/**
+ * Un autorizador inválido no debe cerrar la sesión del operador.
+ *
+ * El interceptor del frontend trata cualquier 401 como "tu sesión expiró" y
+ * desloguea. Escribir mal la contraseña del autorizador echaba al cajero de la
+ * aplicación en mitad del corte.
+ */
+describe('closeWithAuth — un autorizador inválido no desloguea al operador', () => {
+  function buildAuth(user: unknown) {
+    const prisma = {
+      user: { findFirst: jest.fn().mockResolvedValue(user) },
+      tenantMembership: { findFirst: jest.fn().mockResolvedValue(null) },
+      cashSession: { updateMany: jest.fn(), update: jest.fn(), findFirst: jest.fn(), findFirstOrThrow: jest.fn() },
+    };
+    const service = new CashSessionsService(
+      prisma as never,
+      { requireTenantId: () => TENANT, getBranchId: () => null } as never,
+      { getUserId: () => 'user-1' } as never,
+      { log: jest.fn() } as never,
+    );
+    return { service };
+  }
+
+  const dto = { cashCounted: 100, authEmail: 'nadie@x.com', authPassword: 'mala' };
+
+  it('credenciales incorrectas → 403, nunca 401', async () => {
+    const { service } = buildAuth(null);
+
+    await expect(service.closeWithAuth(SESSION, dto as never)).rejects.toThrow(ForbiddenException);
+    await expect(service.closeWithAuth(SESSION, dto as never)).rejects.not.toThrow(
+      UnauthorizedException,
+    );
+  });
+
+  it('autorizador de otra organización → 403', async () => {
+    // Usuario válido, hash que no coincide: igual debe ser 403.
+    const { service } = buildAuth({ id: 'u-2', password: '$2b$10$invalidhashinvalidhashinvalidhashinvalidhashinvalidhas' });
+
+    await expect(service.closeWithAuth(SESSION, dto as never)).rejects.toThrow(ForbiddenException);
   });
 });

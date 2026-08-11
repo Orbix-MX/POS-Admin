@@ -300,6 +300,8 @@ where: { tenantId, status: 'ABIERTA' }
 ### CASH-011
 **Severidad: MEDIO · Estado: ✅ Resuelto**
 
+> **Nota de seguridad.** Los fallos de credenciales del autorizador se reportan como **403 y no 401**. El interceptor del frontend trata cualquier 401 como «tu sesión expiró» y desloguea: escribir mal la contraseña del autorizador echaba al cajero de la aplicación en mitad del corte. Fijado con prueba.
+
 **Problema.** `CashSessionStatus` solo tiene `ABIERTA` / `CERRADA`. No existe `COUNTING` ni `PENDING_REVIEW`.
 
 **Impacto.** No puede representarse «arqueo hecho, caja sigue abierta» ni «cierre pendiente de revisión». No hay corte parcial.
@@ -322,7 +324,13 @@ ABIERTA ──start-count──► EN_ARQUEO ──resume──► ABIERTA
 - El cierre reclama a `PENDIENTE_REVISION` en vez de saltar a `CERRADA`: el estado final depende de la diferencia, que no se conoce hasta después del reclamo. Si queda dentro del umbral —o viene autorizado— pasa a `CERRADA`; si no, se queda en revisión con el arqueo ya registrado y `closedAt` nulo.
 - `closeWithAuth` admite reclamar una sesión en revisión: es la vía por la que un autorizador finaliza lo que el cajero dejó parado.
 
-Dos ajustes que el cambio destapó: `getActive` filtraba por `ABIERTA`, así que una caja en arqueo desaparecía de la pantalla sin dejar dónde reanudarla; y el frontend cerraba la tarjeta al confirmar el corte, ofreciendo «Abrir caja» sobre una sesión que seguía viva.
+**¿Quién valida un corte?** Un usuario con `pos.cash:close` que pertenezca al tenant, identificándose con correo y contraseña en el propio modal de cierre. No hace falta cerrar la sesión del cajero ni cambiar de usuario: el autorizador firma sobre la pantalla del operador. En un tenant de un solo miembro, esa persona se autoriza a sí misma — el respaldo entonces no es la separación de funciones sino la bitácora, que deja `authorizedById`, motivo y arqueo.
+
+Tres efectos que el cambio destapó, corregidos aquí:
+
+- `getActive` filtraba por `ABIERTA`, así que una caja en arqueo desaparecía de la pantalla sin dejar dónde reanudarla.
+- El frontend cerraba la tarjeta al confirmar el corte, ofreciendo «Abrir caja» sobre una sesión que seguía viva.
+- **Un corte en revisión no tenía salida en la interfaz.** `closeWithAuth` existía en el servicio web desde antes pero ninguna pantalla lo llamaba: la sesión quedaba atrapada. Ahora el modal pide las credenciales del autorizador cuando el estado es `PENDIENTE_REVISION` y el botón pasa a «Autorizar y cerrar».
 
 ---
 

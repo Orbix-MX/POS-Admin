@@ -386,6 +386,9 @@ function CloseModal({
   closeError,
   onClose,
   onConfirm,
+  authForm,
+  setAuthForm,
+  onConfirmWithAuth,
 }: {
   visible: boolean
   session: ApiCashSession | null
@@ -395,9 +398,13 @@ function CloseModal({
   closeError: string | null
   onClose: () => void
   onConfirm: () => void
+  authForm: { authEmail: string; authPassword: string }
+  setAuthForm: Dispatch<SetStateAction<{ authEmail: string; authPassword: string }>>
+  onConfirmWithAuth: () => void
 }) {
   if (!visible || !session) return null
 
+  const needsAuth = session.status === 'PENDIENTE_REVISION'
   const expectedCashMxn = session.summary?.expectedCash ?? Number(session.openingAmount ?? 0)
   const expectedCashUsd = session.summary?.expectedCashUsd ?? Number(session.openingAmountUsd ?? 0)
   const diffMxn = Number(form.cashCounted) - expectedCashMxn
@@ -496,6 +503,37 @@ function CloseModal({
             </div>
           )}
 
+          {/* Un corte que superó el umbral no lo cierra quien lo produjo: queda
+              en revisión hasta que alguien con permiso lo autorice (CASH-011). */}
+          {needsAuth && (
+            <div className="border border-orange-300 dark:border-orange-800 rounded-lg p-3 bg-orange-50/60 dark:bg-orange-900/10 space-y-3">
+              <div className="flex items-start gap-2 text-[12px] text-orange-700 dark:text-orange-300">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>Este corte quedó <strong>pendiente de revisión</strong> por la diferencia. Requiere las credenciales de un usuario autorizado para cerrarse.</span>
+              </div>
+              <div>
+                <label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide block mb-1.5">Correo del autorizador *</label>
+                <input
+                  type="email"
+                  value={authForm.authEmail}
+                  onChange={e => setAuthForm(p => ({ ...p, authEmail: e.target.value }))}
+                  placeholder="admin@empresa.com"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide block mb-1.5">Contraseña *</label>
+                <input
+                  type="password"
+                  value={authForm.authPassword}
+                  onChange={e => setAuthForm(p => ({ ...p, authPassword: e.target.value }))}
+                  placeholder="••••••••"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
+                />
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide block mb-1.5">Notas del cierre</label>
             <textarea
@@ -515,12 +553,12 @@ function CloseModal({
           <div className="flex justify-end gap-2.5">
             <button onClick={onClose} className="px-4 py-2 border border-border rounded-lg text-[13px] text-muted-foreground hover:bg-muted/50">Cancelar</button>
             <button
-              onClick={onConfirm}
+              onClick={needsAuth ? onConfirmWithAuth : onConfirm}
               disabled={closing}
               className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-[13px] font-semibold hover:opacity-90 disabled:opacity-60"
             >
               {closing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              Confirmar cierre
+              {needsAuth ? 'Autorizar y cerrar' : 'Confirmar cierre'}
             </button>
           </div>
         </div>
@@ -658,6 +696,9 @@ export function Caja() {
         closeError={hook.closeError}
         onClose={() => hook.setCloseModalVisible(false)}
         onConfirm={hook.handleCloseSession}
+        authForm={hook.authForm}
+        setAuthForm={hook.setAuthForm}
+        onConfirmWithAuth={hook.handleCloseWithAuth}
       />
 
       <DetailDrawer

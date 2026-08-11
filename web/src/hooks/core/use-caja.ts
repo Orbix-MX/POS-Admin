@@ -5,6 +5,7 @@ import {
   fetchCashSession,
   openCashSession,
   closeCashSession,
+  closeSessionWithAuth,
   withdrawCash,
   startCashCount,
   resumeCashSession,
@@ -141,6 +142,35 @@ export function useCaja() {
 
   const [transitioning, setTransitioning] = useState(false)
 
+  // Credenciales del autorizador. Solo se piden cuando el corte quedó en
+  // revisión: un descuadre por encima del umbral no lo cierra quien lo produjo.
+  const [authForm, setAuthForm] = useState({ authEmail: '', authPassword: '' })
+
+  /**
+   * Cierra un corte que quedó PENDIENTE_REVISION, con las credenciales de un
+   * usuario que tenga permiso de cierre. Es la única salida de ese estado: sin
+   * esto la sesión quedaba atrapada, viva pero incerrable.
+   */
+  const handleCloseWithAuth = useCallback(async () => {
+    if (!activeSession) return
+    if (!authForm.authEmail.trim() || !authForm.authPassword) {
+      setCloseError('Ingresa el correo y la contraseña del autorizador'); return
+    }
+    setClosing(true)
+    setCloseError(null)
+    try {
+      await closeSessionWithAuth(activeSession.id, { ...closeForm, ...authForm })
+      setAuthForm({ authEmail: '', authPassword: '' })
+      setCloseModalVisible(false)
+      await loadActive()
+      loadHistory(1)
+    } catch (e: any) {
+      setCloseError(e?.response?.data?.message ?? 'No se pudo autorizar el cierre')
+    } finally {
+      setClosing(false)
+    }
+  }, [activeSession, closeForm, authForm, loadActive, loadHistory])
+
   /** ABIERTA → EN_ARQUEO: congela la caja para contar sin que el efectivo se mueva. */
   const handleStartCount = useCallback(async () => {
     if (!activeSession) return
@@ -216,6 +246,8 @@ export function useCaja() {
     handleCloseSession,
     // ciclo de arqueo
     transitioning, handleStartCount, handleResume,
+    // cierre autorizado
+    authForm, setAuthForm, handleCloseWithAuth,
     // withdraw
     withdrawVisible, setWithdrawVisible,
     withdrawForm, setWithdrawForm,
