@@ -1011,12 +1011,13 @@ export class OrdersService {
       const sessionRate = Number(activeSession.exchangeRateUsdMxn);
       const isUsd = currency === 'USD';
 
-      // 2. Cash movement: EXPENSE (money leaves the drawer to the customer)
+      // 2. Cash movement: REFUND (money leaves the drawer to the customer).
+      //    Se tipaba EXPENSE y el corte lo mostraba como egreso manual (CASH-013).
       const cashMov = await tx.cashMovement.create({
         data: {
           tenantId,
           cashSessionId: activeSession.id,
-          type: 'EXPENSE',
+          type: 'REFUND',
           currency,
           amount: refundAmount,
           ...(isUsd && {

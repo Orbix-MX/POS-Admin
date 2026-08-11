@@ -99,7 +99,7 @@ describe('CashSessionsService.close — arqueo y diferencias (Fase 7)', () => {
     const result = await service.close(SESSION, { cashCounted: 6000 });
 
     expect(result.difference).toBe(0);
-    expect(result.closingAmount).toBe(6000); // el esperado, no lo contado
+    expect(result.expectedAmount).toBe(6000); // el esperado, no lo contado
     // El arqueo FINAL congela el esperado del momento del conteo.
     const count = countCreate.mock.calls[0][0].data;
     expect(count.type).toBe('FINAL');
@@ -237,7 +237,7 @@ describe('CashSessionsService.close — el esperado refleja devoluciones (Fase 7
 
     const result = await service.close(SESSION, { cashCounted: 700 });
 
-    expect(result.closingAmount).toBe(700);
+    expect(result.expectedAmount).toBe(700);
     expect(result.difference).toBe(0);
   });
 
@@ -252,7 +252,7 @@ describe('CashSessionsService.close — el esperado refleja devoluciones (Fase 7
 
     // Solo el efectivo: 500 + 200.
     const result = await service.close(SESSION, { cashCounted: 700 });
-    expect(result.closingAmount).toBe(700);
+    expect(result.expectedAmount).toBe(700);
     expect(result.difference).toBe(0);
   });
 });

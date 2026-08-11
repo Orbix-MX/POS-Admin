@@ -28,7 +28,7 @@ export interface ApiCashSession {
   exchangeRateUsdMxn: string | number
   openingAmount: string | number
   openingAmountUsd: string | number
-  closingAmount: string | number | null
+  expectedAmount: string | number | null
   cashCounted: string | number | null
   cashCountedUsd: string | number | null
   difference: string | number | null
@@ -56,6 +56,8 @@ export interface SessionSummary {
     supplier: { cash: number; cashUsd: number; card: number; transfer: number; total: number }
     income:   { cash: number; cashUsd: number; total: number }
     expense:  { cash: number; cashUsd: number; total: number }
+    withdrawal: { cash: number; cashUsd: number; total: number }
+    refund: { cash: number; cashUsd: number; card: number; transfer: number; total: number }
   }
   movementsCount: number
 }

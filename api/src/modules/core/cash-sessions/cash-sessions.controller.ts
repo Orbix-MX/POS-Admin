@@ -43,6 +43,13 @@ export class CashSessionsController {
     return this.cashSessionsService.withdrawForSupplies(dto);
   }
 
+  @Get('registers')
+  @RequirePermissions('cash:view')
+  @ApiOperation({ summary: 'Cajas físicas de la sucursal, con su sesión viva si la hay' })
+  listRegisters() {
+    return this.cashSessionsService.listRegisters();
+  }
+
   @Post('active/withdraw')
   @RequirePermissions('pos.cash:withdraw')
   @ApiOperation({ summary: 'Retirar efectivo del cajón (traslado a caja fuerte/banco)' })

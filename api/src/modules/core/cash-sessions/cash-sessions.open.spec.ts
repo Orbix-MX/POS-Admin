@@ -15,7 +15,7 @@ import { CashSessionsService } from './cash-sessions.service';
 
 const TENANT = 'tenant-1';
 const BRANCH = 'branch-1';
-const UNIQUE_INDEX = 'cash_sessions_one_open_per_branch_key';
+const UNIQUE_INDEX = 'cash_sessions_one_open_per_register_key';
 
 /**
  * Builds a service whose Prisma mock emulates the partial unique index: an
@@ -25,7 +25,7 @@ const UNIQUE_INDEX = 'cash_sessions_one_open_per_branch_key';
  */
 function buildOpen() {
   const openKeys = new Set<string>();
-  const keyOf = (t: string, b: string | null) => `${t}:${b ?? ''}`;
+  const keyOf = (_t: string, _b: string | null) => 'reg-1';
 
   const create = jest.fn((args: { data: { tenantId: string; branchId: string | null } }) => {
     const k = keyOf(args.data.tenantId, args.data.branchId);
@@ -45,6 +45,11 @@ function buildOpen() {
       findFirst: jest.fn().mockResolvedValue(null), // pre-check: nadie abierto (deja pasar)
       create,
     },
+    // La sesión se abre sobre una caja física; la sucursal ya tiene la suya.
+    cashRegister: {
+      findFirst: jest.fn().mockResolvedValue({ id: 'reg-1' }),
+      create: jest.fn().mockResolvedValue({ id: 'reg-1' }),
+    },
     $transaction: jest.fn(async (cb: (tx: { cashSession: { create: typeof create } }) => Promise<unknown>) =>
       cb({ cashSession: { create } }),
     ),
@@ -63,7 +68,7 @@ function buildOpen() {
 
 const dto = { branchId: BRANCH, exchangeRateUsdMxn: 17, openingAmount: 1000 };
 
-describe('CashSessionsService.open — una sola sesión ABIERTA por sucursal', () => {
+describe('CashSessionsService.open — una sola sesión viva por caja física', () => {
   it('abre la caja cuando la sucursal no tiene sesión activa', async () => {
     const { service, openKeys } = buildOpen();
     const session = await service.open(dto);
@@ -87,7 +92,7 @@ describe('CashSessionsService.open — una sola sesión ABIERTA por sucursal', (
     expect([a.status, b.status].sort()).toEqual(['fulfilled', 'rejected']);
     const loser = (a.status === 'rejected' ? a : b) as PromiseRejectedResult;
     expect(loser.reason).toBeInstanceOf(BadRequestException);
-    expect(loser.reason.message).toBe('Ya existe una sesión de caja abierta para esta sucursal');
+    expect(loser.reason.message).toBe('Ya existe una sesión de caja abierta para esta caja');
 
     // Evidencia: la BD (índice parcial) dejó una única sesión ABIERTA.
     expect(openKeys.size).toBe(1);

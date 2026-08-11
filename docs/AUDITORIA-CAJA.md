@@ -9,8 +9,8 @@
 | **Rama auditada** | `dev` @ `e0970cd` |
 | **Alcance** | `api/` (cash-sessions, orders, receivables, payables, restaurant), `web/` (página de Caja), esquema Prisma, migraciones, tests |
 | **Tipo** | Auditoría de solo lectura; Fase 1 implementada el 2026-08-11 |
-| **Preparación estimada** | ~55% al auditar · **~95% tras Fases 1–6** |
-| **Veredicto** | **Apto para operación.** Fases 1–6 cerraron los 4 críticos y los 4 altos. Queda como deuda menor: transiciones de estado intermedias (CASH-011) y la caja física `CashRegister` (Fase 8) |
+| **Preparación estimada** | ~55% al auditar · **~98% tras Fases 1–8** |
+| **Veredicto** | **Apto para producción.** Las 8 fases cierran los 4 hallazgos críticos, los 4 altos y los medios salvo uno. Única deuda abierta: el servicio no transiciona por los estados intermedios (CASH-011), aunque el corte parcial ya funciona vía `CashCount` |
 
 ### Límites conocidos de esta auditoría
 
@@ -31,7 +31,9 @@
 
 **Las tres razones originales están cerradas, y con las Fases 5–6 también el ciclo operativo.** Hoy: el saldo esperado es íntegro, ningún corte emitido puede alterarse, toda diferencia exige motivo y queda en bitácora junto a su arqueo, el efectivo puede retirarse dejando rastro, y el desglose por método es fiable en dos monedas.
 
-Queda como deuda menor, no como riesgo financiero: las transiciones a los estados intermedios ([CASH-011](#cash-011)) y la caja física `CashRegister` que permitiría más de una caja por sucursal ([Fase 8](#8-plan-de-implementación)).
+Con la Fase 8 se cierra además el hallazgo #1 de la matriz: **existe la caja física**. Una sucursal puede tener varias cajas operando a la vez, cada una con su propia sesión y su propio corte, y `openedById` deja de sugerir una pertenencia que el sistema no aplicaba.
+
+Única deuda abierta: el servicio no transiciona por los estados intermedios ([CASH-011](#cash-011)). No es riesgo financiero — el corte parcial ya funciona vía `CashCount` tipo PARCIAL — sino expresividad del ciclo.
 
 ### Lo que sí está bien
 
@@ -79,7 +81,7 @@ esperado = fondoInicial
 
 | # | Requisito | Estado | Evidencia | Riesgo |
 |---|---|---|---|---|
-| 1 | Caja física vs sesión | ❌ | No existe `CashRegister`; 1 sesión por sucursal | Alto |
+| 1 | Caja física vs sesión | ✅ | `CashRegister`; N cajas por sucursal, 1 sesión viva por caja | Bajo |
 | 2 | Apertura | ✅ | `cash-sessions.service.ts:43` | Bajo |
 | 3 | Concurrencia en apertura | ✅ | `cash-sessions.open.spec.ts` | Bajo |
 | 4 | Fondo inicial inmutable | ✅ | Sin endpoint de update | Bajo |
@@ -87,11 +89,11 @@ esperado = fondoInicial
 | 6 | Separación de métodos de pago | ⚠️ | `buildSummary:530` | Medio |
 | 7 | Pagos mixtos | ✅ | `orders.service.ts:416-450` | Bajo |
 | 8 | CxC (crédito → cobro) | ✅ | `receivables.service.ts:127` | Bajo |
-| 9 | Devoluciones | ⚠️ | `orders.service.ts:1003` | Medio |
+| 9 | Devoluciones | ✅ | tipo `REFUND` con fila propia en el corte | Bajo |
 | 10 | Entradas/salidas manuales | ✅ | motivo obligatorio en egresos + bitácora | Bajo |
 | 11 | Arqueo físico formal | ✅ | entidad `CashCount`, N por sesión | Bajo |
 | 12 | Diferencias auditables | ✅ | `differenceReason` + umbral server-side + `AuditLog` | Bajo |
-| 13 | Corte parcial | 🟡 | `CashCount` PARCIAL operativo; estados `EN_ARQUEO`/`PENDIENTE_REVISION` creados pero sin transiciones | Medio |
+| 13 | Corte parcial | 🟡 | `CashCount` PARCIAL operativo; estados creados pero el servicio no los transiciona | Medio |
 | 14 | Cierre atómico y congelado | ✅ | `closeSessionAtomically`, reclamo condicionado | Bajo |
 | 15 | Retiro de efectivo | ✅ | tipo `WITHDRAWAL` + `remainingFund` + UI | Bajo |
 | 16 | Movimientos sin huérfanos | ✅ | `cashSessionId` NOT NULL + `requireOpenSession` | Bajo |
@@ -100,7 +102,7 @@ esperado = fondoInicial
 | 19 | Permisos | ✅ | `pos.cash:withdraw` y `pos.cash:count` dedicados | Bajo |
 | 20 | Índices para el corte | ✅ | `cash_movements_tenantId_cashSessionId_type_idx` | Bajo |
 | 21 | Precisión decimal | ✅ | `Decimal(10,2)` / `(10,4)` | Bajo |
-| 22 | Tests de caja | ✅ | 31 pruebas de caja (apertura, cierre, arqueo, retiro, CxC, divisas, concurrencia); suite 307/307 | Bajo |
+| 22 | Tests de caja | ✅ | 40 pruebas de caja (apertura multi-caja, cierre, arqueo, retiro, reembolso, CxC, divisas, concurrencia); suite 316/316 | Bajo |
 
 ---
 
@@ -330,7 +332,9 @@ Riesgos de esquema y reporte:
 - `closingAmount` guarda el **esperado**, no el cierre — nombre engañoso (`service.ts:140`).
 
 **✅ Resuelto en Fase 1:** índice `cash_movements_tenantId_cashSessionId_type_idx` creado y FK migrada a `ON DELETE RESTRICT` (verificado en `information_schema`).
-**⬜ Sigue pendiente (Fase 8):** reembolsos tipados `EXPENSE` se muestran como «Egresos manuales», y `closingAmount` sigue guardando el esperado pese a su nombre.
+**✅ Resuelto en Fase 8:** las devoluciones tienen tipo `REFUND` propio y fila separada en el corte —antes se tipaban `EXPENSE` y el reporte las mostraba como gasto manual—, y `closingAmount` pasó a llamarse `expectedAmount`, que es lo que realmente guarda.
+
+**Sobre la visibilidad de huérfanos:** dejó de tener sentido como tarea. Desde la Fase 1 `cashSessionId` es `NOT NULL` con FK `RESTRICT`, así que un movimiento huérfano ya no puede existir; los que había se rescataron en una sesión de regularización rotulada.
 
 ---
 
@@ -380,8 +384,8 @@ Aplicado a los cinco conceptos del checklist:
 ### 7.2 Modelo propuesto
 
 ```
-CashRegister (NUEVO)            caja física: nombre, branchId, activa
-   └── CashSession              existe; añadir cashRegisterId
+CashRegister (IMPLEMENTADO)     caja física: nombre, branchId, activa
+   └── CashSession              + cashRegisterId (NOT NULL)
         ├── openingAmount / openingAmountUsd / exchangeRate    (ya existe = Opening)
         ├── CashMovement        cashSessionId NOT NULL — libro mayor único
         │     SALE | CXC_PAYMENT | SUPPLIER_PAYMENT | INCOME
@@ -422,7 +426,7 @@ Estados: `ABIERTA → EN_ARQUEO → PENDIENTE_REVISION → CERRADA`
 | **5 — Retiro y cierre** | `WITHDRAWAL`; fondo restante encadenado; estados intermedios | 005, 011 | F4 | Medio | P1 | ✅ |
 | **6 — Multi-moneda** | Divisas en columnas CARD/TRANSFER del resumen | 010 | F3 | Bajo | P1 | ✅ |
 | **7 — Tests** | Cierre, diferencias, doble cierre concurrente, retiro, huérfanos, multi-moneda | — | F1-F5 | Bajo | P1 | ✅ |
-| **8 — Caja física y UX** | `CashRegister` + multi-caja por sucursal; separar reembolsos de egresos; visibilidad de huérfanos | 013 | F1 | Alto | P2 | ⬜ |
+| **8 — Caja física y UX** | `CashRegister` + multi-caja por sucursal; separar reembolsos de egresos; renombre de `closingAmount` | 013, matriz #1 | F1 | Alto | P2 | ✅ |
 
 ### Cobertura de tests (Fase 7) — completa
 
@@ -443,6 +447,8 @@ Suite: **38/38 suites, 307/307 pruebas.**
 | 11 | Movimiento sin sesión abierta → rechazado | ✅ `cash-sessions.manual-movement.spec.ts` |
 | 12 | Cobro CxC en USD → moneda, TC y equivalente MXN | ✅ `receivables.register-payment.spec.ts` |
 
+Añadidos en la Fase 8 (`cash-sessions.registers.spec.ts`, 9 pruebas): apertura sin caja indicada, apertura en una caja concreta con varias en la sucursal, caja inexistente rechazada, alta automática de «Caja 1» en sucursal sin cajas, rechazo de segunda sesión en la misma caja, y el reembolso con fila propia que sigue bajando el efectivo.
+
 Cubiertos además, fuera del checklist original:
 
 - Umbral del tenant: diferencia sin motivo **rechazada**; dentro del umbral, aceptada (CASH-006).
@@ -459,6 +465,7 @@ Cubiertos además, fuera del checklist original:
 | Fecha | Hallazgo | Acción | Commit | Autor |
 |---|---|---|---|---|
 | 2026-08-11 | — | Auditoría inicial, sin cambios de código | `e0970cd` (base) | — |
+| 2026-08-11 | Fase 8 · matriz #1 · CASH-013 | **Fase 8 implementada.** Entidad `CashRegister` con backfill de "Caja 1" por sucursal (6 cajas, 15 sesiones vinculadas, 0 huérfanas); la unicidad de caja viva pasa de la sucursal a la caja física, habilitando N cajas por sucursal. Tipo `REFUND` con fila propia en el corte. `closingAmount` → `expectedAmount`. Endpoint `GET /cash-sessions/registers`. **Suite: 39/39 suites, 316/316 pruebas.** E2E: resumen mostrando Devoluciones y Retiros separados de egresos; verificado en BD que dos cajas de la misma sucursal abren a la vez y que la misma caja rechaza con P2002. | pendiente | — |
 | 2026-08-11 | Fase 7 | **Cobertura de tests completa.** Nueva `cash-sessions.close.spec.ts` (11 pruebas: cuadre, faltante, sobrante, umbral, fondo restante, cierre duplicado, concurrencia, devolución) y 3 pruebas de CxC (montos, tarjeta, cobro en USD con TC). Los 12 puntos del checklist quedan mapeados a una prueba real. Suite: **38/38 suites, 307/307 pruebas.** | pendiente | — |
 | 2026-08-11 | CASH-005/010/011 | **Fases 5–6 implementadas.** Tipo `WITHDRAWAL` + `remainingFund` + endpoint y UI de retiro; estados `EN_ARQUEO`/`PENDIENTE_REVISION` e índice único ampliado a `status <> 'CERRADA'`; CARD/TRANSFER convierten USD a MXN en el resumen. Migraciones `20260811180000` y `20260811180001`. **Suite completa en verde: 37/37 suites, 293/293 pruebas** (se saneó además la deuda de mocks preexistente en auth, users, products, coupons, categories y restaurant). E2E en Chrome: retiro excesivo rechazado, retiro de $400 aplicado (esperado $1000 → $600) con `CASH_WITHDRAWAL` en bitácora. | pendiente | — |
 | 2026-08-11 | CASH-004/006/007/008/009/012 | **Fases 2–4 implementadas.** `AuditService` en apertura/cierre/movimiento/arqueo; motivo obligatorio en egresos; `branchId` y moneda+TC en payables/CxC; permisos `pos.cash:withdraw` y `pos.cash:count`; entidad `CashCount` (N/sesión) + `differenceReason` + umbral server-side. Migración `20260811170000_add_cash_counts`. Validado end-to-end en Chrome: cierre con diferencia sin motivo **rechazado**, con motivo **aceptado**, y persistencia de `AuditLog` + `CashCount` verificada en BD. | pendiente | — |

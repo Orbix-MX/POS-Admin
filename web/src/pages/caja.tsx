@@ -72,6 +72,10 @@ function SummaryPanel({ summary }: { summary: SessionSummary }) {
     { label: 'Ingresos manuales', cash: totals.income.cash, cashUsd: totals.income.cashUsd, card: 0, transfer: 0, income: true },
     { label: 'Pagos proveedor', cash: totals.supplier.cash, cashUsd: totals.supplier.cashUsd, card: totals.supplier.card, transfer: totals.supplier.transfer, income: false },
     { label: 'Egresos manuales', cash: totals.expense.cash, cashUsd: totals.expense.cashUsd, card: 0, transfer: 0, income: false },
+    // Filas propias: un reembolso vuelve al cliente y un retiro va a la caja
+    // fuerte; ninguno es un gasto del negocio (CASH-005, CASH-013).
+    { label: 'Devoluciones', cash: totals.refund?.cash ?? 0, cashUsd: totals.refund?.cashUsd ?? 0, card: totals.refund?.card ?? 0, transfer: totals.refund?.transfer ?? 0, income: false },
+    { label: 'Retiros', cash: totals.withdrawal?.cash ?? 0, cashUsd: totals.withdrawal?.cashUsd ?? 0, card: 0, transfer: 0, income: false },
   ]
 
   const cols = hasUsd ? 5 : 4
@@ -179,7 +183,7 @@ function DetailDrawer({
                     <div className="grid grid-cols-3 gap-2">
                       <div className="border border-border rounded-lg px-2.5 py-2">
                         <div className="text-[10px] text-muted-foreground mb-0.5">Esperado MXN</div>
-                        <div className="text-[13px] font-bold text-foreground tabular-nums">{fmtMoney(session.closingAmount)}</div>
+                        <div className="text-[13px] font-bold text-foreground tabular-nums">{fmtMoney(session.expectedAmount)}</div>
                       </div>
                       <div className="border border-border rounded-lg px-2.5 py-2">
                         <div className="text-[10px] text-muted-foreground mb-0.5">Contado MXN</div>
@@ -532,8 +536,8 @@ export function Caja() {
     },
     {
       label: 'Efectivo esperado',
-      render: r => r.closingAmount != null
-        ? <span className="tabular-nums text-[12px] font-semibold text-foreground">{fmtMoney(r.closingAmount)}</span>
+      render: r => r.expectedAmount != null
+        ? <span className="tabular-nums text-[12px] font-semibold text-foreground">{fmtMoney(r.expectedAmount)}</span>
         : <span className="text-[11px] text-muted-foreground">Abierta</span>,
     },
     {

@@ -18,11 +18,11 @@ import { requireOpenSession } from '../../../common/helpers/cash-session.helper'
 import { AuditService } from '../../../common/services/audit.service';
 
 const CASH_INCOME_TYPES = ['SALE', 'CXC_PAYMENT', 'INCOME'] as const;
-const CASH_EXPENSE_TYPES = ['SUPPLIER_PAYMENT', 'EXPENSE', 'WITHDRAWAL'] as const;
+const CASH_EXPENSE_TYPES = ['SUPPLIER_PAYMENT', 'EXPENSE', 'WITHDRAWAL', 'REFUND'] as const;
 
 // Nombre del índice único parcial (una sesión ABIERTA por tenant+sucursal) —
 // para traducir la violación P2002 a un mensaje de negocio claro.
-const OPEN_SESSION_UNIQUE_INDEX = 'cash_sessions_one_open_per_branch_key';
+const OPEN_SESSION_UNIQUE_INDEX = 'cash_sessions_one_open_per_register_key';
 
 // Valid-format bcrypt hash used as constant-time dummy when user email is not found.
 // Prevents timing oracle that would reveal which emails exist in the system.
@@ -50,15 +50,17 @@ export class CashSessionsService {
     const userId = this.auditContext.getUserId();
     const branchId = dto.branchId ?? this.tenantContext.getBranchId() ?? null;
 
+    const cashRegisterId = await this.resolveCashRegister(tenantId, branchId, dto.cashRegisterId);
+
     // Pre-chequeo amigable. No es la garantía: dos operadores concurrentes pueden
     // cruzarlo antes de insertar. La garantía real es el índice único parcial (una
-    // ABIERTA por tenant+sucursal); su violación P2002 se traduce abajo. Check +
+    // sesión viva por caja física); su violación P2002 se traduce abajo. Check +
     // índice = mensaje claro y cero duplicados.
     const existing = await this.prisma.cashSession.findFirst({
-      where: { tenantId, branchId, status: 'ABIERTA' },
+      where: { tenantId, cashRegisterId, status: { not: 'CERRADA' } },
     });
     if (existing) {
-      throw new BadRequestException('Ya existe una sesión de caja abierta para esta sucursal');
+      throw new BadRequestException('Ya existe una sesión de caja abierta para esta caja');
     }
 
     try {
@@ -69,6 +71,7 @@ export class CashSessionsService {
           data: {
             tenantId,
             branchId,
+            cashRegisterId,
             status: 'ABIERTA',
             exchangeRateUsdMxn: dto.exchangeRateUsdMxn,
             openingAmount: dto.openingAmount,
@@ -103,7 +106,7 @@ export class CashSessionsService {
       // P2002 sobre el índice parcial = otro operador ganó la carrera y ya abrió
       // la sesión de esta sucursal. Se reporta como conflicto de negocio.
       if (this.isOpenSessionUniqueViolation(e)) {
-        throw new BadRequestException('Ya existe una sesión de caja abierta para esta sucursal');
+        throw new BadRequestException('Ya existe una sesión de caja abierta para esta caja');
       }
       throw e;
     }
@@ -241,7 +244,7 @@ export class CashSessionsService {
       return tx.cashSession.update({
         where: { id },
         data: {
-          closingAmount: expectedCashMxn,
+          expectedAmount: expectedCashMxn,
           cashCounted: dto.cashCounted,
           cashCountedUsd,
           difference: differenceMxn,
@@ -728,7 +731,60 @@ export class CashSessionsService {
     });
   }
 
+  /** Cajas físicas de la sucursal (o del tenant si no hay sucursal en el token). */
+  async listRegisters() {
+    const tenantId = this.tenantContext.requireTenantId();
+    const branchId = this.tenantContext.getBranchId() ?? null;
+    return this.prisma.cashRegister.findMany({
+      where: { tenantId, ...(branchId != null && { branchId }), isActive: true },
+      orderBy: { name: 'asc' },
+      include: {
+        sessions: {
+          where: { status: { not: 'CERRADA' } },
+          select: { id: true, status: true, openedAt: true, openedBy: { select: { email: true } } },
+          take: 1,
+        },
+      },
+    });
+  }
+
   // ---- helpers ----
+
+  /**
+   * Resuelve la caja física en la que se abre la sesión.
+   *
+   * Sin `cashRegisterId` explícito toma la primera activa de la sucursal, que es
+   * el comportamiento de una instalación de caja única; si la sucursal todavía no
+   * tiene ninguna, se crea "Caja 1" para no obligar a un alta manual antes de la
+   * primera venta.
+   */
+  private async resolveCashRegister(
+    tenantId: string,
+    branchId: string | null,
+    requestedId?: string,
+  ): Promise<string> {
+    if (requestedId) {
+      const found = await this.prisma.cashRegister.findFirst({
+        where: { id: requestedId, tenantId, isActive: true },
+        select: { id: true },
+      });
+      if (!found) throw new NotFoundException('Caja no encontrada');
+      return found.id;
+    }
+
+    const existing = await this.prisma.cashRegister.findFirst({
+      where: { tenantId, branchId, isActive: true },
+      orderBy: { name: 'asc' },
+      select: { id: true },
+    });
+    if (existing) return existing.id;
+
+    const created = await this.prisma.cashRegister.create({
+      data: { tenantId, branchId, name: 'Caja 1' },
+      select: { id: true },
+    });
+    return created.id;
+  }
 
   /**
    * Exige motivo cuando la diferencia supera el umbral del tenant.
@@ -792,6 +848,9 @@ export class CashSessionsService {
       // Fila propia: un retiro no es un gasto del negocio, es efectivo que sale
       // del cajón hacia la caja fuerte (CASH-005).
       withdrawal: { cash: 0, cashUsd: 0, total: 0 },
+      // Un reembolso tampoco es un gasto: es dinero que vuelve al cliente. Antes
+      // se tipaba EXPENSE y el corte lo mostraba como egreso manual (CASH-013).
+      refund: { cash: 0, cashUsd: 0, card: 0, transfer: 0, total: 0 },
     };
 
     for (const m of movements) {
@@ -843,6 +902,14 @@ export class CashSessionsService {
           totals.withdrawal.total += isUsd ? amtMxn : amt;
           if (isUsd) totals.withdrawal.cashUsd += amt;
           else totals.withdrawal.cash += amt;
+          break;
+        case 'REFUND':
+          totals.refund.total += isUsd ? amtMxn : amt;
+          if (method === 'CASH') {
+            if (isUsd) totals.refund.cashUsd += amt;
+            else totals.refund.cash += amt;
+          } else if (method === 'CARD') totals.refund.card += amtMxn;
+          else if (method === 'TRANSFER') totals.refund.transfer += amtMxn;
           break;
       }
     }
