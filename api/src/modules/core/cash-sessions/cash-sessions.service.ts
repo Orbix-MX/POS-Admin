@@ -462,11 +462,15 @@ export class CashSessionsService {
     });
     if (!membership) throw new ForbiddenException('El usuario autorizador no pertenece a esta organización');
 
-    // Check authorizer has pos.cash:close permission (SUPER_ADMIN bypasses)
+    // Autorizar un descuadre exige su propio permiso, no el de cerrar: quien
+    // opera la caja normalmente no debería poder firmar sus propias diferencias.
+    // SUPER_ADMIN lo omite.
     if (adminUser.role !== 'SUPER_ADMIN') {
       const adminPerms = await this.getEffectivePermissions(adminUser.id, tenantId);
-      if (!adminPerms.includes('pos.cash:close')) {
-        throw new ForbiddenException('El usuario autorizador no tiene permiso para cerrar caja');
+      if (!adminPerms.includes('pos.cash:authorize')) {
+        throw new ForbiddenException(
+          'El usuario autorizador no tiene permiso para autorizar cortes descuadrados',
+        );
       }
     }
 

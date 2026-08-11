@@ -248,3 +248,54 @@ describe('closeWithAuth — un autorizador inválido no desloguea al operador', 
     await expect(service.closeWithAuth(SESSION, dto as never)).rejects.toThrow(ForbiddenException);
   });
 });
+
+/**
+ * Autorizar un descuadre exige `pos.cash:authorize`, no `pos.cash:close`.
+ *
+ * Con un solo permiso, cualquiera que pudiera cerrar una caja podía también
+ * firmar sus propias diferencias. Separarlos permite que un cajero cierre cortes
+ * cuadrados sin poder validar los suyos descuadrados.
+ */
+describe('closeWithAuth — permiso dedicado para autorizar', () => {
+  function buildPerms(permissionKeys: string[]) {
+    const hash = require('bcrypt').hashSync('secreta', 4);
+    const prisma = {
+      user: { findFirst: jest.fn().mockResolvedValue({ id: 'admin-1', role: 'STAFF', password: hash, email: 'jefe@x.com' }) },
+      tenantMembership: { findFirst: jest.fn().mockResolvedValue({ id: 'm-1' }) },
+      userRoleAssignment: {
+        findMany: jest.fn().mockResolvedValue([
+          { role: { permissions: permissionKeys.map((k) => ({ permission: { key: k } })) } },
+        ]),
+      },
+      userPermissionGrant: { findMany: jest.fn().mockResolvedValue([]) },
+      cashSession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }), findFirst: jest.fn().mockResolvedValue(null), update: jest.fn(), findFirstOrThrow: jest.fn() },
+    };
+    const service = new CashSessionsService(
+      prisma as never,
+      { requireTenantId: () => TENANT, getBranchId: () => null } as never,
+      { getUserId: () => 'user-1' } as never,
+      { log: jest.fn() } as never,
+    );
+    return { service };
+  }
+
+  const dto = { cashCounted: 100, authEmail: 'jefe@x.com', authPassword: 'secreta' };
+
+  it('solo con pos.cash:close no puede autorizar', async () => {
+    const { service } = buildPerms(['pos.cash:close']);
+
+    await expect(service.closeWithAuth(SESSION, dto as never)).rejects.toThrow(
+      /no tiene permiso para autorizar/i,
+    );
+  });
+
+  it('con pos.cash:authorize pasa la verificación y llega al cierre', async () => {
+    const { service } = buildPerms(['pos.cash:authorize']);
+
+    // El reclamo devuelve 0 filas (sesión inexistente en este mock), así que
+    // falla más adelante: lo relevante es que superó la barrera de permisos.
+    await expect(service.closeWithAuth(SESSION, dto as never)).rejects.not.toThrow(
+      /no tiene permiso para autorizar/i,
+    );
+  });
+});

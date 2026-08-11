@@ -17,6 +17,7 @@ export const ALL_PERMISSIONS: PermissionDef[] = [
   { key: 'pos.cash:close', name: 'Cerrar caja desde POS', description: 'Permite cerrar sesión de caja desde el punto de venta', module: 'pos', action: 'cash:close' },
   { key: 'pos.cash:withdraw', name: 'Retirar efectivo de caja', description: 'Permite sacar efectivo del cajón (retiro para insumos). Más sensible que cerrar caja: antes bastaba con pos:access', module: 'pos', action: 'cash:withdraw' },
   { key: 'pos.cash:count', name: 'Registrar arqueo', description: 'Permite contar el efectivo y registrar arqueos parciales', module: 'pos', action: 'cash:count' },
+  { key: 'pos.cash:authorize', name: 'Autorizar corte descuadrado', description: 'Permite firmar el cierre de un corte que quedó pendiente de revisión por exceder el umbral de diferencia. Separado de cash:close para que autorizar sea más restrictivo que cerrar', module: 'pos', action: 'cash:authorize' },
   { key: 'pos.quotes:create', name: 'Crear cotizaciones desde POS', module: 'pos', action: 'quotes:create' },
   { key: 'pos.quotes:view', name: 'Ver cotizaciones desde POS', module: 'pos', action: 'quotes:view' },
   { key: 'pos.quotes:load', name: 'Cargar cotizaciones al carrito', module: 'pos', action: 'quotes:load' },

@@ -324,7 +324,11 @@ ABIERTA ──start-count──► EN_ARQUEO ──resume──► ABIERTA
 - El cierre reclama a `PENDIENTE_REVISION` en vez de saltar a `CERRADA`: el estado final depende de la diferencia, que no se conoce hasta después del reclamo. Si queda dentro del umbral —o viene autorizado— pasa a `CERRADA`; si no, se queda en revisión con el arqueo ya registrado y `closedAt` nulo.
 - `closeWithAuth` admite reclamar una sesión en revisión: es la vía por la que un autorizador finaliza lo que el cajero dejó parado.
 
-**¿Quién valida un corte?** Un usuario con `pos.cash:close` que pertenezca al tenant, identificándose con correo y contraseña en el propio modal de cierre. No hace falta cerrar la sesión del cajero ni cambiar de usuario: el autorizador firma sobre la pantalla del operador. En un tenant de un solo miembro, esa persona se autoriza a sí misma — el respaldo entonces no es la separación de funciones sino la bitácora, que deja `authorizedById`, motivo y arqueo.
+**¿Quién valida un corte?** Un usuario con **`pos.cash:authorize`** que pertenezca al tenant, identificándose con correo y contraseña en el propio modal de cierre. No hace falta cerrar la sesión del cajero ni cambiar de usuario: el autorizador firma sobre la pantalla del operador. En un tenant de un solo miembro, esa persona se autoriza a sí misma — el respaldo entonces no es la separación de funciones sino la bitácora, que deja `authorizedById`, motivo y arqueo.
+
+**Permiso dedicado.** Autorizar exige `pos.cash:authorize`, no `pos.cash:close`. Antes eran el mismo: cualquiera que pudiera cerrar una caja normal podía firmar sus propios descuadres. Ahora un cajero puede cerrar cortes cuadrados sin poder validar los suyos descuadrados. La migración concede el permiso nuevo a todo rol que ya tuviera `pos.cash:close`, para que nadie pierda la capacidad con el despliegue; revocarlo por rol es lo que activa la restricción. Los roles Owner lo reciben solos por `syncOwnerRolePermissions`.
+
+Se asigna en **Roles y Permisos** → marcar «Autorizar corte descuadrado» (módulo `pos`) → y asignar ese rol al usuario en **Usuarios**.
 
 Tres efectos que el cambio destapó, corregidos aquí:
 
