@@ -71,7 +71,42 @@ export interface OpenSessionInput {
 export interface CloseSessionInput {
   cashCounted: number
   cashCountedUsd?: number
+  /** Requerido por el servidor cuando la diferencia supera el umbral del tenant. */
+  differenceReason?: string
   notes?: string
+}
+
+export interface CashCountInput {
+  type?: 'PARCIAL' | 'FINAL'
+  countedMxn: number
+  countedUsd?: number
+  denominations?: Record<string, number>
+  reason?: string
+}
+
+export interface ApiCashCount {
+  id: string
+  type: 'PARCIAL' | 'FINAL'
+  countedMxn: string | number
+  countedUsd: string | number
+  expectedMxn: string | number
+  expectedUsd: string | number
+  differenceMxn: string | number
+  differenceUsd: string | number
+  reason: string | null
+  createdAt: string
+  countedBy?: { id: string; email: string } | null
+}
+
+/** Arqueo sobre la caja abierta. Puede repetirse en el mismo día. */
+export async function createCashCount(input: CashCountInput): Promise<ApiCashCount> {
+  const { data } = await api.post<ApiCashCount>('/cash-sessions/active/count', input)
+  return data
+}
+
+export async function fetchCashCounts(sessionId: string): Promise<ApiCashCount[]> {
+  const { data } = await api.get<ApiCashCount[]>(`/cash-sessions/${sessionId}/counts`)
+  return data
 }
 
 export function fmtUsd(val: string | number | null | undefined): string {

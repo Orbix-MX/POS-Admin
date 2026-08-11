@@ -1,3 +1,5 @@
+import { BadRequestException } from '@nestjs/common';
+
 import { ReceivablesService } from './receivables.service';
 
 /**
@@ -74,9 +76,12 @@ describe('ReceivablesService.registerPayment (P1-01 — multi-sucursal)', () => 
     expect(cashMovementCreate.mock.calls[0][0].data.cashSessionId).toBe('cs-A');
   });
 
-  it('sucursal sin caja abierta: cashSessionId null (no toma la caja de otra sucursal)', async () => {
+  // Antes el cobro se registraba con `cashSessionId: null`: el saldo del cliente
+  // bajaba y el efectivo no entraba a ningún corte. Ahora se rechaza (CASH-001).
+  it('sucursal sin caja abierta: rechaza el cobro en vez de dejarlo huérfano', async () => {
     const { service, cashMovementCreate } = build('branch-sin-caja');
-    await service.registerPayment('ar-1', dto);
-    expect(cashMovementCreate.mock.calls[0][0].data.cashSessionId).toBeNull();
+
+    await expect(service.registerPayment('ar-1', dto)).rejects.toThrow(BadRequestException);
+    expect(cashMovementCreate).not.toHaveBeenCalled();
   });
 });

@@ -54,6 +54,7 @@ function buildOpen() {
     prisma as never,
     { requireTenantId: () => TENANT, getBranchId: () => BRANCH } as never,
     { getUserId: () => 'user-1' } as never,
+    { log: jest.fn() } as never,
   );
 
   const close = () => openKeys.delete(keyOf(TENANT, BRANCH));

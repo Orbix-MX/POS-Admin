@@ -7,6 +7,7 @@ import { QueryOrdersDto } from './dto/query-orders.dto';
 import { Order, OrderStatus, Coupon, PaymentStatus } from '@prisma/client';
 import { CouponsService } from '../coupons/coupons.service';
 import { AuditService } from '../../../common/services/audit.service';
+import { assertSessionOpen, requireOpenSession } from '../../../common/helpers/cash-session.helper';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { AddPaymentDto } from './dto/add-payment.dto';
 import { RefundOrderDto } from './dto/refund-order.dto';
@@ -233,6 +234,12 @@ export class OrdersService {
     }
 
     const order = await this.prisma.$transaction(async (tx) => {
+      // La sesión se resolvió fuera de la transacción (se necesita su tipo de
+      // cambio para calcular totales). Revalidar aquí evita que una caja cerrada
+      // en esa ventana reciba el movimiento y altere un corte ya emitido —
+      // docs/AUDITORIA-CAJA.md (CASH-003).
+      await assertSessionOpen(tx, tenantId, activeSessionForTc.id);
+
       const newOrder = await tx.order.create({
         data: {
           orderNumber,
@@ -628,14 +635,15 @@ export class OrdersService {
       // 2. Reversar el efectivo de la venta MENOS lo que reembolsos previos ya
       // sacaron de la caja. Sin esto, un refund parcial (efectivo ya devuelto)
       // seguido de una reversa sacaría el dinero dos veces (doble salida).
-      const activeSession = await tx.cashSession.findFirst({
-        where: {
-          tenantId,
-          branchId: order.branchId ?? undefined,
-          status: 'ABIERTA',
-        },
-        select: { id: true },
-      });
+      // Reversar devuelve dinero del cajón, así que exige caja abierta — igual
+      // que el reembolso. Antes, sin sesión, los movimientos de reversa quedaban
+      // huérfanos y la salida de efectivo no aparecía en ningún corte (CASH-001).
+      const activeSession = await requireOpenSession(
+        tx,
+        tenantId,
+        order.branchId ?? null,
+        'No hay sesión de caja activa. Abre la caja antes de reversar la venta.',
+      );
       const orderMovements = await tx.cashMovement.findMany({
         where: { tenantId, referenceId: order.id, referenceType: { in: ['ORDER', 'CHANGE_OUT'] } },
       });
@@ -664,7 +672,7 @@ export class OrdersService {
         await tx.cashMovement.create({
           data: {
             tenantId,
-            cashSessionId: activeSession?.id ?? null,
+            cashSessionId: activeSession.id,
             type: reverseType,
             currency: m.currency,
             amount: reverseAmount,
@@ -779,6 +787,10 @@ export class OrdersService {
     const paymentConcept = (dto.paymentConcept ?? 'BALANCE_PAYMENT') as any;
 
     return this.prisma.$transaction(async (tx) => {
+      // Misma revalidación que en `create`: la sesión se leyó fuera de la
+      // transacción para obtener su tipo de cambio (CASH-003).
+      await assertSessionOpen(tx, tenantId, activeSession.id);
+
       // Create payment records
       for (const split of dto.payments) {
         const currency = split.currency ?? 'MXN';

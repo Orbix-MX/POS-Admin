@@ -39,6 +39,9 @@ function build() {
     customer: { update: jest.fn().mockResolvedValue({}) },
     accountReceivable: { create: arCreate },
     cashMovement: { create: cashMovementCreate },
+    // `create()` revalida dentro de la transacción que la caja siga abierta
+    // (CASH-003), así que el cliente transaccional también expone cashSession.
+    cashSession: { findFirst: jest.fn().mockResolvedValue({ id: 'sess-1', status: 'ABIERTA' }) },
   };
 
   const prisma = {
@@ -50,7 +53,7 @@ function build() {
     },
     service: { findMany: jest.fn().mockResolvedValue([]) },
     tenant: { findUnique: jest.fn().mockResolvedValue({ settings: {} }) },
-    cashSession: { findFirst: jest.fn().mockResolvedValue({ id: 'sess-1', exchangeRateUsdMxn: 20 }) },
+    cashSession: { findFirst: jest.fn().mockResolvedValue({ id: 'sess-1', status: 'ABIERTA', exchangeRateUsdMxn: 20 }) },
     $transaction: jest.fn((cb: (t: typeof tx) => Promise<unknown>) => cb(tx)),
   };
 

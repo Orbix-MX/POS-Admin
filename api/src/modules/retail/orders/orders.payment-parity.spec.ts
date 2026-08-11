@@ -53,6 +53,8 @@ function runCreate(payments: Split[]) {
     customer: { update: jest.fn() },
     accountReceivable: { create: jest.fn() },
     cashMovement: { create: cashMovementCreate },
+    // create()/addPayment() revalidan la sesión dentro de la transacción (CASH-003).
+    cashSession: { findFirst: jest.fn().mockResolvedValue({ id: 'sess-1', status: 'ABIERTA' }) },
   };
   const prisma = {
     product: {
@@ -62,7 +64,7 @@ function runCreate(payments: Split[]) {
     },
     service: { findMany: jest.fn().mockResolvedValue([]) },
     tenant: { findUnique: jest.fn().mockResolvedValue({ settings: {} }) },
-    cashSession: { findFirst: jest.fn().mockResolvedValue({ id: 'sess-1', exchangeRateUsdMxn: 20 }) },
+    cashSession: { findFirst: jest.fn().mockResolvedValue({ id: 'sess-1', status: 'ABIERTA', exchangeRateUsdMxn: 20 }) },
     $transaction: jest.fn((cb: (t: typeof tx) => Promise<unknown>) => cb(tx)),
   };
   const service = new OrdersService(
@@ -96,6 +98,8 @@ function runAddPayment(payments: Split[]) {
     cashMovement: { create: cashMovementCreate },
     order: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ id: 'order-1' }) },
     accountReceivable: { update: jest.fn() },
+    // addPayment() revalida la sesión dentro de la transacción (CASH-003).
+    cashSession: { findFirst: jest.fn().mockResolvedValue({ id: 'sess-1', status: 'ABIERTA' }) },
   };
   const order = {
     id: 'order-1',
@@ -107,7 +111,7 @@ function runAddPayment(payments: Split[]) {
   };
   const prisma = {
     order: { findFirst: jest.fn().mockResolvedValue(order) },
-    cashSession: { findFirst: jest.fn().mockResolvedValue({ id: 'sess-1', exchangeRateUsdMxn: 20 }) },
+    cashSession: { findFirst: jest.fn().mockResolvedValue({ id: 'sess-1', status: 'ABIERTA', exchangeRateUsdMxn: 20 }) },
     $transaction: jest.fn((cb: (t: typeof tx) => Promise<unknown>) => cb(tx)),
   };
   const service = new OrdersService(

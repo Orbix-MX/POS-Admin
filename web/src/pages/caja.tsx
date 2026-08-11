@@ -455,6 +455,25 @@ function CloseModal({
             </div>
           </div>
 
+          {/* El servidor exige motivo cuando la diferencia supera el umbral del
+              tenant. Se muestra en cuanto hay descuadre para que el operador no
+              descubra el requisito al recibir el error. */}
+          {(Math.abs(diffMxn) >= 0.01 || Math.abs(diffUsd) >= 0.01) && (
+            <div>
+              <label className="text-[12px] font-medium text-amber-600 uppercase tracking-wide block mb-1.5">
+                Motivo de la diferencia *
+              </label>
+              <textarea
+                value={form.differenceReason ?? ''}
+                onChange={e => setForm(p => ({ ...p, differenceReason: e.target.value }))}
+                rows={2}
+                placeholder="Explica el faltante o sobrante"
+                className="w-full px-3 py-2 border border-amber-300 dark:border-amber-700 rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-amber-500 resize-none"
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">Queda registrado en la bitácora junto al arqueo.</p>
+            </div>
+          )}
+
           <div>
             <label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide block mb-1.5">Notas del cierre</label>
             <textarea

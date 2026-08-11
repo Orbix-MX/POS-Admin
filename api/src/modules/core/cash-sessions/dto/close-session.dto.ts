@@ -16,6 +16,17 @@ export class CloseCashSessionDto {
   @Min(0)
   cashCountedUsd?: number;
 
+  /**
+   * Obligatorio cuando la diferencia supera el umbral del tenant
+   * (`settings.cashDifferenceThreshold`, 0 = siempre que haya diferencia).
+   * La validación es de servidor: el cliente no decide si hace falta.
+   */
+  @ApiPropertyOptional({ description: 'Motivo de la diferencia; requerido si supera el umbral' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  differenceReason?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

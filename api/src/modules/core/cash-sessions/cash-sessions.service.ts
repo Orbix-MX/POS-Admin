@@ -10,8 +10,11 @@ import { CloseCashSessionDto } from './dto/close-session.dto';
 import { CloseWithAuthDto } from './dto/close-with-auth.dto';
 import { QueryCashSessionsDto } from './dto/query-sessions.dto';
 import { WithdrawForSuppliesDto } from './dto/withdraw-supplies.dto';
+import { CreateCashCountDto } from './dto/create-count.dto';
 import { roundMoney } from '../../../common/utils/money.util';
 import { convertToBaseUnit } from '../../../common/helpers/unit-conversion';
+import { requireOpenSession } from '../../../common/helpers/cash-session.helper';
+import { AuditService } from '../../../common/services/audit.service';
 
 const CASH_INCOME_TYPES = ['SALE', 'CXC_PAYMENT', 'INCOME'] as const;
 const CASH_EXPENSE_TYPES = ['SUPPLIER_PAYMENT', 'EXPENSE'] as const;
@@ -38,6 +41,7 @@ export class CashSessionsService {
     private prisma: PrismaService,
     private tenantContext: TenantContextService,
     private auditContext: AuditContextService,
+    private audit: AuditService,
   ) {}
 
   async open(dto: OpenCashSessionDto) {
@@ -59,7 +63,7 @@ export class CashSessionsService {
     try {
       // Apertura transaccional: el insert es la operación atómica que compite por
       // el índice único. Si dos requests llegan a la vez, solo uno persiste.
-      return await this.prisma.$transaction((tx) =>
+      const created = await this.prisma.$transaction((tx) =>
         tx.cashSession.create({
           data: {
             tenantId,
@@ -77,6 +81,23 @@ export class CashSessionsService {
           },
         }),
       );
+
+      // Fuera de la transacción a propósito: la bitácora es best-effort y no debe
+      // poder tumbar la apertura (CASH-004).
+      await this.audit.log({
+        action: 'CASH_SESSION_OPEN',
+        entityType: 'CashSession',
+        entityId: created.id,
+        after: {
+          branchId,
+          openingAmount: Number(created.openingAmount),
+          openingAmountUsd: Number(created.openingAmountUsd),
+          exchangeRateUsdMxn: Number(created.exchangeRateUsdMxn),
+        },
+        reason: dto.notes ?? undefined,
+      });
+
+      return created;
     } catch (e) {
       // P2002 sobre el índice parcial = otro operador ganó la carrera y ya abrió
       // la sesión de esta sucursal. Se reporta como conflicto de negocio.
@@ -106,52 +127,135 @@ export class CashSessionsService {
   async close(id: string, dto: CloseCashSessionDto) {
     const tenantId = this.tenantContext.requireTenantId();
     const userId = this.auditContext.getUserId();
+    return this.closeSessionAtomically(id, tenantId, userId, dto, null);
+  }
 
-    const session = await this.prisma.cashSession.findFirst({
-      where: { id, tenantId },
-      include: { movements: true },
-    });
-    if (!session) throw new NotFoundException('Sesión de caja no encontrada');
-    if (session.status === 'CERRADA') {
-      throw new BadRequestException('Esta sesión ya está cerrada');
-    }
+  /**
+   * Cierra la sesión en una sola transacción, en tres pasos deliberados:
+   *
+   *   1. *Reclamar* la sesión con un update condicionado a `status: ABIERTA`.
+   *      Es la operación atómica: dos cierres simultáneos compiten aquí y solo
+   *      uno afecta filas. Antes el estado se leía y se actualizaba por
+   *      separado, así que ambos pasaban el check y el último sobrescribía la
+   *      diferencia del primero (CASH-002).
+   *   2. Recién entonces leer los movimientos y calcular. Reclamar primero
+   *      cierra la ventana por la que un movimiento podía insertarse después
+   *      del cálculo y quedar fuera del corte: con la sesión ya en CERRADA,
+   *      `assertSessionOpen` rechaza cualquier inserción posterior (CASH-003).
+   *   3. Persistir el arqueo sobre la sesión ya reclamada.
+   */
+  private async closeSessionAtomically(
+    id: string,
+    tenantId: string,
+    closedById: string | null | undefined,
+    dto: CloseCashSessionDto,
+    authorizedById: string | null,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.cashSession.updateMany({
+        where: { id, tenantId, status: 'ABIERTA' },
+        data: {
+          status: 'CERRADA',
+          closedById: closedById ?? null,
+          closedAt: new Date(),
+          ...(authorizedById != null && { authorizedById }),
+        },
+      });
 
-    const movements = session.movements as unknown as MovementLike[];
+      if (claimed.count === 0) {
+        // O no existe, o alguien más la cerró primero. Se distingue para que el
+        // operador sepa si debe recargar o si simplemente llegó tarde.
+        const exists = await tx.cashSession.findFirst({
+          where: { id, tenantId },
+          select: { id: true },
+        });
+        if (!exists) throw new NotFoundException('Sesión de caja no encontrada');
+        throw new BadRequestException('Esta sesión ya está cerrada');
+      }
 
-    const expectedCashMxn = this.calculateExpectedCash(
-      Number(session.openingAmount),
-      movements,
-      'MXN',
-    );
-    const expectedCashUsd = this.calculateExpectedCash(
-      Number(session.openingAmountUsd),
-      movements,
-      'USD',
-    );
+      const session = await tx.cashSession.findFirstOrThrow({
+        where: { id, tenantId },
+        include: { movements: true },
+      });
+      const movements = session.movements as unknown as MovementLike[];
 
-    const differenceMxn = roundMoney(dto.cashCounted - expectedCashMxn);
-    const cashCountedUsd = roundMoney(dto.cashCountedUsd ?? 0);
-    const differenceUsd = roundMoney(cashCountedUsd - expectedCashUsd);
+      const expectedCashMxn = this.calculateExpectedCash(
+        Number(session.openingAmount),
+        movements,
+        'MXN',
+      );
+      const expectedCashUsd = this.calculateExpectedCash(
+        Number(session.openingAmountUsd),
+        movements,
+        'USD',
+      );
 
-    return this.prisma.cashSession.update({
-      where: { id },
-      data: {
-        status: 'CERRADA',
-        closingAmount: expectedCashMxn,
-        cashCounted: dto.cashCounted,
-        cashCountedUsd,
-        difference: differenceMxn,
-        differenceUsd,
-        notes: dto.notes ?? session.notes,
-        closedById: userId ?? null,
-        closedAt: new Date(),
-      },
-      include: {
-        branch: { select: { id: true, name: true } },
-        openedBy: { select: { id: true, email: true } },
-        closedBy: { select: { id: true, email: true } },
-        movements: true,
-      },
+      const differenceMxn = roundMoney(dto.cashCounted - expectedCashMxn);
+      const cashCountedUsd = roundMoney(dto.cashCountedUsd ?? 0);
+      const differenceUsd = roundMoney(cashCountedUsd - expectedCashUsd);
+
+      // Umbral server-side: cerrar descuadrado exige explicación. Antes se podía
+      // cerrar con cualquier diferencia y sin motivo (CASH-006).
+      await this.assertDifferenceJustified(tx, tenantId, differenceMxn, differenceUsd, dto.differenceReason);
+
+      // El cierre deja su arqueo FINAL como evidencia releíble, con el esperado
+      // congelado al momento del conteo.
+      await tx.cashCount.create({
+        data: {
+          tenantId,
+          cashSessionId: id,
+          type: 'FINAL',
+          countedMxn: dto.cashCounted,
+          countedUsd: cashCountedUsd,
+          expectedMxn: expectedCashMxn,
+          expectedUsd: expectedCashUsd,
+          differenceMxn,
+          differenceUsd,
+          reason: dto.differenceReason ?? null,
+          countedById: closedById ?? null,
+          authorizedById,
+        },
+      });
+
+      // Dentro de la transacción: el corte y su bitácora se persisten juntos o
+      // ninguno. Es el único registro que explica una diferencia (CASH-004).
+      await this.audit.log(
+        {
+          action: 'CASH_SESSION_CLOSE',
+          entityType: 'CashSession',
+          entityId: id,
+          before: { expectedCashMxn, expectedCashUsd, movementsCount: movements.length },
+          after: {
+            cashCounted: dto.cashCounted,
+            cashCountedUsd,
+            differenceMxn,
+            differenceUsd,
+            authorizedById,
+          },
+          reason: dto.differenceReason ?? dto.notes ?? undefined,
+        },
+        tx,
+      );
+
+      return tx.cashSession.update({
+        where: { id },
+        data: {
+          closingAmount: expectedCashMxn,
+          cashCounted: dto.cashCounted,
+          cashCountedUsd,
+          difference: differenceMxn,
+          differenceUsd,
+          differenceReason: dto.differenceReason ?? null,
+          notes: dto.notes ?? session.notes,
+        },
+        include: {
+          branch: { select: { id: true, name: true } },
+          openedBy: { select: { id: true, email: true } },
+          closedBy: { select: { id: true, email: true } },
+          authorizedBy: { select: { id: true, email: true } },
+          movements: true,
+        },
+      });
     });
   }
 
@@ -236,18 +340,25 @@ export class CashSessionsService {
     // movimiento manual caía en cualquier sesión abierta del tenant (cruce entre
     // sucursales). Con branch null (token sin sucursal) Prisma ignora el filtro y se
     // conserva el comportamiento previo.
-    const activeSession = await this.prisma.cashSession.findFirst({
-      where: { tenantId, branchId: branchId ?? undefined, status: 'ABIERTA' },
-    });
+    //
+    // Sin sesión abierta ahora se rechaza. Antes el movimiento se guardaba con
+    // `cashSessionId: null` y el dinero no aparecía en ningún corte (CASH-001).
+    const activeSession = await requireOpenSession(this.prisma, tenantId, branchId);
+
+    // Un egreso saca dinero del cajón: sin motivo no hay forma de explicarlo
+    // después. El ingreso puede quedar sin él (CASH-012).
+    if (dto.type === 'EXPENSE' && !dto.reason?.trim()) {
+      throw new BadRequestException('Un egreso de caja requiere motivo.');
+    }
 
     const currency = dto.currency ?? 'MXN';
     const notesParts = [dto.reason, dto.notes].filter(Boolean);
     const notes = notesParts.length > 0 ? notesParts.join(' — ') : null;
 
-    return this.prisma.cashMovement.create({
+    const movement = await this.prisma.cashMovement.create({
       data: {
         tenantId,
-        cashSessionId: activeSession?.id ?? null,
+        cashSessionId: activeSession.id,
         type: dto.type,
         currency,
         amount: dto.amount,
@@ -256,6 +367,16 @@ export class CashSessionsService {
         createdById: userId ?? null,
       },
     });
+
+    await this.audit.log({
+      action: 'CASH_MOVEMENT_CREATE',
+      entityType: 'CashMovement',
+      entityId: movement.id,
+      after: { type: dto.type, amount: dto.amount, currency, cashSessionId: activeSession.id },
+      reason: dto.reason ?? undefined,
+    });
+
+    return movement;
   }
 
   async verifyCloseAuth(dto: import('./dto/verify-auth.dto').VerifyAuthDto) {
@@ -307,43 +428,8 @@ export class CashSessionsService {
       }
     }
 
-    // Close the session
-    const session = await this.prisma.cashSession.findFirst({
-      where: { id, tenantId },
-      include: { movements: true },
-    });
-    if (!session) throw new NotFoundException('Sesión de caja no encontrada');
-    if (session.status === 'CERRADA') throw new BadRequestException('Esta sesión ya está cerrada');
-
-    const movements = session.movements as unknown as MovementLike[];
-    const expectedCashMxn = this.calculateExpectedCash(Number(session.openingAmount), movements, 'MXN');
-    const expectedCashUsd = this.calculateExpectedCash(Number(session.openingAmountUsd), movements, 'USD');
-    const differenceMxn = roundMoney(dto.cashCounted - expectedCashMxn);
-    const cashCountedUsd = roundMoney(dto.cashCountedUsd ?? 0);
-    const differenceUsd = roundMoney(cashCountedUsd - expectedCashUsd);
-
-    return this.prisma.cashSession.update({
-      where: { id },
-      data: {
-        status: 'CERRADA',
-        closingAmount: expectedCashMxn,
-        cashCounted: dto.cashCounted,
-        cashCountedUsd,
-        difference: differenceMxn,
-        differenceUsd,
-        notes: dto.notes ?? session.notes,
-        closedById: currentUserId ?? null,
-        authorizedById: adminUser.id,
-        closedAt: new Date(),
-      },
-      include: {
-        branch: { select: { id: true, name: true } },
-        openedBy: { select: { id: true, email: true } },
-        closedBy: { select: { id: true, email: true } },
-        authorizedBy: { select: { id: true, email: true } },
-        movements: true,
-      },
-    });
+    // Mismo cierre atómico que `close()`, más el autorizador.
+    return this.closeSessionAtomically(id, tenantId, currentUserId, dto, adminUser.id);
   }
 
   /**
@@ -505,7 +591,103 @@ export class CashSessionsService {
     return Array.from(keys);
   }
 
+  /**
+   * Arqueo con la caja abierta: cuenta el efectivo, congela el esperado del
+   * momento y registra la diferencia sin cerrar nada. Es lo que permite un corte
+   * por turno o un recuento tras un descuadre (CASH-006).
+   */
+  async createCount(dto: CreateCashCountDto) {
+    const tenantId = this.tenantContext.requireTenantId();
+    const userId = this.auditContext.getUserId();
+    const branchId = this.tenantContext.getBranchId() ?? null;
+
+    const active = await requireOpenSession(
+      this.prisma,
+      tenantId,
+      branchId,
+      'No hay sesión de caja activa. Abre la caja antes de registrar un arqueo.',
+    );
+
+    const session = await this.prisma.cashSession.findFirstOrThrow({
+      where: { id: active.id, tenantId },
+      include: { movements: true },
+    });
+    const movements = session.movements as unknown as MovementLike[];
+
+    const expectedMxn = this.calculateExpectedCash(Number(session.openingAmount), movements, 'MXN');
+    const expectedUsd = this.calculateExpectedCash(Number(session.openingAmountUsd), movements, 'USD');
+    const countedUsd = roundMoney(dto.countedUsd ?? 0);
+    const differenceMxn = roundMoney(dto.countedMxn - expectedMxn);
+    const differenceUsd = roundMoney(countedUsd - expectedUsd);
+
+    const count = await this.prisma.cashCount.create({
+      data: {
+        tenantId,
+        cashSessionId: session.id,
+        type: dto.type ?? 'PARCIAL',
+        countedMxn: dto.countedMxn,
+        countedUsd,
+        expectedMxn,
+        expectedUsd,
+        differenceMxn,
+        differenceUsd,
+        denominations: dto.denominations ?? Prisma.JsonNull,
+        reason: dto.reason ?? null,
+        countedById: userId ?? null,
+      },
+    });
+
+    await this.audit.log({
+      action: 'CASH_COUNT',
+      entityType: 'CashCount',
+      entityId: count.id,
+      before: { expectedMxn, expectedUsd },
+      after: { countedMxn: dto.countedMxn, countedUsd, differenceMxn, differenceUsd },
+      reason: dto.reason ?? undefined,
+    });
+
+    return count;
+  }
+
+  /** Arqueos de una sesión, del más reciente al más antiguo. */
+  async listCounts(sessionId: string) {
+    const tenantId = this.tenantContext.requireTenantId();
+    return this.prisma.cashCount.findMany({
+      where: { tenantId, cashSessionId: sessionId },
+      orderBy: { createdAt: 'desc' },
+      include: { countedBy: { select: { id: true, email: true } } },
+    });
+  }
+
   // ---- helpers ----
+
+  /**
+   * Exige motivo cuando la diferencia supera el umbral del tenant.
+   *
+   * `settings.cashDifferenceThreshold` en MXN; ausente equivale a 0, es decir
+   * que cualquier descuadre debe explicarse. El USD se compara contra su propio
+   * valor sin convertir: una diferencia en dólares es tan reportable como una en
+   * pesos y convertirla escondería descuadres pequeños en moneda fuerte.
+   */
+  private async assertDifferenceJustified(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    differenceMxn: number,
+    differenceUsd: number,
+    reason?: string,
+  ): Promise<void> {
+    if (reason?.trim()) return;
+
+    const tenant = await tx.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+    const settings = (tenant?.settings ?? {}) as Record<string, unknown>;
+    const threshold = Math.abs(Number(settings.cashDifferenceThreshold ?? 0)) || 0;
+
+    if (Math.abs(differenceMxn) > threshold || Math.abs(differenceUsd) > threshold) {
+      throw new BadRequestException(
+        `La diferencia del corte (${differenceMxn} MXN / ${differenceUsd} USD) requiere un motivo.`,
+      );
+    }
+  }
 
   calculateExpectedCash(
     openingAmount: number,

@@ -171,6 +171,7 @@ model Tenant {
   accountsPayable    AccountPayable[]
   cashSessions       CashSession[]
   cashMovements      CashMovement[]
+  cashCounts         CashCount[]
   services           Service[]
   serviceQuotes      ServiceQuote[]
   workOrders         WorkOrder[]
@@ -280,6 +281,8 @@ model User {
   cashSessionsOpened        CashSession[]         @relation("CashSessionOpenedBy")
   cashSessionsClosed        CashSession[]         @relation("CashSessionClosedBy")
   cashSessionsAuthorized    CashSession[]         @relation("CashSessionAuthorizedBy")
+  cashCountsCounted         CashCount[]           @relation("CashCountCountedBy")
+  cashCountsAuthorized      CashCount[]           @relation("CashCountAuthorizedBy")
   servicesCreated           Service[]             @relation("ServiceCreatedBy")
   servicesUpdated           Service[]             @relation("ServiceUpdatedBy")
   serviceQuotesCreated      ServiceQuote[]        @relation("ServiceQuoteCreatedBy")
@@ -1541,6 +1544,13 @@ enum CashSessionStatus {
   CERRADA
 }
 
+/// PARCIAL: arqueo de control con la caja abierta (cambio de turno, recuento
+/// tras diferencia). FINAL: el que acompaña al cierre.
+enum CashCountType {
+  PARCIAL
+  FINAL
+}
+
 enum CashMovementType {
   SALE
   CXC_PAYMENT
@@ -1562,6 +1572,10 @@ model CashSession {
   cashCountedUsd     Decimal?          @db.Decimal(10, 2)
   difference         Decimal?          @db.Decimal(10, 2)
   differenceUsd      Decimal?          @db.Decimal(10, 2)
+  /// Justificación de la diferencia del cierre. Obligatoria cuando supera el
+  /// umbral del tenant — antes una caja podía cerrar descuadrada sin explicación
+  /// (docs/AUDITORIA-CAJA.md, CASH-006).
+  differenceReason   String?
   notes              String?
   openedById         String?
   closedById         String?
@@ -1577,8 +1591,43 @@ model CashSession {
   closedBy     User?          @relation("CashSessionClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
   authorizedBy User?          @relation("CashSessionAuthorizedBy", fields: [authorizedById], references: [id], onDelete: SetNull)
   movements    CashMovement[]
+  counts       CashCount[]
 
   @@map("cash_sessions")
+}
+
+/// Arqueo físico. Entidad y no columnas de la sesión porque el negocio puede
+/// requerir varios en un mismo día — corte por turno, recuento tras una
+/// diferencia — y cada uno necesita su propio responsable, momento y resultado
+/// (docs/AUDITORIA-CAJA.md §7.1, CASH-006).
+model CashCount {
+  id             String        @id @default(uuid())
+  tenantId       String
+  cashSessionId  String
+  type           CashCountType @default(PARCIAL)
+  /// Efectivo contado físicamente.
+  countedMxn     Decimal       @db.Decimal(10, 2)
+  countedUsd     Decimal       @default(0) @db.Decimal(10, 2)
+  /// Esperado al momento del conteo: se congela aquí porque sigue cambiando
+  /// mientras la caja opera, y un arqueo debe poder releerse tal cual se hizo.
+  expectedMxn    Decimal       @db.Decimal(10, 2)
+  expectedUsd    Decimal       @default(0) @db.Decimal(10, 2)
+  differenceMxn  Decimal       @db.Decimal(10, 2)
+  differenceUsd  Decimal       @default(0) @db.Decimal(10, 2)
+  /// Desglose opcional por denominación: `{ "1000": 2, "500": 3, ... }`.
+  denominations  Json?
+  reason         String?
+  countedById    String?
+  authorizedById String?
+  createdAt      DateTime      @default(now())
+
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cashSession  CashSession @relation(fields: [cashSessionId], references: [id], onDelete: Restrict)
+  countedBy    User?       @relation("CashCountCountedBy", fields: [countedById], references: [id], onDelete: SetNull)
+  authorizedBy User?       @relation("CashCountAuthorizedBy", fields: [authorizedById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, cashSessionId, createdAt])
+  @@map("cash_counts")
 }
 
 model AccountPayable {
@@ -1622,7 +1671,11 @@ model SupplierPayment {
 model CashMovement {
   id                     String           @id @default(uuid())
   tenantId               String
-  cashSessionId          String?
+  /// Obligatorio: todo movimiento pertenece a una sesión. Antes era opcional y
+  /// los cobros de CxC, pagos a proveedor y movimientos manuales sin caja
+  /// abierta se guardaban huérfanos — dinero real que no aparecía en ningún
+  /// corte. Ver docs/AUDITORIA-CAJA.md (CASH-001).
+  cashSessionId          String
   type                   CashMovementType
   currency               String           @default("MXN")
   amount                 Decimal          @db.Decimal(10, 2)
@@ -1638,10 +1691,14 @@ model CashMovement {
   createdAt              DateTime         @default(now())
 
   tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  cashSession     CashSession?     @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
+  // Restrict, no SetNull: borrar una sesión dejaba sus movimientos huérfanos en
+  // silencio en vez de impedir la operación (CASH-013).
+  cashSession     CashSession      @relation(fields: [cashSessionId], references: [id], onDelete: Restrict)
   supplierPayment SupplierPayment? @relation(fields: [supplierPaymentId], references: [id], onDelete: SetNull)
   createdBy       User?            @relation("CashMovementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
+  // El corte agrega por sesión y tipo; sin índice la consulta escanea la tabla.
+  @@index([tenantId, cashSessionId, type])
   @@map("cash_movements")
 }
 

@@ -10,6 +10,7 @@ import { CreateManualMovementDto } from './dto/create-movement.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
 import { VerifyAuthDto } from './dto/verify-auth.dto';
 import { WithdrawForSuppliesDto } from './dto/withdraw-supplies.dto';
+import { CreateCashCountDto } from './dto/create-count.dto';
 
 @ApiTags('Cash Sessions')
 @ApiBearerAuth()
@@ -34,10 +35,25 @@ export class CashSessionsController {
   }
 
   @Post('active/withdraw-supplies')
-  @RequirePermissions('pos:access')
+  // Sacar efectivo es más sensible que cerrar caja; antes bastaba pos:access (CASH-008).
+  @RequirePermissions('pos.cash:withdraw')
   @ApiOperation({ summary: 'Retiro de efectivo para compra de insumos (requiere autorización admin)' })
   withdrawForSupplies(@Body() dto: WithdrawForSuppliesDto) {
     return this.cashSessionsService.withdrawForSupplies(dto);
+  }
+
+  @Post('active/count')
+  @RequirePermissions('pos.cash:count')
+  @ApiOperation({ summary: 'Registrar arqueo físico sobre la caja abierta (parcial o final)' })
+  createCount(@Body() dto: CreateCashCountDto) {
+    return this.cashSessionsService.createCount(dto);
+  }
+
+  @Get(':id/counts')
+  @RequirePermissions('cash:view')
+  @ApiOperation({ summary: 'Arqueos registrados en una sesión' })
+  listCounts(@Param('id') id: string) {
+    return this.cashSessionsService.listCounts(id);
   }
 
   @Get()

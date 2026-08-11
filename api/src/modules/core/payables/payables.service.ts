@@ -7,6 +7,7 @@ import { AccountPayableStatus, Prisma } from '@prisma/client';
 import { QueryPayablesDto } from './dto/query-payables.dto';
 import { RegisterPayablePaymentDto } from './dto/register-payment.dto';
 import { roundMoney, isZeroMoney } from '../../../common/utils/money.util';
+import { requireOpenSession } from '../../../common/helpers/cash-session.helper';
 
 @Injectable()
 export class PayablesService {
@@ -68,6 +69,10 @@ export class PayablesService {
   async registerPayment(id: string, dto: RegisterPayablePaymentDto) {
     const tenantId = this.tenantContext.requireTenantId();
     const userId = this.auditContext.getUserId();
+    const branchId = this.tenantContext.getBranchId() ?? null;
+    // Sin moneda explícita el movimiento caía siempre como MXN: un pago de 100
+    // USD se registraba como 100 pesos (CASH-009).
+    const currency = dto.currency ?? 'MXN';
 
     const record = await this.prisma.accountPayable.findFirst({ where: { id, tenantId } });
     if (!record) throw new NotFoundException('Cuenta por pagar no encontrada');
@@ -99,16 +104,35 @@ export class PayablesService {
         },
       });
 
-      const activeSession = await tx.cashSession.findFirst({
-        where: { tenantId, status: 'ABIERTA' },
-        select: { id: true },
+      // Sin caja abierta ahora se rechaza el pago: antes el movimiento quedaba
+      // huérfano y el egreso no aparecía en ningún corte (CASH-001).
+      //
+      // La sesión debe ser la de la sucursal que paga: sin el filtro, el egreso
+      // se descontaba de cualquier caja abierta del tenant (CASH-007).
+      const session = await tx.cashSession.findFirst({
+        where: { tenantId, branchId: branchId ?? undefined, status: 'ABIERTA' },
+        select: { exchangeRateUsdMxn: true },
       });
+      const sessionRate = Number(session?.exchangeRateUsdMxn ?? 1);
+
+      const activeSession = await requireOpenSession(
+        tx,
+        tenantId,
+        branchId,
+        'No hay sesión de caja activa. Abre la caja antes de registrar pagos a proveedor.',
+      );
       await tx.cashMovement.create({
         data: {
           tenantId,
-          cashSessionId: activeSession?.id ?? null,
+          cashSessionId: activeSession.id,
           type: 'SUPPLIER_PAYMENT',
+          currency,
           amount: payAmount,
+          ...(currency === 'USD' && {
+            exchangeRateUsed: sessionRate,
+            amountOriginalCurrency: payAmount,
+            amountMxnEquivalent: roundMoney(payAmount * sessionRate),
+          }),
           paymentMethod: dto.paymentMethod,
           supplierPaymentId: payment.id,
           notes: dto.notes ?? null,

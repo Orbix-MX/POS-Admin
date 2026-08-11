@@ -1,3 +1,5 @@
+import { BadRequestException } from '@nestjs/common';
+
 import { CashSessionsService } from './cash-sessions.service';
 
 /**
@@ -34,6 +36,7 @@ function build(branchId: string | null) {
     prisma as never,
     { requireTenantId: () => TENANT, getBranchId: () => branchId } as never,
     { getUserId: () => 'user-1' } as never,
+    { log: jest.fn() } as never,
   );
 
   return { service, findFirst, create };
@@ -59,9 +62,13 @@ describe('CashSessionsService.createManualMovement (P1-01 — multi-sucursal)', 
     expect(create.mock.calls[0][0].data.cashSessionId).toBe('cs-B');
   });
 
-  it('sucursal sin caja abierta: cashSessionId null (no toma la caja de otra sucursal)', async () => {
+  // Antes el movimiento se guardaba con `cashSessionId: null` en vez de tomar la
+  // caja de otra sucursal — correcto en cuanto al aislamiento, pero el dinero
+  // quedaba fuera de todo corte. Ahora se rechaza (CASH-001).
+  it('sucursal sin caja abierta: rechaza el movimiento en vez de dejarlo huérfano', async () => {
     const { service, create } = build('branch-sin-caja');
-    await service.createManualMovement(dto);
-    expect(create.mock.calls[0][0].data.cashSessionId).toBeNull();
+
+    await expect(service.createManualMovement(dto)).rejects.toThrow(BadRequestException);
+    expect(create).not.toHaveBeenCalled();
   });
 });

@@ -39,7 +39,7 @@ export function useCaja() {
 
   // ---- close modal ----
   const [closeModalVisible, setCloseModalVisible] = useState(false)
-  const [closeForm, setCloseForm] = useState<CloseSessionInput>({ cashCounted: 0, cashCountedUsd: 0, notes: '' })
+  const [closeForm, setCloseForm] = useState<CloseSessionInput>({ cashCounted: 0, cashCountedUsd: 0, differenceReason: '', notes: '' })
   const [closing, setClosing] = useState(false)
   const [closeError, setCloseError] = useState<string | null>(null)
 
@@ -118,7 +118,7 @@ export function useCaja() {
       await closeCashSession(activeSession.id, closeForm)
       setActiveSession(null)
       setCloseModalVisible(false)
-      setCloseForm({ cashCounted: 0, cashCountedUsd: 0, notes: '' })
+      setCloseForm({ cashCounted: 0, cashCountedUsd: 0, differenceReason: '', notes: '' })
       loadHistory(1)
     } catch (e: any) {
       setCloseError(e?.response?.data?.message ?? 'Error al cerrar sesión')
