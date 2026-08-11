@@ -17,9 +17,9 @@ const TENANT = 'tenant-1';
  * transacción enruta por branchId; devuelve null si la sucursal no tiene caja.
  */
 function build(branchId: string | null) {
-  const sessionsByBranch: Record<string, { id: string }> = {
-    'branch-A': { id: 'cs-A' },
-    'branch-B': { id: 'cs-B' },
+  const sessionsByBranch: Record<string, { id: string; exchangeRateUsdMxn: number }> = {
+    'branch-A': { id: 'cs-A', exchangeRateUsdMxn: 20 },
+    'branch-B': { id: 'cs-B', exchangeRateUsdMxn: 20 },
   };
 
   const record = { id: 'ar-1', balance: 500, status: 'PENDIENTE', orderId: 'o-1' };
@@ -53,7 +53,7 @@ function build(branchId: string | null) {
     { getUserId: () => 'user-1' } as never,
   );
 
-  return { service, sessionFindFirst, cashMovementCreate };
+  return { service, sessionFindFirst, cashMovementCreate, tx };
 }
 
 const dto = { amount: 200, paymentMethod: 'CASH' };
@@ -83,5 +83,55 @@ describe('ReceivablesService.registerPayment (P1-01 — multi-sucursal)', () => 
 
     await expect(service.registerPayment('ar-1', dto)).rejects.toThrow(BadRequestException);
     expect(cashMovementCreate).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Fase 7 — el cobro de CxC debe entrar a caja por el método y la moneda reales.
+ */
+describe('ReceivablesService.registerPayment — montos y moneda (Fase 7)', () => {
+  it('cobro en efectivo: caja +200 y el saldo de CxC baja de 500 a 300', async () => {
+    const { service, cashMovementCreate, tx } = build('branch-A');
+
+    await service.registerPayment('ar-1', { amount: 200, paymentMethod: 'CASH' } as never);
+
+    const mov = cashMovementCreate.mock.calls[0][0].data;
+    expect(mov.type).toBe('CXC_PAYMENT');
+    expect(mov.amount).toBe(200);
+    expect(mov.paymentMethod).toBe('CASH');
+    expect(mov.currency).toBe('MXN');
+    // El abono reduce el saldo pendiente: 500 − 200.
+    expect(tx.accountReceivable.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ balance: 300 }) }),
+    );
+  });
+
+  it('cobro con tarjeta no entra como efectivo pero sí abona a CxC', async () => {
+    const { service, cashMovementCreate, tx } = build('branch-A');
+
+    await service.registerPayment('ar-1', { amount: 200, paymentMethod: 'CARD' } as never);
+
+    expect(cashMovementCreate.mock.calls[0][0].data.paymentMethod).toBe('CARD');
+    expect(tx.accountReceivable.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ balance: 300 }) }),
+    );
+  });
+
+  it('cobro en USD registra moneda, TC de la sesión y equivalente en MXN (CASH-009)', async () => {
+    const { service, cashMovementCreate } = build('branch-A');
+
+    await service.registerPayment('ar-1', {
+      amount: 10,
+      paymentMethod: 'CASH',
+      currency: 'USD',
+    } as never);
+
+    const mov = cashMovementCreate.mock.calls[0][0].data;
+    // Antes se guardaba como 10 MXN: la moneda no se capturaba.
+    expect(mov.currency).toBe('USD');
+    expect(mov.amount).toBe(10);
+    expect(mov.exchangeRateUsed).toBe(20);
+    expect(mov.amountOriginalCurrency).toBe(10);
+    expect(mov.amountMxnEquivalent).toBe(200);
   });
 });

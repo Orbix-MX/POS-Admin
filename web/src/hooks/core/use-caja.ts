@@ -5,6 +5,7 @@ import {
   fetchCashSession,
   openCashSession,
   closeCashSession,
+  withdrawCash,
   type ApiCashSession,
   type OpenSessionInput,
   type CloseSessionInput,
@@ -39,6 +40,11 @@ export function useCaja() {
 
   // ---- close modal ----
   const [closeModalVisible, setCloseModalVisible] = useState(false)
+  const [withdrawVisible, setWithdrawVisible] = useState(false)
+  const [withdrawForm, setWithdrawForm] = useState<{ amount: number; reason: string }>({ amount: 0, reason: '' })
+  const [withdrawing, setWithdrawing] = useState(false)
+  const [withdrawError, setWithdrawError] = useState<string | null>(null)
+
   const [closeForm, setCloseForm] = useState<CloseSessionInput>({ cashCounted: 0, cashCountedUsd: 0, differenceReason: '', notes: '' })
   const [closing, setClosing] = useState(false)
   const [closeError, setCloseError] = useState<string | null>(null)
@@ -127,6 +133,24 @@ export function useCaja() {
     }
   }, [activeSession, closeForm, loadHistory])
 
+  /** Retiro de efectivo del cajón: baja el esperado y recarga la sesión. */
+  const handleWithdraw = useCallback(async () => {
+    setWithdrawError(null)
+    if (withdrawForm.amount <= 0) { setWithdrawError('El monto debe ser mayor a 0'); return }
+    if (!withdrawForm.reason.trim()) { setWithdrawError('El motivo es obligatorio'); return }
+    setWithdrawing(true)
+    try {
+      await withdrawCash({ amount: withdrawForm.amount, reason: withdrawForm.reason })
+      setWithdrawVisible(false)
+      setWithdrawForm({ amount: 0, reason: '' })
+      await loadActive()
+    } catch (e: any) {
+      setWithdrawError(e?.response?.data?.message ?? 'Error al retirar efectivo')
+    } finally {
+      setWithdrawing(false)
+    }
+  }, [withdrawForm, loadActive])
+
   // ---- detail ----
   const handleOpenDetail = useCallback(async (session: ApiCashSession) => {
     setDetailSession(session)
@@ -166,5 +190,10 @@ export function useCaja() {
     closeForm, setCloseForm,
     closing, closeError,
     handleCloseSession,
+    // withdraw
+    withdrawVisible, setWithdrawVisible,
+    withdrawForm, setWithdrawForm,
+    withdrawing, withdrawError,
+    handleWithdraw,
   }
 }

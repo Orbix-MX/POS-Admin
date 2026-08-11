@@ -11,13 +11,14 @@ import { CloseWithAuthDto } from './dto/close-with-auth.dto';
 import { QueryCashSessionsDto } from './dto/query-sessions.dto';
 import { WithdrawForSuppliesDto } from './dto/withdraw-supplies.dto';
 import { CreateCashCountDto } from './dto/create-count.dto';
+import { WithdrawCashDto } from './dto/withdraw-cash.dto';
 import { roundMoney } from '../../../common/utils/money.util';
 import { convertToBaseUnit } from '../../../common/helpers/unit-conversion';
 import { requireOpenSession } from '../../../common/helpers/cash-session.helper';
 import { AuditService } from '../../../common/services/audit.service';
 
 const CASH_INCOME_TYPES = ['SALE', 'CXC_PAYMENT', 'INCOME'] as const;
-const CASH_EXPENSE_TYPES = ['SUPPLIER_PAYMENT', 'EXPENSE'] as const;
+const CASH_EXPENSE_TYPES = ['SUPPLIER_PAYMENT', 'EXPENSE', 'WITHDRAWAL'] as const;
 
 // Nombre del índice único parcial (una sesión ABIERTA por tenant+sucursal) —
 // para traducir la violación P2002 a un mensaje de negocio claro.
@@ -246,6 +247,10 @@ export class CashSessionsService {
           difference: differenceMxn,
           differenceUsd,
           differenceReason: dto.differenceReason ?? null,
+          // Fondo que permanece físicamente tras los retiros de la sesión. Es lo
+          // que debería encontrar quien abra la caja siguiente (CASH-005).
+          remainingFund: dto.cashCounted,
+          remainingFundUsd: cashCountedUsd,
           notes: dto.notes ?? session.notes,
         },
         include: {
@@ -649,6 +654,70 @@ export class CashSessionsService {
     return count;
   }
 
+  /**
+   * Retiro de efectivo del cajón. Baja el esperado y queda en bitácora.
+   *
+   * Se valida contra el efectivo disponible: retirar más de lo que hay dejaría
+   * el esperado en negativo, que no es un estado físico posible.
+   */
+  async withdrawCash(dto: WithdrawCashDto) {
+    const tenantId = this.tenantContext.requireTenantId();
+    const userId = this.auditContext.getUserId();
+    const branchId = this.tenantContext.getBranchId() ?? null;
+
+    const active = await requireOpenSession(
+      this.prisma,
+      tenantId,
+      branchId,
+      'No hay sesión de caja activa. Abre la caja antes de retirar efectivo.',
+    );
+
+    const session = await this.prisma.cashSession.findFirstOrThrow({
+      where: { id: active.id, tenantId },
+      include: { movements: true },
+    });
+    const movements = session.movements as unknown as MovementLike[];
+    const currency = dto.currency ?? 'MXN';
+    const opening = currency === 'USD' ? Number(session.openingAmountUsd) : Number(session.openingAmount);
+    const available = this.calculateExpectedCash(opening, movements, currency);
+
+    if (dto.amount > available) {
+      throw new BadRequestException(
+        `El retiro (${dto.amount} ${currency}) excede el efectivo disponible (${available} ${currency}).`,
+      );
+    }
+
+    const movement = await this.prisma.cashMovement.create({
+      data: {
+        tenantId,
+        cashSessionId: session.id,
+        type: 'WITHDRAWAL',
+        currency,
+        amount: dto.amount,
+        ...(currency === 'USD' && {
+          exchangeRateUsed: session.exchangeRateUsdMxn,
+          amountOriginalCurrency: dto.amount,
+          amountMxnEquivalent: roundMoney(dto.amount * Number(session.exchangeRateUsdMxn)),
+        }),
+        paymentMethod: 'CASH',
+        referenceType: 'WITHDRAWAL',
+        notes: dto.reason,
+        createdById: userId ?? null,
+      },
+    });
+
+    await this.audit.log({
+      action: 'CASH_WITHDRAWAL',
+      entityType: 'CashMovement',
+      entityId: movement.id,
+      before: { availableBefore: available },
+      after: { amount: dto.amount, currency, availableAfter: roundMoney(available - dto.amount) },
+      reason: dto.reason,
+    });
+
+    return movement;
+  }
+
   /** Arqueos de una sesión, del más reciente al más antiguo. */
   async listCounts(sessionId: string) {
     const tenantId = this.tenantContext.requireTenantId();
@@ -720,6 +789,9 @@ export class CashSessionsService {
       supplier: { cash: 0, cashUsd: 0, card: 0, transfer: 0, total: 0 },
       income:   { cash: 0, cashUsd: 0, total: 0 },
       expense:  { cash: 0, cashUsd: 0, total: 0 },
+      // Fila propia: un retiro no es un gasto del negocio, es efectivo que sale
+      // del cajón hacia la caja fuerte (CASH-005).
+      withdrawal: { cash: 0, cashUsd: 0, total: 0 },
     };
 
     for (const m of movements) {
@@ -734,24 +806,24 @@ export class CashSessionsService {
           if (method === 'CASH') {
             if (isUsd) totals.sales.cashUsd += amt;
             else totals.sales.cash += amt;
-          } else if (method === 'CARD') totals.sales.card += amt;
-          else if (method === 'TRANSFER') totals.sales.transfer += amt;
+          } else if (method === 'CARD') totals.sales.card += amtMxn;
+          else if (method === 'TRANSFER') totals.sales.transfer += amtMxn;
           break;
         case 'CXC_PAYMENT':
           totals.cxc.total += isUsd ? amtMxn : amt;
           if (method === 'CASH') {
             if (isUsd) totals.cxc.cashUsd += amt;
             else totals.cxc.cash += amt;
-          } else if (method === 'CARD') totals.cxc.card += amt;
-          else if (method === 'TRANSFER') totals.cxc.transfer += amt;
+          } else if (method === 'CARD') totals.cxc.card += amtMxn;
+          else if (method === 'TRANSFER') totals.cxc.transfer += amtMxn;
           break;
         case 'SUPPLIER_PAYMENT':
           totals.supplier.total += isUsd ? amtMxn : amt;
           if (method === 'CASH') {
             if (isUsd) totals.supplier.cashUsd += amt;
             else totals.supplier.cash += amt;
-          } else if (method === 'CARD') totals.supplier.card += amt;
-          else if (method === 'TRANSFER') totals.supplier.transfer += amt;
+          } else if (method === 'CARD') totals.supplier.card += amtMxn;
+          else if (method === 'TRANSFER') totals.supplier.transfer += amtMxn;
           break;
         case 'INCOME':
           totals.income.total += isUsd ? amtMxn : amt;
@@ -766,6 +838,11 @@ export class CashSessionsService {
             if (isUsd) totals.expense.cashUsd += amt;
             else totals.expense.cash += amt;
           }
+          break;
+        case 'WITHDRAWAL':
+          totals.withdrawal.total += isUsd ? amtMxn : amt;
+          if (isUsd) totals.withdrawal.cashUsd += amt;
+          else totals.withdrawal.cash += amt;
           break;
       }
     }

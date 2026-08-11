@@ -1539,8 +1539,13 @@ enum SupplierPaymentMethod {
   CARD
 }
 
+/// Estados del ciclo de caja. EN_ARQUEO y PENDIENTE_REVISION permiten el corte
+/// parcial: contar sin cerrar, y dejar un cierre esperando autorización, sin que
+/// la caja vuelva a operar (docs/AUDITORIA-CAJA.md, CASH-011).
 enum CashSessionStatus {
   ABIERTA
+  EN_ARQUEO
+  PENDIENTE_REVISION
   CERRADA
 }
 
@@ -1557,6 +1562,9 @@ enum CashMovementType {
   SUPPLIER_PAYMENT
   INCOME
   EXPENSE
+  /// Retiro de efectivo del cajón. Tipo de movimiento y no tabla aparte, para
+  /// conservar un libro mayor único (docs/AUDITORIA-CAJA.md §7.1, CASH-005).
+  WITHDRAWAL
 }
 
 model CashSession {
@@ -1576,6 +1584,10 @@ model CashSession {
   /// umbral del tenant — antes una caja podía cerrar descuadrada sin explicación
   /// (docs/AUDITORIA-CAJA.md, CASH-006).
   differenceReason   String?
+  /// Efectivo que permanece en el cajón tras el retiro del cierre. Encadena con
+  /// la apertura siguiente: `fondo restante = contado - retiro` (CASH-005).
+  remainingFund      Decimal?          @db.Decimal(10, 2)
+  remainingFundUsd   Decimal?          @db.Decimal(10, 2)
   notes              String?
   openedById         String?
   closedById         String?

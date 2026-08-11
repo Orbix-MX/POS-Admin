@@ -580,6 +580,7 @@ export function Caja() {
             void hook.handleOpenCloseModal()
           }}
           onViewDetail={() => hook.handleOpenDetail(hook.activeSession!)}
+          onWithdraw={() => hook.setWithdrawVisible(true)}
         />
       ) : (
         <NoSessionBanner onOpen={() => hook.setOpenModalVisible(true)} />
@@ -641,6 +642,60 @@ export function Caja() {
         loading={hook.detailLoading}
         onClose={hook.handleCloseDetail}
       />
+
+      {/* Retiro: el dinero sale del cajón pero no del negocio, así que baja el
+          esperado sin contarse como gasto (CASH-005). */}
+      {hook.withdrawVisible && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => hook.setWithdrawVisible(false)} />
+          <div className="relative w-full max-w-[420px] bg-card border border-border rounded-xl shadow-2xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <h2 className="font-bold text-foreground">Retirar efectivo</h2>
+              <button onClick={() => hook.setWithdrawVisible(false)} className="p-1.5 rounded-lg hover:bg-muted">
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <div>
+                <label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide block mb-1.5">Monto MXN *</label>
+                <input
+                  type="number"
+                  min={0.01}
+                  step={0.01}
+                  value={hook.withdrawForm.amount || ''}
+                  onChange={e => hook.setWithdrawForm(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
+                  placeholder="0.00"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide block mb-1.5">Motivo *</label>
+                <input
+                  value={hook.withdrawForm.reason}
+                  onChange={e => hook.setWithdrawForm(prev => ({ ...prev, reason: e.target.value }))}
+                  placeholder="Traslado a caja fuerte"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
+                />
+              </div>
+              {hook.withdrawError ? (
+                <div className="flex items-center gap-2 text-red-500 text-[12px] bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />{hook.withdrawError}
+                </div>
+              ) : null}
+            </div>
+            <div className="border-t border-border px-5 py-3 flex justify-end gap-2.5">
+              <button onClick={() => hook.setWithdrawVisible(false)} className="px-4 py-2 border border-border rounded-lg text-[13px] text-muted-foreground hover:bg-muted/50">Cancelar</button>
+              <button
+                onClick={hook.handleWithdraw}
+                disabled={hook.withdrawing}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg text-[13px] font-semibold hover:opacity-90 disabled:opacity-60"
+              >
+                {hook.withdrawing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null} Retirar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -651,10 +706,12 @@ function ActiveSessionBanner({
   session,
   onClose,
   onViewDetail,
+  onWithdraw,
 }: {
   session: ApiCashSession
   onClose: () => void
   onViewDetail: () => void
+  onWithdraw: () => void
 }) {
   const expectedCash = session.summary?.expectedCash ?? Number(session.openingAmount)
   const expectedCashUsd = session.summary?.expectedCashUsd ?? Number(session.openingAmountUsd ?? 0)
@@ -683,6 +740,12 @@ function ActiveSessionBanner({
             className="flex items-center gap-1.5 px-3 py-1.5 border border-border rounded-lg text-[12px] text-muted-foreground hover:bg-muted/50"
           >
             <Eye className="w-3.5 h-3.5" /> Ver detalle
+          </button>
+          <button
+            onClick={onWithdraw}
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-amber-300 dark:border-amber-700 rounded-lg text-[12px] text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+          >
+            <Banknote className="w-3.5 h-3.5" /> Retirar
           </button>
           <button
             onClick={onClose}

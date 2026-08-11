@@ -104,6 +104,18 @@ export async function createCashCount(input: CashCountInput): Promise<ApiCashCou
   return data
 }
 
+export interface WithdrawCashInput {
+  amount: number
+  currency?: 'MXN' | 'USD'
+  reason: string
+}
+
+/** Retiro de efectivo del cajón. Baja el efectivo esperado y queda en bitácora. */
+export async function withdrawCash(input: WithdrawCashInput): Promise<ApiCashMovement> {
+  const { data } = await api.post<ApiCashMovement>('/cash-sessions/active/withdraw', input)
+  return data
+}
+
 export async function fetchCashCounts(sessionId: string): Promise<ApiCashCount[]> {
   const { data } = await api.get<ApiCashCount[]>(`/cash-sessions/${sessionId}/counts`)
   return data

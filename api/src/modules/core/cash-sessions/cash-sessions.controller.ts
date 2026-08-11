@@ -11,6 +11,7 @@ import { RequirePermissions } from '../../../common/decorators/require-permissio
 import { VerifyAuthDto } from './dto/verify-auth.dto';
 import { WithdrawForSuppliesDto } from './dto/withdraw-supplies.dto';
 import { CreateCashCountDto } from './dto/create-count.dto';
+import { WithdrawCashDto } from './dto/withdraw-cash.dto';
 
 @ApiTags('Cash Sessions')
 @ApiBearerAuth()
@@ -40,6 +41,13 @@ export class CashSessionsController {
   @ApiOperation({ summary: 'Retiro de efectivo para compra de insumos (requiere autorización admin)' })
   withdrawForSupplies(@Body() dto: WithdrawForSuppliesDto) {
     return this.cashSessionsService.withdrawForSupplies(dto);
+  }
+
+  @Post('active/withdraw')
+  @RequirePermissions('pos.cash:withdraw')
+  @ApiOperation({ summary: 'Retirar efectivo del cajón (traslado a caja fuerte/banco)' })
+  withdrawCash(@Body() dto: WithdrawCashDto) {
+    return this.cashSessionsService.withdrawCash(dto);
   }
 
   @Post('active/count')

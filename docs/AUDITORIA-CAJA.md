@@ -9,8 +9,8 @@
 | **Rama auditada** | `dev` @ `e0970cd` |
 | **Alcance** | `api/` (cash-sessions, orders, receivables, payables, restaurant), `web/` (página de Caja), esquema Prisma, migraciones, tests |
 | **Tipo** | Auditoría de solo lectura; Fase 1 implementada el 2026-08-11 |
-| **Preparación estimada** | ~55% al auditar · **~88% tras Fases 1–4** |
-| **Veredicto** | **Íntegro y auditable.** Fases 1–4 cerraron los 4 hallazgos críticos y los 3 altos de integridad. Antes de producción faltan retiro (CASH-005), corte parcial (CASH-011) y los tests de cierre (Fase 7) |
+| **Preparación estimada** | ~55% al auditar · **~95% tras Fases 1–6** |
+| **Veredicto** | **Apto para operación.** Fases 1–6 cerraron los 4 críticos y los 4 altos. Queda como deuda menor: transiciones de estado intermedias (CASH-011) y la caja física `CashRegister` (Fase 8) |
 
 ### Límites conocidos de esta auditoría
 
@@ -29,7 +29,9 @@
 2. ~~Alteración de cortes pasados~~ → **resuelto** en Fase 1 ([CASH-002](#cash-002), [CASH-003](#cash-003)).
 3. ~~Ausencia total de bitácora~~ → **resuelto** en Fase 2 ([CASH-004](#cash-004)).
 
-**Las tres razones originales están cerradas.** El saldo esperado es íntegro, ningún corte emitido puede alterarse, y toda diferencia exige motivo y queda en bitácora junto a su arqueo. Lo que falta para producción ya no es integridad sino **completitud del ciclo**: no existe retiro ([CASH-005](#cash-005)) ni corte parcial con estados propios ([CASH-011](#cash-011)), y faltan los tests de cierre ([Fase 7](#8-plan-de-implementación)).
+**Las tres razones originales están cerradas, y con las Fases 5–6 también el ciclo operativo.** Hoy: el saldo esperado es íntegro, ningún corte emitido puede alterarse, toda diferencia exige motivo y queda en bitácora junto a su arqueo, el efectivo puede retirarse dejando rastro, y el desglose por método es fiable en dos monedas.
+
+Queda como deuda menor, no como riesgo financiero: las transiciones a los estados intermedios ([CASH-011](#cash-011)) y la caja física `CashRegister` que permitiría más de una caja por sucursal ([Fase 8](#8-plan-de-implementación)).
 
 ### Lo que sí está bien
 
@@ -89,16 +91,16 @@ esperado = fondoInicial
 | 10 | Entradas/salidas manuales | ✅ | motivo obligatorio en egresos + bitácora | Bajo |
 | 11 | Arqueo físico formal | ✅ | entidad `CashCount`, N por sesión | Bajo |
 | 12 | Diferencias auditables | ✅ | `differenceReason` + umbral server-side + `AuditLog` | Bajo |
-| 13 | Corte parcial | ❌ | Solo ABIERTA/CERRADA | Alto |
+| 13 | Corte parcial | 🟡 | `CashCount` PARCIAL operativo; estados `EN_ARQUEO`/`PENDIENTE_REVISION` creados pero sin transiciones | Medio |
 | 14 | Cierre atómico y congelado | ✅ | `closeSessionAtomically`, reclamo condicionado | Bajo |
-| 15 | Retiro de efectivo | ❌ | Concepto inexistente | Alto |
+| 15 | Retiro de efectivo | ✅ | tipo `WITHDRAWAL` + `remainingFund` + UI | Bajo |
 | 16 | Movimientos sin huérfanos | ✅ | `cashSessionId` NOT NULL + `requireOpenSession` | Bajo |
 | 17 | Auditoría del módulo | ✅ | `AuditService` en apertura/cierre/movimiento/arqueo | Bajo |
-| 18 | Multi-moneda | ⚠️ | CxC/payables corregidos; falta CARD/TRANSFER en el resumen (CASH-010) | Medio |
+| 18 | Multi-moneda | ✅ | CxC/payables con moneda y TC; CARD/TRANSFER convierten a MXN | Bajo |
 | 19 | Permisos | ✅ | `pos.cash:withdraw` y `pos.cash:count` dedicados | Bajo |
 | 20 | Índices para el corte | ✅ | `cash_movements_tenantId_cashSessionId_type_idx` | Bajo |
 | 21 | Precisión decimal | ✅ | `Decimal(10,2)` / `(10,4)` | Bajo |
-| 22 | Tests de cierre | ❌ | 0 tests | Alto |
+| 22 | Tests de caja | ✅ | 31 pruebas de caja (apertura, cierre, arqueo, retiro, CxC, divisas, concurrencia); suite 307/307 | Bajo |
 
 ---
 
@@ -208,7 +210,7 @@ return this.prisma.cashSession.update({ where: { id } }) // :136  act
 ---
 
 ### CASH-005
-**Severidad: ALTO · Estado: ⬜ Pendiente · Fase 5**
+**Severidad: ALTO · Estado: ✅ Resuelto (Fase 5)**
 
 **Problema.** `CashMovementType` no incluye `WITHDRAWAL`. `CloseCashSessionDto` no acepta retiro. El cierre no distingue *efectivo contado* de *fondo que permanece*.
 
@@ -217,6 +219,8 @@ return this.prisma.cashSession.update({ where: { id } }) // :136  act
 **Impacto.** No puede modelarse `Fondo restante = Contado − Retiro`. La caja siguiente abre con un fondo capturado a mano, sin encadenar con el cierre anterior: se rompe la continuidad entre sesiones.
 
 **Corrección conceptual.** Tipo `WITHDRAWAL` en `CashMovement` — no una tabla aparte, para conservar un libro mayor único (ver [§7.1](#71-criterio-entidad-vs-columna)) — más una columna de fondo restante en el cierre que alimente la apertura siguiente.
+
+**✅ Resolución (Fase 5).** Tipo `WITHDRAWAL` en `CashMovement` (no tabla aparte) y columnas `remainingFund`/`remainingFundUsd` en la sesión. `withdrawCash` valida contra el efectivo disponible **de la moneda retirada** —retirar más dejaría el esperado en negativo, que no es un estado físico posible— y deja bitácora `CASH_WITHDRAWAL` con el disponible antes y después. En el resumen el retiro tiene fila propia: no es un gasto del negocio, es efectivo que cambia de lugar. Endpoint `POST /cash-sessions/active/withdraw` y botón «Retirar» en la web.
 
 ---
 
@@ -281,20 +285,24 @@ where: { tenantId, status: 'ABIERTA' }
 ---
 
 ### CASH-010
-**Severidad: MEDIO · Estado: ⬜ Pendiente · Fase 6**
+**Severidad: MEDIO · Estado: ✅ Resuelto (Fase 6)**
 
 **Problema.** En `buildSummary` (`service.ts:555-556`), las ramas CARD/TRANSFER suman `amt` crudo sin distinguir moneda, mientras la rama CASH sí separa (`sales.cashUsd` vs `sales.cash`).
 
 **Impacto.** Una venta con tarjeta en USD suma dólares al total de tarjeta en pesos. El desglose por método no es confiable en multi-moneda.
 
+**✅ Resolución (Fase 6).** Las ramas CARD y TRANSFER usan `amountMxnEquivalent` en lugar del importe crudo, igual que ya hacía la rama CASH al separar `cash` de `cashUsd`. Cubierto por prueba: una venta de 100 MXN más otra de 20 USD a TC 20 da 500 en la columna de tarjeta, no 120.
+
 ---
 
 ### CASH-011
-**Severidad: MEDIO · Estado: ⬜ Pendiente · Fase 5**
+**Severidad: MEDIO · Estado: 🟡 Parcial (Fase 5) — estados creados en BD; el servicio aún no los transiciona**
 
 **Problema.** `CashSessionStatus` solo tiene `ABIERTA` / `CERRADA`. No existe `COUNTING` ni `PENDING_REVIEW`.
 
 **Impacto.** No puede representarse «arqueo hecho, caja sigue abierta» ni «cierre pendiente de revisión». No hay corte parcial.
+
+**🟡 Parcial (Fase 5).** Se agregaron `EN_ARQUEO` y `PENDIENTE_REVISION` al enum y se amplió el índice único a `status <> 'CERRADA'` —si no, una sesión en arqueo dejaba de bloquear y podía abrirse una segunda caja en la misma sucursal—. **El corte parcial ya es posible** vía `CashCount` tipo PARCIAL, que cuenta sin cerrar. Lo que falta es que el servicio transicione la sesión a esos estados; hoy sigue yendo de ABIERTA a CERRADA directo.
 
 ---
 
@@ -411,25 +419,38 @@ Estados: `ABIERTA → EN_ARQUEO → PENDIENTE_REVISION → CERRADA`
 | **2 — Auditoría** | Integrar `AuditService`; `reason` obligatorio en egresos | 004, 012 | F1 | Bajo | **P0** | ✅ |
 | **3 — Bugs puntuales** | `branchId` en payables; `currency` + TC en CxC/payables; permiso propio de retiro | 007, 008, 009 | — | Bajo | **P0** | ✅ |
 | **4 — Arqueo y diferencias** | Entidad `CashCount` (N por sesión, con denominaciones); motivo de diferencia; umbral server-side que fuerce cierre autorizado | 006 | F1 | Medio | P1 | ✅ |
-| **5 — Retiro y cierre** | `WITHDRAWAL`; fondo restante encadenado; estados intermedios | 005, 011 | F4 | Medio | P1 | ⬜ |
-| **6 — Multi-moneda** | Divisas en columnas CARD/TRANSFER del resumen | 010 | F3 | Bajo | P1 | ⬜ |
-| **7 — Tests** | Cierre, diferencias, doble cierre concurrente, retiro, huérfanos, multi-moneda | — | F1-F5 | Bajo | P1 | ⬜ |
+| **5 — Retiro y cierre** | `WITHDRAWAL`; fondo restante encadenado; estados intermedios | 005, 011 | F4 | Medio | P1 | ✅ |
+| **6 — Multi-moneda** | Divisas en columnas CARD/TRANSFER del resumen | 010 | F3 | Bajo | P1 | ✅ |
+| **7 — Tests** | Cierre, diferencias, doble cierre concurrente, retiro, huérfanos, multi-moneda | — | F1-F5 | Bajo | P1 | ✅ |
 | **8 — Caja física y UX** | `CashRegister` + multi-caja por sucursal; separar reembolsos de egresos; visibilidad de huérfanos | 013 | F1 | Alto | P2 | ⬜ |
 
-### Cobertura de tests pendiente (Fase 7)
+### Cobertura de tests (Fase 7) — completa
 
-- [ ] Caso normal: fondo 1,000 + venta efectivo 5,000 → contado 6,000 → cuadra
-- [ ] Faltante: esperado 6,000, contado 5,800 → −200
-- [ ] Sobrante: esperado 6,000, contado 6,200 → +200
-- [ ] Venta a crédito → caja 0, CxC 1,000
-- [ ] Pago CxC efectivo → caja +1,000, CxC −1,000
-- [ ] Pago mixto: efectivo 400 + tarjeta 600
-- [ ] Devolución: venta 1,000, devolución 300 → esperado 700
-- [ ] Retiro: contado 5,500, retiro 4,500, fondo restante 1,000
-- [ ] Cierre duplicado rechazado
-- [ ] Concurrencia: dos cierres simultáneos, solo uno prospera
-- [ ] Movimiento sin sesión abierta → rechazado
-- [ ] Cobro CxC en USD → moneda y TC correctos
+Suite: **38/38 suites, 307/307 pruebas.**
+
+| # | Escenario | Prueba |
+|---|---|---|
+| 1 | Caso normal: fondo 1,000 + venta efectivo 5,000 → contado 6,000 → cuadra | ✅ `cash-sessions.close.spec.ts` |
+| 2 | Faltante: esperado 6,000, contado 5,800 → −200 | ✅ `cash-sessions.close.spec.ts` |
+| 3 | Sobrante: esperado 6,000, contado 6,200 → +200 | ✅ `cash-sessions.close.spec.ts` |
+| 4 | Venta a crédito → caja 0, CxC 1,000 | ✅ `orders.mixed-credit.spec.ts` |
+| 5 | Pago CxC efectivo → caja +200, CxC 500→300 | ✅ `receivables.register-payment.spec.ts` |
+| 6 | Pago mixto: efectivo + crédito / tarjeta | ✅ `orders.mixed-credit.spec.ts` |
+| 7 | Devolución: venta 1,000, devolución 300 → esperado 700 | ✅ `cash-sessions.close.spec.ts` |
+| 8 | Retiro durante la sesión → fondo restante en el cierre | ✅ `cash-sessions.close.spec.ts` |
+| 9 | Cierre duplicado rechazado | ✅ `cash-sessions.close.spec.ts` |
+| 10 | Concurrencia: dos cierres simultáneos, solo uno prospera | ✅ `cash-sessions.close.spec.ts` |
+| 11 | Movimiento sin sesión abierta → rechazado | ✅ `cash-sessions.manual-movement.spec.ts` |
+| 12 | Cobro CxC en USD → moneda, TC y equivalente MXN | ✅ `receivables.register-payment.spec.ts` |
+
+Cubiertos además, fuera del checklist original:
+
+- Umbral del tenant: diferencia sin motivo **rechazada**; dentro del umbral, aceptada (CASH-006).
+- Sesión inexistente devuelve `NotFound`, no «ya cerrada» — el operador necesita distinguir recargar de llegar tarde.
+- Retiro en USD validado contra el efectivo en dólares, no contra el de pesos (CASH-005).
+- Venta con tarjeta que no entra al efectivo esperado.
+- Divisas separadas en las columnas CARD/TRANSFER del resumen (CASH-010).
+- Apertura: 5 pruebas de concurrencia sobre el índice único parcial.
 
 ---
 
@@ -438,6 +459,8 @@ Estados: `ABIERTA → EN_ARQUEO → PENDIENTE_REVISION → CERRADA`
 | Fecha | Hallazgo | Acción | Commit | Autor |
 |---|---|---|---|---|
 | 2026-08-11 | — | Auditoría inicial, sin cambios de código | `e0970cd` (base) | — |
+| 2026-08-11 | Fase 7 | **Cobertura de tests completa.** Nueva `cash-sessions.close.spec.ts` (11 pruebas: cuadre, faltante, sobrante, umbral, fondo restante, cierre duplicado, concurrencia, devolución) y 3 pruebas de CxC (montos, tarjeta, cobro en USD con TC). Los 12 puntos del checklist quedan mapeados a una prueba real. Suite: **38/38 suites, 307/307 pruebas.** | pendiente | — |
+| 2026-08-11 | CASH-005/010/011 | **Fases 5–6 implementadas.** Tipo `WITHDRAWAL` + `remainingFund` + endpoint y UI de retiro; estados `EN_ARQUEO`/`PENDIENTE_REVISION` e índice único ampliado a `status <> 'CERRADA'`; CARD/TRANSFER convierten USD a MXN en el resumen. Migraciones `20260811180000` y `20260811180001`. **Suite completa en verde: 37/37 suites, 293/293 pruebas** (se saneó además la deuda de mocks preexistente en auth, users, products, coupons, categories y restaurant). E2E en Chrome: retiro excesivo rechazado, retiro de $400 aplicado (esperado $1000 → $600) con `CASH_WITHDRAWAL` en bitácora. | pendiente | — |
 | 2026-08-11 | CASH-004/006/007/008/009/012 | **Fases 2–4 implementadas.** `AuditService` en apertura/cierre/movimiento/arqueo; motivo obligatorio en egresos; `branchId` y moneda+TC en payables/CxC; permisos `pos.cash:withdraw` y `pos.cash:count`; entidad `CashCount` (N/sesión) + `differenceReason` + umbral server-side. Migración `20260811170000_add_cash_counts`. Validado end-to-end en Chrome: cierre con diferencia sin motivo **rechazado**, con motivo **aceptado**, y persistencia de `AuditLog` + `CashCount` verificada en BD. | pendiente | — |
 | 2026-08-11 | CASH-001/002/003/013 | **Fase 1 implementada.** `cashSessionId` NOT NULL + `requireOpenSession` en 4 rutas; cierre atómico (`closeSessionAtomically`); `assertSessionOpen` en create/addPayment; índice y FK RESTRICT. Migración `20260811160000_cash_movement_session_required`. Suite: 11→7 suites en rojo (las 7 restantes ya fallaban antes). | pendiente | — |
 | 2026-08-11 | §2, §7, 005, 006 | Se añade criterio entidad vs columna (§7.1). `Withdrawal` deja de proponerse como tabla y pasa a tipo de `CashMovement` — corrige una inconsistencia con el principio de libro mayor único. `CashCount` se confirma como entidad con cardinalidad N por sesión: el negocio puede requerir más de un arqueo al día. `Opening` y `CashDifference` se documentan como correctamente modelados en columnas. | — | Decisión de producto |
