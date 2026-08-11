@@ -9,11 +9,12 @@
  * destinations.
  */
 import { useRouter } from 'expo-router';
-import { memo, useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, ScrollView, View, type GestureResponderEvent } from 'react-native';
 import Animated, {
   Easing,
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -44,6 +45,10 @@ import { useTheme } from '@/hooks/use-theme';
 
 const DRAWER_WIDTH = 300;
 const ROW_HEIGHT = 50;
+const SCRIM_OPACITY = 0.5;
+
+const OPEN_TIMING = { duration: 260, easing: Easing.out(Easing.cubic) } as const;
+const CLOSE_TIMING = { duration: 200, easing: Easing.in(Easing.cubic) } as const;
 
 interface DrawerModule {
   key: string;
@@ -183,19 +188,52 @@ function AppDrawerComponent({ visible, onClose }: AppDrawerProps) {
 
   const progress = useSharedValue(0);
 
-  useEffect(() => {
-    progress.value = withTiming(visible ? 1 : 0, {
-      duration: visible ? 260 : 200,
-      easing: visible ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
-    });
-  }, [visible, progress]);
+  // The native Modal window is kept up for the whole gesture, not just while
+  // `visible` is true: mounting on open and unmounting only once the closing
+  // animation has finished. Binding the window straight to `visible` made the
+  // drawer vanish instantly on close, with no exit motion at all.
+  const [mounted, setMounted] = useState(visible);
+  // Whether the window is already on screen. The opening animation is deferred
+  // to `onShow`; starting it from a mount effect burns its first frames while
+  // Android is still creating the window, so the drawer appeared already
+  // half-way in.
+  const shown = useRef(false);
 
+  const finishClose = useCallback(() => {
+    shown.current = false;
+    setMounted(false);
+  }, []);
+
+  useEffect(() => {
+    if (visible) {
+      if (shown.current) progress.value = withTiming(1, OPEN_TIMING);
+      else setMounted(true);
+      return;
+    }
+    if (!shown.current) {
+      finishClose();
+      return;
+    }
+    progress.value = withTiming(0, CLOSE_TIMING, (finished) => {
+      if (finished) runOnJS(finishClose)();
+    });
+  }, [visible, progress, finishClose]);
+
+  const handleShown = useCallback(() => {
+    shown.current = true;
+    progress.value = withTiming(1, OPEN_TIMING);
+  }, [progress]);
+
+  // Both animated views also carry their closed state as a *static* style. On
+  // the first frame after the window attaches, Reanimated has not applied its
+  // styles yet, so a scrim whose opacity lived only in the animated style got
+  // painted fully opaque — a blank sheet flashing behind the drawer.
   const panelStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: (progress.value - 1) * DRAWER_WIDTH }],
   }));
 
   const scrimStyle = useAnimatedStyle(() => ({
-    opacity: progress.value * 0.5,
+    opacity: progress.value * SCRIM_OPACITY,
   }));
 
   const openSettings = () => {
@@ -213,16 +251,42 @@ function AppDrawerComponent({ visible, onClose }: AppDrawerProps) {
   };
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <View style={{ flex: 1, flexDirection: 'row' }}>
+    <Modal
+      visible={mounted}
+      transparent
+      animationType="none"
+      onShow={handleShown}
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <View style={{ flex: 1 }}>
+        {/* Scrim — a full-bleed layer *under* the panel, not a sibling column
+            beside it. Laid out in the row flow it only covered the screen minus
+            the drawer's width, so the strip behind the panel stayed unshaded
+            and the dimming visibly stopped at the panel's edge. */}
+        <Animated.View
+          pointerEvents={visible ? 'auto' : 'none'}
+          style={[
+            { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000', opacity: 0 },
+            scrimStyle,
+          ]}
+        >
+          <Pressable style={{ flex: 1 }} onPress={onClose} />
+        </Animated.View>
+
         <Animated.View
           style={[
             {
+              position: 'absolute',
+              top: 0,
+              bottom: 0,
+              left: 0,
               width: DRAWER_WIDTH,
               backgroundColor: theme.colors.card,
               borderTopRightRadius: theme.radius['2xl'],
               borderBottomRightRadius: theme.radius['2xl'],
               overflow: 'hidden',
+              transform: [{ translateX: -DRAWER_WIDTH }],
             },
             theme.shadows.lg,
             panelStyle,
@@ -313,10 +377,6 @@ function AppDrawerComponent({ visible, onClose }: AppDrawerProps) {
             <DrawerRow Icon={SettingsIcon} label={t('drawer.settings')} onPress={openSettings} />
             <DrawerRow Icon={LogOutIcon} label={t('drawer.logout')} danger onPress={() => setConfirmLogout(true)} />
           </View>
-        </Animated.View>
-
-        <Animated.View style={[{ flex: 1, backgroundColor: '#000' }, scrimStyle]}>
-          <Pressable style={{ flex: 1 }} onPress={onClose} />
         </Animated.View>
       </View>
 
