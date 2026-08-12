@@ -19,7 +19,15 @@
     "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      // La app móvil fija @types/react ~19.1.10, y pnpm expone esa copia a los
+      // paquetes dentro de .pnpm (base-ui, react-router…). Sin este mapeo el
+      // programa carga 19.1.17 y 19.2.14 a la vez y los tipos de React quedan
+      // duplicados ("Two different types with this name exist").
+      "react": ["./node_modules/@types/react"],
+      "react/*": ["./node_modules/@types/react/*"],
+      "react-dom": ["./node_modules/@types/react-dom"],
+      "react-dom/*": ["./node_modules/@types/react-dom/*"]
     }
   },
   "include": ["src"],
