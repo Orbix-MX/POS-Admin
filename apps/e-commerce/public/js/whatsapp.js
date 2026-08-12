@@ -1,5 +1,5 @@
 /**
- * Manzanitas · whatsapp.js
+ * whatsapp.js
  * Construcción del pedido que se envía por WhatsApp.
  *
  * El mensaje se arma como texto plano y se codifica con encodeURIComponent
@@ -41,14 +41,21 @@ RG.whatsapp = (function () {
    * Devuelve el mensaje completo, ya listo para enviarse.
    * @param {Array<{nombre:string,categoria:string,precio:number,cantidad:number}>} lineas
    * @param {{articulos:number, subtotal:number}} totales
+   * @param {string|null} [folio] Folio del pedido ya registrado (ver store-orders.js)
    */
-  const construirMensaje = (lineas, totales) => {
+  const construirMensaje = (lineas, totales, folio) => {
     const { formatearPrecio } = RG.utils;
+    // Nombre del negocio resuelto en runtime desde la base de datos (ver
+    // branding.js) — si aún no cargó, se omite en vez de asumir una marca.
+    const nombreNegocio = (window.RG_CONFIG && window.RG_CONFIG.tenantName) || '';
 
     return [
       'Hola, buen día. 😊',
       '',
-      'Me interesa realizar el siguiente pedido de Manzanitas.',
+      nombreNegocio
+        ? `Me interesa realizar el siguiente pedido de ${nombreNegocio}.`
+        : 'Me interesa realizar el siguiente pedido.',
+      ...(folio ? [`Folio: ${folio}`] : []),
       '',
       lineas.map(bloqueDeLinea).join('\n\n'),
       '',
@@ -62,13 +69,16 @@ RG.whatsapp = (function () {
     ].join('\n');
   };
 
-  const construirEnlace = (lineas, totales) =>
-    `https://wa.me/${NUMERO}?text=${encodeURIComponent(construirMensaje(lineas, totales))}`;
+  const construirEnlace = (lineas, totales, folio) =>
+    `https://wa.me/${NUMERO}?text=${encodeURIComponent(construirMensaje(lineas, totales, folio))}`;
 
-  /** Abre WhatsApp en una pestaña nueva con el pedido precargado. */
-  const enviarPedido = (lineas, totales) => {
+  /**
+   * Abre WhatsApp en una pestaña nueva con el pedido precargado.
+   * @param {string|null} [folio] Folio del pedido, si ya se registró (ver store-orders.js)
+   */
+  const enviarPedido = (lineas, totales, folio) => {
     if (!lineas.length) return false;
-    window.open(construirEnlace(lineas, totales), '_blank', 'noopener,noreferrer');
+    window.open(construirEnlace(lineas, totales, folio), '_blank', 'noopener,noreferrer');
     return true;
   };
 

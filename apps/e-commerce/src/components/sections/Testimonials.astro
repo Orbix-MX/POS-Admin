@@ -1,0 +1,51 @@
+---
+// Sección enteramente nueva — no existía en el sitio estático original, así
+// que no hay contenido de respaldo: si el tenant no la configuró, no se
+// renderiza nada (a diferencia de Hero/ValueProps/FeaturedCategories).
+interface TestimonialItem {
+  author: string;
+  quote: string;
+  avatarUrl?: string;
+}
+
+interface Content {
+  title?: string;
+  subtitle?: string;
+  items?: TestimonialItem[];
+}
+
+interface Props {
+  content: Content | null;
+}
+
+const { content } = Astro.props;
+const items = content?.items ?? [];
+---
+
+{items.length > 0 && (
+  <section class="seccion">
+    <div class="contenedor">
+      <div class="seccion__encabezado revelar">
+        <span class="seccion__etiqueta">Testimonios</span>
+        {content?.title && <h2 class="seccion__titulo">{content.title}</h2>}
+        {content?.subtitle && <p class="seccion__descripcion">{content.subtitle}</p>}
+      </div>
+
+      <div class="valores">
+        {items.map((item) => (
+          <div class="valor revelar">
+            {item.avatarUrl ? (
+              <img src={item.avatarUrl} alt={item.author} width="40" height="40" style="border-radius: 50%; object-fit: cover;" />
+            ) : (
+              <span class="valor__icono" aria-hidden="true">💬</span>
+            )}
+            <div>
+              <h3 class="valor__titulo">{item.author}</h3>
+              <p class="valor__texto">{item.quote}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+)}

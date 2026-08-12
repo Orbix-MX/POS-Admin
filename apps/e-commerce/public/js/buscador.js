@@ -1,5 +1,5 @@
 /**
- * Manzanitas · buscador.js
+ * buscador.js
  * Filtrado instantáneo por nombre comercial, nombre científico y categoría.
  */
 window.RG = window.RG || {};

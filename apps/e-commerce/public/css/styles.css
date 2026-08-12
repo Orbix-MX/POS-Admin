@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Manzanitas · styles.css
+   styles.css
    Base, identidad de marca y componentes compartidos por todas las páginas.
    ========================================================================== */
 
@@ -331,14 +331,10 @@ p {
 
 .marca__texto {
   font-size: 1.22rem;
-  font-weight: 300;
+  font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--verde-900);
   transition: color var(--transicion);
-}
-
-.marca__texto strong {
-  font-weight: 700;
 }
 
 .marca__slogan {
@@ -560,13 +556,17 @@ p {
   position: absolute;
   inset: 0;
   z-index: -1;
+  /* En color-mix con var(--verde-900/700) en vez de rgba() fijo, para que el
+     tinte del banner del tenant siga sus colores dinámicos (branding.js),
+     no siempre el verde por defecto. Aclarado a propósito (antes 78/62/86%)
+     para que un banner subido por el tenant se note, no quede tapado. */
   background: linear-gradient(
       180deg,
-      rgba(6, 22, 11, 0.78) 0%,
-      rgba(6, 22, 11, 0.62) 42%,
-      rgba(6, 22, 11, 0.86) 100%
+      color-mix(in srgb, var(--verde-900) 46%, transparent) 0%,
+      color-mix(in srgb, var(--verde-900) 30%, transparent) 42%,
+      color-mix(in srgb, var(--verde-900) 58%, transparent) 100%
     ),
-    radial-gradient(120% 80% at 50% 40%, rgba(27, 94, 32, 0.25), transparent 70%);
+    radial-gradient(120% 80% at 50% 40%, color-mix(in srgb, var(--verde-700) 14%, transparent), transparent 70%);
 }
 
 .portada__contenido {
@@ -607,13 +607,9 @@ p {
 
 .portada__titulo {
   font-size: clamp(2.6rem, 8vw, 4.6rem);
-  font-weight: 300;
+  font-weight: 700;
   letter-spacing: -0.02em;
   text-shadow: 0 4px 30px rgba(0, 0, 0, 0.35);
-}
-
-.portada__titulo strong {
-  font-weight: 700;
 }
 
 .portada__slogan {
@@ -1159,12 +1155,8 @@ p {
 
 .footer__marca-nombre {
   font-size: 1.3rem;
-  font-weight: 300;
-  color: var(--blanco);
-}
-
-.footer__marca-nombre strong {
   font-weight: 700;
+  color: var(--blanco);
 }
 
 .footer__slogan {

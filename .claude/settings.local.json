@@ -9,7 +9,30 @@
       "Bash(node -e \"const m = require\\('./node_modules/@prisma/client/default.js'\\); const {PrismaClient} = m; const p = Object.create\\(PrismaClient.prototype\\); console.log\\('platformAuditLog' in p, typeof p.platformAuditLog\\);\")",
       "Bash(node -e ' *)",
       "Bash(node -e \"require\\('C:/Users/juanj/source/repos/ERPPV/api/dist/src/app.module.js'\\)\")",
-      "Bash(xargs grep -l \"sign\\\\|JwtService\")"
+      "Bash(xargs grep -l \"sign\\\\|JwtService\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3001/api/docs --max-time 2)",
+      "Bash(npx eslint *)",
+      "Bash(curl -s http://localhost:4321/)",
+      "Bash(curl -s http://localhost:4321/tienda)",
+      "Bash(curl -s http://localhost:4321/catalogo)",
+      "Bash(curl -s http://localhost:4321/manifest.json)",
+      "Bash(nohup npm run dev)",
+      "Bash(disown)",
+      "Read(//tmp/**)",
+      "Bash(curl -s -o /dev/null -w \"home: %{http_code}\\\\n\" http://localhost:4321/)",
+      "Bash(curl *)",
+      "Bash(node -e \"require.resolve\\('vite'\\)\")",
+      "PowerShell($conn = Get-NetTCPConnection -LocalPort 4321 -State Listen -ErrorAction SilentlyContinue; if \\($conn\\) { Stop-Process -Id $conn.OwningProcess -Force })",
+      "Bash(npm run *)",
+      "mcp__chrome-devtools__new_page",
+      "Bash(xargs grep -l \"SystemModule\\\\|getModulesForPlan\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const j=JSON.parse\\(d\\);console.log\\(JSON.stringify\\(j.enabledModules\\)\\)}\\)\")",
+      "Bash(node *)",
+      "Bash(powershell -NoProfile -Command \"Get-NetTCPConnection -LocalPort 4321 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess\" 2>/dev/null)",
+      "PowerShell(Stop-Process *)",
+      "Bash(powershell -NoProfile -Command \"Get-NetTCPConnection -LocalPort 3001 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess\" 2>/dev/null)",
+      "Bash(pnpm exec *)",
+      "mcp__chrome-devtools__list_pages"
     ]
   }
 }

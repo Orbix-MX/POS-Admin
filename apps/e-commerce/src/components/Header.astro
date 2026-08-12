@@ -8,16 +8,19 @@ const { solid = false } = Astro.props;
 
 <header class={`header${solid ? ' header--solido' : ''}`} data-header>
   <div class="header__interno">
-    <a class="marca" href="/" aria-label="Manzanitas, inicio" data-marca-aria>
+    <a class="marca" href="/" aria-label="Tu Tienda, inicio" data-marca-attr="aria-label" data-marca-sufijo=", inicio">
       <img
         class="marca__emblema"
         src="/assets/logo-mark.png"
-        alt="Emblema de Manzanitas"
+        alt="Emblema de la tienda"
         width="40"
         height="40"
+        data-marca-attr="alt"
+        data-marca-prefijo="Emblema de "
+        data-marca-logo
       />
       <span>
-        <span class="marca__texto" data-marca-texto><strong>Manza</strong>nitas</span>
+        <span class="marca__texto" data-marca-texto>Tu Tienda</span>
         <span class="marca__slogan">Aquascaping</span>
       </span>
     </a>

@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Manzanitas · tienda.css
+   tienda.css
    Botón flotante del pedido y panel lateral deslizable.
    ========================================================================== */
 
@@ -263,6 +263,44 @@
   background: var(--blanco);
   border-top: 1px solid var(--linea);
   box-shadow: 0 -10px 30px rgba(18, 38, 26, 0.06);
+}
+
+.carrito-panel__campo {
+  margin-bottom: 16px;
+}
+
+.carrito-panel__etiqueta {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--tinta);
+}
+
+.carrito-panel__input {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid var(--linea-fuerte);
+  border-radius: var(--radio-sm);
+  font-size: 0.92rem;
+  font-family: inherit;
+  color: var(--tinta);
+  background: var(--blanco);
+}
+
+.carrito-panel__input:focus {
+  outline: 2px solid var(--verde-500, var(--verde-700));
+  outline-offset: 1px;
+}
+
+.carrito-panel__input.is-invalido {
+  border-color: #c0392b;
+}
+
+.carrito-panel__error {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  color: #c0392b;
 }
 
 .resumen {

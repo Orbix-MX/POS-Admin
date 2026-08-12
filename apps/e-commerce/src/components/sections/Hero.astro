@@ -1,0 +1,92 @@
+---
+// Sección "portada" de la home. Si `content` viene de una TenantSiteSection
+// tipo HERO (ver GET /api/store/site, resuelto server-side en index.astro),
+// se renderiza con ese título/subtítulo/fondo.
+//
+// - Tenant SIN tienda en línea (`hasSite` = false): se queda el markup
+//   estático de siempre, con los mismos data-marca-* que branding.js sigue
+//   aplicando en el cliente — nada cambia para quien no adoptó la plantilla.
+// - Tenant CON tienda en línea pero sin esta sección activa/configurada
+//   (`hasSite` = true, `content` = null): no se muestra nada — no tiene
+//   sentido rellenar con el demo estático si el tenant ya está usando el
+//   sistema de secciones.
+interface HeroContent {
+  title?: string;
+  subtitle?: string;
+  backgroundImageUrl?: string;
+}
+
+interface Props {
+  content: HeroContent | null;
+  hasSite: boolean;
+}
+
+const { content, hasSite } = Astro.props;
+const configurado = Boolean(content && (content.title || content.subtitle || content.backgroundImageUrl));
+const mostrar = !hasSite || configurado;
+---
+
+{mostrar && (
+  <section class="portada" id="portada">
+    {configurado && content?.backgroundImageUrl ? (
+      <div class="portada__fondo" role="presentation" style={`background-image: url('${content.backgroundImageUrl}')`}></div>
+    ) : (
+      <div class="portada__fondo" role="presentation" data-marca-banner></div>
+    )}
+    <div class="portada__velo" role="presentation"></div>
+
+    <div class="contenedor portada__contenido">
+      <div class="portada__marca">
+        <img
+          class="portada__logo"
+          src="/assets/logo-mark.png"
+          alt="Emblema de la tienda"
+          width="226"
+          height="220"
+          fetchpriority="high"
+          data-marca-attr="alt"
+          data-marca-prefijo="Emblema de "
+          data-marca-logo
+        />
+      </div>
+
+      {configurado ? (
+        <>
+          <h1 class="portada__titulo">{content?.title}</h1>
+          {content?.subtitle && <p class="portada__slogan">{content.subtitle}</p>}
+        </>
+      ) : (
+        <>
+          <h1 class="portada__titulo" data-marca-texto>Tu Tienda</h1>
+          <p class="portada__slogan">Naturaleza para tu acuario.</p>
+        </>
+      )}
+
+      <div class="portada__especialidades">
+        <p class="portada__especialidades-titulo">Especialistas en</p>
+        <ul class="pastillas">
+          <li class="pastilla">
+            <span class="pastilla__icono" aria-hidden="true">🌿</span> Plantas Acuáticas
+          </li>
+          <li class="pastilla">
+            <span class="pastilla__icono" aria-hidden="true">🪵</span> Raíz de Manzanita
+          </li>
+          <li class="pastilla">
+            <span class="pastilla__icono" aria-hidden="true">🪨</span> Hardscape
+            <span class="proximamente proximamente--claro">Próximamente</span>
+          </li>
+        </ul>
+      </div>
+
+      <div class="portada__acciones">
+        <a class="boton boton--claro" href="#catalogo">Explorar catálogo</a>
+        <a class="boton boton--fantasma" href="/tienda">Hacer un pedido</a>
+      </div>
+    </div>
+
+    <a class="portada__indicador" href="#catalogo" aria-label="Bajar al catálogo">
+      <span>Desliza</span>
+      <span class="portada__indicador-linea" aria-hidden="true"></span>
+    </a>
+  </section>
+)}

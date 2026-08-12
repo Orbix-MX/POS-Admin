@@ -68,4 +68,8 @@ export class R2Service {
   buildBrandingKey(tenantId: string, type: 'logo' | 'banner'): string {
     return `tenant-${tenantId}/branding/${type}.webp`;
   }
+
+  buildSiteImageKey(tenantId: string, imageId: string): string {
+    return `tenant-${tenantId}/site/${imageId}.webp`;
+  }
 }

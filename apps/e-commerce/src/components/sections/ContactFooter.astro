@@ -1,0 +1,47 @@
+---
+// Sección "Franja de contacto". Mismo patrón que Hero/ValueProps.
+interface Content {
+  title?: string;
+  subtitle?: string;
+  whatsappNumber?: string;
+}
+
+interface Props {
+  content: Content | null;
+  hasSite: boolean;
+}
+
+const { content, hasSite } = Astro.props;
+const configurado = Boolean(content && (content.title || content.subtitle || content.whatsappNumber));
+const mostrar = !hasSite || configurado;
+
+const NUMERO_DEFECTO = '526562016886';
+
+const titulo = configurado && content?.title ? content.title : '¿No sabes por dónde empezar?';
+const subtitulo = configurado && content?.subtitle
+  ? content.subtitle
+  : 'Cuéntanos las medidas de tu acuario, tu iluminación y el estilo que buscas. Te armamos una lista de plantas y hardscape a la medida, sin compromiso.';
+const numero = (configurado && content?.whatsappNumber) || NUMERO_DEFECTO;
+---
+
+{mostrar && (
+  <section class="seccion">
+    <div class="contenedor">
+      <div class="franja revelar">
+        <h2 class="franja__titulo">{titulo}</h2>
+        <p class="franja__texto">{subtitulo}</p>
+        <div class="franja__acciones">
+          <a
+            class="boton boton--whatsapp"
+            href={`https://wa.me/${numero}`}
+            target="_blank"
+            rel="noopener"
+          >
+            <span aria-hidden="true">💬</span> Asesoría por WhatsApp
+          </a>
+          <a class="boton boton--claro" href="/tienda">Armar mi pedido</a>
+        </div>
+      </div>
+    </div>
+  </section>
+)}

@@ -1,0 +1,52 @@
+---
+// Sección "valores" de la home. Mismo patrón que Hero: si `items` viene de
+// una TenantSiteSection tipo VALUE_PROPS activa, se usa esa lista.
+// - Sin tienda en línea (`hasSite` = false): contenido estático de siempre.
+// - Con tienda en línea pero sin esta sección activa (`hasSite` = true,
+//   `items` = null): no se muestra nada.
+interface ValueItem {
+  icon?: string;
+  title: string;
+  text: string;
+}
+
+interface Props {
+  items: ValueItem[] | null;
+  hasSite: boolean;
+}
+
+const { items, hasSite } = Astro.props;
+const configurado = Boolean(items && items.length > 0);
+const mostrar = !hasSite || configurado;
+
+const ESTATICOS: ValueItem[] = [
+  { icon: '🧪', title: 'Libre de plagas', text: 'Cada lote se revisa y enjuaga antes de salir. Sin caracoles, planaria ni algas.' },
+  { icon: '📦', title: 'Empaque protegido', text: 'Humedad controlada y aislante térmico para que el viaje no marchite nada.' },
+  { icon: '💬', title: 'Asesoría real', text: 'Te ayudamos a elegir según tu luz, tu sustrato y si usas CO₂ o no.' },
+];
+
+const lista = configurado ? (items as ValueItem[]) : ESTATICOS;
+---
+
+{mostrar && (
+  <section class="seccion seccion--clara">
+    <div class="contenedor">
+      <div class="seccion__encabezado revelar">
+        <span class="seccion__etiqueta" data-marca-texto data-marca-prefijo="Por qué ">Por qué esta tienda</span>
+        <h2 class="seccion__titulo">Plantas que llegan vivas y listas</h2>
+      </div>
+
+      <div class="valores">
+        {lista.map((item) => (
+          <div class="valor revelar">
+            {item.icon && <span class="valor__icono" aria-hidden="true">{item.icon}</span>}
+            <div>
+              <h3 class="valor__titulo">{item.title}</h3>
+              <p class="valor__texto">{item.text}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+)}

@@ -120,10 +120,16 @@ export const ALL_PERMISSIONS: PermissionDef[] = [
   { key: 'kitchen:view',   name: 'Ver cocina (KDS)',       description: 'Ver órdenes activas en pantalla de cocina',     module: 'kitchen', action: 'view'   },
   { key: 'kitchen:manage', name: 'Gestionar cocina',       description: 'Iniciar, pausar, reanudar y marcar listo',      module: 'kitchen', action: 'manage' },
   { key: 'kitchen:reject', name: 'Rechazar órdenes',       description: 'Rechazar órdenes con comentario obligatorio',   module: 'kitchen', action: 'reject' },
+  // tienda en línea (plantillas del sitio)
+  { key: 'site:view', name: 'Ver tienda en línea', description: 'Ver la plantilla y secciones del sitio asignado', module: 'site', action: 'view' },
+  { key: 'site:edit', name: 'Editar tienda en línea', description: 'Editar contenido, imágenes, orden y visibilidad de las secciones', module: 'site', action: 'edit' },
+  // pedidos por WhatsApp (storefront, sin pago en línea)
+  { key: 'store-orders:view', name: 'Ver pedidos WhatsApp', description: 'Ver los pedidos enviados por WhatsApp desde la tienda en línea', module: 'store-orders', action: 'view' },
+  { key: 'store-orders:edit', name: 'Gestionar pedidos WhatsApp', description: 'Confirmar, cancelar y marcar como entregados los pedidos de WhatsApp', module: 'store-orders', action: 'edit' },
 ];
 
 export const MODULES_ORDER = [
   'dashboard', 'pos', 'comanda', 'products', 'categories', 'orders', 'refunds',
   'customers', 'receivables', 'suppliers', 'purchases', 'payables', 'cash', 'coupons', 'settings',
-  'employees', 'branches', 'users', 'roles', 'reports',
+  'employees', 'branches', 'users', 'roles', 'reports', 'site', 'store-orders',
 ];

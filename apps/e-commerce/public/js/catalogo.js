@@ -1,5 +1,5 @@
 /**
- * Manzanitas · catalogo.js
+ * catalogo.js
  * Carga del catálogo desde la API de Orbix y construcción de las tarjetas de
  * producto.
  *
@@ -377,7 +377,7 @@ RG.catalogo = (function () {
         if (vacio) vacio.hidden = true;
         if (resultados) resultados.textContent = '';
         if (error) error.hidden = false;
-        console.error('[Manzanitas] Catálogo no disponible:', fallo);
+        console.error('[Tienda] Catálogo no disponible:', fallo);
         return [];
       });
   };

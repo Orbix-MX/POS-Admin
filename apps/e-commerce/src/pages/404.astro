@@ -1,9 +1,10 @@
 ---
+export const prerender = true;
 import Base from '../layouts/Base.astro';
 ---
 
 <Base
-  title="Página no encontrada · Manzanitas"
+  title="Página no encontrada"
   description="La página que buscas no existe o cambió de dirección."
   path="/404"
   pagina="error"
@@ -15,7 +16,10 @@ import Base from '../layouts/Base.astro';
       <img
         class="pagina-error__logo"
         src="/assets/logo-mark.png"
-        alt="Emblema de Manzanitas"
+        alt="Emblema de la tienda"
+        data-marca-attr="alt"
+        data-marca-prefijo="Emblema de "
+        data-marca-logo
         width="168"
         height="164"
       />

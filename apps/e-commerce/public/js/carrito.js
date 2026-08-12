@@ -1,5 +1,5 @@
 /**
- * Manzanitas · carrito.js
+ * carrito.js
  * Estado del pedido y su interfaz (botón flotante + panel lateral).
  *
  * `RG.carrito` guarda y calcula; `RG.carritoUI` sólo pinta y escucha eventos.
@@ -187,7 +187,9 @@ RG.carritoUI = (function () {
     subtotal: '[data-carrito-subtotal]',
     enviar: '[data-carrito-enviar]',
     limpiar: '[data-carrito-limpiar]',
-    cerrar: '[data-carrito-cerrar]'
+    cerrar: '[data-carrito-cerrar]',
+    telefono: '[data-carrito-telefono]',
+    telefonoError: '[data-carrito-telefono-error]'
   };
 
   let nodos = {};
@@ -358,10 +360,32 @@ RG.carritoUI = (function () {
     }
   };
 
-  const manejarEnvio = () => {
+  const mostrarErrorTelefono = (mostrar) => {
+    if (nodos.telefonoError) nodos.telefonoError.hidden = !mostrar;
+    if (nodos.telefono) nodos.telefono.classList.toggle('is-invalido', mostrar);
+  };
+
+  const manejarEnvio = async () => {
     const lineas = RG.carrito.obtener();
     if (!lineas.length) return;
-    RG.whatsapp.enviarPedido(lineas, RG.carrito.totales());
+
+    const telefono = RG.storeOrders.limpiarTelefono(nodos.telefono ? nodos.telefono.value : '');
+    if (!RG.storeOrders.esTelefonoValido(telefono)) {
+      mostrarErrorTelefono(true);
+      if (nodos.telefono) nodos.telefono.focus();
+      return;
+    }
+    mostrarErrorTelefono(false);
+
+    if (nodos.enviar) nodos.enviar.disabled = true;
+    try {
+      // Si el registro falla (sin conexión, etc.) igual se abre WhatsApp,
+      // solo sin folio de referencia — no se bloquea al cliente por esto.
+      const folio = await RG.storeOrders.registrarPedido(telefono, lineas);
+      RG.whatsapp.enviarPedido(lineas, RG.carrito.totales(), folio);
+    } finally {
+      if (nodos.enviar) nodos.enviar.disabled = false;
+    }
   };
 
   const manejarLimpieza = () => {

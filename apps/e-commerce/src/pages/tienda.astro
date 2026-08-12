@@ -1,9 +1,10 @@
 ---
+export const prerender = true;
 import Base from '../layouts/Base.astro';
 ---
 
 <Base
-  title="Tienda · Manzanitas"
+  title="Tienda"
   description="Arma tu pedido de plantas acuáticas, raíz de manzanita y hardscape, y envíalo por WhatsApp en un solo mensaje."
   path="/tienda"
   pagina="tienda"
@@ -105,13 +106,16 @@ import Base from '../layouts/Base.astro';
           <img
             class="carrito-panel__logo"
             src="/assets/logo-mark.png"
-            alt="Emblema de Manzanitas"
+            alt="Emblema de la tienda"
             width="40"
             height="40"
+            data-marca-attr="alt"
+            data-marca-prefijo="Emblema de "
+            data-marca-logo
           />
           <div>
             <p class="carrito-panel__titulo">Mi pedido</p>
-            <p class="carrito-panel__sub">Manzanitas</p>
+            <p class="carrito-panel__sub" data-marca-texto>Tu Tienda</p>
           </div>
         </div>
         <button
@@ -147,6 +151,21 @@ import Base from '../layouts/Base.astro';
             <dd data-carrito-subtotal>$0.00</dd>
           </div>
         </dl>
+
+        <div class="carrito-panel__campo">
+          <label for="carrito-telefono" class="carrito-panel__etiqueta">Tu WhatsApp para confirmar el pedido</label>
+          <input
+            type="tel"
+            id="carrito-telefono"
+            class="carrito-panel__input"
+            data-carrito-telefono
+            placeholder="Ej. 6561234567"
+            autocomplete="tel"
+            inputmode="numeric"
+            maxlength="15"
+          />
+          <p class="carrito-panel__error" data-carrito-telefono-error hidden>Ingresa un teléfono válido (10 a 15 dígitos).</p>
+        </div>
 
         <div class="carrito-panel__acciones">
           <button class="boton boton--whatsapp boton--bloque" type="button" data-carrito-enviar>

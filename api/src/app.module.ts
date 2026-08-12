@@ -29,6 +29,8 @@ import { DevicesModule } from './modules/core/devices/devices.module';
 import { LicenseModule } from './modules/core/license/license.module';
 import { StaffModule } from './modules/core/staff/staff.module';
 import { StoreModule } from './modules/core/store/store.module';
+import { SiteModule } from './modules/core/site/site.module';
+import { StoreOrdersModule } from './modules/core/store-orders/store-orders.module';
 
 // Retail modules — retail/POS vertical
 import { CategoriesModule } from './modules/retail/categories/categories.module';
@@ -74,6 +76,8 @@ import { PlatformModule } from './modules/platform/platform.module';
     LicenseModule,
     StaffModule,
     StoreModule,
+    SiteModule,
+    StoreOrdersModule,
 
     // Retail
     CategoriesModule,

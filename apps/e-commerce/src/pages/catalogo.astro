@@ -1,10 +1,11 @@
 ---
+export const prerender = true;
 import Base from '../layouts/Base.astro';
 ---
 
 <Base
-  title="Catálogo · Manzanitas"
-  description="Catálogo completo de Manzanitas: plantas acuáticas, raíz de manzanita y hardscape, con dificultad, requerimiento de luz y precio."
+  title="Catálogo"
+  description="Catálogo completo de plantas acuáticas, raíz de manzanita y hardscape, con precio en pesos mexicanos."
   path="/catalogo"
   pagina="catalogo"
   headerSolid={true}
@@ -20,8 +21,7 @@ import Base from '../layouts/Base.astro';
       </nav>
       <h1 class="pagina-encabezado__titulo">Catálogo <strong>completo</strong></h1>
       <p class="pagina-encabezado__texto">
-        Busca por nombre comercial o científico. Cada ficha indica dificultad, requerimiento
-        de luz y precio en pesos mexicanos.
+        Busca por nombre comercial o científico. Cada ficha indica el precio en pesos mexicanos.
       </p>
     </div>
   </section>

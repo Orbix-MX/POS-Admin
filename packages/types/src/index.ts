@@ -82,6 +82,9 @@ export enum SystemModule {
   VENTAS        = 'ventas',
   INVENTARIO    = 'inventario',
   CLIENTES      = 'clientes',
+  /** Pedidos enviados por WhatsApp desde la tienda en línea (sin pago en
+   *  línea). Base del storefront público, igual de siempre disponible. */
+  STORE_ORDERS  = 'store-orders',
   COMPRAS       = 'compras',
   PROVEEDORES   = 'proveedores',
   SERVICIOS     = 'servicios',
@@ -111,6 +114,10 @@ export enum SystemModule {
   DELIVERY      = 'delivery',
   MEMBERSHIPS   = 'memberships',
   ACCESS_CONTROL = 'access-control',
+  /** Editor de la tienda en línea (plantillas + secciones). No entra en
+   *  ningún plan ni vertical por defecto — plataforma lo habilita por
+   *  tenant a mano, igual que un addon. */
+  TIENDA_ONLINE = 'tienda-online',
 }
 
 // Modules included per plan tier (cumulative — each tier adds to the previous).
@@ -127,6 +134,7 @@ const MODULES_BY_TIER: Array<{ plan: TenantPlan; modules: SystemModule[] }> = [
       // a sellable product in the first place.
       SystemModule.INVENTARIO,
       SystemModule.CLIENTES,
+      SystemModule.STORE_ORDERS,
       SystemModule.CAJA,
       SystemModule.USUARIOS,
       SystemModule.ROLES,
