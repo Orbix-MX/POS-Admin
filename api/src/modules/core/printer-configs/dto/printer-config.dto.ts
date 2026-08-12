@@ -87,6 +87,16 @@ export class PrintReceiptDto {
   printerType?: PrinterType;
 }
 
+export class PrintCashSessionReceiptDto {
+  @IsString()
+  @IsNotEmpty()
+  cashSessionId: string;
+
+  @IsOptional()
+  @IsEnum(PrinterType)
+  printerType?: PrinterType;
+}
+
 export class QzSignDto {
   @IsString()
   @IsNotEmpty()

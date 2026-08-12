@@ -28,6 +28,14 @@ async function fetchReceiptData(orderId: string, printerType: PrinterType): Prom
   return data
 }
 
+async function fetchCashSessionReceiptData(cashSessionId: string, printerType: PrinterType): Promise<ReceiptData> {
+  const { data } = await api.post<ReceiptData>('/printer-configs/cash-session-receipt-data', {
+    cashSessionId,
+    printerType,
+  })
+  return data
+}
+
 /**
  * Imprime el recibo de una orden.
  * Fire-and-forget: no lanza excepciones hacia el llamador.
@@ -58,5 +66,35 @@ export async function printOrder(
   } catch (err) {
     // No bloquear el flujo principal por errores de impresión
     console.warn('[print-service] Error al imprimir:', err)
+  }
+}
+
+/**
+ * Imprime el ticket de arqueo (detalle completo de caja) al congelar la
+ * sesión para contar. Fire-and-forget: no lanza excepciones hacia el llamador.
+ */
+export async function printCashSession(
+  cashSessionId: string,
+  printerType: PrinterType = 'TICKET',
+): Promise<void> {
+  try {
+    const receipt = await fetchCashSessionReceiptData(cashSessionId, printerType)
+
+    if (!receipt.printerFound) return
+
+    if (receipt.connectionType === 'NETWORK') {
+      await api.post('/printer-configs/print-cash-session-receipt', { cashSessionId, printerType })
+      return
+    }
+
+    const qzReady = (await isQZActive()) || (await connectQZ())
+    if (!qzReady) {
+      console.warn('[print-service] QZ Tray no disponible. Instálalo en https://qz.io/download')
+      return
+    }
+
+    await printWithQZ(receipt.printerName, receipt.bytes)
+  } catch (err) {
+    console.warn('[print-service] Error al imprimir ticket de arqueo:', err)
   }
 }

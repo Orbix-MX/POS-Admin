@@ -2,7 +2,7 @@
 import {
   Loader2, X, AlertCircle, Landmark, CheckCircle2,
   TrendingUp, ArrowUpRight, ArrowDownRight,
-  Clock, Eye, ChevronRight, Banknote, CreditCard, Wifi,
+  Clock, Eye, ChevronRight, Banknote, CreditCard, Wifi, Printer,
 } from 'lucide-react'
 import { DataTable, Pagination, type Column } from '@/components/shared/data-table'
 import { useCaja, type ApiCashSession } from '@/hooks/core/use-caja'
@@ -17,6 +17,8 @@ import {
   type OpenSessionInput,
   type CloseSessionInput,
   type CashSessionStatus,
+  type CashCountInput,
+  type ApiCashCount,
 } from '@/services/core/caja-service'
 
 // ---- helpers ----
@@ -567,6 +569,195 @@ function CloseModal({
   )
 }
 
+// ---- Count Modal (arqueo parcial, sin cierre) ----
+
+function CountModal({
+  visible,
+  session,
+  form,
+  setForm,
+  counting,
+  countError,
+  result,
+  onClose,
+  onSubmit,
+}: {
+  visible: boolean
+  session: ApiCashSession | null
+  form: CashCountInput
+  setForm: Dispatch<SetStateAction<CashCountInput>>
+  counting: boolean
+  countError: string | null
+  result: ApiCashCount | null
+  onClose: () => void
+  onSubmit: () => void
+}) {
+  if (!visible || !session) return null
+
+  const expectedMxn = session.summary?.expectedCash ?? Number(session.openingAmount)
+  const diffMxn = form.countedMxn - expectedMxn
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <h2 className="text-[15px] font-semibold text-foreground flex items-center gap-2">
+            <Clock className="w-4 h-4 text-amber-500" />
+            Registrar arqueo
+          </h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted"><X className="w-4 h-4 text-muted-foreground" /></button>
+        </div>
+
+        {result ? (
+          <div className="px-5 py-4 space-y-4">
+            <div className="border border-border rounded-lg overflow-hidden">
+              <div className="px-3 py-3 space-y-2">
+                <div className="flex items-center justify-between text-[12px]">
+                  <span className="text-muted-foreground">Esperado</span>
+                  <span className="font-bold tabular-nums text-foreground">{fmtMoney(result.expectedMxn)}</span>
+                </div>
+                <div className="flex items-center justify-between text-[12px]">
+                  <span className="text-muted-foreground">Contado</span>
+                  <span className="font-bold tabular-nums text-foreground">{fmtMoney(result.countedMxn)}</span>
+                </div>
+                <div className="flex items-center justify-between text-[12px]">
+                  <span className="text-muted-foreground">Diferencia</span>
+                  <DiffBadge diff={Number(result.differenceMxn)} />
+                </div>
+              </div>
+            </div>
+            {result.reason && (
+              <div className="text-[12px] text-muted-foreground">
+                <span className="font-semibold text-foreground">Motivo registrado: </span>{result.reason}
+              </div>
+            )}
+            <div className="flex items-center gap-2 text-green-600 text-[12px] bg-green-50 dark:bg-green-900/20 px-3 py-2 rounded-lg">
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />Arqueo registrado correctamente
+            </div>
+            <div className="flex justify-end">
+              <button onClick={onClose} className="px-4 py-2 border border-border rounded-lg text-[13px] text-muted-foreground hover:bg-muted/50">Cerrar</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="px-5 py-4 space-y-4">
+              <div className="border border-border rounded-lg overflow-hidden">
+                <div className="px-3 py-3 space-y-3">
+                  <div className="flex items-center justify-between text-[12px]">
+                    <span className="text-muted-foreground">Esperado</span>
+                    <span className="font-bold tabular-nums text-foreground">{fmtMoney(expectedMxn)}</span>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide block mb-1">Contado MXN *</label>
+                    <input
+                      type="number" min={0} step={0.01}
+                      value={form.countedMxn || ''}
+                      onChange={e => setForm(p => ({ ...p, countedMxn: parseFloat(e.target.value) || 0 }))}
+                      placeholder="0.00"
+                      className="w-full px-3 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[12px]">
+                    <span className="text-muted-foreground">Diferencia</span>
+                    <DiffBadge diff={diffMxn} />
+                  </div>
+                </div>
+              </div>
+
+              {Math.abs(diffMxn) >= 0.01 && (
+                <div>
+                  <label className="text-[12px] font-medium text-amber-600 uppercase tracking-wide block mb-1.5">
+                    Motivo de la diferencia *
+                  </label>
+                  <textarea
+                    value={form.reason ?? ''}
+                    onChange={e => setForm(p => ({ ...p, reason: e.target.value }))}
+                    rows={2}
+                    placeholder="Explica el faltante o sobrante"
+                    className="w-full px-3 py-2 border border-amber-300 dark:border-amber-700 rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-amber-500 resize-none"
+                  />
+                </div>
+              )}
+            </div>
+            <div className="border-t border-border px-5 py-3">
+              {countError && (
+                <div className="flex items-center gap-2 text-red-500 text-[12px] mb-3 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />{countError}
+                </div>
+              )}
+              <div className="flex justify-end gap-2.5">
+                <button onClick={onClose} className="px-4 py-2 border border-border rounded-lg text-[13px] text-muted-foreground hover:bg-muted/50">Cancelar</button>
+                <button
+                  onClick={onSubmit}
+                  disabled={counting}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-[13px] font-semibold hover:opacity-90 disabled:opacity-60"
+                >
+                  {counting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Registrar conteo
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ---- Arqueo Print Prompt (¿imprimir ticket o ver detalle primero?) ----
+
+function ArqueoPrintPromptModal({
+  visible,
+  printing,
+  onPrint,
+  onViewDetail,
+  onDismiss,
+}: {
+  visible: boolean
+  printing: boolean
+  onPrint: () => void
+  onViewDetail: () => void
+  onDismiss: () => void
+}) {
+  if (!visible) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onDismiss} />
+      <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-sm">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <h2 className="text-[15px] font-semibold text-foreground flex items-center gap-2">
+            <Printer className="w-4 h-4 text-amber-500" />
+            Caja en arqueo
+          </h2>
+          <button onClick={onDismiss} className="p-1.5 rounded-lg hover:bg-muted"><X className="w-4 h-4 text-muted-foreground" /></button>
+        </div>
+        <div className="px-5 py-4">
+          <p className="text-[13px] text-muted-foreground">
+            La caja quedó congelada para contar. ¿Deseas imprimir el ticket con el detalle completo o verlo primero en pantalla?
+          </p>
+        </div>
+        <div className="border-t border-border px-5 py-3 flex justify-end gap-2.5">
+          <button
+            onClick={onViewDetail}
+            className="flex items-center gap-1.5 px-4 py-2 border border-border rounded-lg text-[13px] text-muted-foreground hover:bg-muted/50"
+          >
+            <Eye className="w-3.5 h-3.5" /> Ver primero
+          </button>
+          <button
+            onClick={onPrint}
+            disabled={printing}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-[13px] font-semibold hover:opacity-90 disabled:opacity-60"
+          >
+            {printing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            <Printer className="w-3.5 h-3.5" /> Imprimir
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ---- Main Page ----
 
 export function Caja() {
@@ -643,6 +834,7 @@ export function Caja() {
           onWithdraw={() => hook.setWithdrawVisible(true)}
           onStartCount={hook.handleStartCount}
           onResume={hook.handleResume}
+          onOpenCount={hook.handleOpenCountModal}
         />
       ) : (
         <NoSessionBanner onOpen={() => hook.setOpenModalVisible(true)} />
@@ -706,6 +898,26 @@ export function Caja() {
         open={hook.detailOpen}
         loading={hook.detailLoading}
         onClose={hook.handleCloseDetail}
+      />
+
+      <CountModal
+        visible={hook.countModalVisible}
+        session={hook.activeSession}
+        form={hook.countForm}
+        setForm={hook.setCountForm}
+        counting={hook.counting}
+        countError={hook.countError}
+        result={hook.countResult}
+        onClose={hook.handleCloseCountModal}
+        onSubmit={hook.handleSubmitCount}
+      />
+
+      <ArqueoPrintPromptModal
+        visible={hook.arqueoPromptVisible}
+        printing={hook.arqueoPrinting}
+        onPrint={hook.handlePrintArqueoTicket}
+        onViewDetail={hook.handleViewArqueoDetail}
+        onDismiss={hook.handleDismissArqueoPrompt}
       />
 
       {/* Retiro: el dinero sale del cajón pero no del negocio, así que baja el
@@ -774,6 +986,7 @@ function ActiveSessionBanner({
   onWithdraw,
   onStartCount,
   onResume,
+  onOpenCount,
 }: {
   session: ApiCashSession
   onClose: () => void
@@ -781,6 +994,7 @@ function ActiveSessionBanner({
   onWithdraw: () => void
   onStartCount: () => void
   onResume: () => void
+  onOpenCount: () => void
 }) {
   const expectedCash = session.summary?.expectedCash ?? Number(session.openingAmount)
   const expectedCashUsd = session.summary?.expectedCashUsd ?? Number(session.openingAmountUsd ?? 0)
@@ -810,8 +1024,10 @@ function ActiveSessionBanner({
           >
             <Eye className="w-3.5 h-3.5" /> Ver detalle
           </button>
-          {/* Con la caja en arqueo no se retira ni se opera: solo se cuenta,
-              se reanuda o se cierra (CASH-011). */}
+          {/* El arqueo PARCIAL (createCount) exige la caja ABIERTA — congela solo
+              el esperado del instante, no la operación (CASH-006). Con la caja
+              en arqueo (EN_ARQUEO) no se retira ni se cuenta: solo se reanuda o
+              se cierra (CASH-011). */}
           {session.status === 'ABIERTA' && (
             <>
               <button
@@ -819,6 +1035,12 @@ function ActiveSessionBanner({
                 className="flex items-center gap-1.5 px-3 py-1.5 border border-amber-300 dark:border-amber-700 rounded-lg text-[12px] text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20"
               >
                 <Banknote className="w-3.5 h-3.5" /> Retirar
+              </button>
+              <button
+                onClick={onOpenCount}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-amber-300 dark:border-amber-700 rounded-lg text-[12px] text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+              >
+                <Banknote className="w-3.5 h-3.5" /> Contar caja
               </button>
               <button
                 onClick={onStartCount}

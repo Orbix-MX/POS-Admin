@@ -5,7 +5,9 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PrinterConfigsService } from './printer-configs.service';
 import { QzSigningService } from './qz-signing.service';
-import { CreatePrinterConfigDto, PrintReceiptDto, QzSignDto, UpdatePrinterConfigDto } from './dto/printer-config.dto';
+import {
+  CreatePrinterConfigDto, PrintReceiptDto, PrintCashSessionReceiptDto, QzSignDto, UpdatePrinterConfigDto,
+} from './dto/printer-config.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
 
 @ApiTags('Printer Configs')
@@ -60,6 +62,22 @@ export class PrinterConfigsController {
   @ApiOperation({ summary: 'Obtiene bytes ESC/POS para imprimir en cliente via QZ Tray' })
   getReceiptData(@Body() body: PrintReceiptDto) {
     return this.printerConfigsService.getReceiptData(body.orderId, body.printerType);
+  }
+
+  @Post('cash-session-receipt-data')
+  @RequirePermissions('pos.cash:count')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Obtiene bytes ESC/POS del ticket de arqueo para imprimir en cliente via QZ Tray' })
+  getCashSessionReceiptData(@Body() body: PrintCashSessionReceiptDto) {
+    return this.printerConfigsService.getCashSessionReceiptData(body.cashSessionId, body.printerType);
+  }
+
+  @Post('print-cash-session-receipt')
+  @RequirePermissions('pos.cash:count')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Imprime ticket de arqueo de caja en la impresora TICKET configurada' })
+  printCashSessionReceipt(@Body() body: PrintCashSessionReceiptDto) {
+    return this.printerConfigsService.printCashSessionReceipt(body.cashSessionId, body.printerType);
   }
 
   @Get('qz/certificate')

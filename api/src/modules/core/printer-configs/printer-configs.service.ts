@@ -4,12 +4,14 @@ import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { CreatePrinterConfigDto, UpdatePrinterConfigDto } from './dto/printer-config.dto';
 import { OrderItem, Payment, PrinterConfig } from '@prisma/client';
+import { CashSessionsService } from '../cash-sessions/cash-sessions.service';
 
 @Injectable()
 export class PrinterConfigsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
+    private readonly cashSessionsService: CashSessionsService,
   ) {}
 
   async findAll(): Promise<PrinterConfig[]> {
@@ -151,6 +153,71 @@ export class PrinterConfigsService {
       tenant?.name ?? 'Tienda',
       cols,
     );
+
+    try {
+      await this.sendViaTcp(printer.ipAddress, printer.port ?? 9100, data);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, reason: msg };
+    }
+
+    return { success: true };
+  }
+
+  async getCashSessionReceiptData(
+    cashSessionId: string,
+    printerType = 'TICKET',
+  ): Promise<{
+    bytes: number[];
+    printerName: string | null;
+    connectionType: string | null;
+    printerFound: boolean;
+  }> {
+    const tenantId = this.tenantContext.requireTenantId();
+    const branchId = this.tenantContext.getBranchId() ?? null;
+
+    const [session, tenant] = await Promise.all([
+      this.cashSessionsService.findOne(cashSessionId),
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }),
+    ]);
+
+    const printer = await this.findPrinterForType(tenantId, branchId, printerType);
+    const cols = (printer?.paperWidth ?? 80) <= 58 ? 32 : 48;
+    const buffer = this.buildEscPosCashSessionReceipt(session, tenant?.name ?? 'Tienda', cols);
+
+    return {
+      bytes: Array.from(buffer),
+      printerName: printer?.systemName ?? printer?.bluetoothAddress ?? null,
+      connectionType: printer?.connectionType ?? null,
+      printerFound: !!printer,
+    };
+  }
+
+  async printCashSessionReceipt(
+    cashSessionId: string,
+    printerType = 'TICKET',
+  ): Promise<{ success: boolean; reason?: string }> {
+    const tenantId = this.tenantContext.requireTenantId();
+    const branchId = this.tenantContext.getBranchId() ?? null;
+
+    const [session, tenant] = await Promise.all([
+      this.cashSessionsService.findOne(cashSessionId),
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }),
+    ]);
+
+    const printer = await this.findPrinterForType(tenantId, branchId, printerType);
+    if (!printer) {
+      return { success: false, reason: `No hay impresora ${printerType} configurada` };
+    }
+    if (printer.connectionType !== 'NETWORK' || !printer.ipAddress) {
+      return {
+        success: false,
+        reason: `Tipo de conexión '${printer.connectionType}' no soportado automáticamente`,
+      };
+    }
+
+    const cols = (printer.paperWidth ?? 80) <= 58 ? 32 : 48;
+    const data = this.buildEscPosCashSessionReceipt(session, tenant?.name ?? 'Tienda', cols);
 
     try {
       await this.sendViaTcp(printer.ipAddress, printer.port ?? 9100, data);
@@ -325,6 +392,108 @@ export class PrinterConfigsService {
       ALIGN_CENTER,
       NL,
       t('\xA1Gracias por su compra!'), NL,
+      FEED_5,
+      PARTIAL_CUT,
+    );
+
+    return Buffer.concat(parts);
+  }
+
+  /**
+   * Builds a raw ESC/POS buffer with the full detail of a cash session's
+   * arqueo (fondo inicial, movimientos por tipo, efectivo esperado). Sirve de
+   * respaldo físico al congelar la caja para contar (CASH-011): el conteo
+   * físico en papel se compara contra este esperado del instante.
+   * `cols` should be 48 for 80 mm paper, 32 for 58 mm paper.
+   */
+  private buildEscPosCashSessionReceipt(
+    session: Awaited<ReturnType<CashSessionsService['findOne']>>,
+    storeName: string,
+    cols: number,
+  ): Buffer {
+    const ESC_INIT       = Buffer.from([0x1b, 0x40]);
+    const BOLD_ON        = Buffer.from([0x1b, 0x45, 0x01]);
+    const BOLD_OFF       = Buffer.from([0x1b, 0x45, 0x00]);
+    const ALIGN_CENTER   = Buffer.from([0x1b, 0x61, 0x01]);
+    const ALIGN_LEFT     = Buffer.from([0x1b, 0x61, 0x00]);
+    const FEED_5         = Buffer.from([0x1b, 0x64, 0x05]);
+    const PARTIAL_CUT    = Buffer.from([0x1d, 0x56, 0x01]);
+    const NL             = Buffer.from([0x0a]);
+
+    const t = (text: string) => Buffer.from(text, 'latin1');
+    const currency = (v: { toString(): string } | number) =>
+      '$' + Number(v.toString()).toLocaleString('es-MX', { minimumFractionDigits: 2 });
+
+    const dated = new Date().toLocaleString('es-MX', {
+      timeZone: 'America/Mexico_City',
+      dateStyle: 'short',
+      timeStyle: 'short',
+    } as Intl.DateTimeFormatOptions);
+
+    const twoCol = (left: string, right: string) =>
+      t(left.padEnd(Math.max(cols - right.length, left.length)) + right);
+
+    const divider = (char: string) => t(char.repeat(cols));
+
+    const { summary } = session;
+    const totals = summary.totals;
+    const rows: [string, number][] = [
+      ['Ventas', totals.sales.total],
+      ['Cobranza CxC', totals.cxc.total],
+      ['Ingresos manuales', totals.income.total],
+      ['Pagos proveedor', -totals.supplier.total],
+      ['Egresos manuales', -totals.expense.total],
+      ['Devoluciones', -totals.refund.total],
+      ['Retiros', -totals.withdrawal.total],
+    ];
+
+    const parts: Buffer[] = [
+      ESC_INIT,
+      ALIGN_CENTER, BOLD_ON, t(storeName), BOLD_OFF, NL,
+      t('ARQUEO DE CAJA'), NL,
+      t(dated), NL,
+      ALIGN_LEFT, divider('-'), NL,
+      t(`Sesion: ${session.id.slice(0, 8)}`), NL,
+      t(`Cajero: ${session.openedBy?.email ?? '-'}`), NL,
+      t(`Abierta: ${new Date(session.openedAt).toLocaleString('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'short', timeStyle: 'short' } as Intl.DateTimeFormatOptions)}`), NL,
+      divider('-'), NL,
+      twoCol('Fondo inicial MXN:', currency(summary.openingAmount)), NL,
+    ];
+
+    if (summary.openingAmountUsd > 0) {
+      parts.push(twoCol('Fondo inicial USD:', currency(summary.openingAmountUsd)), NL);
+    }
+
+    parts.push(divider('-'), NL);
+
+    for (const [label, total] of rows) {
+      if (total === 0) continue;
+      const prefix = total < 0 ? '-' : '+';
+      parts.push(twoCol(`${label}:`, `${prefix}${currency(Math.abs(total))}`), NL);
+    }
+
+    parts.push(
+      divider('-'), NL,
+      BOLD_ON,
+      twoCol('EFECTIVO ESPERADO MXN:', currency(summary.expectedCash)),
+      BOLD_OFF, NL,
+    );
+
+    if (summary.expectedCashUsd > 0) {
+      parts.push(
+        BOLD_ON,
+        twoCol('EFECTIVO ESPERADO USD:', currency(summary.expectedCashUsd)),
+        BOLD_OFF, NL,
+      );
+    }
+
+    parts.push(
+      divider('='), NL,
+      t(`Movimientos: ${summary.movementsCount}`), NL,
+      NL,
+      t('Contado fisico MXN: __________'), NL,
+      NL,
+      t('Firma: _______________________'), NL,
       FEED_5,
       PARTIAL_CUT,
     );
