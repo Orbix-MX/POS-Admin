@@ -195,6 +195,8 @@ model Tenant {
   owner User? @relation("TenantOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
 
   domains Domain[]
+  site    TenantSite?
+  storeWhatsappOrders StoreWhatsappOrder[]
 
   @@map("tenants")
 }
@@ -650,6 +652,7 @@ model Product {
   inCombos             ComboItem[]          @relation("ComboChildItems")
   attributes           ProductAttribute[]
   features             ProductFeature[]
+  storeWhatsappOrderItems StoreWhatsappOrderItem[]
   createdBy            User?                @relation("ProductCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy            User?                @relation("ProductUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
@@ -2100,6 +2103,121 @@ model WidgetRole {
 
   @@id([widgetId, roleId])
   @@map("widget_roles")
+}
+
+// ============= Tienda en línea (plantillas dinámicas) =============
+// Un Template es reutilizable entre tenants (lo crea/edita plataforma); un
+// TenantSite es la instancia de UN tenant sobre un Template — al asignarlo se
+// clonan sus TemplateSection en TenantSiteSection, que es el contenido real y
+// editable de ese tenant (independiente de otros tenants que usen el mismo
+// Template). Feature gate: Tenant.enabledModules incluye SystemModule
+// TIENDA_ONLINE ('tienda-online') — ver @orbix/types.
+
+enum SiteSectionType {
+  HERO
+  VALUE_PROPS
+  FEATURED_CATEGORIES
+  FEATURED_PRODUCTS
+  TESTIMONIALS
+  CONTACT_FOOTER
+}
+
+// Template ya NO define su propia lista de secciones — es solo el registro
+// de qué plantilla (código Astro fijo) tiene asignada un tenant. La
+// composición de secciones de cada plantilla vive en código
+// (DEFAULT_SITE_SECTIONS en platform-templates.service.ts) porque el HTML
+// de cada plantilla también es fijo — solo se "llena" contenido, no se
+// "crea" estructura.
+model Template {
+  id        String   @id @default(uuid())
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenantSites TenantSite[]
+
+  @@map("templates")
+}
+
+// Una tienda en línea por tenant (home, por ahora) — 1:1, sin cambio de
+// plantilla todavía (crear otro TenantSite para el mismo tenant no aplica).
+model TenantSite {
+  tenantId   String   @id
+  templateId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  template     Template            @relation(fields: [templateId], references: [id])
+  siteSections TenantSiteSection[]
+
+  @@map("tenant_sites")
+}
+
+model TenantSiteSection {
+  id          String          @id @default(uuid())
+  tenantId    String
+  sectionType SiteSectionType
+  sortOrder   Int             @default(0)
+  isActive    Boolean         @default(true)
+  content     Json            @default("{}")
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  tenantSite TenantSite @relation(fields: [tenantId], references: [tenantId], onDelete: Cascade)
+
+  @@unique([tenantId, sortOrder])
+  @@map("tenant_site_sections")
+}
+
+// ============= Store: pedidos por WhatsApp =============
+// Sin pago en línea todavía: el carrito del storefront se registra aquí al
+// enviarse por WhatsApp, y el administrador avanza el status a mano según lo
+// que de verdad ocurre (ver StoreWhatsappOrdersService). El stock solo se
+// descuenta y el pedido solo cuenta como ingreso al llegar a DELIVERED.
+enum StoreWhatsappOrderStatus {
+  PENDING
+  CONFIRMED
+  DELIVERED
+  CANCELLED
+}
+
+model StoreWhatsappOrder {
+  id          String                   @id @default(uuid())
+  tenantId    String
+  orderNumber String
+  phone       String
+  status      StoreWhatsappOrderStatus @default(PENDING)
+  subtotal    Decimal                  @db.Decimal(10, 2)
+  deliveredAt DateTime?
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+
+  tenant Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  items  StoreWhatsappOrderItem[]
+
+  @@unique([tenantId, orderNumber])
+  @@map("store_whatsapp_orders")
+}
+
+// Snapshot de cada línea al momento del pedido (nombre/precio propios, no una
+// referencia viva a Product) — así el pedido no cambia si luego se edita o
+// borra el producto.
+model StoreWhatsappOrderItem {
+  id        String   @id @default(uuid())
+  orderId   String
+  productId String?
+  name      String
+  price     Decimal  @db.Decimal(10, 2)
+  quantity  Int
+  subtotal  Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+
+  order   StoreWhatsappOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product?           @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@map("store_whatsapp_order_items")
 }
 
 // ============= Auth =============

@@ -11,6 +11,12 @@ interface Props {
   extraCss?: string[];
   skipLinkHref?: string;
   skipLinkText?: string;
+  /** true cuando `title` ya viene resuelto server-side con contenido real del
+   *  tenant (ej. el título de su sección HERO) — en ese caso branding.js NO
+   *  debe pisarlo con la plantilla genérica "{nombre} · ...". Por defecto
+   *  false: el título es el texto estático de estructura, y sí se completa
+   *  del lado del cliente con el nombre del tenant. */
+  titleIsFinal?: boolean;
 }
 
 const {
@@ -22,6 +28,7 @@ const {
   extraCss = [],
   skipLinkHref = '#catalogo',
   skipLinkText = 'Saltar al catálogo',
+  titleIsFinal = false,
 } = Astro.props;
 
 const canonical = new URL(path, Astro.site).toString();
@@ -35,9 +42,9 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:3001';
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>{title}</title>
+    <title data-marca-titulo={!titleIsFinal}>{title}</title>
     <meta name="description" content={description} />
-    <meta name="author" content="Manzanitas" />
+    <meta name="author" content="Tu Tienda" data-marca-attr="content" />
     <meta name="theme-color" content="#1B5E20" />
     <link rel="canonical" href={canonical} />
 
@@ -46,9 +53,9 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:3001';
     <link rel="manifest" href="/manifest.json" />
 
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Manzanitas" />
+    <meta property="og:site_name" content="Tu Tienda" data-marca-attr="content" />
     <meta property="og:locale" content="es_MX" />
-    <meta property="og:title" content={title} />
+    <meta property="og:title" content={title} data-marca-titulo={!titleIsFinal} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
     <meta property="og:image" content={ogImage} />
@@ -56,7 +63,7 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:3001';
     <meta property="og:image:height" content="630" />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content={title} />
+    <meta name="twitter:title" content={title} data-marca-titulo={!titleIsFinal} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImage} />
 
@@ -78,6 +85,7 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:3001';
     <script src="/js/utils.js" defer></script>
     <script src="/js/storage.js" defer></script>
     <script src="/js/whatsapp.js" defer></script>
+    <script src="/js/store-orders.js" defer></script>
     <script src="/js/carrito.js" defer></script>
     <script src="/js/buscador.js" defer></script>
     <script src="/js/catalogo.js" defer></script>
@@ -85,6 +93,14 @@ const apiUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:3001';
   </head>
 
   <body data-pagina={pagina}>
+    <div class="splash" data-splash role="status" aria-live="polite">
+      <span class="splash__spinner" aria-hidden="true"></span>
+      <p class="splash__texto" aria-hidden="true">
+        Cargando<span class="splash__puntos"><span></span><span></span><span></span></span>
+      </p>
+      <span class="solo-lectores">Cargando…</span>
+    </div>
+
     <a class="solo-lectores" href={skipLinkHref}>{skipLinkText}</a>
 
     <Header solid={headerSolid} />

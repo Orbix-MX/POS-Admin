@@ -4,7 +4,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   LayoutDashboard, ShoppingBag, ShoppingCart, Package,
   Users, Truck, FileText, Settings, Shield,
-  ChevronDown, LogOut, Landmark, Receipt, TrendingUp, Wrench, UserCheck, MapPin, CreditCard, FlaskConical, ChefHat, LayoutGrid, Grid3x3,
+  ChevronDown, LogOut, Landmark, Receipt, TrendingUp, Wrench, UserCheck, MapPin, CreditCard, FlaskConical, ChefHat, LayoutGrid, Grid3x3, Store, MessageCircle,
 } from 'lucide-react'
 
 type NavItem = {
@@ -87,6 +87,8 @@ const ALL_NAV: NavGroup[] = [
         permission: 'kitchen:view',
         verticalGuard: (hasVertical: (v: BusinessVertical) => boolean) => hasVertical('RESTAURANT'),
       },
+      { module: 'tienda-online', label: 'Tienda en Línea', icon: Store, path: '/tienda-online', permission: 'site:view' },
+      { module: 'store-orders', label: 'Pedidos WhatsApp', icon: MessageCircle, path: '/pedidos-whatsapp', permission: 'store-orders:view' },
     ],
   },
   {

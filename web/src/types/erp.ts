@@ -230,3 +230,5 @@ export type ModuleId =
   | 'kitchen'
   | 'dining-areas'
   | 'restaurant-tables'
+  | 'tienda-online'
+  | 'store-orders'

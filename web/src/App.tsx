@@ -35,11 +35,14 @@ import { ComandaLogin } from '@/pages/comanda-login'
 import { CajaRestaurante } from '@/pages/caja-restaurante'
 import { Insumos } from '@/pages/insumos'
 import { Kitchen } from '@/pages/kitchen'
+import { TiendaOnline } from '@/pages/tienda-online'
+import { PedidosWhatsapp } from '@/pages/pedidos-whatsapp'
 import { PlatformLogin } from '@/pages/platform/platform-login'
 import { PlatformDashboard } from '@/pages/platform/platform-dashboard'
 import { PlatformEmpresas } from '@/pages/platform/platform-empresas'
 import { PlatformEmpresaDetalle } from '@/pages/platform/platform-empresa-detalle'
 import { PlatformAuditoria } from '@/pages/platform/platform-auditoria'
+import { PlatformPlantillas } from '@/pages/platform/platform-plantillas'
 import { TenantSuspended } from '@/pages/tenant-suspended'
 import { Download, UtensilsCrossed } from 'lucide-react'
 import type { ModuleId } from '@/types/erp'
@@ -70,6 +73,8 @@ const PATH_TO_MODULE: Record<string, ModuleId> = {
   '/dining-areas': 'dining-areas',
   '/restaurant-tables': 'restaurant-tables',
   '/comanda': 'comanda',
+  '/tienda-online': 'tienda-online',
+  '/pedidos-whatsapp': 'store-orders',
 }
 
 function ModuleRoute({ module, children }: { module: string; children: ReactNode }) {
@@ -85,6 +90,7 @@ const APP_SUFFIX = 'Orbix ERP'
 const PLATFORM_TITLES: Record<string, string> = {
   '/platform/dashboard': 'Platform Dashboard',
   '/platform/empresas': 'Empresas',
+  '/platform/plantillas': 'Plantillas',
   '/platform/auditoria': 'Auditoría',
 }
 
@@ -150,6 +156,8 @@ function AppLayout() {
             <Route path="/dining-areas" element={<ModuleRoute module="dining-areas"><DiningAreasPage /></ModuleRoute>} />
             <Route path="/restaurant-tables" element={<ModuleRoute module="restaurant-tables"><RestaurantTablesPage /></ModuleRoute>} />
             <Route path="/comanda" element={<ModuleRoute module="comanda"><Comanda /></ModuleRoute>} />
+            <Route path="/tienda-online" element={<ModuleRoute module="tienda-online"><TiendaOnline /></ModuleRoute>} />
+            <Route path="/pedidos-whatsapp" element={<ModuleRoute module="store-orders"><PedidosWhatsapp /></ModuleRoute>} />
           </Routes>
         </div>
       </div>
@@ -258,6 +266,7 @@ function PlatformGate() {
         <Route path="/platform/dashboard" element={<PlatformDashboard />} />
         <Route path="/platform/empresas" element={<PlatformEmpresas />} />
         <Route path="/platform/empresas/:id" element={<PlatformEmpresaDetalle />} />
+        <Route path="/platform/plantillas" element={<PlatformPlantillas />} />
         <Route path="/platform/auditoria" element={<PlatformAuditoria />} />
         <Route path="*" element={<Navigate to="/platform/dashboard" replace />} />
       </Routes>

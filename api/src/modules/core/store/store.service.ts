@@ -50,6 +50,29 @@ export class StoreService {
     };
   }
 
+  /**
+   * Composición de la home del tenant (secciones activas, en orden). Un
+   * tenant sin `TenantSite` (feature "tienda-online" no habilitada, o
+   * plantilla no asignada todavía) simplemente no tiene secciones — el
+   * frontend cae de vuelta a su home estática por defecto.
+   */
+  async getSite(tenantId: string) {
+    const site = await this.prisma.tenantSite.findUnique({
+      where: { tenantId },
+      select: {
+        siteSections: {
+          where: { isActive: true },
+          select: { sectionType: true, content: true },
+          orderBy: { sortOrder: 'asc' },
+        },
+      },
+    });
+
+    return {
+      sections: (site?.siteSections ?? []).map((s) => ({ type: s.sectionType, content: s.content })),
+    };
+  }
+
   async getCategories(tenantId: string) {
     return this.prisma.category.findMany({
       where: { tenantId, status: 'ACTIVE' },

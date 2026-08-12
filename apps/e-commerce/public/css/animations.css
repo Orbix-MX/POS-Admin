@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Manzanitas · animations.css
+   animations.css
    Movimiento de la interfaz: aparición al hacer scroll, esqueletos de carga y
    micro-interacciones. Todo se desactiva si el sistema pide menos movimiento.
    ========================================================================== */
@@ -195,7 +195,108 @@ html {
 }
 
 /* --------------------------------------------------------------------------
-   6. Preferencia de movimiento reducido
+   6. Splash de carga inicial
+   Cubre la página mientras se resuelven nombre/colores del negocio (ver
+   branding.js) para que no se vea un parpadeo del placeholder genérico.
+   -------------------------------------------------------------------------- */
+
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  overflow: hidden;
+  background: #f4f5f6;
+  transition: opacity 480ms ease, visibility 480ms ease;
+  /* Respaldo si branding.js no llega a ejecutarse (bloqueado, error de red):
+     se autooculta a los 6 s en vez de bloquear la página para siempre.
+     branding.js normalmente ya la oculta bastante antes de eso. */
+  animation: splash-autocierre 6s forwards;
+}
+
+@keyframes splash-autocierre {
+  0%,
+  94% {
+    opacity: 1;
+    visibility: visible;
+  }
+  100% {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+/*
+ * Loader neutro: en este punto todavía no se sabe el color, logo ni
+ * temática del negocio (eso llega con branding.js), así que el splash no
+ * puede asumir nada de eso — solo un spinner y texto en gris neutro.
+ */
+.splash__spinner {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 4px solid rgba(15, 23, 32, 0.12);
+  border-top-color: rgba(15, 23, 32, 0.55);
+  animation: splash-girar 800ms linear infinite;
+}
+
+@keyframes splash-girar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.splash__texto {
+  display: flex;
+  align-items: center;
+  color: rgba(15, 23, 32, 0.6);
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.splash__puntos span {
+  opacity: 0;
+  animation: splash-puntos 1400ms ease-in-out infinite;
+}
+
+.splash__puntos span:nth-child(1) {
+  animation-delay: 0ms;
+}
+.splash__puntos span:nth-child(2) {
+  animation-delay: 200ms;
+}
+.splash__puntos span:nth-child(3) {
+  animation-delay: 400ms;
+}
+
+.splash__puntos span::after {
+  content: '.';
+}
+
+@keyframes splash-puntos {
+  0%,
+  80%,
+  100% {
+    opacity: 0;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+.splash.is-oculto {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   7. Preferencia de movimiento reducido
    -------------------------------------------------------------------------- */
 
 @media (prefers-reduced-motion: reduce) {

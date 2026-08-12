@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Loader2, Building2, GitBranch, Users, Package, Activity,
-  AlertTriangle, Plus, X, Check, LayoutDashboard, KeyRound, RefreshCw, Ban, Power,
+  AlertTriangle, Plus, X, Check, LayoutDashboard, KeyRound, RefreshCw, Ban, Power, LayoutTemplate,
 } from 'lucide-react'
 import { DashboardsTab } from './platform-dashboards-tab'
+import { SiteAssignmentTab } from './platform-site-tab'
 import {
   fetchTenant, fetchTenantAudit, updateTenantPlan, updateTenantModules, updateTenantLimits,
   updateTenantVertical,
@@ -392,7 +393,7 @@ export function PlatformEmpresaDetalle() {
   const [branches, setBranches] = useState<PlatformBranch[]>([])
   const [capacity, setCapacity] = useState<BranchCapacity | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'info' | 'sucursales' | 'licencia' | 'modulos' | 'limites' | 'dashboards' | 'auditoria'>('info')
+  const [activeTab, setActiveTab] = useState<'info' | 'sucursales' | 'licencia' | 'modulos' | 'limites' | 'dashboards' | 'sitio' | 'auditoria'>('info')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveOk, setSaveOk] = useState(false)
@@ -577,6 +578,7 @@ export function PlatformEmpresaDetalle() {
     { key: 'modulos',     label: 'Módulos',      icon: null },
     { key: 'limites',     label: 'Límites',      icon: null },
     { key: 'dashboards',  label: 'Dashboards',   icon: LayoutDashboard },
+    { key: 'sitio',       label: 'Tienda en línea', icon: LayoutTemplate },
     { key: 'auditoria',   label: 'Auditoría',    icon: null },
   ] as const
 
@@ -1167,6 +1169,11 @@ export function PlatformEmpresaDetalle() {
       {/* Tab: Dashboards */}
       {activeTab === 'dashboards' && id && (
         <DashboardsTab tenantId={id} />
+      )}
+
+      {/* Tab: Tienda en línea */}
+      {activeTab === 'sitio' && id && (
+        <SiteAssignmentTab tenantId={id} />
       )}
 
       {/* Tab: Auditoría */}
