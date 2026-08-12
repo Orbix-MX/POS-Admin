@@ -1,0 +1,48 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "pos",
+            "cwd": "apps\\pos",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "pos (profile mode)",
+            "cwd": "apps\\pos",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "pos (release mode)",
+            "cwd": "apps\\pos",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        },
+        {
+            "name": "orbix_design_system",
+            "cwd": "packages\\orbix_design_system",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "orbix_design_system (profile mode)",
+            "cwd": "packages\\orbix_design_system",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "orbix_design_system (release mode)",
+            "cwd": "packages\\orbix_design_system",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        }
+    ]
+}

@@ -1,0 +1,8 @@
+# RootGarden · robots.txt
+# Sustituye el dominio por el definitivo antes de publicar.
+
+User-agent: *
+Allow: /
+Disallow: /404.html
+
+Sitemap: https://rootgarden.mx/sitemap.xml

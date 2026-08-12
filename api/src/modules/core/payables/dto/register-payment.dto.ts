@@ -30,4 +30,9 @@ export class RegisterPayablePaymentDto {
   @IsString()
   @MaxLength(500)
   notes?: string;
+
+  @ApiPropertyOptional({ enum: ['MXN', 'USD'], default: 'MXN' })
+  @IsOptional()
+  @IsEnum(['MXN', 'USD'])
+  currency?: 'MXN' | 'USD';
 }

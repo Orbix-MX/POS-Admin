@@ -1,0 +1,407 @@
+import { BadRequestException } from '@nestjs/common';
+import { InventoryConsumptionEngine, InventoryContext } from './inventory-consumption.engine';
+
+/**
+ * Unit tests for the universal inventory engine. A hand-rolled fake transaction
+ * client records every write so we can assert WHAT moved and prove symmetry
+ * (consume vs restore) across SIMPLE / RECIPE / COMBO trees.
+ */
+
+interface FakeProduct {
+  id: string;
+  name: string;
+  type: 'SIMPLE' | 'RECIPE' | 'COMBO' | 'SERVICE';
+  trackInventory: boolean;
+  stock: number;
+  recipe: { items: FakeRecipeItem[] } | null;
+  comboItems: { childProductId: string; quantity: number }[];
+}
+
+interface FakeRecipeItem {
+  supplyId: string;
+  quantity: number;
+  unit: string;
+  normalizedQuantity: number | null;
+  supply: {
+    id: string;
+    name: string;
+    unit: string;
+    stock: number;
+    baseUnit: { symbol: string } | null;
+  };
+}
+
+const CTX: InventoryContext = {
+  tenantId: 'tenant-1',
+  branchId: 'branch-1',
+  userId: 'user-1',
+  referenceId: 'order-1',
+  referenceType: 'ORDER',
+};
+
+function makeTx(
+  products: Record<string, FakeProduct>,
+  supplyStock: Record<string, number>,
+  opts: { branchRows?: Set<string> } = {},
+) {
+  const productStock: Record<string, number> = {};
+  for (const p of Object.values(products)) productStock[p.id] = p.stock;
+  // Productos que YA tienen fila en branch_inventory. Por defecto todos, salvo que
+  // el caso pruebe el sembrado (create) de una fila inexistente.
+  const branchRows = opts.branchRows ?? new Set(Object.keys(products));
+
+  const calls = {
+    productUpdateMany: [] as { id: string; decrement: number }[],
+    productUpdate: [] as { id: string; increment: number }[],
+    supplyUpdateMany: [] as { id: string; decrement: number }[],
+    supplyUpdate: [] as { id: string; increment: number }[],
+    inventoryMovements: [] as { type: string; productId: string; quantity: number; referenceId: string; referenceType: string }[],
+    supplyMovements: [] as { type: string; supplyId: string; quantity: number; referenceId: string }[],
+    branchInventory: [] as { productId: string; increment: number }[],
+    branchInventoryCreate: [] as { productId: string; stock: number }[],
+  };
+
+  const tx = {
+    product: {
+      findUnique: jest.fn(({ where, select }: { where: { id: string }; select: Record<string, unknown> }) => {
+        const p = products[where.id];
+        if (!p) return Promise.resolve(null);
+        if (select && 'stock' in select && Object.keys(select).length === 1) {
+          return Promise.resolve({ stock: productStock[p.id] });
+        }
+        return Promise.resolve(p);
+      }),
+      updateMany: jest.fn(({ where, data }: { where: { id: string; stock: { gte: number } }; data: { stock: { decrement: number } } }) => {
+        const dec = data.stock.decrement;
+        if (productStock[where.id] >= where.stock.gte) {
+          productStock[where.id] -= dec;
+          calls.productUpdateMany.push({ id: where.id, decrement: dec });
+          return Promise.resolve({ count: 1 });
+        }
+        return Promise.resolve({ count: 0 });
+      }),
+      update: jest.fn(({ where, data }: { where: { id: string }; data: { stock: { increment: number } } }) => {
+        productStock[where.id] += data.stock.increment;
+        calls.productUpdate.push({ id: where.id, increment: data.stock.increment });
+        return Promise.resolve({});
+      }),
+    },
+    supply: {
+      findUnique: jest.fn(({ where }: { where: { id: string } }) =>
+        Promise.resolve({ stock: supplyStock[where.id] ?? 0 }),
+      ),
+      updateMany: jest.fn(({ where, data }: { where: { id: string; stock: { gte: number } }; data: { stock: { decrement: number } } }) => {
+        const dec = data.stock.decrement;
+        if ((supplyStock[where.id] ?? 0) >= where.stock.gte) {
+          supplyStock[where.id] -= dec;
+          calls.supplyUpdateMany.push({ id: where.id, decrement: dec });
+          return Promise.resolve({ count: 1 });
+        }
+        return Promise.resolve({ count: 0 });
+      }),
+      update: jest.fn(({ where, data }: { where: { id: string }; data: { stock: { increment: number } } }) => {
+        supplyStock[where.id] = (supplyStock[where.id] ?? 0) + data.stock.increment;
+        calls.supplyUpdate.push({ id: where.id, increment: data.stock.increment });
+        return Promise.resolve({});
+      }),
+    },
+    branchInventory: {
+      updateMany: jest.fn(({ where, data }: { where: { branchId: string; productId: string }; data: { stock: { increment: number } } }) => {
+        if (!branchRows.has(where.productId)) return Promise.resolve({ count: 0 });
+        calls.branchInventory.push({ productId: where.productId, increment: data.stock.increment });
+        return Promise.resolve({ count: 1 });
+      }),
+      create: jest.fn(({ data }: { data: { productId: string; stock: number } }) => {
+        calls.branchInventoryCreate.push({ productId: data.productId, stock: data.stock });
+        return Promise.resolve({});
+      }),
+    },
+    inventoryMovement: {
+      create: jest.fn(({ data }: { data: { type: string; productId: string; quantity: number; referenceId: string; referenceType: string } }) => {
+        calls.inventoryMovements.push({
+          type: data.type, productId: data.productId, quantity: data.quantity,
+          referenceId: data.referenceId, referenceType: data.referenceType,
+        });
+        return Promise.resolve({});
+      }),
+    },
+    supplyMovement: {
+      create: jest.fn(({ data }: { data: { type: string; supplyId: string; quantity: number; referenceId: string } }) => {
+        calls.supplyMovements.push({
+          type: data.type, supplyId: data.supplyId, quantity: data.quantity, referenceId: data.referenceId,
+        });
+        return Promise.resolve({});
+      }),
+    },
+  };
+
+  return { tx, calls, productStock, supplyStock };
+}
+
+const simple = (id: string, stock = 100, trackInventory = true): FakeProduct => ({
+  id, name: id, type: 'SIMPLE', trackInventory, stock, recipe: null, comboItems: [],
+});
+
+const recipe = (id: string, items: FakeRecipeItem[]): FakeProduct => ({
+  id, name: id, type: 'RECIPE', trackInventory: false, stock: 0, recipe: { items }, comboItems: [],
+});
+
+const supplyItem = (supplyId: string, qty: number): FakeRecipeItem => ({
+  supplyId, quantity: qty, unit: 'g', normalizedQuantity: qty,
+  supply: { id: supplyId, name: supplyId, unit: 'g', stock: 0, baseUnit: null },
+});
+
+describe('InventoryConsumptionEngine', () => {
+  let engine: InventoryConsumptionEngine;
+
+  beforeEach(() => {
+    engine = new InventoryConsumptionEngine();
+  });
+
+  describe('SIMPLE', () => {
+    it('consume decrements product stock and logs a VENTA movement', async () => {
+      const { tx, calls, productStock } = makeTx({ p1: simple('p1', 10) }, {});
+      await engine.consume(tx as never, [{ productId: 'p1', quantity: 3, itemType: 'PRODUCT' }], CTX);
+
+      expect(productStock.p1).toBe(7);
+      expect(calls.inventoryMovements).toHaveLength(1);
+      expect(calls.inventoryMovements[0]).toMatchObject({
+        type: 'VENTA', productId: 'p1', quantity: 3, referenceType: 'ORDER', referenceId: 'order-1',
+      });
+    });
+
+    it('skips products with trackInventory = false', async () => {
+      const { tx, calls } = makeTx({ p1: simple('p1', 10, false) }, {});
+      await engine.consume(tx as never, [{ productId: 'p1', quantity: 3, itemType: 'PRODUCT' }], CTX);
+
+      expect(calls.productUpdateMany).toHaveLength(0);
+      expect(calls.inventoryMovements).toHaveLength(0);
+    });
+
+    it('throws on insufficient stock', async () => {
+      const { tx } = makeTx({ p1: simple('p1', 2) }, {});
+      await expect(
+        engine.consume(tx as never, [{ productId: 'p1', quantity: 5, itemType: 'PRODUCT' }], CTX),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('ignores SERVICE lines and null products', async () => {
+      const { tx, calls } = makeTx({ p1: simple('p1', 10) }, {});
+      await engine.consume(
+        tx as never,
+        [
+          { productId: null, quantity: 1, itemType: 'SERVICE' },
+          { productId: 'svc', quantity: 1, itemType: 'SERVICE' },
+        ],
+        CTX,
+      );
+      expect(calls.productUpdateMany).toHaveLength(0);
+    });
+  });
+
+  describe('RECIPE', () => {
+    it('consume decrements supplies, not product stock', async () => {
+      const products = { r1: recipe('r1', [supplyItem('s1', 5), supplyItem('s2', 2)]) };
+      const { tx, calls, supplyStock } = makeTx(products, { s1: 100, s2: 100 });
+      await engine.consume(tx as never, [{ productId: 'r1', quantity: 3, itemType: 'PRODUCT' }], CTX);
+
+      expect(supplyStock.s1).toBe(85); // 100 - 5*3
+      expect(supplyStock.s2).toBe(94); // 100 - 2*3
+      expect(calls.supplyMovements.map((m) => m.type)).toEqual(['RECIPE_CONSUMPTION', 'RECIPE_CONSUMPTION']);
+      expect(calls.productUpdateMany).toHaveLength(0);
+    });
+  });
+
+  describe('COMBO', () => {
+    it('expands children: SIMPLE child decrements stock, RECIPE child consumes supplies', async () => {
+      const products = {
+        combo: { id: 'combo', name: 'combo', type: 'COMBO' as const, trackInventory: false, stock: 0, recipe: null,
+          comboItems: [ { childProductId: 'p1', quantity: 2 }, { childProductId: 'r1', quantity: 1 } ] },
+        p1: simple('p1', 50),
+        r1: recipe('r1', [supplyItem('s1', 4)]),
+      };
+      const { tx, productStock, supplyStock } = makeTx(products, { s1: 100 });
+      await engine.consume(tx as never, [{ productId: 'combo', quantity: 3, itemType: 'PRODUCT' }], CTX);
+
+      expect(productStock.p1).toBe(50 - 2 * 3); // child qty 2 × order qty 3
+      expect(supplyStock.s1).toBe(100 - 4 * 1 * 3); // recipe needs 4 × comboQty 1 × order 3
+    });
+  });
+
+  describe('BranchInventory', () => {
+    it('decrements the branch row by the consumed quantity for the product', async () => {
+      const { tx, calls } = makeTx({ p1: simple('p1', 10) }, {});
+      await engine.consume(tx as never, [{ productId: 'p1', quantity: 4, itemType: 'PRODUCT' }], CTX);
+      // Delta negativo = salida de stock de la sucursal por la venta.
+      expect(calls.branchInventory).toEqual([{ productId: 'p1', increment: -4 }]);
+      expect(calls.branchInventoryCreate).toHaveLength(0); // ya existía la fila
+    });
+
+    it('seeds the branch row from the product global stock when none exists', async () => {
+      // Sin fila previa: updateMany count 0 → create sembrando con el stock global
+      // ya descontado (el decremento global del producto corre antes del sembrado).
+      const { tx, calls } = makeTx({ p1: simple('p1', 25) }, {}, { branchRows: new Set() });
+      await engine.consume(tx as never, [{ productId: 'p1', quantity: 2, itemType: 'PRODUCT' }], CTX);
+      expect(calls.branchInventoryCreate).toEqual([{ productId: 'p1', stock: 23 }]); // 25 - 2
+    });
+
+    it('does not touch branch inventory when the context has no branch', async () => {
+      const { tx, calls } = makeTx({ p1: simple('p1', 10) }, {});
+      await engine.consume(
+        tx as never,
+        [{ productId: 'p1', quantity: 3, itemType: 'PRODUCT' }],
+        { ...CTX, branchId: null },
+      );
+      expect(calls.branchInventory).toHaveLength(0);
+      expect(calls.branchInventoryCreate).toHaveLength(0);
+    });
+
+    it('COMBO applies branch deltas only to SIMPLE leaves (not virtual parents)', async () => {
+      const products = {
+        combo: { id: 'combo', name: 'combo', type: 'COMBO' as const, trackInventory: false, stock: 0, recipe: null,
+          comboItems: [{ childProductId: 'p1', quantity: 2 }, { childProductId: 'r1', quantity: 1 }] },
+        p1: simple('p1', 50),
+        r1: recipe('r1', [supplyItem('s1', 4)]),
+      };
+      const { tx, calls } = makeTx(products, { s1: 100 });
+      await engine.consume(tx as never, [{ productId: 'combo', quantity: 3, itemType: 'PRODUCT' }], CTX);
+      // Solo la hoja SIMPLE p1 mueve branch inventory; combo/r1 (virtuales) no.
+      expect(calls.branchInventory).toEqual([{ productId: 'p1', increment: -6 }]);
+    });
+  });
+
+  describe('restore() — devoluciones', () => {
+    it('SIMPLE: incrementa stock y registra movimiento DEVOLUCION (mismo referenceId)', async () => {
+      const { tx, calls, productStock } = makeTx({ p1: simple('p1', 10) }, {});
+      await engine.restore(tx as never, [{ productId: 'p1', quantity: 3, itemType: 'PRODUCT' }], CTX);
+
+      expect(productStock.p1).toBe(13); // 10 + 3 reingresado
+      expect(calls.inventoryMovements).toHaveLength(1);
+      expect(calls.inventoryMovements[0]).toMatchObject({
+        type: 'DEVOLUCION', productId: 'p1', quantity: 3, referenceType: 'ORDER', referenceId: 'order-1',
+      });
+      // La devolución también revierte el stock de la sucursal (delta positivo).
+      expect(calls.branchInventory).toEqual([{ productId: 'p1', increment: 3 }]);
+    });
+
+    it('RECIPE: reingresa insumos y registra SupplyMovement ADJUSTMENT', async () => {
+      const products = { r1: recipe('r1', [supplyItem('s1', 5)]) };
+      const { tx, calls, supplyStock } = makeTx(products, { s1: 100 });
+      await engine.restore(tx as never, [{ productId: 'r1', quantity: 2, itemType: 'PRODUCT' }], CTX);
+
+      expect(supplyStock.s1).toBe(110); // 100 + 5*2
+      expect(calls.supplyMovements).toHaveLength(1);
+      expect(calls.supplyMovements[0]).toMatchObject({ type: 'ADJUSTMENT', supplyId: 's1', quantity: 10, referenceId: 'order-1' });
+    });
+
+    it('COMBO con RECIPE: la reversa expande hijos y reingresa los insumos de la receta', async () => {
+      const products = {
+        combo: { id: 'combo', name: 'combo', type: 'COMBO' as const, trackInventory: false, stock: 0, recipe: null,
+          comboItems: [{ childProductId: 'p1', quantity: 2 }, { childProductId: 'r1', quantity: 1 }] },
+        p1: simple('p1', 50),
+        r1: recipe('r1', [supplyItem('s1', 4)]),
+      };
+      const { tx, calls, productStock, supplyStock } = makeTx(products, { s1: 100 });
+      await engine.restore(tx as never, [{ productId: 'combo', quantity: 3, itemType: 'PRODUCT' }], CTX);
+
+      expect(productStock.p1).toBe(50 + 2 * 3);     // hoja SIMPLE reingresada
+      expect(supplyStock.s1).toBe(100 + 4 * 1 * 3); // insumo de la receta reingresado
+      expect(calls.inventoryMovements.every((m) => m.type === 'DEVOLUCION')).toBe(true);
+      expect(calls.supplyMovements.every((m) => m.type === 'ADJUSTMENT')).toBe(true);
+    });
+  });
+
+  describe('symmetry: consume then restore returns to the original state', () => {
+    it('SIMPLE + RECIPE + COMBO net to zero', async () => {
+      const products = {
+        combo: { id: 'combo', name: 'combo', type: 'COMBO' as const, trackInventory: false, stock: 0, recipe: null,
+          comboItems: [ { childProductId: 'p1', quantity: 2 }, { childProductId: 'r1', quantity: 1 } ] },
+        p1: simple('p1', 50),
+        p2: simple('p2', 30),
+        r1: recipe('r1', [supplyItem('s1', 4), supplyItem('s2', 1)]),
+      };
+      const { tx, productStock, supplyStock } = makeTx(products, { s1: 100, s2: 80 });
+      const lines = [
+        { productId: 'combo', quantity: 3, itemType: 'PRODUCT' as const },
+        { productId: 'p2', quantity: 5, itemType: 'PRODUCT' as const },
+      ];
+
+      const p1Before = productStock.p1, p2Before = productStock.p2;
+      const s1Before = supplyStock.s1, s2Before = supplyStock.s2;
+
+      await engine.consume(tx as never, lines, CTX);
+      await engine.restore(tx as never, lines, CTX);
+
+      expect(productStock.p1).toBe(p1Before);
+      expect(productStock.p2).toBe(p2Before);
+      expect(supplyStock.s1).toBe(s1Before);
+      expect(supplyStock.s2).toBe(s2Before);
+    });
+
+    it('simetría TOTAL: producto + insumo + branchInventory + movimientos balancean tras venta + reversa', async () => {
+      const products = {
+        combo: { id: 'combo', name: 'combo', type: 'COMBO' as const, trackInventory: false, stock: 0, recipe: null,
+          comboItems: [{ childProductId: 'p1', quantity: 2 }, { childProductId: 'r1', quantity: 1 }] },
+        p1: simple('p1', 50),  // SIMPLE (también hoja del combo)
+        p2: simple('p2', 30),  // SIMPLE suelto
+        r1: recipe('r1', [supplyItem('s1', 4), supplyItem('s2', 1)]), // RECIPE (suelta y dentro del combo)
+      };
+      const { tx, calls, productStock, supplyStock } = makeTx(products, { s1: 100, s2: 80 });
+      const lines = [
+        { productId: 'combo', quantity: 3, itemType: 'PRODUCT' as const }, // COMBO con RECIPE
+        { productId: 'p2', quantity: 5, itemType: 'PRODUCT' as const },     // SIMPLE
+        { productId: 'r1', quantity: 2, itemType: 'PRODUCT' as const },     // RECIPE
+      ];
+
+      const snapshot = () => ({ ...productStock });
+      const supplySnap = () => ({ ...supplyStock });
+      const before = snapshot();
+      const beforeSupply = supplySnap();
+
+      await engine.consume(tx as never, lines, CTX);
+      await engine.restore(tx as never, lines, CTX);
+
+      // 1) Stock de productos vuelve al inicial.
+      expect(snapshot()).toEqual(before);
+      // 2) Stock de insumos vuelve al inicial.
+      expect(supplySnap()).toEqual(beforeSupply);
+
+      // 3) branchInventory: la suma de deltas por producto es 0 (salida + reingreso).
+      const branchNet = new Map<string, number>();
+      for (const b of calls.branchInventory) branchNet.set(b.productId, (branchNet.get(b.productId) ?? 0) + b.increment);
+      for (const [, net] of branchNet) expect(net).toBe(0);
+
+      // 4) InventoryMovement: por producto, total VENTA == total DEVOLUCION.
+      const sumBy = (type: string, key: 'productId') =>
+        calls.inventoryMovements.filter((m) => m.type === type)
+          .reduce((acc, m) => { acc[m[key]] = (acc[m[key]] ?? 0) + m.quantity; return acc; }, {} as Record<string, number>);
+      expect(sumBy('VENTA', 'productId')).toEqual(sumBy('DEVOLUCION', 'productId'));
+
+      // 5) SupplyMovement: por insumo, total RECIPE_CONSUMPTION == total ADJUSTMENT.
+      const sumSupply = (type: string) =>
+        calls.supplyMovements.filter((m) => m.type === type)
+          .reduce((acc, m) => { acc[m.supplyId] = (acc[m.supplyId] ?? 0) + m.quantity; return acc; }, {} as Record<string, number>);
+      expect(sumSupply('RECIPE_CONSUMPTION')).toEqual(sumSupply('ADJUSTMENT'));
+    });
+
+    it('never increments the stock of virtual RECIPE / COMBO parents (no ghost stock)', async () => {
+      const products = {
+        combo: { id: 'combo', name: 'combo', type: 'COMBO' as const, trackInventory: false, stock: 0, recipe: null,
+          comboItems: [{ childProductId: 'r1', quantity: 1 }] },
+        r1: recipe('r1', [supplyItem('s1', 4)]),
+      };
+      const { tx, calls, productStock } = makeTx(products, { s1: 100 });
+      const lines = [{ productId: 'combo', quantity: 2, itemType: 'PRODUCT' as const }];
+
+      await engine.consume(tx as never, lines, CTX);
+      await engine.restore(tx as never, lines, CTX);
+
+      // Virtual parents keep stock 0 and are never written to.
+      expect(productStock.combo).toBe(0);
+      expect(productStock.r1).toBe(0);
+      expect(calls.productUpdate.find((c) => c.id === 'combo' || c.id === 'r1')).toBeUndefined();
+      // Only the supply round-trips back to its original level.
+      expect(tx.supply.update).toHaveBeenCalled();
+    });
+  });
+});

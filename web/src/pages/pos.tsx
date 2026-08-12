@@ -5,8 +5,9 @@ import {
   ShoppingCart, Check, Loader2, ChevronDown, CreditCard,
   Banknote, Landmark, Wrench, Plus, Package, FileText, ChevronUp,
   Wallet, Clock, TrendingUp, ArrowUpCircle, ArrowDownCircle, Pause,
+  LayoutGrid, ScanLine, ChevronRight,
 } from 'lucide-react'
-import { usePOS, fmt, type CartItem, type Product, type Cliente, type Service, type HoldSale } from '@/hooks/retail/use-pos'
+import { usePOS, fmt, type CartItem, type CartItemType, type Product, type Cliente, type Service, type HoldSale } from '@/hooks/retail/use-pos'
 import type { ServiceQuote } from '@/services/retail/cotizaciones-service'
 import { PosSidebar, type PanelId } from '@/components/pos/pos-sidebar'
 import { openCashSession, type ApiCashSession } from '@/services/core/caja-service'
@@ -70,6 +71,50 @@ function ServiceCard({ s, inCartQty, onAdd }: { s: Service; inCartQty: number; o
         <div className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold mt-1 inline-block">PRECIO VARIABLE</div>
       )}
     </button>
+  )
+}
+
+// ─── Group bar ───────────────────────────────────────────────────────────────
+
+function GroupBar({
+  grupos,
+  selected,
+  onSelect,
+}: {
+  grupos: { id: string; name: string; count: number }[]
+  selected: string | null
+  onSelect: (id: string | null) => void
+}) {
+  if (grupos.length === 0) return null
+  return (
+    <div className="flex items-center gap-2 px-4 py-2.5 overflow-x-auto shrink-0 border-b border-border scrollbar-none">
+      <button
+        onClick={() => onSelect(null)}
+        className={`shrink-0 flex flex-col items-center justify-center min-w-[64px] h-14 px-3 rounded-xl border-[1.5px] transition-all cursor-pointer
+          ${selected === null
+            ? 'bg-primary border-primary text-primary-foreground shadow-sm'
+            : 'bg-card border-border text-muted-foreground hover:border-primary hover:text-foreground hover:bg-muted/40'
+          }`}
+      >
+        <span className="text-[12px] font-extrabold leading-tight">Todos</span>
+      </button>
+      {grupos.map(g => (
+        <button
+          key={g.id}
+          onClick={() => onSelect(selected === g.id ? null : g.id)}
+          className={`shrink-0 flex flex-col items-center justify-center min-w-[72px] h-14 px-3 rounded-xl border-[1.5px] transition-all cursor-pointer
+            ${selected === g.id
+              ? 'bg-primary border-primary text-primary-foreground shadow-sm'
+              : 'bg-card border-border text-muted-foreground hover:border-primary hover:text-foreground hover:bg-muted/40'
+            }`}
+        >
+          <span className="text-[12px] font-extrabold leading-tight text-center line-clamp-2 max-w-[80px]">{g.name}</span>
+          <span className={`text-[10px] font-semibold mt-0.5 ${selected === g.id ? 'text-primary-foreground/70' : 'text-muted-foreground/60'}`}>
+            {g.count} prod.
+          </span>
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -804,6 +849,193 @@ function CashGate({ onOpened }: { onOpened: (session: ApiCashSession) => void })
   )
 }
 
+// ─── Scanner view ────────────────────────────────────────────────────────────
+
+function ScannerView({
+  products,
+  carrito,
+  totals,
+  lastAddedProduct,
+  stockWarning,
+  addToCart,
+  removeItem,
+  updateQty,
+  openCheckout,
+  clearCart,
+}: {
+  products: Product[]
+  carrito: CartItem[]
+  totals: { total: number }
+  lastAddedProduct: Product | null
+  stockWarning: string | null
+  addToCart: (p: Product) => void
+  removeItem: (id: string) => void
+  updateQty: (id: string, delta: number) => void
+  openCheckout: () => void
+  clearCart: () => void
+}) {
+  const [scanInput, setScanInput] = useState('')
+  const [scanError, setScanError] = useState<string | null>(null)
+  const scanRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { scanRef.current?.focus() }, [])
+
+  const handleScan = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return
+    const sku = scanInput.trim()
+    if (!sku) return
+    const product = products.find(p => p.sku.toLowerCase() === sku.toLowerCase() && p.status === 'ACTIVE')
+    if (!product) {
+      setScanError(`SKU "${sku}" no encontrado`)
+      setTimeout(() => setScanError(null), 2500)
+    } else {
+      addToCart(product)
+      setScanError(null)
+    }
+    setScanInput('')
+  }
+
+  const lastQty = lastAddedProduct ? (carrito.find(i => i.id === lastAddedProduct.id)?.qty ?? 0) : 0
+  const totalItems = carrito.reduce((s, i) => s + i.qty, 0)
+
+  return (
+    <div className="flex-1 flex overflow-hidden">
+      {/* LEFT — Último producto + escáner */}
+      <div className="w-[300px] shrink-0 flex flex-col gap-4 border-r border-border bg-card p-4 overflow-y-auto">
+        <div>
+          <div className="text-[10px] font-bold text-primary uppercase tracking-widest mb-2">Último producto agregado</div>
+          {lastAddedProduct ? (
+            <div className="border border-border rounded-xl p-4 bg-background space-y-1">
+              <div className="text-sm font-bold text-foreground leading-snug">{lastAddedProduct.name}</div>
+              <div className="text-[11px] text-muted-foreground">{lastAddedProduct.sku}</div>
+              <div className="text-xl font-extrabold text-primary pt-1">{fmt(Number(lastAddedProduct.price))}</div>
+              <div className="text-[11px] text-muted-foreground pt-1">
+                En carrito: <span className="font-bold text-foreground">{lastQty} unid.</span>
+              </div>
+            </div>
+          ) : (
+            <div className="border border-dashed border-border rounded-xl p-6 flex flex-col items-center gap-2 text-muted-foreground">
+              <Package className="w-8 h-8 opacity-25" />
+              <span className="text-xs">Aún sin productos</span>
+            </div>
+          )}
+        </div>
+
+        {lastAddedProduct && (
+          <div className="flex items-center justify-between px-3 py-2.5 border border-border rounded-xl">
+            <span className="text-xs text-muted-foreground">Subtotal</span>
+            <span className="text-base font-extrabold text-foreground">
+              {fmt(Number(lastAddedProduct.price) * lastQty)}
+            </span>
+          </div>
+        )}
+
+        <div className={`border rounded-xl p-3.5 ${scanError ? 'border-red-400 bg-red-50 dark:bg-red-950/20' : 'border-primary/40 bg-primary/5'}`}>
+          <div className="flex items-center gap-1.5 mb-2">
+            <ScanLine className="w-3.5 h-3.5 text-primary" />
+            <span className="text-[10px] font-bold text-primary uppercase tracking-widest">Escanear código de barras</span>
+          </div>
+          <input
+            ref={scanRef}
+            value={scanInput}
+            onChange={e => setScanInput(e.target.value)}
+            onKeyDown={handleScan}
+            placeholder="Ingresa o escanea el SKU…"
+            className="w-full border-none bg-transparent outline-none text-[13px] text-foreground placeholder:text-muted-foreground"
+          />
+          {scanError
+            ? <div className="text-[11px] text-red-600 mt-1.5">{scanError}</div>
+            : <div className="text-[10px] text-muted-foreground mt-1.5">Pasa el producto por el lector o escribe el SKU y presiona Enter</div>
+          }
+        </div>
+
+        {stockWarning && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 rounded-lg text-[11px] text-orange-700">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+            {stockWarning}
+          </div>
+        )}
+      </div>
+
+      {/* RIGHT — Tabla de carrito */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-border shrink-0 flex items-center justify-between">
+          <span className="text-sm font-extrabold text-foreground">
+            Productos escaneados{totalItems > 0 && ` (${totalItems})`}
+          </span>
+          {carrito.length > 0 && (
+            <button onClick={clearCart} className="text-[11px] font-semibold text-red-600 bg-red-50 dark:bg-red-950/20 border-none rounded-md px-2.5 py-1 cursor-pointer hover:bg-red-100 transition-colors">
+              Limpiar
+            </button>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {carrito.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground">
+              <ShoppingCart className="w-8 h-8 opacity-20" />
+              <span className="text-xs">Escanea un producto para comenzar</span>
+            </div>
+          ) : (
+            <table className="w-full text-[12px]">
+              <thead className="sticky top-0 bg-card">
+                <tr className="border-b border-border text-muted-foreground">
+                  <th className="text-left px-5 py-2.5 font-semibold">Producto</th>
+                  <th className="text-right px-3 py-2.5 font-semibold">Precio</th>
+                  <th className="text-right px-3 py-2.5 font-semibold">Cant.</th>
+                  <th className="text-right px-3 py-2.5 font-semibold">Total</th>
+                  <th className="w-10" />
+                </tr>
+              </thead>
+              <tbody>
+                {carrito.map(item => (
+                  <tr key={`${item.id}-${item.type}`} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                    <td className="px-5 py-3">
+                      <div className="font-semibold text-foreground leading-tight">{item.name}</div>
+                      <div className="text-muted-foreground text-[10px]">{item.sku}</div>
+                    </td>
+                    <td className="px-3 py-3 text-right text-muted-foreground whitespace-nowrap">{fmt(item.price)}</td>
+                    <td className="px-3 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => updateQty(item.id, -1)}
+                          className="w-5 h-5 rounded border border-border flex items-center justify-center text-muted-foreground hover:bg-muted cursor-pointer bg-transparent text-xs leading-none">−</button>
+                        <span className="w-6 text-center font-bold text-foreground">{item.qty}</span>
+                        <button onClick={() => updateQty(item.id, 1)}
+                          className="w-5 h-5 rounded border border-border flex items-center justify-center text-muted-foreground hover:bg-muted cursor-pointer bg-transparent text-xs leading-none">+</button>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-right font-bold text-foreground whitespace-nowrap">{fmt(item.price * item.qty)}</td>
+                    <td className="pr-4 py-3 text-right">
+                      <button onClick={() => removeItem(item.id)}
+                        className="w-6 h-6 rounded-full border border-red-300 text-red-500 flex items-center justify-center cursor-pointer bg-transparent hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors ml-auto">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="border-t border-border px-5 py-4 shrink-0 bg-card">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-sm font-bold text-foreground">Total a pagar</span>
+            <span className="text-2xl font-extrabold text-primary">{fmt(totals.total)}</span>
+          </div>
+          <button
+            onClick={openCheckout}
+            disabled={carrito.length === 0}
+            className="w-full py-3 bg-primary text-primary-foreground rounded-xl font-bold text-sm cursor-pointer hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            Cobrar <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main POS ────────────────────────────────────────────────────────────────
 
 export function POS() {
@@ -811,8 +1043,13 @@ export function POS() {
     setPosOpen,
     activeCashSession, sessionChecked, refreshSession,
     catalogLoading,
+    products,
     search, setSearch, searchRef,
+    selectedGroup, setSelectedGroup,
+    grupos,
     productosFiltrados,
+    productosPorCategoria,
+    lastAddedProduct,
     catalogTab, setCatalogTab,
     serviceSearch, setServiceSearch,
     serviciosFiltrados,
@@ -846,6 +1083,7 @@ export function POS() {
 
   const [activeSidebarPanel, setActiveSidebarPanel] = useState<PanelId | null>(null)
   const openSidebarPanel = useCallback((id: PanelId) => setActiveSidebarPanel(id), [])
+  const [posView, setPosView] = useState<'catalog' | 'scanner'>('catalog')
 
   // focus search on mount
   const navigate = useNavigate()
@@ -907,6 +1145,22 @@ export function POS() {
             </button>
           )}
         </div>
+        <div className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
+          <button
+            onClick={() => setPosView('catalog')}
+            title="Vista catálogo"
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-bold cursor-pointer border-none transition-colors ${posView === 'catalog' ? 'bg-card text-foreground shadow-sm' : 'bg-transparent text-muted-foreground hover:text-foreground'}`}
+          >
+            <LayoutGrid className="w-3.5 h-3.5" /> Catálogo
+          </button>
+          <button
+            onClick={() => setPosView('scanner')}
+            title="Vista escáner"
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-bold cursor-pointer border-none transition-colors ${posView === 'scanner' ? 'bg-card text-foreground shadow-sm' : 'bg-transparent text-muted-foreground hover:text-foreground'}`}
+          >
+            <ScanLine className="w-3.5 h-3.5" /> Escáner
+          </button>
+        </div>
         <div className="ml-auto text-xs text-muted-foreground">{dateStr} · {timeStr}</div>
       </div>
 
@@ -928,6 +1182,21 @@ export function POS() {
           controlledPanel={activeSidebarPanel}
           onPanelChange={setActiveSidebarPanel}
         />
+
+        {posView === 'scanner' && stage === 'cart' ? (
+          <ScannerView
+            products={products}
+            carrito={carrito}
+            totals={totals}
+            lastAddedProduct={lastAddedProduct}
+            stockWarning={stockWarning}
+            addToCart={addToCart}
+            removeItem={removeItem}
+            updateQty={updateQty}
+            openCheckout={openCheckout}
+            clearCart={clearCart}
+          />
+        ) : (<>
 
         {/* LEFT — Products / Services */}
         <div className="flex-1 flex flex-col overflow-hidden border-r border-border">
@@ -954,6 +1223,15 @@ export function POS() {
               </button>
             )}
           </div>
+
+          {/* Groups filter bar — products tab only */}
+          {catalogTab === 'products' && (
+            <GroupBar
+              grupos={grupos}
+              selected={selectedGroup}
+              onSelect={setSelectedGroup}
+            />
+          )}
 
           {/* Manual service input */}
           {manualServiceOpen && (
@@ -1209,6 +1487,7 @@ export function POS() {
             </>
           )}
         </div>
+        </>)}
       </div>
 
       {/* ── Bottom bar ── */}

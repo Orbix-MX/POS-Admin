@@ -27,6 +27,14 @@ const MODULE_META: Record<ModuleId, { label: string; breadcrumb: string[] }> = {
   roles: { label: "Roles y Permisos", breadcrumb: ["Administración", "Roles y Permisos"] },
   pos: { label: "POS", breadcrumb: ["POS"] },
   branches: { label: "Sucursales", breadcrumb: ["Administración", "Sucursales"] },
+  comanda: { label: "Comandas", breadcrumb: ["Negocio", "Comandas"] },
+  'caja-restaurante': { label: "Caja Restaurante", breadcrumb: ["Negocio", "Caja Restaurante"] },
+  insumos: { label: "Insumos", breadcrumb: ["Negocio", "Insumos"] },
+  kitchen: { label: "Cocina", breadcrumb: ["Negocio", "Cocina"] },
+  'dining-areas': { label: "Áreas del restaurante", breadcrumb: ["Negocio", "Áreas del restaurante"] },
+  'restaurant-tables': { label: "Mesas", breadcrumb: ["Negocio", "Mesas"] },
+  'tienda-online': { label: "Tienda en Línea", breadcrumb: ["Negocio", "Tienda en Línea"] },
+  'store-orders': { label: "Pedidos WhatsApp", breadcrumb: ["Negocio", "Pedidos WhatsApp"] },
 }
 
 const ACTION_LABELS: Partial<Record<ModuleId, string>> = {
@@ -59,6 +67,14 @@ const PATH_TO_MODULE: Record<string, ModuleId> = {
   '/usuarios': 'usuarios',
   '/roles': 'roles',
   '/pos': 'pos',
+  '/comanda': 'comanda',
+  '/caja-restaurante': 'caja-restaurante',
+  '/insumos': 'insumos',
+  '/kitchen': 'kitchen',
+  '/dining-areas': 'dining-areas',
+  '/restaurant-tables': 'restaurant-tables',
+  '/tienda-online': 'tienda-online',
+  '/pedidos-whatsapp': 'store-orders',
 }
 
 export { MODULE_META }
@@ -115,6 +131,7 @@ function BranchSelector() {
 export function Topbar() {
   const location = useLocation()
   const { darkMode, toggleDarkMode } = useERPStore()
+  const { enabledModules } = useAuthStore()
   const activeModule = PATH_TO_MODULE[location.pathname] || 'dashboard'
   const meta = MODULE_META[activeModule]
   const actionLabel = ACTION_LABELS[activeModule]
@@ -141,13 +158,15 @@ export function Topbar() {
         <div className="w-px h-5 bg-border" />
 
         {/* POS Button */}
-        <button
-          onClick={() => router('/pos')}
-          className="flex items-center gap-1.5 bg-primary text-primary-foreground border-none rounded-lg px-3.5 py-1.5 text-xs font-bold cursor-pointer shadow-md"
-        >
-          <Monitor className="w-3.5 h-3.5" />
-          Abrir POS
-        </button>
+        {enabledModules.includes('pos') && (
+          <button
+            onClick={() => router('/pos')}
+            className="flex items-center gap-1.5 bg-primary text-primary-foreground border-none rounded-lg px-3.5 py-1.5 text-xs font-bold cursor-pointer shadow-md"
+          >
+            <Monitor className="w-3.5 h-3.5" />
+            Abrir POS
+          </button>
+        )}
 
         <div className="w-px h-5 bg-border" />
 
@@ -159,14 +178,6 @@ export function Topbar() {
             className="border-none bg-transparent outline-none text-[13px] text-foreground w-full"
           />
         </div>
-
-        {/* Action button */}
-        {actionLabel && (
-          <button className="flex items-center gap-1.5 bg-primary text-primary-foreground border-none rounded-lg px-3.5 py-1.5 text-[13px] font-semibold cursor-pointer">
-            <Plus className="w-3.5 h-3.5" />
-            {actionLabel}
-          </button>
-        )}
 
         {/* Dark mode toggle */}
         <button

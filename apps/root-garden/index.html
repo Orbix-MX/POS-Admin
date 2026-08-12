@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="es-MX">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>RootGarden · Naturaleza para tu acuario</title>
+    <meta
+      name="description"
+      content="Plantas acuáticas cultivadas, raíz de manzanita y hardscape para aquascaping. Asesoría y pedidos por WhatsApp en Ciudad Juárez."
+    />
+    <meta name="author" content="RootGarden" />
+    <meta name="theme-color" content="#1B5E20" />
+    <link rel="canonical" href="https://rootgarden.mx/" />
+
+    <!-- Iconos y aplicación instalable -->
+    <link rel="icon" type="image/png" href="assets/favicon.png" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.json" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="RootGarden" />
+    <meta property="og:locale" content="es_MX" />
+    <meta property="og:title" content="RootGarden · Naturaleza para tu acuario" />
+    <meta
+      property="og:description"
+      content="Plantas acuáticas cultivadas, raíz de manzanita y hardscape para aquascaping."
+    />
+    <meta property="og:url" content="https://rootgarden.mx/" />
+    <meta property="og:image" content="https://rootgarden.mx/assets/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Logotipo de RootGarden sobre un paisaje acuático" />
+
+    <!-- Twitter Cards -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="RootGarden · Naturaleza para tu acuario" />
+    <meta
+      name="twitter:description"
+      content="Plantas acuáticas cultivadas, raíz de manzanita y hardscape para aquascaping."
+    />
+    <meta name="twitter:image" content="https://rootgarden.mx/assets/og-image.jpg" />
+
+    <!-- Tipografía -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Estilos -->
+    <link rel="stylesheet" href="css/styles.css" />
+    <link rel="stylesheet" href="css/animations.css" />
+
+    <!-- Scripts (orden de dependencias) -->
+    <script src="data/plantas.js" defer></script>
+    <script src="js/utils.js" defer></script>
+    <script src="js/storage.js" defer></script>
+    <script src="js/whatsapp.js" defer></script>
+    <script src="js/carrito.js" defer></script>
+    <script src="js/buscador.js" defer></script>
+    <script src="js/catalogo.js" defer></script>
+    <script src="js/app.js" defer></script>
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Store",
+        "name": "RootGarden",
+        "slogan": "Naturaleza para tu acuario",
+        "description": "Plantas acuáticas, raíz de manzanita y hardscape para aquascaping.",
+        "image": "https://rootgarden.mx/assets/og-image.jpg",
+        "url": "https://rootgarden.mx/",
+        "telephone": "+52 656 201 6886",
+        "address": {
+          "@type": "PostalAddress",
+          "addressLocality": "Ciudad Juárez",
+          "addressRegion": "Chihuahua",
+          "addressCountry": "MX"
+        }
+      }
+    </script>
+  </head>
+
+  <body data-pagina="inicio">
+    <a class="solo-lectores" href="#catalogo">Saltar al catálogo</a>
+
+    <!-- ================= HEADER ================= -->
+    <header class="header" data-header>
+      <div class="header__interno">
+        <a class="marca" href="index.html" aria-label="RootGarden, inicio">
+          <img
+            class="marca__emblema"
+            src="assets/logo-mark.png"
+            alt="Emblema de RootGarden"
+            width="40"
+            height="40"
+          />
+          <span>
+            <span class="marca__texto"><strong>Root</strong>Garden</span>
+            <span class="marca__slogan">Aquascaping</span>
+          </span>
+        </a>
+
+        <button
+          class="header__toggle"
+          type="button"
+          data-menu-boton
+          aria-expanded="false"
+          aria-controls="menu-principal"
+          aria-label="Abrir menú"
+        >
+          <span></span>
+        </button>
+
+        <div class="header__panel" id="menu-principal" data-menu-panel>
+          <nav class="nav" aria-label="Navegación principal">
+            <a class="nav__enlace" href="index.html" data-nav-enlace="inicio">Inicio</a>
+            <a class="nav__enlace" href="catalogo.html" data-nav-enlace="catalogo">Catálogo</a>
+            <a class="nav__enlace" href="tienda.html" data-nav-enlace="tienda">Tienda</a>
+          </nav>
+
+          <form class="busqueda" role="search" data-buscador-form>
+            <svg class="busqueda__icono" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" />
+              <path d="m16.5 16.5 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            </svg>
+            <label class="solo-lectores" for="campo-busqueda">Buscar plantas</label>
+            <input
+              class="busqueda__campo"
+              id="campo-busqueda"
+              type="search"
+              placeholder="Buscar planta…"
+              autocomplete="off"
+              data-buscador-campo
+            />
+            <button
+              class="busqueda__limpiar"
+              type="button"
+              data-buscador-limpiar
+              aria-label="Limpiar búsqueda"
+              hidden
+            >
+              ✕
+            </button>
+          </form>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <!-- ================= PORTADA ================= -->
+      <section class="portada" id="portada">
+        <div class="portada__fondo" role="presentation"></div>
+        <div class="portada__velo" role="presentation"></div>
+
+        <div class="contenedor portada__contenido">
+          <div class="portada__marca">
+            <img
+              class="portada__logo"
+              src="assets/logo.png"
+              alt="Logotipo de RootGarden"
+              width="226"
+              height="242"
+              fetchpriority="high"
+            />
+          </div>
+
+          <h1 class="portada__titulo"><strong>Root</strong>Garden</h1>
+          <p class="portada__slogan">Naturaleza para tu acuario.</p>
+
+          <div class="portada__especialidades">
+            <p class="portada__especialidades-titulo">Especialistas en</p>
+            <ul class="pastillas">
+              <li class="pastilla">
+                <span class="pastilla__icono" aria-hidden="true">🌿</span> Plantas Acuáticas
+              </li>
+              <li class="pastilla">
+                <span class="pastilla__icono" aria-hidden="true">🪵</span> Raíz de Manzanita
+              </li>
+              <li class="pastilla">
+                <span class="pastilla__icono" aria-hidden="true">🪨</span> Hardscape
+                <span class="proximamente proximamente--claro">Próximamente</span>
+              </li>
+            </ul>
+          </div>
+
+          <div class="portada__acciones">
+            <a class="boton boton--claro" href="#catalogo">Explorar catálogo</a>
+            <a class="boton boton--fantasma" href="tienda.html">Hacer un pedido</a>
+          </div>
+        </div>
+
+        <a class="portada__indicador" href="#catalogo" aria-label="Bajar al catálogo">
+          <span>Desliza</span>
+          <span class="portada__indicador-linea" aria-hidden="true"></span>
+        </a>
+      </section>
+
+      <!-- ================= ESPECIALIDADES ================= -->
+      <section class="seccion seccion--clara">
+        <div class="contenedor">
+          <div class="seccion__encabezado revelar">
+            <span class="seccion__etiqueta">Nuestro oficio</span>
+            <h2 class="seccion__titulo">Todo lo que tu layout necesita</h2>
+            <p class="seccion__descripcion">
+              Cultivamos, seleccionamos y preparamos cada pieza pensando en acuarios plantados
+              reales, no en escaparates.
+            </p>
+          </div>
+
+          <div class="especialidades">
+            <article class="especialidad revelar">
+              <div class="especialidad__icono" aria-hidden="true">🌿</div>
+              <h3 class="especialidad__titulo">Plantas Acuáticas</h3>
+              <p class="especialidad__texto">
+                Más de cincuenta especies cultivadas en nuestras piletas, desde tapizantes
+                exigentes hasta rizomatosas de bajo mantenimiento. Libres de caracoles y algas.
+              </p>
+            </article>
+
+            <article class="especialidad revelar">
+              <div class="especialidad__icono" aria-hidden="true">🪵</div>
+              <h3 class="especialidad__titulo">Raíz de Manzanita</h3>
+              <p class="especialidad__texto">
+                Ramas curadas, lavadas y listas para sumergir. Seleccionamos cada pieza por su
+                silueta para que tu bosque submarino tenga carácter propio.
+              </p>
+            </article>
+
+            <article class="especialidad revelar">
+              <div class="especialidad__icono" aria-hidden="true">🪨</div>
+              <h3 class="especialidad__titulo">
+                Hardscape <span class="proximamente">Próximamente</span>
+              </h3>
+              <p class="especialidad__texto">
+                Seiryu, roca dragón, lava negra y sustratos técnicos. Estamos preparando la
+                selección; escríbenos por WhatsApp si buscas una pieza en particular.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= CATÁLOGO DESTACADO ================= -->
+      <section class="seccion" id="catalogo">
+        <div class="contenedor">
+          <div class="seccion__encabezado revelar">
+            <span class="seccion__etiqueta">Catálogo</span>
+            <h2 class="seccion__titulo">Selección destacada</h2>
+            <p class="seccion__descripcion">
+              Una muestra de lo que tenemos disponible esta temporada. El catálogo completo incluye
+              plantas, raíces y hardscape con precios actualizados.
+            </p>
+          </div>
+
+          <div class="grid-productos" data-catalogo></div>
+
+          <div class="estado" data-catalogo-error hidden>
+            <div class="estado__icono" aria-hidden="true">🌱</div>
+            <h3 class="estado__titulo">No pudimos cargar el catálogo</h3>
+            <p class="estado__texto">
+              Revisa tu conexión y vuelve a intentarlo. Si el problema continúa, escríbenos por
+              WhatsApp y con gusto te compartimos la disponibilidad.
+            </p>
+            <a class="boton boton--primario" href="https://wa.me/526562016886">Escribir por WhatsApp</a>
+          </div>
+
+          <div class="portada__acciones revelar" style="margin-top: 48px">
+            <a class="boton boton--primario" href="catalogo.html">Ver catálogo completo</a>
+            <a class="boton boton--contorno" href="tienda.html">Ir a la tienda</a>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= VALORES ================= -->
+      <section class="seccion seccion--clara">
+        <div class="contenedor">
+          <div class="seccion__encabezado revelar">
+            <span class="seccion__etiqueta">Por qué RootGarden</span>
+            <h2 class="seccion__titulo">Plantas que llegan vivas y listas</h2>
+          </div>
+
+          <div class="valores">
+            <div class="valor revelar">
+              <span class="valor__icono" aria-hidden="true">💧</span>
+              <div>
+                <h3 class="valor__titulo">Cultivo propio</h3>
+                <p class="valor__texto">
+                  Cultivamos sumergido, así la planta no sufre conversión al entrar a tu acuario.
+                </p>
+              </div>
+            </div>
+
+            <div class="valor revelar">
+              <span class="valor__icono" aria-hidden="true">🧪</span>
+              <div>
+                <h3 class="valor__titulo">Libre de plagas</h3>
+                <p class="valor__texto">
+                  Cada lote se revisa y enjuaga antes de salir. Sin caracoles, planaria ni algas.
+                </p>
+              </div>
+            </div>
+
+            <div class="valor revelar">
+              <span class="valor__icono" aria-hidden="true">📦</span>
+              <div>
+                <h3 class="valor__titulo">Empaque protegido</h3>
+                <p class="valor__texto">
+                  Humedad controlada y aislante térmico para que el viaje no marchite nada.
+                </p>
+              </div>
+            </div>
+
+            <div class="valor revelar">
+              <span class="valor__icono" aria-hidden="true">💬</span>
+              <div>
+                <h3 class="valor__titulo">Asesoría real</h3>
+                <p class="valor__texto">
+                  Te ayudamos a elegir según tu luz, tu sustrato y si usas CO₂ o no.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= FRANJA DE CONTACTO ================= -->
+      <section class="seccion">
+        <div class="contenedor">
+          <div class="franja revelar">
+            <h2 class="franja__titulo">¿No sabes por dónde empezar?</h2>
+            <p class="franja__texto">
+              Cuéntanos las medidas de tu acuario, tu iluminación y el estilo que buscas. Te
+              armamos una lista de plantas y hardscape a la medida, sin compromiso.
+            </p>
+            <div class="franja__acciones">
+              <a
+                class="boton boton--whatsapp"
+                href="https://wa.me/526562016886"
+                target="_blank"
+                rel="noopener"
+              >
+                <span aria-hidden="true">💬</span> Asesoría por WhatsApp
+              </a>
+              <a class="boton boton--claro" href="tienda.html">Armar mi pedido</a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ================= FOOTER ================= -->
+    <footer class="footer">
+      <div class="contenedor">
+        <div class="footer__grid">
+          <div>
+            <img
+              class="footer__logo"
+              src="assets/logo.png"
+              alt="Logotipo de RootGarden"
+              width="116"
+              height="124"
+              loading="lazy"
+            />
+            <p class="footer__marca-nombre"><strong>Root</strong>Garden</p>
+            <p class="footer__slogan">Naturaleza para tu acuario.</p>
+          </div>
+
+          <div>
+            <h2 class="footer__titulo">Catálogo</h2>
+            <ul class="footer__lista">
+              <li>
+                <a class="footer__enlace" href="catalogo.html?categoria=plantas">
+                  <span aria-hidden="true">🌿</span> Plantas Acuáticas
+                </a>
+              </li>
+              <li>
+                <a class="footer__enlace" href="catalogo.html?categoria=raices">
+                  <span aria-hidden="true">🪵</span> Raíz de Manzanita
+                </a>
+              </li>
+              <li>
+                <span class="footer__enlace footer__enlace--inactivo">
+                  <span aria-hidden="true">🪨</span> Hardscape
+                  <span class="proximamente proximamente--claro">Próximamente</span>
+                </span>
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <h2 class="footer__titulo">Navegación</h2>
+            <ul class="footer__lista">
+              <li><a class="footer__enlace" href="index.html">Inicio</a></li>
+              <li><a class="footer__enlace" href="catalogo.html">Catálogo completo</a></li>
+              <li><a class="footer__enlace" href="tienda.html">Tienda</a></li>
+            </ul>
+          </div>
+
+          <div>
+            <h2 class="footer__titulo">Contacto</h2>
+            <p class="footer__contacto">
+              <a class="footer__enlace" href="https://wa.me/526562016886" target="_blank" rel="noopener">
+                WhatsApp · 656 201 6886
+              </a>
+              <br />
+              Ciudad Juárez, Chihuahua<br />
+              Pedidos y entregas a convenir
+            </p>
+          </div>
+        </div>
+
+        <div class="footer__legal">
+          <p>© <span data-anio>2026</span> RootGarden · Naturaleza para tu acuario.</p>
+          <p>Hecho con 🌿 para la comunidad del aquascaping.</p>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

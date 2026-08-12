@@ -5,10 +5,18 @@ import {
   fetchCashSession,
   openCashSession,
   closeCashSession,
+  closeSessionWithAuth,
+  withdrawCash,
+  startCashCount,
+  resumeCashSession,
+  createCashCount,
   type ApiCashSession,
+  type ApiCashCount,
   type OpenSessionInput,
   type CloseSessionInput,
+  type CashCountInput,
 } from '@/services/core/caja-service'
+import { printCashSession } from '@/services/core/print-service'
 
 export type { ApiCashSession }
 
@@ -39,9 +47,21 @@ export function useCaja() {
 
   // ---- close modal ----
   const [closeModalVisible, setCloseModalVisible] = useState(false)
-  const [closeForm, setCloseForm] = useState<CloseSessionInput>({ cashCounted: 0, cashCountedUsd: 0, notes: '' })
+  const [withdrawVisible, setWithdrawVisible] = useState(false)
+  const [withdrawForm, setWithdrawForm] = useState<{ amount: number; reason: string }>({ amount: 0, reason: '' })
+  const [withdrawing, setWithdrawing] = useState(false)
+  const [withdrawError, setWithdrawError] = useState<string | null>(null)
+
+  const [closeForm, setCloseForm] = useState<CloseSessionInput>({ cashCounted: 0, cashCountedUsd: 0, differenceReason: '', notes: '' })
   const [closing, setClosing] = useState(false)
   const [closeError, setCloseError] = useState<string | null>(null)
+
+  // ---- count modal (arqueo parcial, sin cierre) ----
+  const [countModalVisible, setCountModalVisible] = useState(false)
+  const [countForm, setCountForm] = useState<CashCountInput>({ countedMxn: 0, countedUsd: 0, reason: '' })
+  const [counting, setCounting] = useState(false)
+  const [countError, setCountError] = useState<string | null>(null)
+  const [countResult, setCountResult] = useState<ApiCashCount | null>(null)
 
   // ---- load active session ----
   const loadActive = useCallback(async () => {
@@ -116,16 +136,146 @@ export function useCaja() {
     setCloseError(null)
     try {
       await closeCashSession(activeSession.id, closeForm)
-      setActiveSession(null)
+      // No se asume que quedó cerrada: si la diferencia supera el umbral, el
+      // corte queda PENDIENTE_REVISION y la caja sigue viva. Se relee el estado
+      // real en vez de vaciarla, o el operador vería "Abrir caja" sobre una
+      // sesión que aún existe (CASH-011).
+      await loadActive()
       setCloseModalVisible(false)
-      setCloseForm({ cashCounted: 0, cashCountedUsd: 0, notes: '' })
+      setCloseForm({ cashCounted: 0, cashCountedUsd: 0, differenceReason: '', notes: '' })
       loadHistory(1)
     } catch (e: any) {
       setCloseError(e?.response?.data?.message ?? 'Error al cerrar sesión')
     } finally {
       setClosing(false)
     }
-  }, [activeSession, closeForm, loadHistory])
+  }, [activeSession, closeForm, loadHistory, loadActive])
+
+  const [transitioning, setTransitioning] = useState(false)
+
+  // Credenciales del autorizador. Solo se piden cuando el corte quedó en
+  // revisión: un descuadre por encima del umbral no lo cierra quien lo produjo.
+  const [authForm, setAuthForm] = useState({ authEmail: '', authPassword: '' })
+
+  /**
+   * Cierra un corte que quedó PENDIENTE_REVISION, con las credenciales de un
+   * usuario que tenga permiso de cierre. Es la única salida de ese estado: sin
+   * esto la sesión quedaba atrapada, viva pero incerrable.
+   */
+  const handleCloseWithAuth = useCallback(async () => {
+    if (!activeSession) return
+    if (!authForm.authEmail.trim() || !authForm.authPassword) {
+      setCloseError('Ingresa el correo y la contraseña del autorizador'); return
+    }
+    setClosing(true)
+    setCloseError(null)
+    try {
+      await closeSessionWithAuth(activeSession.id, { ...closeForm, ...authForm })
+      setAuthForm({ authEmail: '', authPassword: '' })
+      setCloseModalVisible(false)
+      await loadActive()
+      loadHistory(1)
+    } catch (e: any) {
+      setCloseError(e?.response?.data?.message ?? 'No se pudo autorizar el cierre')
+    } finally {
+      setClosing(false)
+    }
+  }, [activeSession, closeForm, authForm, loadActive, loadHistory])
+
+  // Tras congelar la caja se pregunta si imprimir el ticket de arqueo o ver
+  // el detalle primero — no se imprime solo, el cajero decide (CASH-011).
+  const [arqueoPromptVisible, setArqueoPromptVisible] = useState(false)
+  const [arqueoPrinting, setArqueoPrinting] = useState(false)
+
+  /** ABIERTA → EN_ARQUEO: congela la caja para contar sin que el efectivo se mueva. */
+  const handleStartCount = useCallback(async () => {
+    if (!activeSession) return
+    setTransitioning(true)
+    try {
+      await startCashCount(activeSession.id)
+      await loadActive()
+      setArqueoPromptVisible(true)
+    } finally { setTransitioning(false) }
+  }, [activeSession, loadActive])
+
+  const handlePrintArqueoTicket = useCallback(async () => {
+    if (!activeSession) return
+    setArqueoPrinting(true)
+    try { await printCashSession(activeSession.id) }
+    finally {
+      setArqueoPrinting(false)
+      setArqueoPromptVisible(false)
+    }
+  }, [activeSession])
+
+  const handleDismissArqueoPrompt = useCallback(() => {
+    setArqueoPromptVisible(false)
+  }, [])
+
+  /** EN_ARQUEO → ABIERTA: el arqueo fue de control y la caja sigue operando. */
+  const handleResume = useCallback(async () => {
+    if (!activeSession) return
+    setTransitioning(true)
+    try { await resumeCashSession(activeSession.id); await loadActive() }
+    finally { setTransitioning(false) }
+  }, [activeSession, loadActive])
+
+  const handleOpenCountModal = useCallback(() => {
+    setCountResult(null)
+    setCountError(null)
+    setCountForm({ countedMxn: 0, countedUsd: 0, reason: '' })
+    setCountModalVisible(true)
+  }, [])
+
+  const handleCloseCountModal = useCallback(() => {
+    setCountModalVisible(false)
+    setCountResult(null)
+    setCountError(null)
+  }, [])
+
+  /**
+   * Arqueo PARCIAL sobre la caja en EN_ARQUEO: registra el conteo y su
+   * diferencia (faltante/sobrante) sin cerrar la sesión (CASH-006).
+   */
+  const handleSubmitCount = useCallback(async () => {
+    if (!activeSession) return
+    if (countForm.countedMxn < 0) { setCountError('El efectivo contado no puede ser negativo'); return }
+    const expectedMxn = activeSession.summary?.expectedCash ?? Number(activeSession.openingAmount)
+    const diff = countForm.countedMxn - expectedMxn
+    if (Math.abs(diff) >= 0.01 && !countForm.reason?.trim()) {
+      setCountError('Explica el motivo de la diferencia antes de registrar el arqueo')
+      return
+    }
+    setCounting(true)
+    setCountError(null)
+    try {
+      const result = await createCashCount({ ...countForm, type: 'PARCIAL' })
+      setCountResult(result)
+      await loadActive()
+    } catch (e: any) {
+      setCountError(e?.response?.data?.message ?? 'Error al registrar el arqueo')
+    } finally {
+      setCounting(false)
+    }
+  }, [activeSession, countForm, loadActive])
+
+  /** Retiro de efectivo del cajón: baja el esperado y recarga la sesión. */
+  const handleWithdraw = useCallback(async () => {
+    setWithdrawError(null)
+    if (withdrawForm.amount <= 0) { setWithdrawError('El monto debe ser mayor a 0'); return }
+    if (!withdrawForm.reason.trim()) { setWithdrawError('El motivo es obligatorio'); return }
+    setWithdrawing(true)
+    try {
+      await withdrawCash({ amount: withdrawForm.amount, reason: withdrawForm.reason })
+      setWithdrawVisible(false)
+      setWithdrawForm({ amount: 0, reason: '' })
+      await loadActive()
+    } catch (e: any) {
+      setWithdrawError(e?.response?.data?.message ?? 'Error al retirar efectivo')
+    } finally {
+      setWithdrawing(false)
+    }
+  }, [withdrawForm, loadActive])
 
   // ---- detail ----
   const handleOpenDetail = useCallback(async (session: ApiCashSession) => {
@@ -147,6 +297,11 @@ export function useCaja() {
     setDetailSession(null)
   }, [])
 
+  const handleViewArqueoDetail = useCallback(() => {
+    setArqueoPromptVisible(false)
+    if (activeSession) void handleOpenDetail(activeSession)
+  }, [activeSession, handleOpenDetail])
+
   return {
     // active
     activeSession, activeLoading, activeError, loadActive,
@@ -166,5 +321,21 @@ export function useCaja() {
     closeForm, setCloseForm,
     closing, closeError,
     handleCloseSession,
+    // ciclo de arqueo
+    transitioning, handleStartCount, handleResume,
+    // prompt: imprimir ticket de arqueo o ver detalle primero
+    arqueoPromptVisible, arqueoPrinting,
+    handlePrintArqueoTicket, handleViewArqueoDetail, handleDismissArqueoPrompt,
+    // arqueo parcial (conteo con faltante/sobrante, sin cierre)
+    countModalVisible, handleOpenCountModal, handleCloseCountModal,
+    countForm, setCountForm, counting, countError, countResult,
+    handleSubmitCount,
+    // cierre autorizado
+    authForm, setAuthForm, handleCloseWithAuth,
+    // withdraw
+    withdrawVisible, setWithdrawVisible,
+    withdrawForm, setWithdrawForm,
+    withdrawing, withdrawError,
+    handleWithdraw,
   }
 }

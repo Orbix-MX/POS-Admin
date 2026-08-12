@@ -5,6 +5,10 @@ import { UnauthorizedException, ConflictException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../../../database/prisma.service';
 import { PasswordUtil } from '../../../common/utils/password.util';
+import { RefreshTokenService } from './services/refresh-token.service';
+import { LicenseService } from '../../../common/services/license.service';
+import { PlanLimitsService } from '../../../common/services/plan-limits.service';
+import { TokenBlacklistService } from './services/token-blacklist.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -26,8 +30,26 @@ describe('AuthService', () => {
     get: jest.fn((key: string) => {
       if (key === 'jwt.secret') return 'test-secret';
       if (key === 'jwt.expiresIn') return '7d';
+      if (key === 'jwt.refreshExpiresInDays') return 30;
       return null;
     }),
+  };
+
+  const mockRefreshTokenService = {
+    issue: jest.fn().mockResolvedValue('test-refresh-token'),
+    rotate: jest.fn(),
+    revokeByRaw: jest.fn(),
+    revokeAllForUser: jest.fn(),
+  };
+
+  const mockLicenseService = {
+    validateLicense: jest.fn().mockResolvedValue({ valid: true }),
+    reasonMessage: jest.fn().mockReturnValue('license'),
+  };
+
+  const mockPlanLimitsService = {
+    getCapacity: jest.fn(),
+    getBranchCapacity: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -37,6 +59,10 @@ describe('AuthService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: JwtService, useValue: mockJwtService },
         { provide: ConfigService, useValue: mockConfigService },
+        { provide: RefreshTokenService, useValue: mockRefreshTokenService },
+        { provide: LicenseService, useValue: mockLicenseService },
+        { provide: PlanLimitsService, useValue: mockPlanLimitsService },
+        { provide: TokenBlacklistService, useValue: { isBlacklisted: jest.fn().mockResolvedValue(false), add: jest.fn(), revoke: jest.fn() } },
       ],
     }).compile();
 
@@ -119,6 +145,10 @@ describe('AuthService', () => {
         lastName: 'User',
         role: 'STAFF',
         status: 'ACTIVE',
+        // El login filtra las membresías por estado del tenant.
+        tenantMemberships: [
+          { tenantId: 'tenant-1', role: 'STAFF', tenant: { id: 'tenant-1', slug: 'demo', name: 'Demo', status: 'ACTIVE' } },
+        ],
         createdAt: new Date(),
         updatedAt: new Date(),
       };

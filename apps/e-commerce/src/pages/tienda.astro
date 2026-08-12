@@ -1,0 +1,186 @@
+---
+export const prerender = true;
+import Base from '../layouts/Base.astro';
+---
+
+<Base
+  title="Tienda"
+  description="Arma tu pedido de plantas acuáticas, raíz de manzanita y hardscape, y envíalo por WhatsApp en un solo mensaje."
+  path="/tienda"
+  pagina="tienda"
+  headerSolid={true}
+  extraCss={['/css/catalogo.css', '/css/tienda.css']}
+  skipLinkHref="#catalogo"
+  skipLinkText="Saltar a los productos"
+>
+  <!-- ================= ENCABEZADO DE PÁGINA ================= -->
+  <section class="pagina-encabezado">
+    <div class="contenedor pagina-encabezado__contenido">
+      <nav class="migas" aria-label="Ruta de navegación">
+        <a href="/">Inicio</a>
+        <span class="migas__separador" aria-hidden="true">/</span>
+        <span>Tienda</span>
+      </nav>
+      <h1 class="pagina-encabezado__titulo">Arma tu <strong>pedido</strong></h1>
+      <p class="pagina-encabezado__texto">
+        Ajusta las cantidades con los botones − y +. Tu pedido se guarda solo, aunque cierres el
+        navegador, y lo envías por WhatsApp cuando estés listo.
+      </p>
+    </div>
+  </section>
+
+  <!-- ================= BARRA DE FILTROS ================= -->
+  <div class="barra-catalogo">
+    <div class="contenedor barra-catalogo__interno">
+      <div class="filtros" role="group" aria-label="Filtrar por categoría" data-buscador-filtros>
+        <button class="filtro is-activo" type="button" data-categoria="todas" aria-pressed="true">
+          Todo
+        </button>
+        <button class="filtro" type="button" data-categoria="plantas" aria-pressed="false">
+          <span class="filtro__icono" aria-hidden="true">🌿</span> Plantas Acuáticas
+        </button>
+        <button class="filtro" type="button" data-categoria="raices" aria-pressed="false">
+          <span class="filtro__icono" aria-hidden="true">🪵</span> Raíz de Manzanita
+        </button>
+        <button class="filtro" type="button" data-categoria="hardscape" aria-pressed="false">
+          <span class="filtro__icono" aria-hidden="true">🪨</span> Hardscape
+        </button>
+      </div>
+
+      <p class="resultados" data-catalogo-resultados aria-live="polite"></p>
+    </div>
+  </div>
+
+  <!-- ================= PRODUCTOS ================= -->
+  <section class="catalogo" id="catalogo" aria-label="Productos">
+    <div class="contenedor">
+      <div class="grid-productos" data-catalogo></div>
+
+      <div class="estado" data-catalogo-vacio hidden>
+        <div class="estado__icono" aria-hidden="true">🔍</div>
+        <h2 class="estado__titulo">Sin coincidencias</h2>
+        <p class="estado__texto">
+          No encontramos productos con esos términos. Prueba con otro nombre o cambia la
+          categoría seleccionada.
+        </p>
+        <a class="boton boton--contorno" href="/tienda">Ver todos los productos</a>
+      </div>
+
+      <div class="estado estado--error" data-catalogo-error hidden>
+        <div class="estado__icono" aria-hidden="true">🌱</div>
+        <h2 class="estado__titulo">No pudimos cargar el catálogo</h2>
+        <p class="estado__texto">
+          Vuelve a cargar la página o escríbenos por WhatsApp y te compartimos la
+          disponibilidad al momento.
+        </p>
+        <a class="boton boton--primario" href="https://wa.me/526562016886">Escribir por WhatsApp</a>
+      </div>
+    </div>
+  </section>
+
+  <Fragment slot="carrito">
+    <!-- ================= CARRITO ================= -->
+    <button
+      class="carrito-flotante"
+      type="button"
+      data-carrito-boton
+      aria-controls="panel-pedido"
+      aria-expanded="false"
+    >
+      <span class="carrito-flotante__icono" aria-hidden="true">🛒</span>
+      Mi pedido
+      <span class="carrito-flotante__contador" data-carrito-contador>0</span>
+    </button>
+
+    <div class="carrito-velo" data-carrito-velo role="presentation"></div>
+
+    <aside
+      class="carrito-panel"
+      id="panel-pedido"
+      data-carrito-panel
+      aria-hidden="true"
+      aria-label="Mi pedido"
+    >
+      <header class="carrito-panel__cabecera">
+        <div class="carrito-panel__marca">
+          <img
+            class="carrito-panel__logo"
+            src="/assets/logo-mark.png"
+            alt="Emblema de la tienda"
+            width="40"
+            height="40"
+            data-marca-attr="alt"
+            data-marca-prefijo="Emblema de "
+            data-marca-logo
+          />
+          <div>
+            <p class="carrito-panel__titulo">Mi pedido</p>
+            <p class="carrito-panel__sub" data-marca-texto>Tu Tienda</p>
+          </div>
+        </div>
+        <button
+          class="carrito-panel__cerrar"
+          type="button"
+          data-carrito-cerrar
+          aria-label="Cerrar el pedido"
+        >
+          ✕
+        </button>
+      </header>
+
+      <div class="carrito-panel__cuerpo">
+        <ul class="pedido-lista" data-carrito-lista hidden></ul>
+
+        <div class="carrito-vacio" data-carrito-vacio>
+          <div class="carrito-vacio__icono" aria-hidden="true">🌿</div>
+          <h2 class="carrito-vacio__titulo">Tu pedido está vacío</h2>
+          <p class="carrito-vacio__texto">
+            Usa los botones + de cada tarjeta para ir sumando plantas, raíces y hardscape.
+          </p>
+        </div>
+      </div>
+
+      <footer class="carrito-panel__pie" data-carrito-resumen hidden>
+        <dl class="resumen">
+          <div class="resumen__fila">
+            <dt>Artículos</dt>
+            <dd data-carrito-articulos>0</dd>
+          </div>
+          <div class="resumen__fila resumen__fila--total">
+            <dt>Subtotal</dt>
+            <dd data-carrito-subtotal>$0.00</dd>
+          </div>
+        </dl>
+
+        <div class="carrito-panel__campo">
+          <label for="carrito-telefono" class="carrito-panel__etiqueta">Tu WhatsApp para confirmar el pedido</label>
+          <input
+            type="tel"
+            id="carrito-telefono"
+            class="carrito-panel__input"
+            data-carrito-telefono
+            placeholder="Ej. 6561234567"
+            autocomplete="tel"
+            inputmode="numeric"
+            maxlength="15"
+          />
+          <p class="carrito-panel__error" data-carrito-telefono-error hidden>Ingresa un teléfono válido (10 a 15 dígitos).</p>
+        </div>
+
+        <div class="carrito-panel__acciones">
+          <button class="boton boton--whatsapp boton--bloque" type="button" data-carrito-enviar>
+            <span aria-hidden="true">💬</span> Enviar pedido por WhatsApp
+          </button>
+          <button class="boton boton--contorno boton--bloque" type="button" data-carrito-limpiar>
+            Vaciar pedido
+          </button>
+        </div>
+
+        <p class="carrito-panel__nota">
+          El subtotal no incluye envío. Confirmamos disponibilidad y costo de entrega por WhatsApp
+          antes de cerrar el pedido.
+        </p>
+      </footer>
+    </aside>
+  </Fragment>
+</Base>

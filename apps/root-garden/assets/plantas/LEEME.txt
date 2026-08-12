@@ -1,0 +1,21 @@
+FOTOGRAFÍAS DE PRODUCTO
+=======================
+
+Coloca aquí la fotografía de cada producto usando exactamente el nombre de
+archivo indicado en el campo "imagen" de data/plantas.json.
+
+Ejemplos:
+  espada-amazonica.jpg
+  monte-carlo.jpg
+  manzanita-mediana.jpg
+  roca-seiryu.jpg
+
+Recomendaciones
+---------------
+· Proporción 4:3 (por ejemplo 1200 x 900 px).
+· Formato JPG con calidad 80-85, o WebP si prefieres menor peso.
+· Fondo neutro y luz pareja; la tarjeta recorta al centro.
+· Peso ideal por imagen: menos de 250 KB.
+
+Mientras una fotografía no exista, la tarjeta muestra automáticamente un
+marcador de posición con los colores de la marca. No hay que hacer nada más.

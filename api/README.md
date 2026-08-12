@@ -21,6 +21,85 @@
   <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
   [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
 
+## Changelog
+
+El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.0.0/).
+Categorías: `Added` · `Changed` · `Fixed` · `Removed`
+
+---
+
+### [Unreleased]
+
+---
+
+### [2026-05-31] — Unificación módulo de ventas (Retail + Restaurante)
+
+**Added**
+- `OrderOrigin` enum en schema: `RETAIL_POS`, `RESTAURANT_COMANDA`, `DELIVERY`, `KIOSK`, `ONLINE`
+- Campo `orderOrigin` (nullable) en modelo `Order` — migración `20260531000000_add_order_origin`
+- Helper centralizado `src/common/helpers/order-helpers.ts`: `isRestaurantOrder()`, `isRetailOrder()`, `getOrderOrigin()` con fallback a `tableNumber` para registros legacy
+- `orderOrigin` en `QueryOrdersDto` para filtrar ventas por canal (`GET /orders?orderOrigin=RESTAURANT_COMANDA`)
+- Split payments en `checkoutComanda`: acepta `payments[]` con `paymentMethod`, `currency`, `amount`, `amountReceived`, `changeGiven` — soporta pagos mixtos MXN/USD
+
+**Changed**
+- `POST /orders` (retail) ahora setea `orderOrigin: RETAIL_POS` automáticamente
+- `POST /restaurant/comandas` ahora setea `orderOrigin: RESTAURANT_COMANDA` automáticamente
+- `POST /restaurant/orders/:id/checkout` reemplaza `paymentMethod: string` por `payments: CheckoutPaymentDto[]`
+- `GET /orders` acepta `orderOrigin` como query param de filtrado
+
+---
+
+### [2026-05] — Módulo de insumos y conversión de unidades
+
+**Added**
+- `Supply` model con `purchaseUnit` / `inventoryUnit` y factor de conversión
+- Helper `safeConvertUnits()` para conversión automática en recetas y ajustes de inventario
+- Soporte de combos y recetas en `Product` (tipo `RECIPE` y `COMBO`)
+
+---
+
+### [2026-05] — Módulo de imágenes de productos (Cloudflare R2)
+
+**Added**
+- `POST /products/:id/image` — upload con `sharp` → WebP, aislamiento por tenant en R2
+- Limpieza automática de imagen anterior al subir nueva
+
+---
+
+### [2026-05] — Módulo Platform (Super Admin)
+
+**Added**
+- `PlatformUser` separado del flujo tenant, JWT `platform-jwt` independiente
+- Endpoints `/platform/*` con `PlatformJwtGuard`
+- Flujo de provisionamiento de nuevos tenants desde plataforma
+
+---
+
+### [2026-05] — RBAC y permisos
+
+**Fixed**
+- Bugs de `tenantId` en roles — consultas sin scope de tenant
+- Endpoints sin guard expuestos públicamente
+- Sidebar filtrado por permisos reales del usuario
+
+---
+
+### [2026-05] — Módulo de caja (Cash Sessions)
+
+**Added**
+- `CashSession` con apertura/cierre, `CashMovement` unificado para todos los orígenes (ventas retail, comandas, CxP, CxC, ingresos/egresos manuales)
+- Corte de caja con diferencia y conteo físico
+
+---
+
+### [2026-04] — Módulo de compras y CxP
+
+**Added**
+- `PurchaseOrder` con líneas, recepciones parciales y estado
+- `AccountPayable` con pagos a proveedores y vencimientos
+
+---
+
 ## Description
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.

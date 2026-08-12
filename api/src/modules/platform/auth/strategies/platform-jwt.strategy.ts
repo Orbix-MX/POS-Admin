@@ -23,7 +23,7 @@ export class PlatformJwtStrategy extends PassportStrategy(Strategy, 'platform-jw
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('jwt.secret') as string,
+      secretOrKey: configService.get<string>('jwt.platformSecret') as string,
     });
   }
 

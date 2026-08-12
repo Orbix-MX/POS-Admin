@@ -1,7 +1,7 @@
 {
-  "name": "@ventasy/web",
+  "name": "@orbix/web",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1",
   "type": "module",
   "scripts": {
     "start": "vite",
@@ -19,6 +19,8 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.14.0",
+    "qrcode.react": "^4.2.0",
+    "qz-tray": "^2.2.6",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-grid-layout": "^2.2.3",

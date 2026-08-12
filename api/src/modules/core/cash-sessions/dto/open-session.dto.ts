@@ -32,4 +32,14 @@ export class OpenCashSessionDto {
   @IsOptional()
   @IsString()
   branchId?: string;
+
+  /**
+   * Caja física en la que se abre. Opcional por compatibilidad: si se omite se
+   * usa la primera caja activa de la sucursal, que es el comportamiento de una
+   * instalación de caja única (docs/AUDITORIA-CAJA.md, Fase 8).
+   */
+  @ApiPropertyOptional({ description: 'Caja física; por defecto la primera activa de la sucursal' })
+  @IsOptional()
+  @IsString()
+  cashRegisterId?: string;
 }

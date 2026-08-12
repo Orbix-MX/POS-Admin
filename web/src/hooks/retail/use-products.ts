@@ -4,7 +4,10 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
-  type Product
+  downloadProductImportTemplate,
+  importProductsFromExcel,
+  type Product,
+  type ImportResult,
 } from '@/services/retail/product-service'
 
 export const CATEGORIES = [
@@ -25,11 +28,23 @@ export const STATUS_OPTIONS = [
 ]
 
 export const TAX_CODES = [
-  { value: "EXCENTO", label: "IVA 0%" },
-  { value: "IVA_16", label: "IVA 16%" },
+  { value: "EXCENTO", label: "IVA 0%", rate: 0 },
+  { value: "IVA_16", label: "IVA 16%", rate: 16 },
+]
+
+export const TAX_RATE_MAP: Record<string, number> = Object.fromEntries(
+  TAX_CODES.map((t) => [t.value, t.rate]),
+)
+
+export const PRODUCT_TYPE_OPTIONS = [
+  { value: 'SIMPLE', label: 'Producto Simple' },
+  { value: 'RECIPE', label: 'Receta / Preparado' },
+  { value: 'COMBO', label: 'Combo / Paquete' },
+  { value: 'SERVICE', label: 'Servicio' },
 ]
 
 export const EMPTY_FORM: Product = {
+  type: "SIMPLE",
   sku: "",
   name: "",
   description: "",
@@ -45,7 +60,12 @@ export const EMPTY_FORM: Product = {
   metaDescription: "",
   taxRate: 0,
   taxCode: "IVA_16",
-  slug: ""
+  slug: "",
+  isEcommerce: false,
+  recipe: null,
+  comboItems: [],
+  attributes: [],
+  features: [],
 }
 
 export function useProducts() {
@@ -58,6 +78,9 @@ export function useProducts() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<Product>(EMPTY_FORM)
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  const [importError, setImportError] = useState<string | null>(null)
 
   const loadProducts = useCallback(async () => {
     setLoading(true)
@@ -143,6 +166,35 @@ export function useProducts() {
     setEditingId(null)
   }, [])
 
+  const handleDownloadTemplate = useCallback(async () => {
+    try {
+      await downloadProductImportTemplate()
+    } catch (e) {
+      console.error(e)
+    }
+  }, [])
+
+  const handleImportFile = useCallback(async (file: File) => {
+    setImporting(true)
+    setImportError(null)
+    setImportResult(null)
+    try {
+      const result = await importProductsFromExcel(file)
+      setImportResult(result)
+      await loadProducts()
+    } catch (e) {
+      console.error(e)
+      setImportError('No se pudo importar el archivo. Verifica que sea un .xlsx válido.')
+    } finally {
+      setImporting(false)
+    }
+  }, [loadProducts])
+
+  const clearImportResult = useCallback(() => {
+    setImportResult(null)
+    setImportError(null)
+  }, [])
+
   return {
     products,
     loading,
@@ -167,5 +219,11 @@ export function useProducts() {
     handleOpenNew,
     handleCloseModal,
     loadProducts,
+    importing,
+    importResult,
+    importError,
+    handleDownloadTemplate,
+    handleImportFile,
+    clearImportResult,
   }
 }

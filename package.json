@@ -1,9 +1,12 @@
 {
-  "name": "@ventasy/root",
+  "name": "@orbix/root",
   "private": true,
   "packageManager": "pnpm@10.22.0",
   "scripts": {
-    "dev": "turbo run dev",
+    "dev": "turbo run dev --filter=@orbix/api --filter=@orbix/web",
+    "dev:mobile": "turbo run dev --filter=@orbix/app",
+    "dev:server": "turbo run dev --filter=@orbix/api",
+    "dev:web": "turbo run dev --filter=@orbix/api --filter=@orbix/web",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test"
@@ -21,7 +24,11 @@
       "msw",
       "prisma",
       "puppeteer",
+      "react-native-nitro-modules",
       "unrs-resolver"
+    ],
+    "ignoredBuiltDependencies": [
+      "sharp"
     ]
   }
 }

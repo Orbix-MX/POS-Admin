@@ -5,6 +5,8 @@ import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { AuditService } from '../../../common/services/audit.service';
 import { R2Service } from '../../../storage/r2.service';
+import { BusinessConfigurationService } from '../../../common/business-config/business-configuration.service';
+import { InventoryEngine } from '../inventory/inventory.engine';
 import { SlugUtil } from '../../../common/utils/slug.util';
 
 describe('ProductsService', () => {
@@ -15,7 +17,7 @@ describe('ProductsService', () => {
     product: {
       findUnique: jest.fn(),
       findFirst: jest.fn(),
-      findMany: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
@@ -34,11 +36,32 @@ describe('ProductsService', () => {
       updateMany: jest.fn(),
       findFirst: jest.fn(),
     },
+    inventoryMovement: { create: jest.fn() },
+    $transaction: jest.fn((cb: (tx: unknown) => unknown) =>
+      cb({
+        product: {
+          update: mockPrismaService.product.update,
+          create: mockPrismaService.product.create,
+          // El servicio usa ambos dentro de la transacción.
+          findFirst: mockPrismaService.product.findFirst,
+          findUnique: mockPrismaService.product.findFirst,
+          // `update` regenera el slug y consulta los existentes.
+          findMany: mockPrismaService.product.findMany,
+          findFirstOrThrow: mockPrismaService.product.findFirst,
+        },
+        inventoryMovement: { create: jest.fn() },
+      }),
+    ),
   };
 
   const mockTenantContext = { requireTenantId: jest.fn().mockReturnValue('tenant-1') };
   const mockAuditService = { log: jest.fn() };
   const mockR2Service = { upload: jest.fn(), delete: jest.fn(), buildKey: jest.fn().mockReturnValue('key') };
+  const mockBusinessConfig = { hasFeature: jest.fn().mockResolvedValue(false) };
+  const mockInventoryEngine = {
+    applyProductStockDelta: jest.fn().mockResolvedValue(true),
+    recordProductMovement: jest.fn().mockResolvedValue(undefined),
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -48,6 +71,8 @@ describe('ProductsService', () => {
         { provide: TenantContextService, useValue: mockTenantContext },
         { provide: AuditService, useValue: mockAuditService },
         { provide: R2Service, useValue: mockR2Service },
+        { provide: BusinessConfigurationService, useValue: mockBusinessConfig },
+        { provide: InventoryEngine, useValue: mockInventoryEngine },
       ],
     }).compile();
 
@@ -90,6 +115,7 @@ describe('ProductsService', () => {
       };
 
       mockPrismaService.product.findUnique.mockResolvedValue(null);
+      mockPrismaService.product.findFirst.mockResolvedValue(null);
       mockPrismaService.category.findFirst.mockResolvedValue({ id: 'cat-1' });
       mockPrismaService.product.findMany.mockResolvedValue([]);
       mockPrismaService.product.create.mockResolvedValue(mockProduct);
@@ -125,6 +151,7 @@ describe('ProductsService', () => {
       };
 
       mockPrismaService.product.findUnique.mockResolvedValue(null);
+      mockPrismaService.product.findFirst.mockResolvedValue(null);
       mockPrismaService.category.findFirst.mockResolvedValue(null);
 
       await expect(service.create(createProductDto as any)).rejects.toThrow(
@@ -217,7 +244,10 @@ describe('ProductsService', () => {
 
       const updatedProduct = { ...mockProduct, name: 'Updated Product' };
 
-      mockPrismaService.product.findUnique.mockResolvedValue(mockProduct);
+      // Comprueba existencia y luego relee el registro ya escrito.
+      mockPrismaService.product.findFirst
+        .mockResolvedValueOnce(mockProduct)
+        .mockResolvedValue(updatedProduct);
       mockPrismaService.product.update.mockResolvedValue(updatedProduct);
 
       const result = await service.update(productId, updateDto);
@@ -226,7 +256,7 @@ describe('ProductsService', () => {
     });
 
     it('should throw NotFoundException if product not found', async () => {
-      mockPrismaService.product.findUnique.mockResolvedValue(null);
+      mockPrismaService.product.findFirst.mockResolvedValue(null);
 
       await expect(service.update('invalid-id', {})).rejects.toThrow(
         NotFoundException,
@@ -252,11 +282,15 @@ describe('ProductsService', () => {
         id: productId,
         stock: 5,
         trackInventory: true,
+        type: 'SIMPLE',
       };
 
       const updatedProduct = { ...mockProduct, stock: 15 };
 
-      mockPrismaService.product.findUnique.mockResolvedValue(mockProduct);
+      // Comprueba existencia y luego relee el registro ya escrito.
+      mockPrismaService.product.findFirst
+        .mockResolvedValueOnce(mockProduct)
+        .mockResolvedValue(updatedProduct);
       mockPrismaService.product.update.mockResolvedValue(updatedProduct);
 
       const result = await service.updateStock(productId, quantity);
@@ -272,7 +306,7 @@ describe('ProductsService', () => {
         trackInventory: true,
       };
 
-      mockPrismaService.product.findUnique.mockResolvedValue(mockProduct);
+      mockPrismaService.product.findFirst.mockResolvedValue(mockProduct);
 
       await expect(service.updateStock(productId, -10)).rejects.toThrow();
     });

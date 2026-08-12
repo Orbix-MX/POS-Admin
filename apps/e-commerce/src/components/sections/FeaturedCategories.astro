@@ -1,0 +1,57 @@
+---
+// Sección "Nuestro oficio" (especialidades). Mismo patrón que Hero/ValueProps.
+interface Item {
+  icon?: string;
+  title: string;
+  text: string;
+}
+
+interface Content {
+  title?: string;
+  subtitle?: string;
+  items?: Item[];
+}
+
+interface Props {
+  content: Content | null;
+  hasSite: boolean;
+}
+
+const { content, hasSite } = Astro.props;
+const configurado = Boolean(content && content.items && content.items.length > 0);
+const mostrar = !hasSite || configurado;
+
+const ESTATICOS: Item[] = [
+  { icon: '🌿', title: 'Plantas Acuáticas', text: 'Más de cincuenta especies cultivadas en nuestras piletas, desde tapizantes exigentes hasta rizomatosas de bajo mantenimiento. Libres de caracoles y algas.' },
+  { icon: '🪵', title: 'Raíz de Manzanita', text: 'Ramas curadas, lavadas y listas para sumergir. Seleccionamos cada pieza por su silueta para que tu bosque submarino tenga carácter propio.' },
+  { icon: '🪨', title: 'Hardscape', text: 'Seiryu, roca dragón, lava negra y sustratos técnicos. Estamos preparando la selección; escríbenos por WhatsApp si buscas una pieza en particular.' },
+];
+
+const titulo = configurado && content?.title ? content.title : 'Todo lo que tu layout necesita';
+const subtitulo = configurado && content?.subtitle
+  ? content.subtitle
+  : 'Cultivamos, seleccionamos y preparamos cada pieza pensando en acuarios plantados reales, no en escaparates.';
+const lista = configurado ? (content?.items as Item[]) : ESTATICOS;
+---
+
+{mostrar && (
+  <section class="seccion seccion--clara">
+    <div class="contenedor">
+      <div class="seccion__encabezado revelar">
+        <span class="seccion__etiqueta">Nuestro oficio</span>
+        <h2 class="seccion__titulo">{titulo}</h2>
+        <p class="seccion__descripcion">{subtitulo}</p>
+      </div>
+
+      <div class="especialidades">
+        {lista.map((item) => (
+          <article class="especialidad revelar">
+            {item.icon && <div class="especialidad__icono" aria-hidden="true">{item.icon}</div>}
+            <h3 class="especialidad__titulo">{item.title}</h3>
+            <p class="especialidad__texto">{item.text}</p>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+)}

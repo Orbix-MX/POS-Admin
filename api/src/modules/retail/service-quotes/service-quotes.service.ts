@@ -8,6 +8,7 @@ import { UpdateServiceQuoteDto } from './dto/update-service-quote.dto';
 import { QueryServiceQuotesDto } from './dto/query-service-quotes.dto';
 import { ConvertQuoteDto } from './dto/convert-quote.dto';
 import { roundMoney, sumMoney, multiplyMoney } from '../../../common/utils/money.util';
+import { InventoryConsumptionEngine } from '../inventory/inventory-consumption.engine';
 
 @Injectable()
 export class ServiceQuotesService {
@@ -15,6 +16,7 @@ export class ServiceQuotesService {
     private prisma: PrismaService,
     private tenantContext: TenantContextService,
     private auditContext: AuditContextService,
+    private inventory: InventoryConsumptionEngine,
   ) {}
 
   async create(dto: CreateServiceQuoteDto) {
@@ -257,7 +259,7 @@ export class ServiceQuotesService {
         });
       }
 
-      // Create product order items + decrement stock (guarded against negative)
+      // Create product order items (el descuento de stock lo hace el motor abajo)
       for (const item of dto.extraProducts ?? []) {
         const product = productMap.get(item.productId)!;
         const itemSubtotal = multiplyMoney(item.price, item.quantity);
@@ -276,23 +278,20 @@ export class ServiceQuotesService {
             total: itemSubtotal,
           },
         });
-        if (product.trackInventory) {
-          const res = await tx.product.updateMany({
-            where: { id: item.productId, stock: { gte: item.quantity } },
-            data: { stock: { decrement: item.quantity } },
-          });
-          if (res.count === 0) {
-            throw new BadRequestException(
-              `Stock insuficiente para "${product.name}". Disponible: ${product.stock}, solicitado: ${item.quantity}`,
-            );
-          }
-        } else {
-          await tx.product.update({
-            where: { id: item.productId },
-            data: { stock: { decrement: item.quantity } },
-          });
-        }
       }
+
+      // Consumo de inventario vía motor compartido: SIMPLE/RECIPE/COMBO + branch
+      // inventory + InventoryMovement, con la misma protección de stock (gte) y
+      // simétrico con restore. Reemplaza el decremento manual previo.
+      await this.inventory.consume(
+        tx,
+        (dto.extraProducts ?? []).map((i) => ({
+          productId: i.productId,
+          quantity: i.quantity,
+          itemType: 'PRODUCT' as const,
+        })),
+        { tenantId, branchId, userId: createdById, referenceId: newOrder.id, referenceType: 'ORDER' },
+      );
 
       // Create initial payment placeholder
       await tx.payment.create({

@@ -199,6 +199,8 @@ export interface Empleado {
   rfc?: string | null
   notes?: string | null
   salaryRaw?: number | null
+  hasPin?: boolean
+  roleId?: string | null
 }
 
 export type ModuleId =
@@ -222,3 +224,11 @@ export type ModuleId =
   | 'empleados'
   | 'pos'
   | 'branches'
+  | 'comanda'
+  | 'caja-restaurante'
+  | 'insumos'
+  | 'kitchen'
+  | 'dining-areas'
+  | 'restaurant-tables'
+  | 'tienda-online'
+  | 'store-orders'

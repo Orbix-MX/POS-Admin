@@ -1,9 +1,15 @@
-﻿import { IsString, IsNumber, IsOptional, IsEnum, IsBoolean, IsUUID, Min } from 'class-validator';
+﻿import { IsString, IsNumber, IsOptional, IsEnum, IsBoolean, IsUUID, Min, IsArray, ValidateNested } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { ProductStatus, TaxCode } from '@prisma/client';
+import { ProductStatus, TaxCode, ProductType } from '@prisma/client';
 import { Type, Transform } from 'class-transformer';
+import { RecipeItemDto, ComboItemDto, ProductAttributeDto, ProductFeatureDto } from './create-product.dto';
 
 export class UpdateProductDto {
+  @ApiPropertyOptional({ enum: ProductType })
+  @IsOptional()
+  @IsEnum(ProductType)
+  type?: ProductType;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -86,4 +92,39 @@ export class UpdateProductDto {
   @IsOptional()
   @IsEnum(TaxCode)
   taxCode?: TaxCode;
+
+  @ApiPropertyOptional({
+    description: 'Publica el producto en la tienda en línea (habilita la captura de atributos)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isEcommerce?: boolean;
+
+  @ApiPropertyOptional({ type: [RecipeItemDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RecipeItemDto)
+  recipeItems?: RecipeItemDto[];
+
+  @ApiPropertyOptional({ type: [ComboItemDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ComboItemDto)
+  comboItems?: ComboItemDto[];
+
+  @ApiPropertyOptional({ type: [ProductAttributeDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProductAttributeDto)
+  attributes?: ProductAttributeDto[];
+
+  @ApiPropertyOptional({ type: [ProductFeatureDto], description: 'Ficha técnica opcional (característica/valor)' })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProductFeatureDto)
+  features?: ProductFeatureDto[];
 }

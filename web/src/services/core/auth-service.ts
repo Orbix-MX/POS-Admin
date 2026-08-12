@@ -1,4 +1,5 @@
 import { api } from '@/lib/api-client'
+import type { BusinessFeatures } from '@/types/business-config'
 
 const ACCESS_TOKEN_KEY = 'access_token'
 
@@ -46,6 +47,11 @@ export interface SelectTenantResponse {
   posOnly: boolean
   plan: string
   enabledModules: string[]
+  businessVertical: string
+  businessProfile: string
+  posOperationMode: string
+  enabledFeatures: string[]
+  businessFeatures: BusinessFeatures
   tenant: Tenant
 }
 
@@ -56,6 +62,11 @@ export interface CapabilitiesResponse {
   maxUsers: number | null
   activeUsers: number
   overUserLimit: boolean
+  businessVertical: string
+  businessProfile: string
+  posOperationMode: string
+  enabledFeatures: string[]
+  businessFeatures: BusinessFeatures
 }
 
 export interface Branch {

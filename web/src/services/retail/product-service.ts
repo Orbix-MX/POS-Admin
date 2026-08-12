@@ -14,8 +14,65 @@ export interface ProductImage {
   createdAt: string
 }
 
+export type ProductType = 'SIMPLE' | 'RECIPE' | 'COMBO' | 'SERVICE'
+
+export interface RecipeItem {
+  id?: string
+  supplyId: string
+  quantity: number
+  unit: string
+  unitId?: string | null
+  normalizedQuantity?: number | null
+  supply?: {
+    id: string
+    name: string
+    unit: string
+    stock: number
+    cost: number
+    conversionFactor?: number
+    inventoryUnitId?: string | null
+    baseUnitId?: string | null
+    inventoryUnit?: { id: string; symbol: string; name: string } | null
+    baseUnit?: { id: string; symbol: string; name: string } | null
+  }
+}
+
+export interface ComboItem {
+  id?: string
+  childProductId: string
+  quantity: number
+  child?: { id: string; name: string; sku: string; images?: ProductImage[] }
+}
+
+export interface ProductAttribute {
+  id?: string
+  name: string
+  cost: number
+  price: number
+}
+
+export interface ProductFeature {
+  id?: string
+  feature: string
+  value: string
+}
+
+export interface ImportRowError {
+  row: number
+  sku?: string
+  message: string
+}
+
+export interface ImportResult {
+  totalRows: number
+  created: number
+  updated: number
+  errors: ImportRowError[]
+}
+
 export interface Product {
   id?: string
+  type: ProductType
   sku: string
   name: string
   description: string
@@ -32,7 +89,13 @@ export interface Product {
   taxRate: number
   taxCode: string
   slug: string
+  isEcommerce: boolean
   images?: ProductImage[]
+  category?: { id: string; name: string } | null
+  recipe?: { id: string; notes?: string; items: RecipeItem[] } | null
+  comboItems?: ComboItem[]
+  attributes?: ProductAttribute[]
+  features?: ProductFeature[]
 }
 
 export async function fetchProducts(): Promise<ListResponse<Product>> {
@@ -41,18 +104,9 @@ export async function fetchProducts(): Promise<ListResponse<Product>> {
 }
 
 export async function createProduct(data: Product): Promise<Product> {
-  const { data: result } = await api.post<Product>('products', data)
-  return result
-}
-
-type UpdateProductBody = Pick<Product,
-  'name' | 'description' | 'price' | 'comparePrice' | 'costPrice' |
-  'categoryId' | 'status' | 'stock' | 'trackInventory' | 'lowStockAlert' |
-  'metaTitle' | 'metaDescription' | 'taxRate' | 'taxCode'
->
-
-export async function updateProduct(id: string, data: Product): Promise<Product> {
-  const body: UpdateProductBody = {
+  const body = {
+    type: data.type,
+    sku: data.sku,
     name: data.name,
     description: data.description,
     price: data.price,
@@ -67,6 +121,62 @@ export async function updateProduct(id: string, data: Product): Promise<Product>
     metaDescription: data.metaDescription,
     taxRate: data.taxRate,
     taxCode: data.taxCode,
+    isEcommerce: data.isEcommerce,
+    recipeItems: data.recipe?.items?.map((i) => ({
+      supplyId: i.supplyId,
+      quantity: i.quantity,
+      unit: i.unit,
+      unitId: i.unitId ?? undefined,
+    })),
+    comboItems: data.comboItems?.map((ci) => ({
+      childProductId: ci.childProductId,
+      quantity: ci.quantity,
+    })),
+    attributes: data.attributes
+      ?.filter((a) => a.name.trim() !== '')
+      .map((a) => ({ name: a.name, cost: a.cost, price: a.price })),
+    features: data.features
+      ?.filter((f) => f.feature.trim() !== '' && f.value.trim() !== '')
+      .map((f) => ({ feature: f.feature, value: f.value })),
+  }
+  const { data: result } = await api.post<Product>('products', body)
+  return result
+}
+
+export async function updateProduct(id: string, data: Product): Promise<Product> {
+  const body = {
+    type: data.type,
+    name: data.name,
+    description: data.description,
+    price: data.price,
+    comparePrice: data.comparePrice,
+    costPrice: data.costPrice,
+    categoryId: data.categoryId,
+    status: data.status,
+    stock: data.stock,
+    trackInventory: data.trackInventory,
+    lowStockAlert: data.lowStockAlert,
+    metaTitle: data.metaTitle,
+    metaDescription: data.metaDescription,
+    taxRate: data.taxRate,
+    taxCode: data.taxCode,
+    isEcommerce: data.isEcommerce,
+    recipeItems: data.recipe?.items?.map((i) => ({
+      supplyId: i.supplyId,
+      quantity: i.quantity,
+      unit: i.unit,
+      unitId: i.unitId ?? undefined,
+    })),
+    comboItems: data.comboItems?.map((ci) => ({
+      childProductId: ci.childProductId,
+      quantity: ci.quantity,
+    })),
+    attributes: data.attributes
+      ?.filter((a) => a.name.trim() !== '')
+      .map((a) => ({ name: a.name, cost: a.cost, price: a.price })),
+    features: data.features
+      ?.filter((f) => f.feature.trim() !== '' && f.value.trim() !== '')
+      .map((f) => ({ feature: f.feature, value: f.value })),
   }
   const { data: result } = await api.patch<Product>(`products/${id}`, body)
   return result
@@ -87,4 +197,25 @@ export async function uploadProductImage(productId: string, file: File): Promise
 
 export async function deleteProductImage(productId: string, imageId: string): Promise<void> {
   await api.delete(`products/${productId}/images/${imageId}`)
+}
+
+export async function downloadProductImportTemplate(): Promise<void> {
+  const res = await api.get('products/import/template', { responseType: 'blob' })
+  const url = URL.createObjectURL(res.data as Blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'plantilla-productos.xlsx'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+export async function importProductsFromExcel(file: File): Promise<ImportResult> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const { data } = await api.post<ImportResult>('products/import', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return data
 }

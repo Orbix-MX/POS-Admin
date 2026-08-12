@@ -1,0 +1,225 @@
+/* ==========================================================================
+   RootGarden · animations.css
+   Movimiento de la interfaz: aparición al hacer scroll, esqueletos de carga y
+   micro-interacciones. Todo se desactiva si el sistema pide menos movimiento.
+   ========================================================================== */
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* --------------------------------------------------------------------------
+   1. Aparición progresiva al entrar en pantalla
+   -------------------------------------------------------------------------- */
+
+.revelar {
+  opacity: 0;
+  transform: translateY(26px);
+  transition: opacity 620ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 620ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: var(--retraso-revelado, 0ms);
+  will-change: opacity, transform;
+}
+
+.revelar.is-visible {
+  opacity: 1;
+  transform: none;
+  will-change: auto;
+}
+
+/* --------------------------------------------------------------------------
+   2. Entrada de la portada
+   -------------------------------------------------------------------------- */
+
+@keyframes entrar-arriba {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes acercar-fondo {
+  from {
+    transform: scale(1.14);
+  }
+  to {
+    transform: scale(1.04);
+  }
+}
+
+.portada__fondo {
+  animation: acercar-fondo 1900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.portada__contenido > * {
+  animation: entrar-arriba 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.portada__contenido > *:nth-child(1) {
+  animation-delay: 120ms;
+}
+.portada__contenido > *:nth-child(2) {
+  animation-delay: 240ms;
+}
+.portada__contenido > *:nth-child(3) {
+  animation-delay: 340ms;
+}
+.portada__contenido > *:nth-child(4) {
+  animation-delay: 440ms;
+}
+.portada__contenido > *:nth-child(5) {
+  animation-delay: 540ms;
+}
+
+/* --------------------------------------------------------------------------
+   3. Indicador de scroll
+   -------------------------------------------------------------------------- */
+
+@keyframes flotar {
+  0%,
+  100% {
+    transform: translate(-50%, 0);
+    opacity: 0.75;
+  }
+  50% {
+    transform: translate(-50%, 8px);
+    opacity: 1;
+  }
+}
+
+.portada__indicador {
+  animation: flotar 2600ms ease-in-out 1200ms infinite;
+}
+
+/* --------------------------------------------------------------------------
+   4. Esqueletos de carga
+   -------------------------------------------------------------------------- */
+
+@keyframes brillo {
+  from {
+    background-position: -180% 0;
+  }
+  to {
+    background-position: 180% 0;
+  }
+}
+
+.esqueleto {
+  position: relative;
+  border-radius: var(--radio-xs);
+  background-color: #e6f0e7;
+  background-image: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0) 20%,
+    rgba(255, 255, 255, 0.75) 50%,
+    rgba(255, 255, 255, 0) 80%
+  );
+  background-size: 220% 100%;
+  background-repeat: no-repeat;
+  animation: brillo 1500ms ease-in-out infinite;
+}
+
+.tarjeta--esqueleto {
+  pointer-events: none;
+  box-shadow: var(--sombra-xs);
+}
+
+.tarjeta--esqueleto:hover {
+  transform: none;
+  box-shadow: var(--sombra-xs);
+}
+
+.tarjeta--esqueleto .tarjeta__media {
+  border-radius: 0;
+}
+
+.tarjeta--esqueleto .tarjeta__cuerpo {
+  gap: 12px;
+  padding-bottom: 28px;
+}
+
+.esqueleto--titulo {
+  height: 20px;
+  width: 68%;
+}
+
+.esqueleto--linea {
+  height: 12px;
+  width: 100%;
+}
+
+.esqueleto--corta {
+  width: 46%;
+}
+
+/* --------------------------------------------------------------------------
+   5. Micro-interacciones del pedido
+   -------------------------------------------------------------------------- */
+
+@keyframes pulso-carrito {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.1);
+  }
+  70% {
+    transform: scale(0.97);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.carrito-flotante.is-pulso {
+  animation: pulso-carrito 420ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes aparecer-fila {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.pedido-item {
+  animation: aparecer-fila 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* --------------------------------------------------------------------------
+   6. Preferencia de movimiento reducido
+   -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .revelar {
+    opacity: 1;
+    transform: none;
+  }
+
+  .tarjeta:hover,
+  .especialidad:hover,
+  .boton:hover {
+    transform: none;
+  }
+}

@@ -34,9 +34,12 @@ interface FormFieldProps {
   onChange: (v: string) => void
   options?: string[]
   error?: string
+  step?: number | string
+  min?: number | string
+  max?: number | string
 }
 
-export function FormField({ label, type = "text", value, onChange, options, error }: FormFieldProps) {
+export function FormField({ label, type = "text", value, onChange, options, error, step, min, max }: FormFieldProps) {
   const inputCls = `w-full px-2.5 py-2 border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary ${
     error ? 'border-red-400 focus:border-red-400' : 'border-border'
   }`
@@ -48,7 +51,7 @@ export function FormField({ label, type = "text", value, onChange, options, erro
           {options.map(o => <option key={o} value={o}>{o}</option>)}
         </select>
       ) : (
-        <input type={type} value={value} onChange={e => onChange(e.target.value)} className={inputCls} />
+        <input type={type} value={value} onChange={e => onChange(e.target.value)} className={inputCls} step={step} min={min} max={max} />
       )}
       {error && <p className="text-[11px] text-red-500 mt-1 leading-tight">{error}</p>}
     </div>

@@ -1,6 +1,6 @@
 import { api } from '@/lib/api-client'
 
-export type CashSessionStatus = 'ABIERTA' | 'CERRADA'
+export type CashSessionStatus = 'ABIERTA' | 'EN_ARQUEO' | 'PENDIENTE_REVISION' | 'CERRADA'
 export type CashMovementType = 'SALE' | 'CXC_PAYMENT' | 'SUPPLIER_PAYMENT' | 'INCOME' | 'EXPENSE'
 
 export interface ApiCashMovement {
@@ -28,7 +28,7 @@ export interface ApiCashSession {
   exchangeRateUsdMxn: string | number
   openingAmount: string | number
   openingAmountUsd: string | number
-  closingAmount: string | number | null
+  expectedAmount: string | number | null
   cashCounted: string | number | null
   cashCountedUsd: string | number | null
   difference: string | number | null
@@ -56,6 +56,8 @@ export interface SessionSummary {
     supplier: { cash: number; cashUsd: number; card: number; transfer: number; total: number }
     income:   { cash: number; cashUsd: number; total: number }
     expense:  { cash: number; cashUsd: number; total: number }
+    withdrawal: { cash: number; cashUsd: number; total: number }
+    refund: { cash: number; cashUsd: number; card: number; transfer: number; total: number }
   }
   movementsCount: number
 }
@@ -71,7 +73,66 @@ export interface OpenSessionInput {
 export interface CloseSessionInput {
   cashCounted: number
   cashCountedUsd?: number
+  /** Requerido por el servidor cuando la diferencia supera el umbral del tenant. */
+  differenceReason?: string
   notes?: string
+}
+
+export interface CashCountInput {
+  type?: 'PARCIAL' | 'FINAL'
+  countedMxn: number
+  countedUsd?: number
+  denominations?: Record<string, number>
+  reason?: string
+}
+
+export interface ApiCashCount {
+  id: string
+  type: 'PARCIAL' | 'FINAL'
+  countedMxn: string | number
+  countedUsd: string | number
+  expectedMxn: string | number
+  expectedUsd: string | number
+  differenceMxn: string | number
+  differenceUsd: string | number
+  reason: string | null
+  createdAt: string
+  countedBy?: { id: string; email: string } | null
+}
+
+/** Arqueo sobre la caja abierta. Puede repetirse en el mismo día. */
+/** ABIERTA → EN_ARQUEO: congela la caja para contar. */
+export async function startCashCount(id: string): Promise<ApiCashSession> {
+  const { data } = await api.patch<ApiCashSession>(`/cash-sessions/${id}/start-count`)
+  return data
+}
+
+/** EN_ARQUEO → ABIERTA: vuelve a operar tras un arqueo de control. */
+export async function resumeCashSession(id: string): Promise<ApiCashSession> {
+  const { data } = await api.patch<ApiCashSession>(`/cash-sessions/${id}/resume`)
+  return data
+}
+
+export async function createCashCount(input: CashCountInput): Promise<ApiCashCount> {
+  const { data } = await api.post<ApiCashCount>('/cash-sessions/active/count', input)
+  return data
+}
+
+export interface WithdrawCashInput {
+  amount: number
+  currency?: 'MXN' | 'USD'
+  reason: string
+}
+
+/** Retiro de efectivo del cajón. Baja el efectivo esperado y queda en bitácora. */
+export async function withdrawCash(input: WithdrawCashInput): Promise<ApiCashMovement> {
+  const { data } = await api.post<ApiCashMovement>('/cash-sessions/active/withdraw', input)
+  return data
+}
+
+export async function fetchCashCounts(sessionId: string): Promise<ApiCashCount[]> {
+  const { data } = await api.get<ApiCashCount[]>(`/cash-sessions/${sessionId}/counts`)
+  return data
 }
 
 export function fmtUsd(val: string | number | null | undefined): string {
@@ -85,8 +146,8 @@ interface PaginatedResponse<T> {
 
 export async function fetchActiveCashSession(branchId?: string): Promise<ApiCashSession | null> {
   const params = branchId ? { branchId } : {}
-  const { data } = await api.get<ApiCashSession | null>('/cash-sessions/active', { params })
-  return data
+  const { data } = await api.get<ApiCashSession | Record<string, never>>('/cash-sessions/active', { params })
+  return data && 'id' in data ? data as ApiCashSession : null
 }
 
 export async function fetchCashSessions(params?: {
@@ -139,6 +200,30 @@ export interface ManualMovementInput {
 
 export async function createManualMovement(input: ManualMovementInput): Promise<ApiCashMovement> {
   const { data } = await api.post<ApiCashMovement>('/cash-sessions/active/movement', input)
+  return data
+}
+
+export interface SupplyPurchaseLine {
+  supplyId: string
+  quantity: number
+  lineCost: number
+}
+
+export interface WithdrawForSuppliesInput {
+  items: SupplyPurchaseLine[]
+  notes?: string
+  authEmail: string
+  authPassword: string
+}
+
+/** Retiro de efectivo de la caja para compra de insumos. Requiere password admin. */
+export async function withdrawForSupplies(
+  input: WithdrawForSuppliesInput,
+): Promise<{ total: number; itemsCount: number }> {
+  const { data } = await api.post<{ total: number; itemsCount: number }>(
+    '/cash-sessions/active/withdraw-supplies',
+    input,
+  )
   return data
 }
 

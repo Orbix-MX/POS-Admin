@@ -1,4 +1,5 @@
-﻿import { IsString, IsNotEmpty, IsNumber, Min, IsOptional, MaxLength } from 'class-validator';
+﻿import {
+  IsEnum, IsString, IsNotEmpty, IsNumber, Min, IsOptional, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -26,4 +27,9 @@ export class RegisterCxCPaymentDto {
   @IsString()
   @MaxLength(500)
   notes?: string;
+
+  @ApiPropertyOptional({ enum: ['MXN', 'USD'], default: 'MXN' })
+  @IsOptional()
+  @IsEnum(['MXN', 'USD'])
+  currency?: 'MXN' | 'USD';
 }

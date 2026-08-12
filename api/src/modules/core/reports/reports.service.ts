@@ -10,6 +10,11 @@ export interface MonthlySalesData {
   label:  string;
 }
 
+export interface MonthlyOrderCountData {
+  value: number;
+  label: string;
+}
+
 export interface NewCustomersData {
   value: number;
   label: string;
@@ -529,6 +534,74 @@ export class ReportsService {
       },
       config: {
         valueFormat: 'currency',
+        animated:    true,
+      },
+      lastUpdate: new Date().toISOString(),
+    };
+  }
+
+  async monthlyOrderCount(params: {
+    year?:     number;
+    month?:    number;
+    branchId?: string;
+  }): Promise<WidgetResponse<MonthlyOrderCountData>> {
+    const tenantId = this.tenantContext.requireTenantId();
+
+    const now   = new Date();
+    const year  = params.year  ?? now.getUTCFullYear();
+    const month = params.month ?? now.getUTCMonth() + 1;
+
+    const start    = new Date(Date.UTC(year, month - 1, 1));
+    const end      = new Date(Date.UTC(year, month, 1));
+
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear  = month === 1 ? year - 1 : year;
+    const prevStart = new Date(Date.UTC(prevYear, prevMonth - 1, 1));
+    const prevEnd   = new Date(Date.UTC(prevYear, prevMonth, 1));
+
+    const baseWhere = {
+      tenantId,
+      status:        { notIn: [OrderStatus.CANCELLED, OrderStatus.REFUNDED] },
+      paymentStatus: { in:    [PaymentStatus.PAID, PaymentStatus.PARTIALLY_PAID] },
+      ...(params.branchId ? { branchId: params.branchId } : {}),
+    };
+
+    const [current, previous] = await Promise.all([
+      this.prisma.order.count({ where: { ...baseWhere, createdAt: { gte: start, lt: end } } }),
+      this.prisma.order.count({ where: { ...baseWhere, createdAt: { gte: prevStart, lt: prevEnd } } }),
+    ]);
+
+    const changePercent =
+      previous === 0
+        ? current > 0 ? 100 : 0
+        : ((current - previous) / previous) * 100;
+
+    const trend: 'up' | 'down' | 'neutral' =
+      changePercent > 0.01 ? 'up' : changePercent < -0.01 ? 'down' : 'neutral';
+
+    const periodLabel = `${MONTH_NAMES_ES[month - 1]} ${year}`;
+    const prevLabel   = `${MONTH_NAMES_ES[prevMonth - 1]} ${prevYear}`;
+
+    return {
+      success:    true,
+      widgetType: 'COUNTER' as const,
+      title:      'Ventas del mes',
+      subtitle:   periodLabel,
+      data: {
+        value: current,
+        label: 'Número de ventas',
+      },
+      meta: {
+        period: `${year}-${String(month).padStart(2, '0')}`,
+        comparison: {
+          previousValue: previous,
+          changePercent: Math.round(changePercent * 100) / 100,
+          trend,
+          label: `vs ${prevLabel}`,
+        },
+      },
+      config: {
+        valueFormat: 'number',
         animated:    true,
       },
       lastUpdate: new Date().toISOString(),

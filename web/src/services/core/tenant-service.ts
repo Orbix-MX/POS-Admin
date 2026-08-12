@@ -1,5 +1,7 @@
 import { api } from '@/lib/api-client'
 
+export type RestaurantServiceMode = 'TABLE_SERVICE' | 'COUNTER_SERVICE' | 'HYBRID'
+
 export interface TenantInfo {
   name: string
   displayName?: string
@@ -11,6 +13,9 @@ export interface TenantInfo {
   rfc?: string
   timezone?: string
   currency?: string
+  restaurantServiceMode?: RestaurantServiceMode
+  primaryColor?: string
+  secondaryColor?: string
 }
 
 export async function fetchTenantInfo(): Promise<TenantInfo> {

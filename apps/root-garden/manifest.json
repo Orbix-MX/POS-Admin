@@ -1,0 +1,49 @@
+{
+  "name": "RootGarden · Naturaleza para tu acuario",
+  "short_name": "RootGarden",
+  "description": "Plantas acuáticas, raíz de manzanita y hardscape para aquascaping.",
+  "lang": "es-MX",
+  "dir": "ltr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "id": "/rootgarden/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#F7FAF7",
+  "theme_color": "#1B5E20",
+  "categories": ["shopping", "lifestyle"],
+  "icons": [
+    {
+      "src": "assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Catálogo completo",
+      "short_name": "Catálogo",
+      "url": "./catalogo.html",
+      "icons": [{ "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Armar pedido",
+      "short_name": "Tienda",
+      "url": "./tienda.html",
+      "icons": [{ "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}

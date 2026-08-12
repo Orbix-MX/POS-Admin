@@ -1,0 +1,431 @@
+---
+export const prerender = true;
+import AdminLayout from '../../layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="Nuevo producto · Panel de productos">
+  <div class="admin-topbar">
+    <div class="admin-topbar__marca">
+      <img src="/assets/logo-mark.png" alt="Emblema" />
+      <span>Panel de productos</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:14px;">
+      <span class="admin-topbar__tenant" data-tenant-label></span>
+      <button type="button" class="admin-topbar__salir" data-logout>Cerrar sesión</button>
+    </div>
+  </div>
+
+  <div class="admin-shell">
+    <div class="admin-encabezado">
+      <h1 class="admin-encabezado__titulo">Nuevo producto</h1>
+      <p class="admin-encabezado__texto">
+        Este panel solo da de alta productos. Todo lo que crees aquí se publica directamente en
+        la tienda en línea.
+      </p>
+    </div>
+
+    <div class="admin-tarjeta">
+      <div class="admin-alerta admin-alerta--error" data-form-error hidden></div>
+      <div class="admin-alerta admin-alerta--exito" data-form-exito hidden></div>
+
+      <form data-product-form novalidate>
+        <div class="campo">
+          <label class="campo__etiqueta" for="name">Nombre</label>
+          <input class="campo__control" type="text" id="name" name="name" required />
+        </div>
+
+        <div class="campos-fila">
+          <div class="campo">
+            <label class="campo__etiqueta" for="sku">SKU</label>
+            <input class="campo__control" type="text" id="sku" name="sku" required minlength="2" maxlength="100" />
+            <p class="campo__ayuda">Se sugiere automáticamente a partir del nombre; puedes editarlo.</p>
+          </div>
+          <div class="campo">
+            <label class="campo__etiqueta" for="categoryId">Categoría</label>
+            <select class="campo__control" id="categoryId" name="categoryId" data-category-select>
+              <option value="">— Sin categoría —</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="campo">
+          <label class="campo__etiqueta" for="description">Descripción</label>
+          <textarea class="campo__control" id="description" name="description"></textarea>
+        </div>
+
+        <div class="campos-fila">
+          <div class="campo">
+            <label class="campo__etiqueta" for="price">Precio (MXN)</label>
+            <input class="campo__control" type="number" id="price" name="price" min="0" step="0.01" required />
+          </div>
+          <div class="campo">
+            <label class="campo__etiqueta" for="stock">Stock inicial</label>
+            <input class="campo__control" type="number" id="stock" name="stock" min="0" step="1" value="0" />
+          </div>
+        </div>
+
+        <div class="campo">
+          <label class="campo__etiqueta" for="image">Fotografía (opcional)</label>
+          <input class="campo__control" type="file" id="image" name="image" accept="image/jpeg,image/png,image/webp" />
+        </div>
+
+        <div class="admin-seccion">
+          <div class="admin-atributos__cabecera">
+            <p class="admin-seccion__titulo" style="margin:0;">Atributos (talla, color, tipo…)</p>
+            <button type="button" class="admin-atributos__agregar" data-add-attribute-btn>+ Agregar atributo</button>
+          </div>
+          <div data-attributes-container></div>
+          <p class="admin-atributos__vacio" data-attributes-empty>
+            Sin atributos. Agrega uno si este producto tiene variantes con costo/precio propio.
+          </p>
+        </div>
+
+        <div class="admin-seccion">
+          <div class="admin-atributos__cabecera">
+            <p class="admin-seccion__titulo" style="margin:0;">Ficha técnica (opcional)</p>
+            <button type="button" class="admin-atributos__agregar" data-add-feature-btn>+ Agregar característica</button>
+          </div>
+          <div data-features-container></div>
+          <p class="admin-atributos__vacio" data-features-empty>
+            Sin características. Agrega una si quieres documentar especificaciones (material, peso, origen…).
+          </p>
+        </div>
+
+        <div class="admin-acciones">
+          <button type="submit" class="boton boton--primario" data-submit-btn>Crear producto</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</AdminLayout>
+
+<script>
+  import { authFetch, requireSession, logout } from '../../lib/admin-session';
+
+  interface CategoryOption {
+    id: string;
+    name: string;
+    status: 'ACTIVE' | 'INACTIVE';
+  }
+
+  if (requireSession()) {
+    void bootstrap();
+  }
+
+  async function bootstrap() {
+    wireLogout();
+    void loadTenantLabel();
+    await loadCategories();
+    wireAttributeRows();
+    wireFeatureRows();
+    wireSkuSuggestion();
+    wireSubmit();
+  }
+
+  function wireLogout() {
+    const btn = document.querySelector('[data-logout]');
+    btn?.addEventListener('click', () => {
+      void logout();
+    });
+  }
+
+  async function loadTenantLabel() {
+    const label = document.querySelector('[data-tenant-label]');
+    if (!(label instanceof HTMLElement)) return;
+    try {
+      const res = await authFetch('/api/auth/me');
+      if (!res.ok) return;
+      const profile = (await res.json()) as {
+        user?: { firstName?: string };
+        currentTenant?: { name?: string };
+      };
+      const parts = [profile.user?.firstName, profile.currentTenant?.name].filter(Boolean);
+      label.textContent = parts.join(' · ');
+    } catch {
+      // session errors are already handled by authFetch (redirect on 401)
+    }
+  }
+
+  async function loadCategories() {
+    const select = document.querySelector('[data-category-select]');
+    if (!(select instanceof HTMLSelectElement)) return;
+    try {
+      const res = await authFetch('/api/categories');
+      if (!res.ok) return;
+      const categories = (await res.json()) as CategoryOption[];
+      categories
+        .filter((c) => c.status === 'ACTIVE')
+        .forEach((c) => {
+          const option = document.createElement('option');
+          option.value = c.id;
+          option.textContent = c.name;
+          select.appendChild(option);
+        });
+    } catch {
+      // no session redirect needed here — form still usable without categories
+    }
+  }
+
+  /**
+   * Atributos son filas nombre/costo/precio ligadas a ESTE producto — no hay
+   * catálogo compartido entre productos, así que se editan localmente y se
+   * envían en el mismo POST /api/products que crea el producto.
+   */
+  function wireAttributeRows() {
+    const container = document.querySelector('[data-attributes-container]');
+    const addBtn = document.querySelector('[data-add-attribute-btn]');
+    const emptyMsg = document.querySelector('[data-attributes-empty]');
+    if (!(container instanceof HTMLElement) || !(addBtn instanceof HTMLElement) || !(emptyMsg instanceof HTMLElement)) {
+      return;
+    }
+
+    const updateEmptyState = () => {
+      emptyMsg.hidden = container.children.length > 0;
+    };
+
+    const addRow = () => {
+      const row = document.createElement('div');
+      row.className = 'admin-atributos__fila';
+      row.dataset.attributeRow = '';
+
+      const name = document.createElement('input');
+      name.type = 'text';
+      name.className = 'campo__control';
+      name.placeholder = 'Ej. Talla M';
+      name.dataset.attrName = '';
+
+      const cost = document.createElement('input');
+      cost.type = 'number';
+      cost.className = 'campo__control';
+      cost.placeholder = 'Costo';
+      cost.min = '0';
+      cost.step = '0.01';
+      cost.dataset.attrCost = '';
+
+      const price = document.createElement('input');
+      price.type = 'number';
+      price.className = 'campo__control';
+      price.placeholder = 'Precio';
+      price.min = '0';
+      price.step = '0.01';
+      price.dataset.attrPrice = '';
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'admin-atributos__quitar';
+      remove.setAttribute('aria-label', 'Quitar atributo');
+      remove.textContent = '✕';
+      remove.addEventListener('click', () => {
+        row.remove();
+        updateEmptyState();
+      });
+
+      row.append(name, cost, price, remove);
+      container.appendChild(row);
+      updateEmptyState();
+      name.focus();
+    };
+
+    addBtn.addEventListener('click', addRow);
+    updateEmptyState();
+  }
+
+  /**
+   * Ficha técnica opcional: pares característica/valor ligados a ESTE
+   * producto (sin costo/precio, a diferencia de los atributos de arriba).
+   */
+  function wireFeatureRows() {
+    const container = document.querySelector('[data-features-container]');
+    const addBtn = document.querySelector('[data-add-feature-btn]');
+    const emptyMsg = document.querySelector('[data-features-empty]');
+    if (!(container instanceof HTMLElement) || !(addBtn instanceof HTMLElement) || !(emptyMsg instanceof HTMLElement)) {
+      return;
+    }
+
+    const updateEmptyState = () => {
+      emptyMsg.hidden = container.children.length > 0;
+    };
+
+    const addRow = () => {
+      const row = document.createElement('div');
+      row.className = 'admin-atributos__fila';
+      row.dataset.featureRow = '';
+      row.style.gridTemplateColumns = '1fr 1fr 2rem';
+
+      const feature = document.createElement('input');
+      feature.type = 'text';
+      feature.className = 'campo__control';
+      feature.placeholder = 'Ej. Material';
+      feature.dataset.featureName = '';
+
+      const value = document.createElement('input');
+      value.type = 'text';
+      value.className = 'campo__control';
+      value.placeholder = 'Ej. Algodón';
+      value.dataset.featureValue = '';
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'admin-atributos__quitar';
+      remove.setAttribute('aria-label', 'Quitar característica');
+      remove.textContent = '✕';
+      remove.addEventListener('click', () => {
+        row.remove();
+        updateEmptyState();
+      });
+
+      row.append(feature, value, remove);
+      container.appendChild(row);
+      updateEmptyState();
+      feature.focus();
+    };
+
+    addBtn.addEventListener('click', addRow);
+    updateEmptyState();
+  }
+
+  function slugifySku(name: string): string {
+    const base = name
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 24);
+    const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
+    return base ? `EC-${base}-${suffix}` : `EC-${suffix}`;
+  }
+
+  function wireSkuSuggestion() {
+    const nameInput = document.querySelector('#name');
+    const skuInput = document.querySelector('#sku');
+    if (!(nameInput instanceof HTMLInputElement) || !(skuInput instanceof HTMLInputElement)) return;
+
+    let skuTouched = false;
+    skuInput.addEventListener('input', () => { skuTouched = true; });
+    nameInput.addEventListener('blur', () => {
+      if (skuTouched || skuInput.value.trim() !== '' || nameInput.value.trim() === '') return;
+      skuInput.value = slugifySku(nameInput.value);
+    });
+  }
+
+  function collectAttributes(): Array<{ name: string; cost: number; price: number }> {
+    const rows = document.querySelectorAll('[data-attribute-row]');
+    const attributes: Array<{ name: string; cost: number; price: number }> = [];
+    rows.forEach((row) => {
+      const name = row.querySelector('[data-attr-name]');
+      const cost = row.querySelector('[data-attr-cost]');
+      const price = row.querySelector('[data-attr-price]');
+      if (!(name instanceof HTMLInputElement)) return;
+      const trimmedName = name.value.trim();
+      if (!trimmedName) return;
+      attributes.push({
+        name: trimmedName,
+        cost: cost instanceof HTMLInputElement ? Number(cost.value) || 0 : 0,
+        price: price instanceof HTMLInputElement ? Number(price.value) || 0 : 0,
+      });
+    });
+    return attributes;
+  }
+
+  function collectFeatures(): Array<{ feature: string; value: string }> {
+    const rows = document.querySelectorAll('[data-feature-row]');
+    const features: Array<{ feature: string; value: string }> = [];
+    rows.forEach((row) => {
+      const name = row.querySelector('[data-feature-name]');
+      const value = row.querySelector('[data-feature-value]');
+      if (!(name instanceof HTMLInputElement) || !(value instanceof HTMLInputElement)) return;
+      const trimmedName = name.value.trim();
+      const trimmedValue = value.value.trim();
+      if (!trimmedName || !trimmedValue) return;
+      features.push({ feature: trimmedName, value: trimmedValue });
+    });
+    return features;
+  }
+
+  function wireSubmit() {
+    const form = document.querySelector('[data-product-form]');
+    const errorBox = document.querySelector('[data-form-error]');
+    const successBox = document.querySelector('[data-form-exito]');
+    const submitBtn = document.querySelector('[data-submit-btn]');
+    if (
+      !(form instanceof HTMLFormElement) ||
+      !(errorBox instanceof HTMLElement) ||
+      !(successBox instanceof HTMLElement) ||
+      !(submitBtn instanceof HTMLButtonElement)
+    ) {
+      return;
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      errorBox.hidden = true;
+      successBox.hidden = true;
+      submitBtn.disabled = true;
+      const originalLabel = submitBtn.textContent;
+      submitBtn.textContent = 'Guardando…';
+
+      const data = new FormData(form);
+      const categoryId = String(data.get('categoryId') || '');
+      const imageFile = data.get('image');
+
+      const body: Record<string, unknown> = {
+        type: 'SIMPLE',
+        status: 'ACTIVE',
+        trackInventory: true,
+        isEcommerce: true,
+        name: String(data.get('name') || ''),
+        sku: String(data.get('sku') || ''),
+        description: String(data.get('description') || ''),
+        price: Number(data.get('price') || 0),
+        stock: Number(data.get('stock') || 0),
+        attributes: collectAttributes(),
+        features: collectFeatures(),
+      };
+      if (categoryId) body.categoryId = categoryId;
+
+      try {
+        const res = await authFetch('/api/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        if (!res.ok) {
+          const errBody = (await res.json().catch(() => ({}))) as { message?: string | string[] };
+          const message = Array.isArray(errBody.message) ? errBody.message.join(', ') : errBody.message;
+          throw new Error(message || 'No se pudo crear el producto.');
+        }
+
+        const created = (await res.json()) as { id: string };
+
+        if (imageFile instanceof File && imageFile.size > 0) {
+          const imageForm = new FormData();
+          imageForm.append('file', imageFile);
+          await authFetch(`/api/products/${created.id}/image`, {
+            method: 'POST',
+            body: imageForm,
+          }).catch(() => {
+            // product already exists — a failed image upload isn't fatal here
+          });
+        }
+
+        successBox.textContent = 'Producto creado y publicado en la tienda.';
+        successBox.hidden = false;
+        form.reset();
+        document.querySelectorAll('[data-attribute-row]').forEach((row) => row.remove());
+        document.querySelectorAll('[data-feature-row]').forEach((row) => row.remove());
+        const emptyAttrs = document.querySelector('[data-attributes-empty]');
+        if (emptyAttrs instanceof HTMLElement) emptyAttrs.hidden = false;
+        const emptyFeatures = document.querySelector('[data-features-empty]');
+        if (emptyFeatures instanceof HTMLElement) emptyFeatures.hidden = false;
+      } catch (err) {
+        errorBox.textContent = err instanceof Error ? err.message : 'No se pudo crear el producto.';
+        errorBox.hidden = false;
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalLabel;
+      }
+    });
+  }
+</script>

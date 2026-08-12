@@ -1,0 +1,116 @@
+---
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  path: string;
+  pagina: string;
+  headerSolid?: boolean;
+  extraCss?: string[];
+  skipLinkHref?: string;
+  skipLinkText?: string;
+  /** true cuando `title` ya viene resuelto server-side con contenido real del
+   *  tenant (ej. el título de su sección HERO) — en ese caso branding.js NO
+   *  debe pisarlo con la plantilla genérica "{nombre} · ...". Por defecto
+   *  false: el título es el texto estático de estructura, y sí se completa
+   *  del lado del cliente con el nombre del tenant. */
+  titleIsFinal?: boolean;
+}
+
+const {
+  title,
+  description,
+  path,
+  pagina,
+  headerSolid = false,
+  extraCss = [],
+  skipLinkHref = '#catalogo',
+  skipLinkText = 'Saltar al catálogo',
+  titleIsFinal = false,
+} = Astro.props;
+
+const canonical = new URL(path, Astro.site).toString();
+const ogImage = new URL('/assets/og-image.jpg', Astro.site).toString();
+
+const apiUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:3001';
+---
+
+<html lang="es-MX">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title data-marca-titulo={!titleIsFinal}>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="author" content="Tu Tienda" data-marca-attr="content" />
+    <meta name="theme-color" content="#1B5E20" />
+    <link rel="canonical" href={canonical} />
+
+    <link rel="icon" type="image/png" href="/assets/favicon.png" />
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Tu Tienda" data-marca-attr="content" />
+    <meta property="og:locale" content="es_MX" />
+    <meta property="og:title" content={title} data-marca-titulo={!titleIsFinal} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} data-marca-titulo={!titleIsFinal} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="/css/styles.css" />
+    {extraCss.map((href) => <link rel="stylesheet" href={href} />)}
+    <link rel="stylesheet" href="/css/animations.css" />
+
+    <script is:inline define:vars={{ apiUrl }}>
+      window.RG_CONFIG = { apiUrl };
+    </script>
+    <script src="/js/branding.js" defer></script>
+    <script src="/js/utils.js" defer></script>
+    <script src="/js/storage.js" defer></script>
+    <script src="/js/whatsapp.js" defer></script>
+    <script src="/js/store-orders.js" defer></script>
+    <script src="/js/carrito.js" defer></script>
+    <script src="/js/buscador.js" defer></script>
+    <script src="/js/catalogo.js" defer></script>
+    <script src="/js/app.js" defer></script>
+  </head>
+
+  <body data-pagina={pagina}>
+    <div class="splash" data-splash role="status" aria-live="polite">
+      <span class="splash__spinner" aria-hidden="true"></span>
+      <p class="splash__texto" aria-hidden="true">
+        Cargando<span class="splash__puntos"><span></span><span></span><span></span></span>
+      </p>
+      <span class="solo-lectores">Cargando…</span>
+    </div>
+
+    <a class="solo-lectores" href={skipLinkHref}>{skipLinkText}</a>
+
+    <Header solid={headerSolid} />
+
+    <main>
+      <slot />
+    </main>
+
+    <Footer />
+
+    <slot name="carrito" />
+  </body>
+</html>

@@ -1,5 +1,6 @@
-﻿import { Controller, Get, Post, Patch, Param, Body, Query } from '@nestjs/common';
+﻿import { Controller, Get, Post, Patch, Param, Body, Query, HttpCode, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 import { CashSessionsService } from './cash-sessions.service';
 import { OpenCashSessionDto } from './dto/open-session.dto';
 import { CloseCashSessionDto } from './dto/close-session.dto';
@@ -8,6 +9,9 @@ import { QueryCashSessionsDto } from './dto/query-sessions.dto';
 import { CreateManualMovementDto } from './dto/create-movement.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
 import { VerifyAuthDto } from './dto/verify-auth.dto';
+import { WithdrawForSuppliesDto } from './dto/withdraw-supplies.dto';
+import { CreateCashCountDto } from './dto/create-count.dto';
+import { WithdrawCashDto } from './dto/withdraw-cash.dto';
 
 @ApiTags('Cash Sessions')
 @ApiBearerAuth()
@@ -16,10 +20,12 @@ export class CashSessionsController {
   constructor(private readonly cashSessionsService: CashSessionsService) {}
 
   @Get('active')
+  @HttpCode(200)
   @RequirePermissions('cash:view')
   @ApiOperation({ summary: 'Sesión activa actual' })
-  getActive(@Query('branchId') branchId?: string) {
-    return this.cashSessionsService.getActive(branchId);
+  async getActive(@Query('branchId') branchId?: string) {
+    const session = await this.cashSessionsService.getActive(branchId);
+    return session ?? {};
   }
 
   @Post('active/movement')
@@ -27,6 +33,56 @@ export class CashSessionsController {
   @ApiOperation({ summary: 'Registrar movimiento manual de efectivo (ingreso/egreso)' })
   createManualMovement(@Body() dto: CreateManualMovementDto) {
     return this.cashSessionsService.createManualMovement(dto);
+  }
+
+  @Post('active/withdraw-supplies')
+  // Sacar efectivo es más sensible que cerrar caja; antes bastaba pos:access (CASH-008).
+  @RequirePermissions('pos.cash:withdraw')
+  @ApiOperation({ summary: 'Retiro de efectivo para compra de insumos (requiere autorización admin)' })
+  withdrawForSupplies(@Body() dto: WithdrawForSuppliesDto) {
+    return this.cashSessionsService.withdrawForSupplies(dto);
+  }
+
+  @Patch(':id/start-count')
+  @RequirePermissions('pos.cash:count')
+  @ApiOperation({ summary: 'Congelar la caja para arquear (ABIERTA → EN_ARQUEO)' })
+  startCount(@Param('id') id: string) {
+    return this.cashSessionsService.startCount(id);
+  }
+
+  @Patch(':id/resume')
+  @RequirePermissions('pos.cash:count')
+  @ApiOperation({ summary: 'Volver a operar tras un arqueo de control (EN_ARQUEO → ABIERTA)' })
+  resumeOperation(@Param('id') id: string) {
+    return this.cashSessionsService.resumeOperation(id);
+  }
+
+  @Get('registers')
+  @RequirePermissions('cash:view')
+  @ApiOperation({ summary: 'Cajas físicas de la sucursal, con su sesión viva si la hay' })
+  listRegisters() {
+    return this.cashSessionsService.listRegisters();
+  }
+
+  @Post('active/withdraw')
+  @RequirePermissions('pos.cash:withdraw')
+  @ApiOperation({ summary: 'Retirar efectivo del cajón (traslado a caja fuerte/banco)' })
+  withdrawCash(@Body() dto: WithdrawCashDto) {
+    return this.cashSessionsService.withdrawCash(dto);
+  }
+
+  @Post('active/count')
+  @RequirePermissions('pos.cash:count')
+  @ApiOperation({ summary: 'Registrar arqueo físico sobre la caja abierta (parcial o final)' })
+  createCount(@Body() dto: CreateCashCountDto) {
+    return this.cashSessionsService.createCount(dto);
+  }
+
+  @Get(':id/counts')
+  @RequirePermissions('cash:view')
+  @ApiOperation({ summary: 'Arqueos registrados en una sesión' })
+  listCounts(@Param('id') id: string) {
+    return this.cashSessionsService.listCounts(id);
   }
 
   @Get()
@@ -58,12 +114,18 @@ export class CashSessionsController {
   }
 
   @Post('verify-auth')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @RequirePermissions('pos.cash:close')
   @ApiOperation({ summary: 'Verificar credenciales de autorizador para cierre de caja' })
   verifyCloseAuth(@Body() dto: VerifyAuthDto) {
     return this.cashSessionsService.verifyCloseAuth(dto);
   }
 
   @Patch(':id/close-authorized')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @RequirePermissions('pos.cash:close')
   @ApiOperation({ summary: 'Cerrar sesión con autorización de administrador' })
   closeWithAuth(@Param('id') id: string, @Body() dto: CloseWithAuthDto) {
     return this.cashSessionsService.closeWithAuth(id, dto);

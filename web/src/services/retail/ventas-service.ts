@@ -37,6 +37,8 @@ export interface ApiOrderCustomer {
   email: string
 }
 
+export type OrderOriginType = 'RETAIL_POS' | 'RESTAURANT_COMANDA' | 'DELIVERY' | 'KIOSK' | 'ONLINE'
+
 export interface ApiOrder {
   id: string
   orderNumber: string
@@ -50,6 +52,9 @@ export interface ApiOrder {
   total: string | number
   notes: string | null
   couponCode: string | null
+  orderOrigin: OrderOriginType | null
+  tableNumber: string | null
+  employeeNumber: string | null
   createdAt: string
   updatedAt: string
   customer: ApiOrderCustomer | null
@@ -171,7 +176,7 @@ export const PAYMENT_STATUS_COLORS: Record<PaymentStatus, string> = {
   PARTIALLY_REFUNDED: 'bg-orange-100 text-orange-700',
 }
 
-export async function getOrders(params?: { page?: number; limit?: number; status?: OrderStatus }): Promise<ListResponse<ApiOrder>> {
+export async function getOrders(params?: { page?: number; limit?: number; status?: OrderStatus; orderOrigin?: OrderOriginType }): Promise<ListResponse<ApiOrder>> {
   const { data } = await api.get<ListResponse<ApiOrder>>('/orders', { params })
   return data
 }

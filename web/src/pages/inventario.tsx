@@ -1,8 +1,8 @@
-﻿import { useState, useMemo } from 'react'
+﻿import { useState, useMemo, useRef } from 'react'
 import { DataTable, Pagination, type Column } from '@/components/shared/data-table'
 import { CategoryFormModal } from '@/components/inventario/category-form-modal'
 import { ProductFormModal } from '@/components/inventario/product-form-modal'
-import { Search, Plus, Pencil, Trash2, Loader2, Package, Tag } from 'lucide-react'
+import { Search, Plus, Pencil, Trash2, Loader2, Package, Tag, Download, Upload, X, CircleCheck, TriangleAlert } from 'lucide-react'
 import { useProducts } from '@/hooks/retail/use-products'
 import { useCategories } from '@/hooks/retail/use-categories'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -51,7 +51,16 @@ export function Inventario() {
     catFilter, setCatFilter, page, setPage, modalOpen, editingId,
     form, setForm, filtered, pageData, stats,
     handleSave, handleEdit, handleDelete, handleOpenNew, handleCloseModal, loadProducts,
+    importing, importResult, importError, handleDownloadTemplate, handleImportFile, clearImportResult,
   } = useProducts()
+
+  const importInputRef = useRef<HTMLInputElement>(null)
+
+  const onImportFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) handleImportFile(file)
+    e.target.value = ''
+  }
 
   // ── Categories ──
   const {
@@ -67,6 +76,13 @@ export function Inventario() {
     handleCloseModal: handleCatCloseModal, loadCategories,
   } = useCategories()
 
+  const TYPE_BADGE: Record<string, { label: string; cls: string }> = {
+    SIMPLE:  { label: 'Simple',   cls: 'bg-gray-100 text-gray-600' },
+    RECIPE:  { label: 'Receta',   cls: 'bg-orange-100 text-orange-700' },
+    COMBO:   { label: 'Combo',    cls: 'bg-purple-100 text-purple-700' },
+    SERVICE: { label: 'Servicio', cls: 'bg-blue-100 text-blue-700' },
+  }
+
   // ── Product columns ───────────────────────────────────────────────────────
   const prodColumns: Column<Product>[] = useMemo(() => [
     { label: "SKU", render: r => <span className="font-mono text-[11px] text-muted-foreground font-semibold">{r.sku}</span> },
@@ -79,7 +95,16 @@ export function Inventario() {
       )
     },
     {
+      label: "Tipo", render: r => {
+        const t = TYPE_BADGE[r.type ?? 'SIMPLE'] ?? TYPE_BADGE.SIMPLE
+        return <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${t.cls}`}>{t.label}</span>
+      }
+    },
+    {
       label: "Stock", align: "center", render: r => {
+        if (r.type !== 'SIMPLE' && r.type != null) {
+          return <span className="text-[10px] text-muted-foreground italic">N/A</span>
+        }
         const pct = r.trackInventory ? Math.min((r.stock / (r.lowStockAlert * 4)) * 100, 100) : 100
         const color = !r.trackInventory ? "#16a34a" : r.stock > r.lowStockAlert ? "#16a34a" : r.stock > 0 ? "#d97706" : "#dc2626"
         return (
@@ -228,11 +253,55 @@ export function Inventario() {
                       <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} placeholder="Buscar producto…"
                         className="border-none bg-transparent outline-none text-xs text-foreground w-40" />
                     </div>
+                    <button onClick={handleDownloadTemplate} className="flex items-center gap-1.5 px-3.5 py-1.5 bg-card border border-border text-foreground rounded-lg text-xs font-semibold cursor-pointer">
+                      <Download className="w-3.5 h-3.5" /> Plantilla
+                    </button>
+                    <button onClick={() => importInputRef.current?.click()} disabled={importing} className="flex items-center gap-1.5 px-3.5 py-1.5 bg-card border border-border text-foreground rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed">
+                      {importing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                      {importing ? 'Importando…' : 'Importar Excel'}
+                    </button>
+                    <input ref={importInputRef} type="file" accept=".xlsx" className="hidden" onChange={onImportFileSelected} />
                     <button onClick={handleOpenNew} className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground border-none rounded-lg text-xs font-semibold cursor-pointer">
                       <Plus className="w-3.5 h-3.5" /> Nuevo Producto
                     </button>
                   </div>
                 </div>
+                {(importResult || importError) && (
+                  <div className={`mx-4 mt-3.5 rounded-lg border px-4 py-3 flex items-start gap-2.5 ${importError ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+                    {importError ? (
+                      <TriangleAlert className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
+                    ) : (
+                      <CircleCheck className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
+                    )}
+                    <div className="flex-1 text-xs">
+                      {importError ? (
+                        <p className="text-red-700 font-medium">{importError}</p>
+                      ) : (
+                        <>
+                          <p className="text-green-700 font-medium">
+                            {importResult!.totalRows} filas procesadas · {importResult!.created} creados · {importResult!.updated} actualizados
+                            {importResult!.errors.length > 0 && ` · ${importResult!.errors.length} con errores`}
+                          </p>
+                          {importResult!.errors.length > 0 && (
+                            <ul className="mt-1.5 space-y-0.5 max-h-32 overflow-y-auto">
+                              {importResult!.errors.slice(0, 20).map((err, i) => (
+                                <li key={i} className="text-amber-700">
+                                  Fila {err.row}{err.sku ? ` (${err.sku})` : ''}: {err.message}
+                                </li>
+                              ))}
+                              {importResult!.errors.length > 20 && (
+                                <li className="text-muted-foreground">…y {importResult!.errors.length - 20} más</li>
+                              )}
+                            </ul>
+                          )}
+                        </>
+                      )}
+                    </div>
+                    <button onClick={clearImportResult} className="p-1 hover:bg-black/5 rounded cursor-pointer shrink-0">
+                      <X className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
+                  </div>
+                )}
                 {filtered.length === 0 ? (
                   <div className="p-12 text-center">
                     <p className="text-muted-foreground text-sm">No se encontraron productos</p>

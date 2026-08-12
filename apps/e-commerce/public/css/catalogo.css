@@ -1,0 +1,258 @@
+/* ==========================================================================
+   catalogo.css
+   Encabezado de página, barra de filtros y estados del catálogo.
+   Compartido por catalogo.html y tienda.html.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. Encabezado de página
+   -------------------------------------------------------------------------- */
+
+.pagina-encabezado {
+  position: relative;
+  padding: calc(var(--header-alto) + clamp(48px, 7vw, 84px)) 0 clamp(44px, 6vw, 72px);
+  background: linear-gradient(150deg, var(--verde-900) 0%, var(--verde-700) 62%, #3c8f40 100%);
+  color: var(--blanco);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.pagina-encabezado::before,
+.pagina-encabezado::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(165, 214, 167, 0.32), transparent);
+}
+
+.pagina-encabezado::before {
+  width: 460px;
+  height: 460px;
+  top: -220px;
+  right: -110px;
+}
+
+.pagina-encabezado::after {
+  width: 340px;
+  height: 340px;
+  bottom: -210px;
+  left: -90px;
+}
+
+.pagina-encabezado__contenido {
+  max-width: 64ch;
+}
+
+.migas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.66);
+}
+
+.migas a {
+  transition: color var(--transicion);
+}
+
+.migas a:hover {
+  color: var(--blanco);
+}
+
+.migas__separador {
+  opacity: 0.5;
+}
+
+.pagina-encabezado__titulo {
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  font-weight: 300;
+  letter-spacing: -0.02em;
+}
+
+.pagina-encabezado__titulo strong {
+  font-weight: 700;
+}
+
+.pagina-encabezado__texto {
+  margin-top: 16px;
+  font-size: clamp(0.98rem, 1.5vw, 1.1rem);
+  color: rgba(255, 255, 255, 0.82);
+}
+
+/* --------------------------------------------------------------------------
+   2. Barra de filtros
+   -------------------------------------------------------------------------- */
+
+.barra-catalogo {
+  position: sticky;
+  top: var(--header-alto);
+  z-index: 40;
+  background: rgba(247, 250, 247, 0.92);
+  backdrop-filter: blur(14px) saturate(140%);
+  border-bottom: 1px solid var(--linea);
+}
+
+.barra-catalogo__interno {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-block: 16px;
+}
+
+.filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filtro {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border: 1px solid var(--linea-fuerte);
+  border-radius: var(--radio-pastilla);
+  background: var(--blanco);
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--tinta-suave);
+  transition: background-color var(--transicion), color var(--transicion),
+    border-color var(--transicion), transform var(--transicion);
+}
+
+.filtro:hover {
+  transform: translateY(-2px);
+  border-color: var(--verde-500);
+  color: var(--verde-900);
+}
+
+.filtro.is-activo {
+  background: linear-gradient(135deg, var(--verde-700), var(--verde-900));
+  border-color: transparent;
+  color: var(--blanco);
+  font-weight: 600;
+  box-shadow: 0 8px 20px rgba(27, 94, 32, 0.26);
+}
+
+.filtro__icono {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.resultados {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--tinta-tenue);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------------
+   3. Cuerpo del catálogo
+   -------------------------------------------------------------------------- */
+
+.catalogo {
+  padding-block: clamp(36px, 5vw, 64px) clamp(64px, 8vw, 104px);
+}
+
+/* --------------------------------------------------------------------------
+   4. Estados vacío y de error
+   -------------------------------------------------------------------------- */
+
+.estado {
+  max-width: 46ch;
+  margin: clamp(40px, 7vw, 80px) auto;
+  padding: 44px 32px;
+  text-align: center;
+  border: 1px dashed var(--linea-fuerte);
+  border-radius: var(--radio-lg);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.estado__icono {
+  display: grid;
+  place-items: center;
+  width: 66px;
+  height: 66px;
+  margin: 0 auto 20px;
+  border-radius: 22px;
+  background: linear-gradient(145deg, rgba(165, 214, 167, 0.45), rgba(102, 187, 106, 0.22));
+  font-size: 1.8rem;
+}
+
+.estado__titulo {
+  font-size: 1.22rem;
+  color: var(--verde-900);
+  margin-bottom: 10px;
+}
+
+.estado__texto {
+  font-size: 0.95rem;
+  color: var(--tinta-suave);
+  margin-bottom: 24px;
+}
+
+.estado--error {
+  border-style: solid;
+  border-color: rgba(198, 92, 60, 0.32);
+  background: rgba(198, 92, 60, 0.06);
+}
+
+.estado--error .estado__icono {
+  background: linear-gradient(145deg, rgba(198, 92, 60, 0.24), rgba(198, 92, 60, 0.12));
+}
+
+.estado--error .estado__titulo {
+  color: #9b3f1f;
+}
+
+.estado__nota {
+  display: block;
+  margin-top: 18px;
+  font-size: 0.82rem;
+  color: var(--tinta-tenue);
+}
+
+.estado__nota code {
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(27, 94, 32, 0.08);
+  font-family: 'Consolas', 'SFMono-Regular', ui-monospace, monospace;
+  font-size: 0.86em;
+}
+
+/* --------------------------------------------------------------------------
+   5. Responsive
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 720px) {
+  .barra-catalogo__interno {
+    justify-content: flex-start;
+    gap: 12px;
+  }
+
+  .filtros {
+    width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+
+  .filtros::-webkit-scrollbar {
+    display: none;
+  }
+
+  .filtro {
+    flex: 0 0 auto;
+  }
+
+  .resultados {
+    width: 100%;
+  }
+}

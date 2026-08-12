@@ -10,7 +10,17 @@ export type AuditAction =
   | 'ORDER_REFUND'
   | 'INVENTORY_ADJUST'
   | 'PRICE_CHANGE'
-  | 'USER_STATUS_CHANGE';
+  | 'USER_STATUS_CHANGE'
+  // Caja — sin estas, una diferencia de arqueo no puede explicarse a posteriori
+  // (docs/AUDITORIA-CAJA.md, CASH-004).
+  | 'CASH_SESSION_OPEN'
+  | 'CASH_SESSION_CLOSE'
+  | 'CASH_MOVEMENT_CREATE'
+  | 'CASH_WITHDRAWAL'
+  | 'CASH_COUNT'
+  // Transiciones del ciclo de caja (CASH-011).
+  | 'CASH_COUNT_START'
+  | 'CASH_COUNT_RESUME';
 
 interface AuditEntry {
   action: AuditAction;

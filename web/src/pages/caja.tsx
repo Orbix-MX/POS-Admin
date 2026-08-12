@@ -2,7 +2,7 @@
 import {
   Loader2, X, AlertCircle, Landmark, CheckCircle2,
   TrendingUp, ArrowUpRight, ArrowDownRight,
-  Clock, Eye, ChevronRight, Banknote, CreditCard, Wifi,
+  Clock, Eye, ChevronRight, Banknote, CreditCard, Wifi, Printer,
 } from 'lucide-react'
 import { DataTable, Pagination, type Column } from '@/components/shared/data-table'
 import { useCaja, type ApiCashSession } from '@/hooks/core/use-caja'
@@ -16,16 +16,36 @@ import {
   type SessionSummary,
   type OpenSessionInput,
   type CloseSessionInput,
+  type CashSessionStatus,
+  type CashCountInput,
+  type ApiCashCount,
 } from '@/services/core/caja-service'
 
 // ---- helpers ----
 
-function StatusBadge({ status }: { status: 'ABIERTA' | 'CERRADA' }) {
+function StatusBadge({ status }: { status: CashSessionStatus }) {
   if (status === 'ABIERTA') {
     return (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">
         <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
         Abierta
+      </span>
+    )
+  }
+  // Estados intermedios: la caja no opera, pero tampoco está cerrada (CASH-011).
+  if (status === 'EN_ARQUEO') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+        En arqueo
+      </span>
+    )
+  }
+  if (status === 'PENDIENTE_REVISION') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
+        <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
+        Pendiente de revisión
       </span>
     )
   }
@@ -72,6 +92,10 @@ function SummaryPanel({ summary }: { summary: SessionSummary }) {
     { label: 'Ingresos manuales', cash: totals.income.cash, cashUsd: totals.income.cashUsd, card: 0, transfer: 0, income: true },
     { label: 'Pagos proveedor', cash: totals.supplier.cash, cashUsd: totals.supplier.cashUsd, card: totals.supplier.card, transfer: totals.supplier.transfer, income: false },
     { label: 'Egresos manuales', cash: totals.expense.cash, cashUsd: totals.expense.cashUsd, card: 0, transfer: 0, income: false },
+    // Filas propias: un reembolso vuelve al cliente y un retiro va a la caja
+    // fuerte; ninguno es un gasto del negocio (CASH-005, CASH-013).
+    { label: 'Devoluciones', cash: totals.refund?.cash ?? 0, cashUsd: totals.refund?.cashUsd ?? 0, card: totals.refund?.card ?? 0, transfer: totals.refund?.transfer ?? 0, income: false },
+    { label: 'Retiros', cash: totals.withdrawal?.cash ?? 0, cashUsd: totals.withdrawal?.cashUsd ?? 0, card: 0, transfer: 0, income: false },
   ]
 
   const cols = hasUsd ? 5 : 4
@@ -179,7 +203,7 @@ function DetailDrawer({
                     <div className="grid grid-cols-3 gap-2">
                       <div className="border border-border rounded-lg px-2.5 py-2">
                         <div className="text-[10px] text-muted-foreground mb-0.5">Esperado MXN</div>
-                        <div className="text-[13px] font-bold text-foreground tabular-nums">{fmtMoney(session.closingAmount)}</div>
+                        <div className="text-[13px] font-bold text-foreground tabular-nums">{fmtMoney(session.expectedAmount)}</div>
                       </div>
                       <div className="border border-border rounded-lg px-2.5 py-2">
                         <div className="text-[10px] text-muted-foreground mb-0.5">Contado MXN</div>
@@ -364,6 +388,9 @@ function CloseModal({
   closeError,
   onClose,
   onConfirm,
+  authForm,
+  setAuthForm,
+  onConfirmWithAuth,
 }: {
   visible: boolean
   session: ApiCashSession | null
@@ -373,9 +400,13 @@ function CloseModal({
   closeError: string | null
   onClose: () => void
   onConfirm: () => void
+  authForm: { authEmail: string; authPassword: string }
+  setAuthForm: Dispatch<SetStateAction<{ authEmail: string; authPassword: string }>>
+  onConfirmWithAuth: () => void
 }) {
   if (!visible || !session) return null
 
+  const needsAuth = session.status === 'PENDIENTE_REVISION'
   const expectedCashMxn = session.summary?.expectedCash ?? Number(session.openingAmount ?? 0)
   const expectedCashUsd = session.summary?.expectedCashUsd ?? Number(session.openingAmountUsd ?? 0)
   const diffMxn = Number(form.cashCounted) - expectedCashMxn
@@ -455,6 +486,56 @@ function CloseModal({
             </div>
           </div>
 
+          {/* El servidor exige motivo cuando la diferencia supera el umbral del
+              tenant. Se muestra en cuanto hay descuadre para que el operador no
+              descubra el requisito al recibir el error. */}
+          {(Math.abs(diffMxn) >= 0.01 || Math.abs(diffUsd) >= 0.01) && (
+            <div>
+              <label className="text-[12px] font-medium text-amber-600 uppercase tracking-wide block mb-1.5">
+                Motivo de la diferencia *
+              </label>
+              <textarea
+                value={form.differenceReason ?? ''}
+                onChange={e => setForm(p => ({ ...p, differenceReason: e.target.value }))}
+                rows={2}
+                placeholder="Explica el faltante o sobrante"
+                className="w-full px-3 py-2 border border-amber-300 dark:border-amber-700 rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-amber-500 resize-none"
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">Queda registrado en la bitácora junto al arqueo.</p>
+            </div>
+          )}
+
+          {/* Un corte que superó el umbral no lo cierra quien lo produjo: queda
+              en revisión hasta que alguien con permiso lo autorice (CASH-011). */}
+          {needsAuth && (
+            <div className="border border-orange-300 dark:border-orange-800 rounded-lg p-3 bg-orange-50/60 dark:bg-orange-900/10 space-y-3">
+              <div className="flex items-start gap-2 text-[12px] text-orange-700 dark:text-orange-300">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>Este corte quedó <strong>pendiente de revisión</strong> por la diferencia. Requiere las credenciales de un usuario autorizado para cerrarse.</span>
+              </div>
+              <div>
+                <label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide block mb-1.5">Correo del autorizador *</label>
+                <input
+                  type="email"
+                  value={authForm.authEmail}
+                  onChange={e => setAuthForm(p => ({ ...p, authEmail: e.target.value }))}
+                  placeholder="admin@empresa.com"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide block mb-1.5">Contraseña *</label>
+                <input
+                  type="password"
+                  value={authForm.authPassword}
+                  onChange={e => setAuthForm(p => ({ ...p, authPassword: e.target.value }))}
+                  placeholder="••••••••"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
+                />
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide block mb-1.5">Notas del cierre</label>
             <textarea
@@ -474,14 +555,203 @@ function CloseModal({
           <div className="flex justify-end gap-2.5">
             <button onClick={onClose} className="px-4 py-2 border border-border rounded-lg text-[13px] text-muted-foreground hover:bg-muted/50">Cancelar</button>
             <button
-              onClick={onConfirm}
+              onClick={needsAuth ? onConfirmWithAuth : onConfirm}
               disabled={closing}
               className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-[13px] font-semibold hover:opacity-90 disabled:opacity-60"
             >
               {closing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              Confirmar cierre
+              {needsAuth ? 'Autorizar y cerrar' : 'Confirmar cierre'}
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---- Count Modal (arqueo parcial, sin cierre) ----
+
+function CountModal({
+  visible,
+  session,
+  form,
+  setForm,
+  counting,
+  countError,
+  result,
+  onClose,
+  onSubmit,
+}: {
+  visible: boolean
+  session: ApiCashSession | null
+  form: CashCountInput
+  setForm: Dispatch<SetStateAction<CashCountInput>>
+  counting: boolean
+  countError: string | null
+  result: ApiCashCount | null
+  onClose: () => void
+  onSubmit: () => void
+}) {
+  if (!visible || !session) return null
+
+  const expectedMxn = session.summary?.expectedCash ?? Number(session.openingAmount)
+  const diffMxn = form.countedMxn - expectedMxn
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <h2 className="text-[15px] font-semibold text-foreground flex items-center gap-2">
+            <Clock className="w-4 h-4 text-amber-500" />
+            Registrar arqueo
+          </h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted"><X className="w-4 h-4 text-muted-foreground" /></button>
+        </div>
+
+        {result ? (
+          <div className="px-5 py-4 space-y-4">
+            <div className="border border-border rounded-lg overflow-hidden">
+              <div className="px-3 py-3 space-y-2">
+                <div className="flex items-center justify-between text-[12px]">
+                  <span className="text-muted-foreground">Esperado</span>
+                  <span className="font-bold tabular-nums text-foreground">{fmtMoney(result.expectedMxn)}</span>
+                </div>
+                <div className="flex items-center justify-between text-[12px]">
+                  <span className="text-muted-foreground">Contado</span>
+                  <span className="font-bold tabular-nums text-foreground">{fmtMoney(result.countedMxn)}</span>
+                </div>
+                <div className="flex items-center justify-between text-[12px]">
+                  <span className="text-muted-foreground">Diferencia</span>
+                  <DiffBadge diff={Number(result.differenceMxn)} />
+                </div>
+              </div>
+            </div>
+            {result.reason && (
+              <div className="text-[12px] text-muted-foreground">
+                <span className="font-semibold text-foreground">Motivo registrado: </span>{result.reason}
+              </div>
+            )}
+            <div className="flex items-center gap-2 text-green-600 text-[12px] bg-green-50 dark:bg-green-900/20 px-3 py-2 rounded-lg">
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />Arqueo registrado correctamente
+            </div>
+            <div className="flex justify-end">
+              <button onClick={onClose} className="px-4 py-2 border border-border rounded-lg text-[13px] text-muted-foreground hover:bg-muted/50">Cerrar</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="px-5 py-4 space-y-4">
+              <div className="border border-border rounded-lg overflow-hidden">
+                <div className="px-3 py-3 space-y-3">
+                  <div className="flex items-center justify-between text-[12px]">
+                    <span className="text-muted-foreground">Esperado</span>
+                    <span className="font-bold tabular-nums text-foreground">{fmtMoney(expectedMxn)}</span>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide block mb-1">Contado MXN *</label>
+                    <input
+                      type="number" min={0} step={0.01}
+                      value={form.countedMxn || ''}
+                      onChange={e => setForm(p => ({ ...p, countedMxn: parseFloat(e.target.value) || 0 }))}
+                      placeholder="0.00"
+                      className="w-full px-3 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[12px]">
+                    <span className="text-muted-foreground">Diferencia</span>
+                    <DiffBadge diff={diffMxn} />
+                  </div>
+                </div>
+              </div>
+
+              {Math.abs(diffMxn) >= 0.01 && (
+                <div>
+                  <label className="text-[12px] font-medium text-amber-600 uppercase tracking-wide block mb-1.5">
+                    Motivo de la diferencia *
+                  </label>
+                  <textarea
+                    value={form.reason ?? ''}
+                    onChange={e => setForm(p => ({ ...p, reason: e.target.value }))}
+                    rows={2}
+                    placeholder="Explica el faltante o sobrante"
+                    className="w-full px-3 py-2 border border-amber-300 dark:border-amber-700 rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-amber-500 resize-none"
+                  />
+                </div>
+              )}
+            </div>
+            <div className="border-t border-border px-5 py-3">
+              {countError && (
+                <div className="flex items-center gap-2 text-red-500 text-[12px] mb-3 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />{countError}
+                </div>
+              )}
+              <div className="flex justify-end gap-2.5">
+                <button onClick={onClose} className="px-4 py-2 border border-border rounded-lg text-[13px] text-muted-foreground hover:bg-muted/50">Cancelar</button>
+                <button
+                  onClick={onSubmit}
+                  disabled={counting}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-[13px] font-semibold hover:opacity-90 disabled:opacity-60"
+                >
+                  {counting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Registrar conteo
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ---- Arqueo Print Prompt (¿imprimir ticket o ver detalle primero?) ----
+
+function ArqueoPrintPromptModal({
+  visible,
+  printing,
+  onPrint,
+  onViewDetail,
+  onDismiss,
+}: {
+  visible: boolean
+  printing: boolean
+  onPrint: () => void
+  onViewDetail: () => void
+  onDismiss: () => void
+}) {
+  if (!visible) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onDismiss} />
+      <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-sm">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <h2 className="text-[15px] font-semibold text-foreground flex items-center gap-2">
+            <Printer className="w-4 h-4 text-amber-500" />
+            Caja en arqueo
+          </h2>
+          <button onClick={onDismiss} className="p-1.5 rounded-lg hover:bg-muted"><X className="w-4 h-4 text-muted-foreground" /></button>
+        </div>
+        <div className="px-5 py-4">
+          <p className="text-[13px] text-muted-foreground">
+            La caja quedó congelada para contar. ¿Deseas imprimir el ticket con el detalle completo o verlo primero en pantalla?
+          </p>
+        </div>
+        <div className="border-t border-border px-5 py-3 flex justify-end gap-2.5">
+          <button
+            onClick={onViewDetail}
+            className="flex items-center gap-1.5 px-4 py-2 border border-border rounded-lg text-[13px] text-muted-foreground hover:bg-muted/50"
+          >
+            <Eye className="w-3.5 h-3.5" /> Ver primero
+          </button>
+          <button
+            onClick={onPrint}
+            disabled={printing}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-[13px] font-semibold hover:opacity-90 disabled:opacity-60"
+          >
+            {printing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            <Printer className="w-3.5 h-3.5" /> Imprimir
+          </button>
         </div>
       </div>
     </div>
@@ -513,8 +783,8 @@ export function Caja() {
     },
     {
       label: 'Efectivo esperado',
-      render: r => r.closingAmount != null
-        ? <span className="tabular-nums text-[12px] font-semibold text-foreground">{fmtMoney(r.closingAmount)}</span>
+      render: r => r.expectedAmount != null
+        ? <span className="tabular-nums text-[12px] font-semibold text-foreground">{fmtMoney(r.expectedAmount)}</span>
         : <span className="text-[11px] text-muted-foreground">Abierta</span>,
     },
     {
@@ -561,6 +831,10 @@ export function Caja() {
             void hook.handleOpenCloseModal()
           }}
           onViewDetail={() => hook.handleOpenDetail(hook.activeSession!)}
+          onWithdraw={() => hook.setWithdrawVisible(true)}
+          onStartCount={hook.handleStartCount}
+          onResume={hook.handleResume}
+          onOpenCount={hook.handleOpenCountModal}
         />
       ) : (
         <NoSessionBanner onOpen={() => hook.setOpenModalVisible(true)} />
@@ -614,6 +888,9 @@ export function Caja() {
         closeError={hook.closeError}
         onClose={() => hook.setCloseModalVisible(false)}
         onConfirm={hook.handleCloseSession}
+        authForm={hook.authForm}
+        setAuthForm={hook.setAuthForm}
+        onConfirmWithAuth={hook.handleCloseWithAuth}
       />
 
       <DetailDrawer
@@ -622,6 +899,80 @@ export function Caja() {
         loading={hook.detailLoading}
         onClose={hook.handleCloseDetail}
       />
+
+      <CountModal
+        visible={hook.countModalVisible}
+        session={hook.activeSession}
+        form={hook.countForm}
+        setForm={hook.setCountForm}
+        counting={hook.counting}
+        countError={hook.countError}
+        result={hook.countResult}
+        onClose={hook.handleCloseCountModal}
+        onSubmit={hook.handleSubmitCount}
+      />
+
+      <ArqueoPrintPromptModal
+        visible={hook.arqueoPromptVisible}
+        printing={hook.arqueoPrinting}
+        onPrint={hook.handlePrintArqueoTicket}
+        onViewDetail={hook.handleViewArqueoDetail}
+        onDismiss={hook.handleDismissArqueoPrompt}
+      />
+
+      {/* Retiro: el dinero sale del cajón pero no del negocio, así que baja el
+          esperado sin contarse como gasto (CASH-005). */}
+      {hook.withdrawVisible && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => hook.setWithdrawVisible(false)} />
+          <div className="relative w-full max-w-[420px] bg-card border border-border rounded-xl shadow-2xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <h2 className="font-bold text-foreground">Retirar efectivo</h2>
+              <button onClick={() => hook.setWithdrawVisible(false)} className="p-1.5 rounded-lg hover:bg-muted">
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <div>
+                <label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide block mb-1.5">Monto MXN *</label>
+                <input
+                  type="number"
+                  min={0.01}
+                  step={0.01}
+                  value={hook.withdrawForm.amount || ''}
+                  onChange={e => hook.setWithdrawForm(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
+                  placeholder="0.00"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide block mb-1.5">Motivo *</label>
+                <input
+                  value={hook.withdrawForm.reason}
+                  onChange={e => hook.setWithdrawForm(prev => ({ ...prev, reason: e.target.value }))}
+                  placeholder="Traslado a caja fuerte"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
+                />
+              </div>
+              {hook.withdrawError ? (
+                <div className="flex items-center gap-2 text-red-500 text-[12px] bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />{hook.withdrawError}
+                </div>
+              ) : null}
+            </div>
+            <div className="border-t border-border px-5 py-3 flex justify-end gap-2.5">
+              <button onClick={() => hook.setWithdrawVisible(false)} className="px-4 py-2 border border-border rounded-lg text-[13px] text-muted-foreground hover:bg-muted/50">Cancelar</button>
+              <button
+                onClick={hook.handleWithdraw}
+                disabled={hook.withdrawing}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg text-[13px] font-semibold hover:opacity-90 disabled:opacity-60"
+              >
+                {hook.withdrawing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null} Retirar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -632,10 +983,18 @@ function ActiveSessionBanner({
   session,
   onClose,
   onViewDetail,
+  onWithdraw,
+  onStartCount,
+  onResume,
+  onOpenCount,
 }: {
   session: ApiCashSession
   onClose: () => void
   onViewDetail: () => void
+  onWithdraw: () => void
+  onStartCount: () => void
+  onResume: () => void
+  onOpenCount: () => void
 }) {
   const expectedCash = session.summary?.expectedCash ?? Number(session.openingAmount)
   const expectedCashUsd = session.summary?.expectedCashUsd ?? Number(session.openingAmountUsd ?? 0)
@@ -648,7 +1007,7 @@ function ActiveSessionBanner({
       <div className="flex items-start justify-between mb-4">
         <div>
           <div className="flex items-center gap-2.5 mb-1">
-            <StatusBadge status="ABIERTA" />
+            <StatusBadge status={session.status} />
             <span className="text-[13px] font-bold text-foreground">Sesión activa</span>
             <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
               TC: {fmtMoney(tc)}/USD
@@ -665,6 +1024,40 @@ function ActiveSessionBanner({
           >
             <Eye className="w-3.5 h-3.5" /> Ver detalle
           </button>
+          {/* El arqueo PARCIAL (createCount) exige la caja ABIERTA — congela solo
+              el esperado del instante, no la operación (CASH-006). Con la caja
+              en arqueo (EN_ARQUEO) no se retira ni se cuenta: solo se reanuda o
+              se cierra (CASH-011). */}
+          {session.status === 'ABIERTA' && (
+            <>
+              <button
+                onClick={onWithdraw}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-amber-300 dark:border-amber-700 rounded-lg text-[12px] text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+              >
+                <Banknote className="w-3.5 h-3.5" /> Retirar
+              </button>
+              <button
+                onClick={onOpenCount}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-amber-300 dark:border-amber-700 rounded-lg text-[12px] text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+              >
+                <Banknote className="w-3.5 h-3.5" /> Contar caja
+              </button>
+              <button
+                onClick={onStartCount}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-border rounded-lg text-[12px] text-muted-foreground hover:bg-muted/50"
+              >
+                <Clock className="w-3.5 h-3.5" /> Arquear
+              </button>
+            </>
+          )}
+          {session.status === 'EN_ARQUEO' && (
+            <button
+              onClick={onResume}
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-border rounded-lg text-[12px] text-muted-foreground hover:bg-muted/50"
+            >
+              <ArrowUpRight className="w-3.5 h-3.5" /> Reanudar
+            </button>
+          )}
           <button
             onClick={onClose}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-[12px] font-semibold hover:opacity-90"

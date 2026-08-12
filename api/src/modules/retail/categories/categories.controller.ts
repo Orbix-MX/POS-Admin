@@ -12,7 +12,6 @@ import { CategoriesService, CategoryWithChildren } from './categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
-import { Public } from '../../../common/decorators/public.decorator';
 import { RequireModule } from '../../../common/guards/require-module.guard';
 
 @RequireModule('inventario')
@@ -31,21 +30,26 @@ export class CategoriesController {
 
   @Get()
   @ApiBearerAuth()
-  @RequirePermissions('categories:view')
+  // Read access follows inventory access too — the category list is mostly
+  // consumed as the product form's picker, so a role with `products:view` but
+  // no separately-granted `categories:view` (e.g. seed.ts' Vendedor) isn't shown an empty one.
+  @RequirePermissions('categories:view|products:view')
   @ApiOperation({ summary: 'Get all categories' })
   findAll() {
     return this.categoriesService.findAll();
   }
 
   @Get('tree')
-  @Public()
+  @ApiBearerAuth()
+  @RequirePermissions('categories:view|products:view')
   @ApiOperation({ summary: 'Get category tree (hierarchical)' })
   findTree(): Promise<CategoryWithChildren[]> {
     return this.categoriesService.findTree();
   }
 
   @Get(':id')
-  @Public()
+  @ApiBearerAuth()
+  @RequirePermissions('categories:view|products:view')
   @ApiOperation({ summary: 'Get category by ID' })
   findOne(@Param('id') id: string) {
     return this.categoriesService.findOne(id);

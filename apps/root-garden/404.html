@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="es-MX">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Página no encontrada · RootGarden</title>
+    <meta name="description" content="La página que buscas no existe o cambió de dirección." />
+    <meta name="robots" content="noindex, follow" />
+    <meta name="theme-color" content="#1B5E20" />
+
+    <link rel="icon" type="image/png" href="assets/favicon.png" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.json" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="css/styles.css" />
+    <link rel="stylesheet" href="css/catalogo.css" />
+    <link rel="stylesheet" href="css/animations.css" />
+
+    <script src="js/utils.js" defer></script>
+    <script src="js/storage.js" defer></script>
+    <script src="js/whatsapp.js" defer></script>
+    <script src="js/carrito.js" defer></script>
+    <script src="js/buscador.js" defer></script>
+    <script src="js/catalogo.js" defer></script>
+    <script src="js/app.js" defer></script>
+
+    <style>
+      .pagina-error {
+        min-height: 100svh;
+        display: grid;
+        place-items: center;
+        padding: calc(var(--header-alto) + 48px) 0 72px;
+        text-align: center;
+      }
+
+      .pagina-error__logo {
+        width: clamp(120px, 18vw, 168px);
+        height: auto;
+        margin: 0 auto 26px;
+      }
+
+      .pagina-error__codigo {
+        font-size: clamp(3.4rem, 12vw, 6rem);
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: -0.04em;
+        background: linear-gradient(135deg, var(--verde-700), var(--verde-500));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+
+      .pagina-error__titulo {
+        margin-top: 12px;
+        font-size: clamp(1.5rem, 3.4vw, 2.2rem);
+        color: var(--verde-900);
+      }
+
+      .pagina-error__texto {
+        max-width: 48ch;
+        margin: 16px auto 32px;
+        color: var(--tinta-suave);
+      }
+
+      .pagina-error__acciones {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        justify-content: center;
+      }
+    </style>
+  </head>
+
+  <body data-pagina="error">
+    <!-- ================= HEADER ================= -->
+    <header class="header header--solido" data-header>
+      <div class="header__interno">
+        <a class="marca" href="index.html" aria-label="RootGarden, inicio">
+          <img
+            class="marca__emblema"
+            src="assets/logo-mark.png"
+            alt="Emblema de RootGarden"
+            width="40"
+            height="40"
+          />
+          <span>
+            <span class="marca__texto"><strong>Root</strong>Garden</span>
+            <span class="marca__slogan">Aquascaping</span>
+          </span>
+        </a>
+
+        <button
+          class="header__toggle"
+          type="button"
+          data-menu-boton
+          aria-expanded="false"
+          aria-controls="menu-principal"
+          aria-label="Abrir menú"
+        >
+          <span></span>
+        </button>
+
+        <div class="header__panel" id="menu-principal" data-menu-panel>
+          <nav class="nav" aria-label="Navegación principal">
+            <a class="nav__enlace" href="index.html" data-nav-enlace="inicio">Inicio</a>
+            <a class="nav__enlace" href="catalogo.html" data-nav-enlace="catalogo">Catálogo</a>
+            <a class="nav__enlace" href="tienda.html" data-nav-enlace="tienda">Tienda</a>
+          </nav>
+
+          <form class="busqueda" role="search" data-buscador-form>
+            <svg class="busqueda__icono" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" />
+              <path d="m16.5 16.5 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            </svg>
+            <label class="solo-lectores" for="campo-busqueda">Buscar plantas</label>
+            <input
+              class="busqueda__campo"
+              id="campo-busqueda"
+              type="search"
+              placeholder="Buscar planta…"
+              autocomplete="off"
+              data-buscador-campo
+            />
+            <button
+              class="busqueda__limpiar"
+              type="button"
+              data-buscador-limpiar
+              aria-label="Limpiar búsqueda"
+              hidden
+            >
+              ✕
+            </button>
+          </form>
+        </div>
+      </div>
+    </header>
+
+    <main class="pagina-error">
+      <div class="contenedor">
+        <img
+          class="pagina-error__logo"
+          src="assets/logo.png"
+          alt="Logotipo de RootGarden"
+          width="168"
+          height="180"
+        />
+        <p class="pagina-error__codigo">404</p>
+        <h1 class="pagina-error__titulo">Esta rama no llegó a echar raíz</h1>
+        <p class="pagina-error__texto">
+          La página que buscas no existe o cambió de dirección. Vuelve al inicio o explora el
+          catálogo completo de plantas, raíces y hardscape.
+        </p>
+        <div class="pagina-error__acciones">
+          <a class="boton boton--primario" href="index.html">Volver al inicio</a>
+          <a class="boton boton--contorno" href="catalogo.html">Ver catálogo</a>
+        </div>
+      </div>
+    </main>
+
+    <!-- ================= FOOTER ================= -->
+    <footer class="footer">
+      <div class="contenedor">
+        <div class="footer__legal" style="border-top: 0">
+          <p>© <span data-anio>2026</span> RootGarden · Naturaleza para tu acuario.</p>
+          <p>
+            <a class="footer__enlace" href="https://wa.me/526562016886" target="_blank" rel="noopener">
+              WhatsApp · 656 201 6886
+            </a>
+          </p>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

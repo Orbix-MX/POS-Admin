@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Building2, LogOut, Shield, Activity } from 'lucide-react'
+import { LayoutDashboard, Building2, LogOut, Shield, Activity, LayoutTemplate } from 'lucide-react'
 import { usePlatformAuthStore } from '@/store/platform-auth-store'
 
 const NAV = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/platform/dashboard' },
   { label: 'Empresas', icon: Building2, path: '/platform/empresas' },
+  { label: 'Plantillas', icon: LayoutTemplate, path: '/platform/plantillas' },
   { label: 'Auditoría', icon: Activity, path: '/platform/auditoria' },
 ]
 

@@ -6,7 +6,9 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { TokenBlacklistService } from './services/token-blacklist.service';
+import { RefreshTokenService } from './services/refresh-token.service';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
+import { LicenseGuard } from '../../../common/guards/license.guard';
 import { PermissionsGuard } from '../../../common/guards/permissions.guard';
 import { RequireModuleGuard } from '../../../common/guards/require-module.guard';
 import { APP_GUARD } from '@nestjs/core';
@@ -29,9 +31,14 @@ import { APP_GUARD } from '@nestjs/core';
     AuthService,
     JwtStrategy,
     TokenBlacklistService,
+    RefreshTokenService,
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: LicenseGuard,
     },
     {
       provide: APP_GUARD,
@@ -42,6 +49,6 @@ import { APP_GUARD } from '@nestjs/core';
       useClass: RequireModuleGuard,
     },
   ],
-  exports: [AuthService, TokenBlacklistService],
+  exports: [AuthService, TokenBlacklistService, RefreshTokenService],
 })
 export class AuthModule {}

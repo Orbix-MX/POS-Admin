@@ -460,6 +460,27 @@ function DashboardDetail({ tenantId, dashboardId, tenantRoles, onClose, onDelete
     finally { setUpdatingColSpan(null) }
   }
 
+  // ── Reorder helpers ──────────────────────────────────────────────────────────
+
+  const doReorder = async (next: DashboardWidgetLink[]) => {
+    setActiveLinks(next)
+    setSavingOrder(true); setActionError(null)
+    try {
+      await reorderDashboardWidgets(tenantId, dashboardId, next.map(l => l.widgetId))
+      await load()
+    } catch (e) { setActionError(errMsg(e)); await load() }
+    finally { setSavingOrder(false) }
+  }
+
+  const handleReorderByIndex = (fromIdx: number, toIdx: number) => {
+    const clamped = Math.max(0, Math.min(activeLinks.length - 1, toIdx))
+    if (fromIdx === clamped) return
+    const next = [...activeLinks]
+    const [moved] = next.splice(fromIdx, 1)
+    next.splice(clamped, 0, moved)
+    doReorder(next)
+  }
+
   // ── DnD handlers ─────────────────────────────────────────────────────────────
 
   const handleDragStart = (idx: number) => setDragIdx(idx)
@@ -469,22 +490,15 @@ function DashboardDetail({ tenantId, dashboardId, tenantRoles, onClose, onDelete
     if (idx !== overIdx) setOverIdx(idx)
   }
 
-  const handleDrop = async (dropIdx: number) => {
+  const handleDrop = (dropIdx: number) => {
     if (dragIdx === null || dragIdx === dropIdx) {
       setDragIdx(null); setOverIdx(null); return
     }
     const next = [...activeLinks]
     const [moved] = next.splice(dragIdx, 1)
     next.splice(dropIdx, 0, moved)
-    setActiveLinks(next)
     setDragIdx(null); setOverIdx(null)
-
-    setSavingOrder(true); setActionError(null)
-    try {
-      await reorderDashboardWidgets(tenantId, dashboardId, next.map(l => l.widgetId))
-      await load()
-    } catch (e) { setActionError(errMsg(e)); await load() }
-    finally { setSavingOrder(false) }
+    doReorder(next)
   }
 
   const handleDragEnd = () => { setDragIdx(null); setOverIdx(null) }
@@ -596,6 +610,19 @@ function DashboardDetail({ tenantId, dashboardId, tenantRoles, onClose, onDelete
                     overIdx === idx && dragIdx !== idx ? 'border-t-2 border-indigo-500' : '',
                   ].join(' ')}
                 >
+                  {/* Index input */}
+                  <input
+                    key={`${link.widgetId}-${idx}`}
+                    type="number"
+                    min={1}
+                    max={activeLinks.length}
+                    defaultValue={idx + 1}
+                    onBlur={e => handleReorderByIndex(idx, Number(e.target.value) - 1)}
+                    onClick={e => (e.target as HTMLInputElement).select()}
+                    className="w-9 px-1 py-1 bg-zinc-900 border border-zinc-700 rounded text-[10px] text-zinc-300 text-center outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none shrink-0"
+                    title="Posición"
+                  />
+
                   <div className="text-zinc-600 hover:text-zinc-400 cursor-grab active:cursor-grabbing shrink-0">
                     <GripVertical className="w-3.5 h-3.5" />
                   </div>

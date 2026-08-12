@@ -1,4 +1,4 @@
-// Shared types between @ventasy/api and @ventasy/web
+// Shared types between @orbix/api and @orbix/web
 
 export interface ListResponse<T> {
   data: T[]
@@ -30,7 +30,42 @@ export type OrderStatus =
   | 'COMPLETED'
   | 'CANCELLED'
 
+export type KitchenOrderStatus =
+  | 'PENDING'
+  | 'IN_PROGRESS'
+  | 'PAUSED'
+  | 'READY'
+  | 'REJECTED'
+  | 'DELIVERED'
+
 export type PaymentStatus = 'PENDING' | 'PARTIAL' | 'PAID' | 'OVERDUE' | 'CANCELLED'
+
+// ─── Business verticals & POS modes ──────────────────────────────────────────
+
+export type BusinessVertical = 'RETAIL' | 'RESTAURANT' | 'GYM' | 'SERVICES'
+export type PosOperationMode = 'QUICK_SALE' | 'TABLE_SERVICE'
+export type TenantFeature =
+  | 'TABLES'
+  | 'KITCHEN'
+  | 'DELIVERY'
+  | 'MEMBERSHIPS'
+  | 'ACCESS_CONTROL'
+  | 'SERVICES'
+  | 'APPOINTMENTS'
+
+export const VERTICAL_DEFAULT_POS_MODE: Record<BusinessVertical, PosOperationMode> = {
+  RETAIL:     'QUICK_SALE',
+  RESTAURANT: 'TABLE_SERVICE',
+  GYM:        'QUICK_SALE',
+  SERVICES:   'QUICK_SALE',
+}
+
+export const VERTICAL_DEFAULT_FEATURES: Record<BusinessVertical, TenantFeature[]> = {
+  RETAIL:     [],
+  RESTAURANT: ['TABLES', 'KITCHEN'],
+  GYM:        ['MEMBERSHIPS', 'ACCESS_CONTROL'],
+  SERVICES:   ['SERVICES', 'APPOINTMENTS'],
+}
 
 // ─── Plan tiers ──────────────────────────────────────────────────────────────
 
@@ -47,6 +82,9 @@ export enum SystemModule {
   VENTAS        = 'ventas',
   INVENTARIO    = 'inventario',
   CLIENTES      = 'clientes',
+  /** Pedidos enviados por WhatsApp desde la tienda en línea (sin pago en
+   *  línea). Base del storefront público, igual de siempre disponible. */
+  STORE_ORDERS  = 'store-orders',
   COMPRAS       = 'compras',
   PROVEEDORES   = 'proveedores',
   SERVICIOS     = 'servicios',
@@ -61,28 +99,53 @@ export enum SystemModule {
   CONFIGURACION = 'configuracion',
   BRANCHES      = 'branches',
   EMPLEADOS     = 'empleados',
+  COMANDA            = 'comanda',
+  RESTAURANT_TABLES  = 'restaurant-tables',
+  CAJA_RESTAURANTE   = 'caja-restaurante',
+  INSUMOS            = 'insumos',
+  DINING_AREAS       = 'dining-areas',
+  /** Nodo de Caja: comandas completadas pasan a caja para cobro en vez de
+   *  cobrarse directo en la comandera. Off → cobro inmediato (comportamiento
+   *  histórico). Restaurant-only. */
+  CAJA_NODE          = 'caja-nodo',
   // Future verticals
   GYM           = 'gym',
+  KITCHEN       = 'kitchen',
+  DELIVERY      = 'delivery',
+  MEMBERSHIPS   = 'memberships',
+  ACCESS_CONTROL = 'access-control',
+  /** Editor de la tienda en línea (plantillas + secciones). No entra en
+   *  ningún plan ni vertical por defecto — plataforma lo habilita por
+   *  tenant a mano, igual que un addon. */
+  TIENDA_ONLINE = 'tienda-online',
 }
 
-// Modules included per plan tier (cumulative — each tier adds to the previous)
+// Modules included per plan tier (cumulative — each tier adds to the previous).
+// POS and COMANDA are NOT in the base plan: they are assigned as vertical-specific
+// extras at provision time via VERTICAL_DEFAULT_EXTRAS.
 const MODULES_BY_TIER: Array<{ plan: TenantPlan; modules: SystemModule[] }> = [
   {
     plan: 'FREE',
     modules: [
       SystemModule.DASHBOARD,
-      SystemModule.POS,
       SystemModule.VENTAS,
+      // Selling anything requires a product catalog — INVENTARIO can't be a
+      // paid upgrade while VENTAS is free, or FREE tenants could never create
+      // a sellable product in the first place.
+      SystemModule.INVENTARIO,
       SystemModule.CLIENTES,
+      SystemModule.STORE_ORDERS,
       SystemModule.CAJA,
       SystemModule.USUARIOS,
       SystemModule.ROLES,
       SystemModule.CONFIGURACION,
+      SystemModule.COMANDA,
+      SystemModule.CAJA_RESTAURANTE,
     ],
   },
   {
     plan: 'STARTER',
-    modules: [SystemModule.INVENTARIO],
+    modules: [SystemModule.INSUMOS],
   },
   {
     plan: 'PRO',
@@ -110,6 +173,33 @@ const MODULES_BY_TIER: Array<{ plan: TenantPlan; modules: SystemModule[] }> = [
 export function getModulesForPlan(plan: TenantPlan): SystemModule[] {
   const tierIndex = PLAN_ORDER.indexOf(plan)
   return MODULES_BY_TIER.filter((_, i) => i <= tierIndex).flatMap((t) => t.modules)
+}
+
+// Extras assigned automatically at tenant provision based on vertical.
+// These are stored in Tenant.enabledModules (additive on top of plan).
+export const VERTICAL_DEFAULT_EXTRAS: Record<BusinessVertical, string[]> = {
+  RETAIL:     [SystemModule.POS],
+  RESTAURANT: [SystemModule.COMANDA, SystemModule.RESTAURANT_TABLES, SystemModule.KITCHEN, SystemModule.DINING_AREAS],
+  GYM:        [],
+  SERVICES:   [],
+}
+
+// ─── Vertical / module compatibility ─────────────────────────────────────────
+// POS = quick-sale retail; COMANDA/KITCHEN = restaurant-only.
+// Extend this map as new verticals are added — no other file needs to change.
+
+export const VERTICAL_INCOMPATIBLE_MODULES: Partial<Record<BusinessVertical, SystemModule[]>> = {
+  RETAIL:     [SystemModule.COMANDA, SystemModule.RESTAURANT_TABLES, SystemModule.KITCHEN, SystemModule.DINING_AREAS, SystemModule.CAJA_NODE],
+  RESTAURANT: [SystemModule.POS],
+}
+
+export function isModuleCompatibleWithVertical(module: string, vertical: BusinessVertical): boolean {
+  const incompatible = (VERTICAL_INCOMPATIBLE_MODULES[vertical] ?? []) as unknown as string[]
+  return !incompatible.includes(module)
+}
+
+export function getAllowedModulesForVertical(modules: string[], vertical: BusinessVertical): string[] {
+  return modules.filter(m => isModuleCompatibleWithVertical(m, vertical))
 }
 
 // ─── Per-tenant access state (lives on TenantMembership, NOT on the global User)

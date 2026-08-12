@@ -1,0 +1,339 @@
+/* ==========================================================================
+   RootGarden · tienda.css
+   Botón flotante del pedido y panel lateral deslizable.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. Botón flotante
+   -------------------------------------------------------------------------- */
+
+.carrito-flotante {
+  position: fixed;
+  right: clamp(16px, 3vw, 32px);
+  bottom: calc(clamp(16px, 3vw, 32px) + env(safe-area-inset-bottom, 0px));
+  z-index: 70;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 24px;
+  border: 0;
+  border-radius: var(--radio-pastilla);
+  background: linear-gradient(135deg, var(--verde-700), var(--verde-900));
+  color: var(--blanco);
+  font-size: 0.95rem;
+  font-weight: 600;
+  box-shadow: 0 14px 34px rgba(27, 94, 32, 0.36);
+  transition: transform var(--transicion), box-shadow var(--transicion),
+    background-color var(--transicion);
+}
+
+.carrito-flotante:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 20px 44px rgba(27, 94, 32, 0.42);
+}
+
+.carrito-flotante__icono {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.carrito-flotante__contador {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding-inline: 7px;
+  border-radius: var(--radio-pastilla);
+  background: rgba(255, 255, 255, 0.22);
+  font-size: 0.84rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  transition: background-color var(--transicion);
+}
+
+.carrito-flotante.is-activo .carrito-flotante__contador {
+  background: var(--verde-200);
+  color: var(--verde-900);
+}
+
+/* --------------------------------------------------------------------------
+   2. Velo
+   -------------------------------------------------------------------------- */
+
+.carrito-velo {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(9, 26, 14, 0.48);
+  backdrop-filter: blur(3px);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--transicion), visibility var(--transicion);
+}
+
+.carrito-velo.is-visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* --------------------------------------------------------------------------
+   3. Panel deslizable
+   -------------------------------------------------------------------------- */
+
+.carrito-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 100;
+  width: min(430px, 100%);
+  height: 100%;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--verde-050);
+  box-shadow: -24px 0 60px rgba(9, 26, 14, 0.22);
+  transform: translateX(101%);
+  visibility: hidden;
+  transition: transform var(--transicion-lenta), visibility var(--transicion-lenta);
+}
+
+.carrito-panel.is-abierto {
+  transform: none;
+  visibility: visible;
+}
+
+.carrito-panel__cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px;
+  background: var(--blanco);
+  border-bottom: 1px solid var(--linea);
+}
+
+.carrito-panel__marca {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.carrito-panel__logo {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+}
+
+.carrito-panel__titulo {
+  font-size: 1.06rem;
+  font-weight: 600;
+  color: var(--verde-900);
+  line-height: 1.25;
+}
+
+.carrito-panel__sub {
+  font-size: 0.74rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--tinta-tenue);
+}
+
+.carrito-panel__cerrar {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border: 1px solid var(--linea);
+  border-radius: 50%;
+  background: var(--verde-050);
+  color: var(--verde-900);
+  font-size: 1.3rem;
+  line-height: 1;
+  transition: background-color var(--transicion), transform var(--transicion);
+}
+
+.carrito-panel__cerrar:hover {
+  background: var(--verde-200);
+  transform: rotate(90deg);
+}
+
+.carrito-panel__cuerpo {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 18px 22px;
+}
+
+/* --------------------------------------------------------------------------
+   4. Líneas del pedido
+   -------------------------------------------------------------------------- */
+
+.pedido-lista {
+  display: grid;
+  gap: 12px;
+}
+
+.pedido-item {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border-radius: var(--radio-sm);
+  background: var(--blanco);
+  border: 1px solid var(--linea);
+  box-shadow: var(--sombra-xs);
+}
+
+.pedido-item__nombre {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--verde-900);
+  line-height: 1.35;
+}
+
+.pedido-item__emoji {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.pedido-item__unitario {
+  margin-top: 3px;
+  font-size: 0.82rem;
+  color: var(--tinta-tenue);
+}
+
+.pedido-item__acciones {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.pedido-item__subtotal {
+  font-size: 1.06rem;
+  font-weight: 700;
+  color: var(--verde-900);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------------
+   5. Estado vacío del pedido
+   -------------------------------------------------------------------------- */
+
+.carrito-vacio {
+  display: grid;
+  place-items: center;
+  gap: 12px;
+  text-align: center;
+  padding: clamp(40px, 12vh, 90px) 16px;
+}
+
+.carrito-vacio__icono {
+  display: grid;
+  place-items: center;
+  width: 74px;
+  height: 74px;
+  border-radius: 26px;
+  background: linear-gradient(145deg, rgba(165, 214, 167, 0.5), rgba(102, 187, 106, 0.22));
+  font-size: 2rem;
+}
+
+.carrito-vacio__titulo {
+  font-size: 1.1rem;
+  color: var(--verde-900);
+}
+
+.carrito-vacio__texto {
+  font-size: 0.9rem;
+  color: var(--tinta-suave);
+  max-width: 34ch;
+}
+
+/* --------------------------------------------------------------------------
+   6. Resumen y acciones
+   -------------------------------------------------------------------------- */
+
+.carrito-panel__pie {
+  padding: 20px 22px calc(22px + env(safe-area-inset-bottom, 0px));
+  background: var(--blanco);
+  border-top: 1px solid var(--linea);
+  box-shadow: 0 -10px 30px rgba(18, 38, 26, 0.06);
+}
+
+.resumen {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.resumen__fila {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 0.92rem;
+  color: var(--tinta-suave);
+}
+
+.resumen__fila dd {
+  margin: 0;
+  font-weight: 600;
+  color: var(--tinta);
+  font-variant-numeric: tabular-nums;
+}
+
+.resumen__fila--total {
+  padding-top: 10px;
+  border-top: 1px dashed var(--linea-fuerte);
+  font-size: 1.02rem;
+  font-weight: 600;
+  color: var(--verde-900);
+}
+
+.resumen__fila--total dd {
+  font-size: 1.34rem;
+  font-weight: 700;
+  color: var(--verde-900);
+}
+
+.carrito-panel__acciones {
+  display: grid;
+  gap: 10px;
+}
+
+.carrito-panel__nota {
+  margin-top: 14px;
+  font-size: 0.76rem;
+  line-height: 1.55;
+  color: var(--tinta-tenue);
+  text-align: center;
+}
+
+/* --------------------------------------------------------------------------
+   7. Responsive
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 560px) {
+  .carrito-flotante {
+    left: clamp(16px, 4vw, 24px);
+    right: clamp(16px, 4vw, 24px);
+    justify-content: center;
+  }
+
+  .carrito-panel {
+    width: 100%;
+  }
+
+  .carrito-panel__cuerpo {
+    padding-inline: 16px;
+  }
+
+  .carrito-panel__pie {
+    padding-inline: 16px;
+  }
+}

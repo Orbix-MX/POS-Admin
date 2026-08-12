@@ -1,0 +1,64 @@
+---
+export const prerender = true;
+import AdminLayout from '../../layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="Ingresar · Panel de productos">
+  <div class="admin-shell admin-shell--centrado">
+    <div class="admin-tarjeta admin-tarjeta--login">
+      <img class="admin-tarjeta__logo" src="/assets/logo-mark.png" alt="Emblema" />
+      <h1 class="admin-titulo">Panel de productos</h1>
+      <p class="admin-subtitulo">Ingresa con tu cuenta del ERP</p>
+
+      <div class="admin-alerta admin-alerta--error" data-login-error hidden></div>
+
+      <form data-login-form novalidate>
+        <div class="campo">
+          <label class="campo__etiqueta" for="email">Correo</label>
+          <input class="campo__control" type="email" id="email" name="email" required autocomplete="username" />
+        </div>
+        <div class="campo">
+          <label class="campo__etiqueta" for="password">Contraseña</label>
+          <input class="campo__control" type="password" id="password" name="password" required autocomplete="current-password" />
+        </div>
+        <button type="submit" class="boton boton--primario boton--bloque" data-login-submit>
+          Ingresar
+        </button>
+      </form>
+    </div>
+  </div>
+</AdminLayout>
+
+<script>
+  import { login, getToken } from '../../lib/admin-session';
+
+  if (getToken()) {
+    window.location.href = '/admin';
+  }
+
+  const form = document.querySelector('[data-login-form]');
+  const errorBox = document.querySelector('[data-login-error]');
+  const submitBtn = document.querySelector('[data-login-submit]');
+
+  if (form instanceof HTMLFormElement && errorBox instanceof HTMLElement && submitBtn instanceof HTMLButtonElement) {
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      errorBox.hidden = true;
+      submitBtn.disabled = true;
+      const originalLabel = submitBtn.textContent;
+      submitBtn.textContent = 'Ingresando…';
+
+      const data = new FormData(form);
+
+      try {
+        await login(String(data.get('email') || ''), String(data.get('password') || ''));
+        window.location.href = '/admin';
+      } catch (err) {
+        errorBox.textContent = err instanceof Error ? err.message : 'No se pudo iniciar sesión.';
+        errorBox.hidden = false;
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalLabel;
+      }
+    });
+  }
+</script>

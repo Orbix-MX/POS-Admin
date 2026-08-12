@@ -14,15 +14,15 @@ import { RequirePermissions } from '../../../common/decorators/require-permissio
 export class BranchesController {
   constructor(private readonly branchesService: BranchesService) {}
 
-  // ── Read endpoints — accessible to ALL authenticated users (any plan) ──────
-
   @Get()
+  @RequirePermissions('branches:view')
   @ApiOperation({ summary: 'List branches for the current tenant' })
   findAll() {
     return this.branchesService.findAll();
   }
 
   @Get(':id')
+  @RequirePermissions('branches:view')
   @ApiOperation({ summary: 'Get a single branch' })
   findOne(@Param('id') id: string) {
     return this.branchesService.findOne(id);

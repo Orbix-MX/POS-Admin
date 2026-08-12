@@ -1,6 +1,6 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { PLAN_ORDER } from '@ventasy/types';
+import { PLAN_ORDER } from '@orbix/types';
 
 export const REQUIRE_PLAN_KEY = 'requirePlan';
 export const RequirePlan = (...plans: string[]) =>
@@ -14,7 +14,10 @@ export class RequirePlanGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const requiredPlans = this.reflector.get<string[]>(REQUIRE_PLAN_KEY, context.getHandler());
+    const requiredPlans = this.reflector.getAllAndOverride<string[]>(
+      REQUIRE_PLAN_KEY,
+      [context.getHandler(), context.getClass()],
+    );
     if (!requiredPlans?.length) return true;
 
     const request = context.switchToHttp().getRequest();

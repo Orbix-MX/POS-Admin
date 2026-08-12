@@ -3,6 +3,9 @@ import { api } from '@/lib/api-client'
 export interface TenantSettings {
   cashChangeCurrency?: 'MXN' | 'USD'
   layawayRefundWindowHours?: number
+  /** Comandas: pedir referencia de cuenta al abrir una orden de mostrador.
+   *  false → se abre directo con referencia "Mostrador", sin modal. Default true. */
+  requireCounterReference?: boolean
   [key: string]: unknown
 }
 

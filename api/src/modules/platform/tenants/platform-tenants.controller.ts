@@ -12,6 +12,8 @@ import {
   UpdateTenantPlanDto,
   UpdateTenantModulesDto,
   UpdateTenantLimitsDto,
+  UpdateTenantVerticalDto,
+  UpdateTenantProfileDto,
 } from './dto/update-tenant.dto';
 import { PlatformTenantsQueryDto } from './dto/platform-tenants-query.dto';
 import type { PlatformUser } from '@prisma/client';
@@ -91,6 +93,26 @@ export class PlatformTenantsController {
     @CurrentPlatformUser() actor: PlatformActor,
   ) {
     return this.platformTenantsService.updateLimits(id, dto, actor);
+  }
+
+  @Patch(':id/vertical')
+  @ApiOperation({ summary: 'Update tenant business vertical, POS mode, and enabled features' })
+  updateVertical(
+    @Param('id') id: string,
+    @Body() dto: UpdateTenantVerticalDto,
+    @CurrentPlatformUser() actor: PlatformActor,
+  ) {
+    return this.platformTenantsService.updateVertical(id, dto, actor);
+  }
+
+  @Patch(':id/profile')
+  @ApiOperation({ summary: 'Update tenant business profile (architecture base)' })
+  updateProfile(
+    @Param('id') id: string,
+    @Body() dto: UpdateTenantProfileDto,
+    @CurrentPlatformUser() actor: PlatformActor,
+  ) {
+    return this.platformTenantsService.updateProfile(id, dto, actor);
   }
 
   @Get(':id/audit')

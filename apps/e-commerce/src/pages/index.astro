@@ -1,0 +1,118 @@
+---
+import Base from '../layouts/Base.astro';
+import Hero from '../components/sections/Hero.astro';
+import ValueProps from '../components/sections/ValueProps.astro';
+import FeaturedCategories from '../components/sections/FeaturedCategories.astro';
+import Testimonials from '../components/sections/Testimonials.astro';
+import ContactFooter from '../components/sections/ContactFooter.astro';
+
+// SSR: esta es la única página no-prerenderizada del sitio. El Origin real
+// de esta request (Astro.url.origin) es exactamente el mismo valor que un
+// fetch de navegador habría mandado — así StoreDomainGuard resuelve el
+// tenant igual que en el resto del sitio, ahora del lado del servidor.
+const apiUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:3001';
+const origin = Astro.url.origin;
+
+let sections: Array<{ type: string; content: Record<string, unknown> }> = [];
+try {
+  const res = await fetch(`${apiUrl}/api/store/site`, { headers: { Origin: origin } });
+  if (res.ok) {
+    const data = await res.json();
+    sections = Array.isArray(data.sections) ? data.sections : [];
+  }
+} catch {
+  // Sin conexión con la API: la home cae al contenido estático de siempre.
+}
+
+// hasSite = este tenant SÍ tiene una plantilla asignada y usa el sistema de
+// secciones (al menos una sección activa). En ese caso cada sección se
+// muestra únicamente si el tenant la agregó — nada de contenido de
+// demostración "de relleno" para los tipos que no configuró. Solo un tenant
+// SIN tienda en línea en absoluto (hasSite = false) ve el sitio estático
+// completo de siempre, tal cual.
+const hasSite = sections.length > 0;
+
+const hero = sections.find((s) => s.type === 'HERO') ?? null;
+const featuredCategories = sections.find((s) => s.type === 'FEATURED_CATEGORIES') ?? null;
+const featuredProducts = sections.find((s) => s.type === 'FEATURED_PRODUCTS') ?? null;
+const valueProps = sections.find((s) => s.type === 'VALUE_PROPS') ?? null;
+const testimonials = sections.find((s) => s.type === 'TESTIMONIALS') ?? null;
+const contactFooter = sections.find((s) => s.type === 'CONTACT_FOOTER') ?? null;
+
+const mostrarCatalogo = !hasSite || Boolean(featuredProducts);
+const catalogoTitulo = (featuredProducts?.content?.title as string) || 'Selección destacada';
+const catalogoSubtitulo = (featuredProducts?.content?.subtitle as string) ||
+  'Una muestra de lo que tenemos disponible esta temporada. El catálogo completo incluye plantas, raíces y hardscape con precios actualizados.';
+
+// El <title>/og:title de la home ya se resuelve aquí, server-side, con el
+// título real que el tenant configuró en su HERO — así branding.js no
+// necesita (ni debe) pisarlo después con la plantilla genérica del cliente.
+const heroTitulo = hero?.content?.title as string | undefined;
+const pageTitle = heroTitulo || 'Naturaleza para tu acuario';
+---
+
+<Base
+  title={pageTitle}
+  titleIsFinal={Boolean(heroTitulo)}
+  description="Plantas acuáticas cultivadas, raíz de manzanita y hardscape para aquascaping. Asesoría y pedidos por WhatsApp en Ciudad Juárez."
+  path="/"
+  pagina="inicio"
+  headerSolid={false}
+>
+  <!-- ================= PORTADA ================= -->
+  <Hero
+    content={hero?.content as { title?: string; subtitle?: string; backgroundImageUrl?: string } | null}
+    hasSite={hasSite}
+  />
+
+  <!-- ================= ESPECIALIDADES ================= -->
+  <FeaturedCategories
+    content={featuredCategories?.content as { title?: string; subtitle?: string; items?: Array<{ icon?: string; title: string; text: string }> } | null}
+    hasSite={hasSite}
+  />
+
+  <!-- ================= CATÁLOGO DESTACADO ================= -->
+  {mostrarCatalogo && (
+    <section class="seccion" id="catalogo">
+      <div class="contenedor">
+        <div class="seccion__encabezado revelar">
+          <span class="seccion__etiqueta">Catálogo</span>
+          <h2 class="seccion__titulo">{catalogoTitulo}</h2>
+          <p class="seccion__descripcion">{catalogoSubtitulo}</p>
+        </div>
+
+        <div class="grid-productos" data-catalogo></div>
+
+        <div class="estado" data-catalogo-error hidden>
+          <div class="estado__icono" aria-hidden="true">🌱</div>
+          <h3 class="estado__titulo">No pudimos cargar el catálogo</h3>
+          <p class="estado__texto">
+            Revisa tu conexión y vuelve a intentarlo. Si el problema continúa, escríbenos por
+            WhatsApp y con gusto te compartimos la disponibilidad.
+          </p>
+          <a class="boton boton--primario" href="https://wa.me/526562016886">Escribir por WhatsApp</a>
+        </div>
+
+        <div class="portada__acciones revelar" style="margin-top: 48px">
+          <a class="boton boton--primario" href="/catalogo">Ver catálogo completo</a>
+          <a class="boton boton--contorno" href="/tienda">Ir a la tienda</a>
+        </div>
+      </div>
+    </section>
+  )}
+
+  <!-- ================= VALORES ================= -->
+  <ValueProps
+    items={valueProps?.content?.items as Array<{ icon?: string; title: string; text: string }> | null}
+    hasSite={hasSite}
+  />
+
+  <!-- ================= TESTIMONIOS (solo si el tenant los configuró) ================= -->
+  <Testimonials content={testimonials?.content as { title?: string; subtitle?: string; items?: Array<{ author: string; quote: string; avatarUrl?: string }> } | null} />
+
+  <!-- ================= FRANJA DE CONTACTO ================= -->
+  <ContactFooter
+    content={contactFooter?.content as { title?: string; subtitle?: string; whatsappNumber?: string } | null}
+    hasSite={hasSite}
+  />
+</Base>
