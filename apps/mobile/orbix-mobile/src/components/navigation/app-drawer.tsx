@@ -5,8 +5,8 @@
  * standard drawer motion rather than a plain modal fade.
  *
  * Most module rows are still prototype placeholders ("Próx." chip), not wired
- * to routes. Inicio, Inventario (products) and Configuración are the live
- * destinations.
+ * to routes. Inicio, Inventario (products), Ventas, Clientes and Configuración
+ * are the live destinations.
  */
 import { useRouter } from 'expo-router';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
@@ -55,7 +55,7 @@ interface DrawerModule {
   labelKey: 'ventas' | 'inventario' | 'clientes' | 'empleados' | 'reportes' | 'caja';
   Icon: ComponentType<IconProps>;
   /** Live destination; undefined rows render as "Próx." placeholders. */
-  route?: '/(app)/products' | '/(app)/pos';
+  route?: '/(app)/products' | '/(app)/pos' | '/(app)/customers';
 }
 
 const STATIC_MODULES: Omit<DrawerModule, 'route'>[] = [
@@ -172,13 +172,14 @@ function AppDrawerComponent({ visible, onClose }: AppDrawerProps) {
     if (visible) void refresh();
   }, [visible, refresh]);
 
-  // Inventario and Ventas are wired to real screens; each gated on its own
-  // permission, not just presence in the list.
+  // Inventario, Ventas and Clientes are wired to real screens; each gated on
+  // its own permission, not just presence in the list.
   const drawerModules = useMemo<DrawerModule[]>(
     () =>
       STATIC_MODULES.map((mod) => {
         if (mod.key === 'inventario' && can('products:view')) return { ...mod, route: '/(app)/products' as const };
         if (mod.key === 'ventas' && can('orders:create')) return { ...mod, route: '/(app)/pos' as const };
+        if (mod.key === 'clientes' && can('customers:view')) return { ...mod, route: '/(app)/customers' as const };
         return mod;
       }),
     [can],
