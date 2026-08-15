@@ -9,3 +9,17 @@ playwright-report
 .turbo
 *.log
 .vs/
+
+# Lockfiles de npm: este monorepo usa pnpm
+package-lock.json
+
+# Caches y archivos generados por herramientas
+*.tsbuildinfo
+.expo/
+expo-env.d.ts
+
+# TEMP local para expo prebuild (extraer el template en %TEMP% mata el proceso)
+.tmpexpo/
+
+# Config local de Claude Code (settings.json sí se comparte)
+.claude/settings.local.json
