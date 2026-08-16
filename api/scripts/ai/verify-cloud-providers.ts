@@ -79,7 +79,7 @@ async function main(): Promise<void> {
         baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
         apiKey: process.env.GEMINI_API_KEY,
       }),
-      'gemini-2.5-flash',
+      'gemini-3.7-flash',
     );
   } else if (!target || target === 'gemini') {
     console.log('\nGEMINI_API_KEY no está definida — se omite Gemini.');
