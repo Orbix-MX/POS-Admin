@@ -5,6 +5,7 @@ import { AiExecutionService } from './gateway/ai-execution.service';
 import { AiProviderRegistry } from './providers/ai-provider.registry';
 import { MockProvider } from './providers/mock/mock.provider';
 import { OpenAICompatibleProvider } from './providers/openai-compatible/openai-compatible.provider';
+import { AnthropicProvider } from './providers/anthropic/anthropic.provider';
 import { PromptRegistry } from './prompts/prompt-registry.service';
 import { PromptRenderer } from './prompts/prompt-renderer.service';
 import { AiSchemaRegistry } from './schemas/ai-schema.registry';
@@ -15,6 +16,7 @@ import { AiUsageRecorder } from './usage/ai-usage.recorder';
 import { AiCostCalculator } from './usage/ai-cost.calculator';
 import { AiQuotaService } from './limits/ai-quota.service';
 import { AiRateLimitService } from './limits/ai-rate-limit.service';
+import { AiBudgetService } from './limits/ai-budget.service';
 import { AiMetrics } from './observability/ai-metrics';
 import { MetricsController } from './observability/metrics.controller';
 import { AiProviderHealthMonitor } from './observability/ai-provider-health.monitor';
@@ -32,7 +34,11 @@ import { AiProviderHealthMonitor } from './observability/ai-provider-health.moni
  * qué proveedores existen es una decisión de arranque (ADR-0025).
  * `OpenAICompatibleProvider` (Fase 2) se registra bajo el id `'local'` solo
  * si `AI_LOCAL_BASE_URL` está configurado — en desarrollo, Ollama; en
- * producción, `llama-server`.
+ * producción, `llama-server`. Fase 4 agrega `anthropic` (adaptador propio,
+ * `ANTHROPIC_API_KEY`) y `gemini` (reusa `OpenAICompatibleProvider` contra
+ * la capa de compatibilidad OpenAI de Google, `GEMINI_API_KEY`) — ambos
+ * condicionales a que exista su credencial; ningún binding de feature los
+ * usa todavía (D-06 no se reabre aquí).
  */
 @Module({
   controllers: [MetricsController],
@@ -58,6 +64,22 @@ import { AiProviderHealthMonitor } from './observability/ai-provider-health.moni
           );
         }
 
+        const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+        if (anthropicApiKey) {
+          registry.register(new AnthropicProvider({ id: 'anthropic', apiKey: anthropicApiKey }));
+        }
+
+        const geminiApiKey = process.env.GEMINI_API_KEY;
+        if (geminiApiKey) {
+          registry.register(
+            new OpenAICompatibleProvider({
+              id: 'gemini',
+              baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+              apiKey: geminiApiKey,
+            }),
+          );
+        }
+
         return registry;
       },
       inject: [MockProvider],
@@ -78,6 +100,7 @@ import { AiProviderHealthMonitor } from './observability/ai-provider-health.moni
     AiCostCalculator,
     AiQuotaService,
     AiRateLimitService,
+    AiBudgetService,
     AiMetrics,
     AiProviderHealthMonitor,
   ],

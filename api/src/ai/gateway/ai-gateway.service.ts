@@ -6,6 +6,7 @@ import { AiRequestValidator } from './ai-request.validator';
 import { AiExecutionService } from './ai-execution.service';
 import { AiQuotaService } from '../limits/ai-quota.service';
 import { AiRateLimitService } from '../limits/ai-rate-limit.service';
+import { AiBudgetService } from '../limits/ai-budget.service';
 import { PromptRegistry } from '../prompts/prompt-registry.service';
 import { PromptRenderer } from '../prompts/prompt-renderer.service';
 import { AiSchemaRegistry } from '../schemas/ai-schema.registry';
@@ -41,6 +42,7 @@ export class AiGatewayService {
     private readonly validator: AiRequestValidator,
     private readonly quota: AiQuotaService,
     private readonly rateLimit: AiRateLimitService,
+    private readonly budget: AiBudgetService,
     private readonly promptRegistry: PromptRegistry,
     private readonly promptRenderer: PromptRenderer,
     private readonly schemaRegistry: AiSchemaRegistry,
@@ -88,6 +90,7 @@ export class AiGatewayService {
       this.rateLimit.acquireTenantSlot(tenantId);
       tenantSlotAcquired = true;
       await this.quota.assertCanInvoke(tenantId, featureDef.key);
+      this.budget.assertWithinBudget(binding.modelKey);
     } catch (err) {
       if (tenantSlotAcquired) this.rateLimit.releaseTenantSlot(tenantId);
       await this.recordRejection(err, {
@@ -167,6 +170,7 @@ export class AiGatewayService {
 
     let attemptNumber = 1;
     let chatResult: ChatResult;
+    let attemptedCostMicros = 0n;
 
     try {
       chatResult = await this.execution.execute(provider, chatReq, ctx);
@@ -178,6 +182,8 @@ export class AiGatewayService {
       });
       throw err;
     }
+
+    attemptedCostMicros += this.costCalculator.estimate(binding.modelKey, chatResult.inputTokens ?? 0, chatResult.outputTokens ?? 0);
 
     let parsed = this.structuredOutput.parse<TOutput>(chatResult.content, schemaDef.schema);
     let degradations: AiDegradation[] = [];
@@ -198,18 +204,24 @@ export class AiGatewayService {
         throw err;
       }
 
+      attemptedCostMicros += this.costCalculator.estimate(binding.modelKey, chatResult.inputTokens ?? 0, chatResult.outputTokens ?? 0);
       parsed = this.structuredOutput.parse<TOutput>(chatResult.content, schemaDef.schema);
 
       if (!parsed.ok) {
         this.metrics.recordOutputInvalid(featureKey);
         const latencyMsTotal = Date.now() - startedAt;
+        // Ambos intentos llegaron al proveedor y consumieron tokens
+        // facturables — se registra el costo real, no 0n (hueco corregido
+        // en Fase 4: con un proveedor de pago, un kill switch que no cuenta
+        // el gasto de los intentos fallidos no es un kill switch real).
         await this.usageRecorder.recordFailure({
           requestId, tenantId, branchId, userId, featureKey,
           promptVersion: binding.promptVersion, schemaVersion: schemaDef.version,
           providerId: provider.id, modelKey: binding.modelKey, attemptNumber,
           status: 'OUTPUT_INVALID', errorCode: 'AI_OUTPUT_INVALID', errorMessage: parsed.errorMessage,
-          latencyMsTotal, countsTowardLimit: true,
+          latencyMsTotal, countsTowardLimit: true, estimatedCostMicros: attemptedCostMicros,
         });
+        this.budget.recordSpend(attemptedCostMicros);
         this.metrics.recordRequest(featureKey, 'OUTPUT_INVALID');
         this.metrics.recordDuration(featureKey, latencyMsTotal);
         throw new AiException('AI_OUTPUT_INVALID', 'No se pudo interpretar la respuesta del asistente.');
@@ -228,11 +240,7 @@ export class AiGatewayService {
       inputTokens: chatResult.inputTokens,
       outputTokens: chatResult.outputTokens,
       totalTokens: chatResult.totalTokens ?? this.sumTokens(chatResult),
-      estimatedCostMicros: this.costCalculator.estimate(
-        binding.modelKey,
-        chatResult.inputTokens ?? 0,
-        chatResult.outputTokens ?? 0,
-      ),
+      estimatedCostMicros: attemptedCostMicros,
       latencyMsTotal,
       latencyMsProvider: chatResult.latencyMsProvider,
     };
@@ -242,6 +250,7 @@ export class AiGatewayService {
     await this.usageRecorder.recordSuccess({
       requestId, tenantId, branchId, userId, featureKey, usage, degradations, status,
     });
+    this.budget.recordSpend(attemptedCostMicros);
 
     this.metrics.recordRequest(featureKey, status);
     this.metrics.recordDuration(featureKey, latencyMsTotal);
@@ -267,7 +276,12 @@ export class AiGatewayService {
   ): Promise<void> {
     if (!(err instanceof AiException)) return; // programación, no runtime — nada que registrar como evento de negocio.
 
-    const status = err.code === 'AI_QUOTA_EXCEEDED' ? 'QUOTA_EXCEEDED' : 'RATE_LIMITED';
+    const status =
+      err.code === 'AI_QUOTA_EXCEEDED'
+        ? 'QUOTA_EXCEEDED'
+        : err.code === 'AI_BUDGET_EXCEEDED'
+          ? 'BUDGET_EXCEEDED'
+          : 'RATE_LIMITED';
     const latencyMsTotal = Date.now() - ctx.startedAt;
 
     await this.usageRecorder.recordFailure({

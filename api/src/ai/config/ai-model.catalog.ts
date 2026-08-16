@@ -50,6 +50,35 @@ export const AI_MODEL_CATALOG: Readonly<Record<string, AiModelCatalogEntry>> = {
     costPerMTokMicrosIn: null,
     costPerMTokMicrosOut: null,
   },
+  /**
+   * Fase 4: primer proveedor de pago. Tarifas confirmadas contra
+   * platform.claude.com/docs/en/about-claude/pricing el 16 ago 2026 —
+   * Claude Haiku 4.5, $1/MTok entrada, $5/MTok salida (sin caché). Ningún
+   * binding de feature apunta aquí todavía: el registro habilita al
+   * proveedor y al kill switch de gasto, no re-enruta `products.draft`.
+   */
+  'claude-haiku-4-5-20251001': {
+    providerId: 'anthropic',
+    modelKey: 'claude-haiku-4-5-20251001',
+    capabilities: [AICapability.CHAT, AICapability.STRUCTURED_NATIVE],
+    contextWindow: 200_000,
+    costPerMTokMicrosIn: 1_000_000,
+    costPerMTokMicrosOut: 5_000_000,
+  },
+  /**
+   * Fase 4. Tarifas confirmadas contra ai.google.dev/gemini-api/docs/pricing
+   * el 16 ago 2026 — Gemini 2.5 Flash, $0.30/MTok entrada, $2.50/MTok
+   * salida, nivel estándar de pago. Se registra vía `OpenAICompatibleProvider`
+   * (capa de compatibilidad OpenAI de Google) — sin adaptador propio.
+   */
+  'gemini-2.5-flash': {
+    providerId: 'gemini',
+    modelKey: 'gemini-2.5-flash',
+    capabilities: [AICapability.CHAT, AICapability.STRUCTURED_NATIVE],
+    contextWindow: 1_000_000,
+    costPerMTokMicrosIn: 300_000,
+    costPerMTokMicrosOut: 2_500_000,
+  },
 };
 
 export function getModelCatalogEntry(modelKey: string): AiModelCatalogEntry | undefined {

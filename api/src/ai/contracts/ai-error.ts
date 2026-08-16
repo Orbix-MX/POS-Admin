@@ -3,7 +3,11 @@ import { HttpException, HttpStatus } from '@nestjs/common';
 /**
  * Códigos de error tipados de la plataforma de IA — §12 del documento de
  * arquitectura. Sin fallback en la v1 (ADR-0027): toda invocación termina en
- * éxito o en uno de estos seis códigos, nunca en un 500 genérico.
+ * éxito o en uno de estos códigos, nunca en un 500 genérico.
+ *
+ * `AI_BUDGET_EXCEEDED` (Fase 4) es distinto de `AI_QUOTA_EXCEEDED`: la cuota
+ * limita a un tenant, el presupuesto es el kill switch de gasto de toda la
+ * plataforma frente a los proveedores de pago.
  */
 export type AiErrorCode =
   | 'AI_FEATURE_DISABLED'
@@ -11,7 +15,8 @@ export type AiErrorCode =
   | 'AI_RATE_LIMITED'
   | 'AI_PROVIDER_UNAVAILABLE'
   | 'AI_TIMEOUT'
-  | 'AI_OUTPUT_INVALID';
+  | 'AI_OUTPUT_INVALID'
+  | 'AI_BUDGET_EXCEEDED';
 
 const AI_ERROR_HTTP_STATUS: Record<AiErrorCode, HttpStatus> = {
   AI_FEATURE_DISABLED: HttpStatus.FORBIDDEN,
@@ -20,6 +25,7 @@ const AI_ERROR_HTTP_STATUS: Record<AiErrorCode, HttpStatus> = {
   AI_PROVIDER_UNAVAILABLE: HttpStatus.SERVICE_UNAVAILABLE,
   AI_TIMEOUT: HttpStatus.GATEWAY_TIMEOUT,
   AI_OUTPUT_INVALID: HttpStatus.UNPROCESSABLE_ENTITY,
+  AI_BUDGET_EXCEEDED: HttpStatus.TOO_MANY_REQUESTS,
 };
 
 /**

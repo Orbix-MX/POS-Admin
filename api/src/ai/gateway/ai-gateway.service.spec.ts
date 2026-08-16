@@ -15,6 +15,7 @@ import { AiUsageRecorder } from '../usage/ai-usage.recorder';
 import { AiCostCalculator } from '../usage/ai-cost.calculator';
 import { AiQuotaService } from '../limits/ai-quota.service';
 import { AiRateLimitService } from '../limits/ai-rate-limit.service';
+import { AiBudgetService } from '../limits/ai-budget.service';
 import { AiMetrics } from '../observability/ai-metrics';
 import { TenantContextService } from '../../common/context/tenant-context.service';
 import { AuditContextService } from '../../common/context/audit-context.service';
@@ -64,6 +65,7 @@ describe('AiGatewayService (integración con MockProvider)', () => {
     AiCostCalculator,
     AiQuotaService,
     AiRateLimitService,
+    AiBudgetService,
     AiMetrics,
     { provide: PrismaService, useValue: mockPrisma },
   ];
@@ -72,6 +74,9 @@ describe('AiGatewayService (integración con MockProvider)', () => {
     jest.clearAllMocks();
     mockPrisma.aiUsageCounter.findUnique.mockResolvedValue(null);
     mockPrisma.tenant.findUniqueOrThrow.mockResolvedValue({ plan: 'PRO' });
+    (mockPrisma as unknown as { aiUsageEvent: { aggregate: jest.Mock } }).aiUsageEvent.aggregate = jest
+      .fn()
+      .mockResolvedValue({ _sum: { estimatedCostMicros: 0n } });
 
     tenantContext = {
       requireTenantId: jest.fn().mockReturnValue('tenant-1'),

@@ -1931,7 +1931,7 @@ flowchart LR
 
   <p class="lede">
     Los identificadores se mantienen estables respecto de la revisión 1 para que los ADRs y
-    los PR que ya los citen sigan siendo válidos. Trece decisiones activas.
+    los PR que ya los citen sigan siendo válidos. Dieciséis decisiones activas.
   </p>
 
   <div class="tablewrap">
@@ -1954,6 +1954,9 @@ flowchart LR
         <tr><td>D-16</td><td><b>Puerto AIProvider con un solo proveedor</b></td><td>Sí, innegociable. Validado por tener <b>dos</b> implementadores reales: local y mock</td><td><span class="pill now">nueva</span></td></tr>
         <tr><td>D-17</td><td><b>Binding en vez de routing</b></td><td>Constante en código + override por entorno. Sin tablas de routing</td><td><span class="pill now">nueva</span></td></tr>
         <tr><td>D-18</td><td><b>Sin fallback</b></td><td>Error tipado, observable y explicado. Nunca se intenta otro proveedor</td><td><span class="pill now">nueva</span></td></tr>
+        <tr><td>D-19</td><td><b>Gemini reutiliza <code>OpenAICompatibleProvider</code></b></td><td>La capa de compatibilidad OpenAI de Google (confirmada oficialmente) hace innecesario un adaptador propio — un registro más en <code>AiProviderRegistry</code>, igual que <code>local</code></td><td><span class="pill now">nueva · Fase 4</span></td></tr>
+        <tr><td>D-20</td><td><b>Presupuesto vs. cuota, códigos separados</b></td><td><code>AI_BUDGET_EXCEEDED</code> (kill switch de toda la plataforma) es distinto de <code>AI_QUOTA_EXCEEDED</code> (límite de un tenant) — el cliente necesita distinguirlos</td><td><span class="pill now">nueva · Fase 4</span></td></tr>
+        <tr><td>D-21</td><td><b>Rehidratación del presupuesto al arrancar</b></td><td><code>AiBudgetService</code> suma <code>ai_usage_events</code> del día/mes en curso en <code>onModuleInit</code>; un contador solo en memoria fallaría abierto tras un reinicio</td><td><span class="pill now">nueva · Fase 4</span></td></tr>
       </tbody>
     </table>
   </div>
@@ -1987,10 +1990,8 @@ flowchart LR
       <tbody>
         <tr><td>D-09</td><td><b>Redis</b></td><td>Haya más de una instancia de API, o una cola real de lotes</td><td>Interfaces de límite y caché con implementación en memoria y contrato compatible</td></tr>
         <tr><td>D-11</td><td><b>Autoridad de Device AI</b></td><td>Exista una feature de alto volumen, tolerante y offline</td><td>Manifiesto publicado por el servidor; el dispositivo obedece</td></tr>
-        <tr><td>—</td><td><b>Segundo proveedor</b> (OpenAI / Anthropic)</td><td>Fase 4 · calidad o latencia del local resulten insuficientes con datos del piloto</td><td>Adaptador propio con el SDK oficial; structured output nativo vía tool schema</td></tr>
-        <tr><td>—</td><td><b>Routing multiproveedor</b></td><td>Junto con el segundo proveedor</td><td>Precedencia TENANT &gt; PLAN &gt; GLOBAL sobre tabla <code>ai_routing_policy</code></td></tr>
-        <tr><td>—</td><td><b>Fallback y circuit breaker</b></td><td>Junto con el segundo proveedor</td><td>Taxonomía de fallos con destino; solo infraestructura, nunca política ni presupuesto; un salto máximo</td></tr>
-        <tr><td>—</td><td><b>Kill switch de gasto</b></td><td><b>En la misma entrega</b> que el primer proveedor de pago</td><td>Tope diario y mensual global, evaluado antes de cada llamada facturable</td></tr>
+        <tr><td>—</td><td><b>Routing multiproveedor</b></td><td>Fase 4 cerró el núcleo (proveedores + kill switch); routing queda para cuando la precedencia empiece a significar algo</td><td>Precedencia TENANT &gt; PLAN &gt; GLOBAL sobre tabla <code>ai_routing_policy</code></td></tr>
+        <tr><td>—</td><td><b>Fallback y circuit breaker</b></td><td>Sin routing todavía no hay un destino alternativo al que saltar</td><td>Taxonomía de fallos con destino; solo infraestructura, nunca política ni presupuesto; un salto máximo</td></tr>
         <tr><td>—</td><td><b>Créditos comerciales y facturación</b></td><td>Con tres meses de consumo real del piloto</td><td>Crédito = unidad de trabajo, no token; conversión por clase de tarea</td></tr>
         <tr><td>—</td><td><b>BYOK por tenant</b></td><td>Lo pida un cliente ENTERPRISE</td><td>Cifrado sobre-cifrado AES-256-GCM, <code>keyVersion</code> para rotación</td></tr>
         <tr><td>—</td><td><b>GPU y vLLM</b></td><td>p95 inaceptable con el prompt ya optimizado, o volumen que lo justifique</td><td>RTX 4000 Ada / L4, modelo de 8 B AWQ, ~20–50 concurrentes</td></tr>
@@ -2150,18 +2151,18 @@ flowchart LR
     </div>
   </div>
 
-  <div class="phase deferred">
+  <div class="phase">
     <div class="p-head">
-      <span class="p-no">Fase 4 · futura</span>
-      <span class="p-name">Proveedores externos</span>
-      <span class="p-meta">documentada, no planificada</span>
+      <span class="p-no">Fase 4 · en curso</span>
+      <span class="p-name">Proveedores externos (núcleo)</span>
+      <span class="p-meta">Anthropic + Gemini registrados · kill switch de gasto activo</span>
     </div>
     <div class="p-body">
       <dl>
-        <dt>Objetivo</dt><dd>Añadir un segundo proveedor sin tocar los módulos de negocio — y demostrarlo.</dd>
-        <dt>Alcance previsto</dt><dd><code>AnthropicProvider</code> u <code>OpenAIProvider</code> · tabla <code>ai_model_catalog</code> con precios reales · tabla <code>ai_routing_policy</code> con precedencia · <b><code>AiBudgetService</code> con kill switch, en esta misma entrega</b> · gestión de secretos y BYOK · política PII con enforcement en el router · fallback y circuit breaker · costo real por proveedor.</dd>
-        <dt>Disparador</dt><dd>Que la calidad o la latencia del local resulten insuficientes con datos del piloto, o que aparezca una feature que el local no pueda atender.</dd>
-        <dt>Criterio de aceptación</dt><dd><b>Cero líneas modificadas en <code>src/modules/retail/products/</code></b> al cambiar la ruta de local al nuevo proveedor. Si esto no se cumple, la abstracción falló y hay que corregirla, no rodearla.</dd>
+        <dt>Objetivo</dt><dd>Habilitar el primer proveedor de pago sin re-enrutar ninguna feature existente, con el kill switch de gasto activo desde el primer día (regla de la tabla de decisiones diferidas: entra en la misma entrega que el primer proveedor de pago).</dd>
+        <dt>Alcance de esta entrega</dt><dd><code>AnthropicProvider</code> (adaptador propio — Messages API, salida estructurada vía <i>tool forcing</i>) · <code>gemini</code> registrado reutilizando <code>OpenAICompatibleProvider</code> contra la capa de compatibilidad OpenAI de Google (confirmada oficialmente, cero adaptador nuevo) · dos entradas nuevas en el catálogo de modelos con tarifas reales (Claude Haiku 4.5, Gemini 2.5 Flash) · <code>AiBudgetService</code> con rehidratación desde <code>ai_usage_events</code> en <code>onModuleInit</code> y tope diario/mensual configurable · código de error <code>AI_BUDGET_EXCEEDED</code> (7º código, antes había seis) · se corrige un hueco de contabilidad pre-existente: la rama <code>OUTPUT_INVALID</code> ya registra el costo real de los intentos fallidos, no <code>0n</code>.</dd>
+        <dt>Explícitamente fuera de esta entrega</dt><dd>Routing multiproveedor, fallback y circuit breaker, BYOK, enforcement de PII, cualquier feature re-enrutada a cloud (<code>products.draft</code> sigue en <code>local</code>, D-06 no se reabre) — quedan en "Decisiones diferidas", sin disparador propio todavía.</dd>
+        <dt>Criterio de aceptación</dt><dd><b>Cero líneas modificadas en <code>src/modules/retail/products/</code></b> al registrar los proveedores nuevos — se habilitan, no se enrutan. Suite completa en verde; verificación manual contra credenciales reales antes de dar por buenos los adaptadores.</dd>
       </dl>
     </div>
   </div>

@@ -31,6 +31,13 @@ export interface RecordFailureInput {
   latencyMsTotal: number;
   /** false para AI_QUOTA_EXCEEDED / AI_RATE_LIMITED — ver AiUsageRepository. */
   countsTowardLimit: boolean;
+  /**
+   * Costo real del intento que sí llegó al proveedor (p. ej. OUTPUT_INVALID:
+   * dos intentos, dos respuestas facturables). `0n` — el default — para
+   * rechazos que nunca llegaron al proveedor (cuota/ráfaga) o fallos de
+   * red/timeout donde normalmente no hay tokens facturados (Fase 4).
+   */
+  estimatedCostMicros?: bigint;
 }
 
 /**
@@ -81,7 +88,7 @@ export class AiUsageRecorder {
       modelKey: input.modelKey,
       attemptNumber: input.attemptNumber,
       degradations: [],
-      estimatedCostMicros: 0n,
+      estimatedCostMicros: input.estimatedCostMicros ?? 0n,
       latencyMsTotal: input.latencyMsTotal,
       status: input.status,
       errorCode: input.errorCode,
