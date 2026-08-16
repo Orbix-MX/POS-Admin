@@ -72,10 +72,13 @@ interface Fase3Score {
 }
 
 async function main(): Promise<void> {
-  const baseUrl = process.env.AI_LOCAL_BASE_URL ?? 'http://localhost:11434';
+  // AI_EVAL_BASE_URL/AI_EVAL_API_KEY permiten apuntar a cualquier runtime
+  // OpenAI-compatible (Gemini incluido) sin tocar el default de local — Fase 4.
+  const baseUrl = process.env.AI_EVAL_BASE_URL ?? process.env.AI_LOCAL_BASE_URL ?? 'http://localhost:11434';
+  const apiKey = process.env.AI_EVAL_API_KEY;
   const model = process.argv[2] ?? 'llama3.2:latest';
 
-  const provider = new OpenAICompatibleProvider({ id: 'eval-fase3', baseUrl });
+  const provider = new OpenAICompatibleProvider({ id: 'eval-fase3', baseUrl, apiKey });
   const health = await provider.health();
   if (!health.up) {
     console.error(`El servidor no responde en ${baseUrl}. Abortando.`);

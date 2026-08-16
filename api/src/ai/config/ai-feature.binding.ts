@@ -25,6 +25,11 @@ export const AI_FEATURE_BINDINGS: Readonly<Record<string, AiFeatureBinding>> = {
   // D-06 cerrada: Llama-3.2-3B-Instruct, servido desde Ollama en desarrollo
   // (AI_LOCAL_BASE_URL). Sin servidor de producción todavía — ver §Fase 2
   // del documento de arquitectura. Override de modelo con AI_PRODUCTS_DRAFT_MODEL.
+  //
+  // Se probó Gemini 3.7 Flash aquí el 16 ago 2026 vía evaluate-fase3.ts: la
+  // corrida chocó con el rate limit del tier gratis (429 en 24/30 casos) y no
+  // dio evidencia de calidad utilizable. D-06 no se reabrió. Repetir la
+  // comparación cuando la cuenta de Google tenga billing/tier pagado.
   'products.draft': {
     providerId: 'local',
     modelKey: 'llama3.2:latest',
