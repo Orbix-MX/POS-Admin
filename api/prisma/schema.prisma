@@ -198,6 +198,9 @@ model Tenant {
   site    TenantSite?
   storeWhatsappOrders StoreWhatsappOrder[]
 
+  aiUsageEvents   AiUsageEvent[]
+  aiUsageCounters AiUsageCounter[]
+
   @@map("tenants")
 }
 
@@ -324,6 +327,8 @@ model User {
   lastBranchSelected Branch? @relation("UserLastBranch", fields: [lastBranchSelectedId], references: [id], onDelete: SetNull)
 
   tenantsOwned Tenant[] @relation("TenantOwner")
+
+  aiUsageEvents AiUsageEvent[] @relation("AiUsageEventUser")
 
   @@map("users")
 }
@@ -1382,6 +1387,8 @@ model Branch {
 
   usersLastSelected User[] @relation("UserLastBranch")
 
+  aiUsageEvents AiUsageEvent[]
+
   @@unique([tenantId, code])
   @@map("branches")
 }
@@ -2371,4 +2378,103 @@ model PrinterConfig {
   @@index([tenantId])
   @@index([branchId])
   @@map("printer_configs")
+}
+
+// ============= AI Platform (usage) =============
+// Fase 1 — AI Core (Orbix AI Platform, revisión 2). Ver ADR-0025..0027 y
+// mcp-brain/vault (Decisions). Solo dos modelos en v1: el registro append-only
+// de cada invocación y el contador agregado que respalda la verificación O(1)
+// de límites. Sin tablas de routing ni de créditos comerciales — ver D-17.
+
+enum AiUsageStatus {
+  SUCCESS
+  SCHEMA_REPAIRED
+  OUTPUT_INVALID
+  PROVIDER_ERROR
+  TIMEOUT
+  RATE_LIMITED
+  QUOTA_EXCEEDED
+  CANCELLED
+}
+
+enum AiUsageOutcome {
+  PENDING
+  ACCEPTED
+  EDITED
+  DISCARDED
+}
+
+// Append-only. Una fila por intento (incluidos los fallidos — ver D-18: los
+// fallos también se registran, si no la tasa de error es invisible).
+// Particionado por mes: pendiente como trabajo operativo de infraestructura
+// (native partitioning o pg_partman) cuando el volumen lo justifique; en v1
+// los índices por (tenantId, createdAt) cubren las consultas de reporte y
+// retención sin requerirlo.
+model AiUsageEvent {
+  id        String  @id @default(uuid())
+  tenantId  String
+  branchId  String?
+  userId    String?
+  requestId String  @unique
+
+  featureKey     String
+  promptVersion  Int
+  schemaVersion  Int
+
+  providerId      String
+  modelKey        String
+  attemptNumber   Int      @default(1)
+  degradations    String[] @default([])
+
+  inputTokens  Int?
+  outputTokens Int?
+  totalTokens  Int?
+
+  // Micro-USD (1 USD = 1_000_000). Nunca float — ver D-08 y §13 del documento
+  // de arquitectura: es dato financiero, los errores de redondeo no son
+  // aceptables en algo que algún día puede llegar a una factura.
+  estimatedCostMicros BigInt @default(0)
+
+  latencyMsTotal    Int?
+  latencyMsProvider Int?
+
+  status       AiUsageStatus
+  errorCode    String?
+  errorMessage String?        @db.VarChar(500)
+  outcome      AiUsageOutcome @default(PENDING)
+
+  createdAt DateTime @default(now())
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  user   User?   @relation("AiUsageEventUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, featureKey, createdAt])
+  @@index([status])
+  @@map("ai_usage_events")
+}
+
+// Contador agregado por (tenant, periodo, feature). Existe únicamente para que
+// la verificación de límite sea O(1) en la ruta síncrona del gateway — no
+// requiere escanear ai_usage_events. Se incrementa en la misma transacción
+// que se escribe el evento (ver AiUsageRecorder).
+model AiUsageCounter {
+  id       String @id @default(uuid())
+  tenantId String
+  // Formato 'YYYY-MM', mes calendario en UTC.
+  period     String
+  featureKey String
+
+  invocationCount     Int    @default(0)
+  successCount        Int    @default(0)
+  totalTokens          Int    @default(0)
+  estimatedCostMicros BigInt @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, period, featureKey])
+  @@map("ai_usage_counters")
 }

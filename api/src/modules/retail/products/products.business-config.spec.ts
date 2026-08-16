@@ -7,6 +7,7 @@ import { AuditService } from '../../../common/services/audit.service';
 import { R2Service } from '../../../storage/r2.service';
 import { BusinessConfigurationService } from '../../../common/business-config/business-configuration.service';
 import { InventoryEngine } from '../inventory/inventory.engine';
+import { AiUsageRecorder } from '../../../ai/usage/ai-usage.recorder';
 
 // BR-02: recipes are gated behind the `enableRecipes` feature. SIMPLE/SERVICE/
 // COMBO products stay available on every vertical; combos never touch recipes.
@@ -31,6 +32,7 @@ describe('ProductsService — BR-02 recipe gating', () => {
     applyProductStockDelta: jest.fn().mockResolvedValue(true),
     recordProductMovement: jest.fn().mockResolvedValue(undefined),
   };
+  const mockAiUsageRecorder = { recordOutcome: jest.fn().mockResolvedValue(undefined) };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -47,6 +49,7 @@ describe('ProductsService — BR-02 recipe gating', () => {
         { provide: R2Service, useValue: mockR2 },
         { provide: BusinessConfigurationService, useValue: mockBusinessConfig },
         { provide: InventoryEngine, useValue: mockInventoryEngine },
+        { provide: AiUsageRecorder, useValue: mockAiUsageRecorder },
       ],
     }).compile();
 

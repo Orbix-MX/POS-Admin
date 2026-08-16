@@ -96,6 +96,9 @@ export interface Product {
   comboItems?: ComboItem[]
   attributes?: ProductAttribute[]
   features?: ProductFeature[]
+  /** Presente cuando el producto viene de un borrador del AI Product Assistant — ver §07. */
+  aiRequestId?: string
+  aiOutcome?: 'ACCEPTED' | 'EDITED'
 }
 
 export async function fetchProducts(): Promise<ListResponse<Product>> {
@@ -138,6 +141,8 @@ export async function createProduct(data: Product): Promise<Product> {
     features: data.features
       ?.filter((f) => f.feature.trim() !== '' && f.value.trim() !== '')
       .map((f) => ({ feature: f.feature, value: f.value })),
+    aiRequestId: data.aiRequestId,
+    aiOutcome: data.aiRequestId ? (data.aiOutcome ?? 'ACCEPTED') : undefined,
   }
   const { data: result } = await api.post<Product>('products', body)
   return result

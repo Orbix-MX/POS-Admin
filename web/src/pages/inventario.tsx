@@ -2,12 +2,16 @@
 import { DataTable, Pagination, type Column } from '@/components/shared/data-table'
 import { CategoryFormModal } from '@/components/inventario/category-form-modal'
 import { ProductFormModal } from '@/components/inventario/product-form-modal'
-import { Search, Plus, Pencil, Trash2, Loader2, Package, Tag, Download, Upload, X, CircleCheck, TriangleAlert } from 'lucide-react'
+import { AiProductAssistDialog } from '@/components/inventario/ai-product-assist-dialog'
+import { Search, Plus, Pencil, Trash2, Loader2, Package, Tag, Download, Upload, X, CircleCheck, TriangleAlert, Sparkles } from 'lucide-react'
 import { useProducts } from '@/hooks/retail/use-products'
 import { useCategories } from '@/hooks/retail/use-categories'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { Product } from '@/services/retail/product-service'
+import type { ProductDraftResponse } from '@/services/retail/product-ai-service'
 import type { Category } from '@/hooks/retail/use-categories'
+
+const DRAFT_TAX_RATE: Record<string, number> = { IVA_16: 16, IVA_11: 11, IVA_8: 8, EXCENTO: 0 }
 
 const PER_PAGE = 7
 
@@ -50,9 +54,31 @@ export function Inventario() {
     loading: prodLoading, error: prodError, search, setSearch,
     catFilter, setCatFilter, page, setPage, modalOpen, editingId,
     form, setForm, filtered, pageData, stats,
-    handleSave, handleEdit, handleDelete, handleOpenNew, handleCloseModal, loadProducts,
+    handleSave, handleEdit, handleDelete, handleOpenNew, handleOpenWithDraft, handleCloseModal, loadProducts,
     importing, importResult, importError, handleDownloadTemplate, handleImportFile, clearImportResult,
   } = useProducts()
+
+  const [aiDialogOpen, setAiDialogOpen] = useState(false)
+
+  const handleUseDraft = (draft: ProductDraftResponse) => {
+    handleOpenWithDraft({
+      name: draft.name,
+      description: draft.description ?? '',
+      price: draft.price,
+      // comparePrice/trackInventory/lowStockAlert: si el borrador no trae
+      // señal (null), se omiten del patch y EMPTY_FORM aporta el default
+      // del tenant — igual que hace el reconciliador en el backend (§08).
+      ...(draft.comparePrice != null ? { comparePrice: draft.comparePrice } : {}),
+      costPrice: draft.costPrice ?? 0,
+      categoryId: draft.category.id ?? '',
+      taxCode: draft.taxCode,
+      taxRate: DRAFT_TAX_RATE[draft.taxCode] ?? 0,
+      sku: draft.skuSuggestion,
+      ...(draft.trackInventory != null ? { trackInventory: draft.trackInventory } : {}),
+      ...(draft.lowStockAlert != null ? { lowStockAlert: draft.lowStockAlert } : {}),
+      aiRequestId: draft.aiRequestId,
+    })
+  }
 
   const importInputRef = useRef<HTMLInputElement>(null)
 
@@ -261,6 +287,9 @@ export function Inventario() {
                       {importing ? 'Importando…' : 'Importar Excel'}
                     </button>
                     <input ref={importInputRef} type="file" accept=".xlsx" className="hidden" onChange={onImportFileSelected} />
+                    <button onClick={() => setAiDialogOpen(true)} className="flex items-center gap-1.5 px-3.5 py-1.5 bg-card border border-primary/40 text-primary rounded-lg text-xs font-semibold cursor-pointer">
+                      <Sparkles className="w-3.5 h-3.5" /> Alta con IA
+                    </button>
                     <button onClick={handleOpenNew} className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground border-none rounded-lg text-xs font-semibold cursor-pointer">
                       <Plus className="w-3.5 h-3.5" /> Nuevo Producto
                     </button>
@@ -368,6 +397,12 @@ export function Inventario() {
         onSave={handleSave}
         onImageChange={loadProducts}
         categories={categories}
+      />
+
+      <AiProductAssistDialog
+        open={aiDialogOpen}
+        onClose={() => setAiDialogOpen(false)}
+        onUseDraft={handleUseDraft}
       />
 
       <CategoryFormModal

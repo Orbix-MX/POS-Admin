@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ConflictException,
   BadRequestException,
@@ -19,6 +20,7 @@ import { UpdateProductDto } from './dto/update-product.dto';
 import { QueryProductDto } from './dto/query-product.dto';
 import { PaginatedResponse } from '../../../common/dto/pagination.dto';
 import { Product, Prisma } from '@prisma/client';
+import { AiUsageRecorder } from '../../../ai/usage/ai-usage.recorder';
 
 const MAX_IMAGE_WIDTH = 1200;
 
@@ -55,7 +57,13 @@ export class ProductsService {
     // motor de inventario de bajo nivel. Las validaciones de negocio (tipo
     // SIMPLE, trackInventory, guard de stock) permanecen en este servicio.
     private inventoryEngine: InventoryEngine,
+    // Fase 3 (AI Product Assistant): registra el desenlace de un draft de IA
+    // cuando el producto que se crea vino de uno — ver `aiRequestId` en el DTO.
+    // Nunca decide qué se crea, y su fallo nunca debe tumbar la creación.
+    private aiUsageRecorder: AiUsageRecorder,
   ) {}
+
+  private readonly logger = new Logger(ProductsService.name);
 
   /**
    * BR-02: gate recipe capabilities behind the `enableRecipes` feature. Throws
@@ -106,7 +114,7 @@ export class ProductsService {
 
   async create(createProductDto: CreateProductDto): Promise<Product> {
     const tenantId = this.tenantContext.requireTenantId();
-    const { recipeItems, comboItems, attributes, features, ...productData } = createProductDto;
+    const { recipeItems, comboItems, attributes, features, aiRequestId, aiOutcome, ...productData } = createProductDto;
 
     const existingProduct = await this.prisma.product.findUnique({
       where: { tenantId_sku: { tenantId, sku: productData.sku } },
@@ -211,6 +219,16 @@ export class ProductsService {
         ? (tx.product.findUnique({ where: { id: created.id }, include: PRODUCT_INCLUDE }) as Promise<Product>)
         : created;
     });
+
+    if (aiRequestId) {
+      // Efecto secundario, no crítico: si falla, el producto ya se creó y
+      // eso es lo que importa. Nunca debe tumbar la respuesta al usuario.
+      this.aiUsageRecorder.recordOutcome(aiRequestId, aiOutcome ?? 'ACCEPTED').catch((err: unknown) => {
+        this.logger.warn(
+          `No se pudo registrar el outcome del draft de IA ${aiRequestId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+    }
 
     return product;
   }

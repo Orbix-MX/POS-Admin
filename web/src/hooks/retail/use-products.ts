@@ -160,6 +160,13 @@ export function useProducts() {
     setModalOpen(true)
   }, [])
 
+  /** Abre el modal de alta prellenado con un borrador del AI Product Assistant (§07) — el usuario sigue revisando y confirmando en el mismo formulario de siempre. */
+  const handleOpenWithDraft = useCallback((patch: Partial<Product>) => {
+    setForm({ ...EMPTY_FORM, ...patch })
+    setEditingId(null)
+    setModalOpen(true)
+  }, [])
+
   const handleCloseModal = useCallback(() => {
     setModalOpen(false)
     setForm(EMPTY_FORM)
@@ -217,6 +224,7 @@ export function useProducts() {
     handleEdit,
     handleDelete,
     handleOpenNew,
+    handleOpenWithDraft,
     handleCloseModal,
     loadProducts,
     importing,

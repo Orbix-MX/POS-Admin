@@ -47,6 +47,9 @@ import { MeasurementUnitsModule } from './modules/retail/measurement-units/measu
 import { RestaurantModule } from './modules/restaurant/restaurant.module';
 import { PlatformModule } from './modules/platform/platform.module';
 
+// AI platform — infraestructura transversal (ver src/ai/ai.module.ts)
+import { AiModule } from './ai/ai.module';
+
 @Module({
   imports: [
     // Infrastructure
@@ -54,6 +57,9 @@ import { PlatformModule } from './modules/platform/platform.module';
     ConfigModule,
     DatabaseModule,
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
+
+    // AI platform
+    AiModule,
 
     // Core
     AuthModule,

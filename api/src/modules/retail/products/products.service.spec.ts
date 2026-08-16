@@ -8,6 +8,7 @@ import { R2Service } from '../../../storage/r2.service';
 import { BusinessConfigurationService } from '../../../common/business-config/business-configuration.service';
 import { InventoryEngine } from '../inventory/inventory.engine';
 import { SlugUtil } from '../../../common/utils/slug.util';
+import { AiUsageRecorder } from '../../../ai/usage/ai-usage.recorder';
 
 describe('ProductsService', () => {
   let service: ProductsService;
@@ -62,6 +63,7 @@ describe('ProductsService', () => {
     applyProductStockDelta: jest.fn().mockResolvedValue(true),
     recordProductMovement: jest.fn().mockResolvedValue(undefined),
   };
+  const mockAiUsageRecorder = { recordOutcome: jest.fn().mockResolvedValue(undefined) };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -73,6 +75,7 @@ describe('ProductsService', () => {
         { provide: R2Service, useValue: mockR2Service },
         { provide: BusinessConfigurationService, useValue: mockBusinessConfig },
         { provide: InventoryEngine, useValue: mockInventoryEngine },
+        { provide: AiUsageRecorder, useValue: mockAiUsageRecorder },
       ],
     }).compile();
 

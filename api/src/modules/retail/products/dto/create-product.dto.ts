@@ -209,4 +209,20 @@ export class CreateProductDto {
   @ValidateNested({ each: true })
   @Type(() => ProductFeatureDto)
   features?: ProductFeatureDto[];
+
+  @ApiPropertyOptional({
+    description:
+      'requestId del borrador del AI Product Assistant, si este producto se creó a partir de uno (§07). Nunca decide qué se crea — solo permite trazar el desenlace del draft.',
+  })
+  @IsOptional()
+  @IsString()
+  aiRequestId?: string;
+
+  @ApiPropertyOptional({
+    enum: ['ACCEPTED', 'EDITED'],
+    description: 'Si vino de un draft de IA: si el usuario lo aceptó tal cual o editó algún campo antes de confirmar.',
+  })
+  @IsOptional()
+  @IsEnum(['ACCEPTED', 'EDITED'])
+  aiOutcome?: 'ACCEPTED' | 'EDITED';
 }
