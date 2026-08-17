@@ -68,16 +68,18 @@ export const AI_MODEL_CATALOG: Readonly<Record<string, AiModelCatalogEntry>> = {
   /**
    * Fase 4. `gemini-2.5-flash` dejó de estar disponible para cuentas nuevas
    * (404 confirmado en vivo el 16 ago 2026 contra `verify-cloud-providers.ts`)
-   * — Google migró el catálogo. Tarifas confirmadas el mismo día contra
-   * ai.google.dev/gemini-api/docs/pricing: Gemini 3.7 Flash, $0.75/MTok
-   * entrada, $3.75/MTok salida (tarifa promocional vigente hasta el
-   * 31-dic-2026; sube a $1.50/$7.50 el 1-ene-2027 — revisar el catálogo
-   * antes de esa fecha). Se registra vía `OpenAICompatibleProvider` (capa
-   * de compatibilidad OpenAI de Google) — sin adaptador propio.
+   * — Google migró el catálogo. Se eligió `gemini-3.6-flash` (previa a la
+   * más reciente `3.7-flash`) sin verificación en vivo todavía — pendiente
+   * de que el usuario la corra. Tarifas confirmadas el 16 ago 2026 contra
+   * ai.google.dev/gemini-api/docs/pricing: $0.75/MTok entrada, $3.75/MTok
+   * salida (tarifa promocional vigente hasta el 31-dic-2026; sube a
+   * $1.50/$7.50 el 1-ene-2027 — revisar el catálogo antes de esa fecha).
+   * Se registra vía `OpenAICompatibleProvider` (capa de compatibilidad
+   * OpenAI de Google) — sin adaptador propio.
    */
-  'gemini-3.7-flash': {
+  'gemini-3.6-flash': {
     providerId: 'gemini',
-    modelKey: 'gemini-3.7-flash',
+    modelKey: 'gemini-3.6-flash',
     capabilities: [AICapability.CHAT, AICapability.STRUCTURED_NATIVE],
     contextWindow: 1_000_000,
     costPerMTokMicrosIn: 750_000,

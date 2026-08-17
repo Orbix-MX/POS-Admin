@@ -31,8 +31,8 @@ export const AI_FEATURE_BINDINGS: Readonly<Record<string, AiFeatureBinding>> = {
   // dio evidencia de calidad utilizable. D-06 no se reabrió. Repetir la
   // comparación cuando la cuenta de Google tenga billing/tier pagado.
   'products.draft': {
-    providerId: 'local',
-    modelKey: 'llama3.2:latest',
+    providerId: 'gemini',
+    modelKey: 'gemini-3.6-flash',
     promptVersion: 1,
     temperature: 0.2,
     maxOutputTokens: 700,
