@@ -582,11 +582,31 @@ model Category {
   children  Category[] @relation("CategoryToCategory")
   products  Product[]
   coupons   Coupon[]
+  images    CategoryImage[]
   createdBy User?      @relation("CategoryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy User?      @relation("CategoryUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, slug])
   @@map("categories")
+}
+
+// Foto de referencia de la categoría — misma estructura que ProductImage
+// (un solo registro "primary" a la vez; upload reemplaza el anterior).
+model CategoryImage {
+  id         String   @id @default(uuid())
+  categoryId String
+  url        String
+  key        String?
+  mimeType   String?  @map("mime_type")
+  size       Int?
+  altText    String?
+  sortOrder  Int      @default(0)
+  isPrimary  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@map("category_images")
 }
 
 // ============= Products =============

@@ -101,9 +101,21 @@ export interface Product {
   aiOutcome?: 'ACCEPTED' | 'EDITED'
 }
 
-export async function fetchProducts(): Promise<ListResponse<Product>> {
-  const { data } = await api.get<ListResponse<Product>>('products')
+export async function fetchProducts(params?: { page?: number; limit?: number }): Promise<ListResponse<Product>> {
+  const { data } = await api.get<ListResponse<Product>>('products', { params })
   return data
+}
+
+/** Trae todo el catálogo del tenant, sin importar cuántas páginas requiera el API. */
+export async function fetchAllProducts(): Promise<Product[]> {
+  const first = await fetchProducts({ page: 1, limit: 500 })
+  const totalPages = first?.meta?.totalPages || 1
+  if (totalPages <= 1) return first?.data || []
+
+  const rest = await Promise.all(
+    Array.from({ length: totalPages - 1 }, (_, i) => fetchProducts({ page: i + 2, limit: 500 }))
+  )
+  return [...(first?.data || []), ...rest.flatMap((r) => r?.data || [])]
 }
 
 export async function createProduct(data: Product): Promise<Product> {

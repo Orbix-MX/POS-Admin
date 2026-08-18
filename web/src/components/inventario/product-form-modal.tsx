@@ -8,7 +8,7 @@ import type { Category } from '@/services/retail/categories-service'
 import { uploadProductImage, deleteProductImage } from '@/services/retail/product-service'
 import { ImageViewer } from '@/components/shared/image-viewer'
 import { fetchSupplies, type Supply } from '@/services/retail/supplies-service'
-import { fetchProducts } from '@/services/retail/product-service'
+import { fetchAllProducts } from '@/services/retail/product-service'
 import { useTenantFeatures } from '@/hooks/use-tenant-features'
 import { useAuthStore } from '@/store/auth-store'
 import { Trash2, Plus } from 'lucide-react'
@@ -362,7 +362,7 @@ function ComboEditor({
   const [products, setProducts] = useState<Product[]>([])
 
   useEffect(() => {
-    fetchProducts().then((r) => setProducts(r.data || [])).catch(() => {})
+    fetchAllProducts().then(setProducts).catch(() => {})
   }, [])
 
   const eligible = products.filter((p) => p.id !== currentProductId)

@@ -1,0 +1,53 @@
+---
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = 'Tu Tienda',
+  description = 'Catálogo y pedidos en línea.',
+} = Astro.props;
+---
+
+<html lang="es-MX">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#1d4ed8" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="/css/styles.css" />
+
+    <!-- Este template es 100% estático: el contenido del tenant (branding,
+         secciones, categorías, catálogo) se pide desde el navegador — nunca
+         se resuelve en build time ni hay nada de un tenant real en el código. -->
+    <script define:vars={{ apiUrl: import.meta.env.PUBLIC_API_URL || 'http://localhost:3001' }} is:inline>
+      window.RG_CONFIG = { apiUrl };
+    </script>
+    <script src="/js/utils.js" defer></script>
+    <script src="/js/storage.js" defer></script>
+    <script src="/js/whatsapp.js" defer></script>
+    <script src="/js/store-orders.js" defer></script>
+    <script src="/js/carrito.js" defer></script>
+    <script src="/js/tienda.js" defer></script>
+  </head>
+
+  <body>
+    <div class="splash" data-splash role="status" aria-live="polite">
+      <span class="splash__spinner" aria-hidden="true"></span>
+      <span class="solo-lectores">Cargando…</span>
+    </div>
+
+    <slot />
+  </body>
+</html>

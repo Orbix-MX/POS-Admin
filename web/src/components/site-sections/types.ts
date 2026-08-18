@@ -12,6 +12,8 @@ export type SiteSectionType =
 
 export interface IconItem {
   icon?: string
+  /** Foto opcional de la tarjeta — si está, algunos templates la prefieren sobre `icon`. */
+  imageUrl?: string
   title: string
   text: string
 }

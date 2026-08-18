@@ -61,7 +61,7 @@ describe('CashSessionsService.open — caja física (Fase 8)', () => {
   it('sin caja indicada usa la primera activa de la sucursal', async () => {
     const { service, sessionCreate } = build();
 
-    await service.open(dto as never);
+    await service.open(dto);
 
     expect(sessionCreate.mock.calls[0][0].data.cashRegisterId).toBe('reg-1');
   });
@@ -74,7 +74,7 @@ describe('CashSessionsService.open — caja física (Fase 8)', () => {
       ],
     });
 
-    await service.open({ ...dto, cashRegisterId: 'reg-2' } as never);
+    await service.open({ ...dto, cashRegisterId: 'reg-2' });
 
     expect(sessionCreate.mock.calls[0][0].data.cashRegisterId).toBe('reg-2');
   });
@@ -83,7 +83,7 @@ describe('CashSessionsService.open — caja física (Fase 8)', () => {
     const { service, sessionCreate } = build();
 
     await expect(
-      service.open({ ...dto, cashRegisterId: 'reg-fantasma' } as never),
+      service.open({ ...dto, cashRegisterId: 'reg-fantasma' }),
     ).rejects.toThrow(NotFoundException);
     expect(sessionCreate).not.toHaveBeenCalled();
   });
@@ -91,7 +91,7 @@ describe('CashSessionsService.open — caja física (Fase 8)', () => {
   it('sucursal sin cajas: crea "Caja 1" para no exigir un alta manual previa', async () => {
     const { service, registerCreate, sessionCreate } = build({ registers: [] });
 
-    await service.open(dto as never);
+    await service.open(dto);
 
     expect(registerCreate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ name: 'Caja 1', branchId: BRANCH }) }),
@@ -109,7 +109,7 @@ describe('CashSessionsService.open — caja física (Fase 8)', () => {
   it('el pre-chequeo mira la caja, no la sucursal, y excluye solo las CERRADAS', async () => {
     const { service, prisma } = build();
 
-    await service.open(dto as never);
+    await service.open(dto);
 
     expect(prisma.cashSession.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({

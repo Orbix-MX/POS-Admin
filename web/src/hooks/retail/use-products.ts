@@ -1,6 +1,6 @@
 ﻿import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
-  fetchProducts,
+  fetchAllProducts,
   createProduct,
   updateProduct,
   deleteProduct,
@@ -86,8 +86,7 @@ export function useProducts() {
     setLoading(true)
     setError(null)
     try {
-      const data = await fetchProducts()
-      setProducts(data?.data || [])
+      setProducts(await fetchAllProducts())
     } catch {
       setError('Error al cargar productos')
     } finally {

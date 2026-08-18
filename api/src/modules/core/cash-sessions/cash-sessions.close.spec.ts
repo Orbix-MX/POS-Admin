@@ -220,7 +220,7 @@ describe('CashSessionsService.close — atomicidad (Fase 7 — CASH-002)', () =>
     const failed = results.filter((r) => r.status === 'rejected');
     expect(ok).toHaveLength(1);
     expect(failed).toHaveLength(1);
-    expect((failed[0] as PromiseRejectedResult).reason).toBeInstanceOf(BadRequestException);
+    expect((failed[0]).reason).toBeInstanceOf(BadRequestException);
   });
 });
 

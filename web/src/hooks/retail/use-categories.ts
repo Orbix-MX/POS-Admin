@@ -90,11 +90,22 @@ export function useCategories() {
   }, [])
 
   const handleSave = useCallback(async () => {
+    // `form` puede traer campos de solo lectura (parent, images, _count,
+    // tenantId...) heredados del objeto completo que devuelve la API al
+    // editar — el backend rechaza cualquier propiedad fuera del DTO.
+    const payload = {
+      name: form.name,
+      slug: form.slug,
+      description: form.description,
+      parentId: form.parentId,
+      status: form.status,
+      sortOrder: form.sortOrder,
+    }
     try {
       if (editingId) {
-        await updateCategory(editingId, form)
+        await updateCategory(editingId, payload)
       } else {
-        await createCategory(form)
+        await createCategory(payload)
       }
       await loadCategories()
       setModalOpen(false)

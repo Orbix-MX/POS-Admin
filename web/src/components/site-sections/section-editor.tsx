@@ -68,18 +68,38 @@ function ImageField({ label, url, onUpload, onClear, uploading }: {
 
 // ─── Editor de lista {icono, título, texto} — VALUE_PROPS y FEATURED_CATEGORIES ─
 
-function IconItemsEditor({ items, onChange }: { items: IconItem[]; onChange: (items: IconItem[]) => void }) {
+function IconItemsEditor({ items, onChange, onUploadImage }: {
+  items: IconItem[]
+  onChange: (items: IconItem[]) => void
+  /** Cuando se provee, cada tarjeta también permite subir una foto (algunos templates la prefieren sobre `icon`). */
+  onUploadImage?: (file: File) => Promise<string>
+}) {
+  const [uploadingIndex, setUploadingIndex] = useState<number | null>(null)
   const update = (i: number, patch: Partial<IconItem>) =>
     onChange(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)))
   const remove = (i: number) => onChange(items.filter((_, idx) => idx !== i))
   const add = () => onChange([...items, { icon: '✨', title: '', text: '' }])
 
+  async function handleUpload(i: number, file: File) {
+    if (!onUploadImage) return
+    setUploadingIndex(i)
+    try { update(i, { imageUrl: await onUploadImage(file) }) }
+    finally { setUploadingIndex(null) }
+  }
+
   return (
     <div className="space-y-2.5">
       {items.map((item, i) => (
         <div key={i} className="flex gap-2 items-start border border-border rounded-lg p-2.5">
-          <input value={item.icon ?? ''} onChange={e => update(i, { icon: e.target.value })} placeholder="🌿"
-            className="w-11 shrink-0 px-2 py-2 border border-border rounded-lg text-center text-base bg-card outline-none focus:border-primary" />
+          {onUploadImage ? (
+            <div className="w-16 shrink-0">
+              <ImageField label="Foto" url={item.imageUrl} uploading={uploadingIndex === i}
+                onUpload={f => handleUpload(i, f)} onClear={() => update(i, { imageUrl: '' })} />
+            </div>
+          ) : (
+            <input value={item.icon ?? ''} onChange={e => update(i, { icon: e.target.value })} placeholder="🌿"
+              className="w-11 shrink-0 px-2 py-2 border border-border rounded-lg text-center text-base bg-card outline-none focus:border-primary" />
+          )}
           <div className="flex-1 space-y-1.5">
             <input value={item.title} onChange={e => update(i, { title: e.target.value })} placeholder="Título"
               className="w-full px-2.5 py-1.5 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary" />
@@ -153,7 +173,11 @@ function ValuePropsForm({ content, onSave }: { content: ValuePropsContent; onSav
   )
 }
 
-function FeaturedCategoriesForm({ content, onSave }: { content: FeaturedCategoriesContent; onSave: (c: FeaturedCategoriesContent) => Promise<boolean> }) {
+function FeaturedCategoriesForm({ content, onSave, onUploadImage }: {
+  content: FeaturedCategoriesContent
+  onSave: (c: FeaturedCategoriesContent) => Promise<boolean>
+  onUploadImage: (file: File) => Promise<string>
+}) {
   const [draft, setDraft] = useState<FeaturedCategoriesContent>({ items: [], ...content })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -169,7 +193,7 @@ function FeaturedCategoriesForm({ content, onSave }: { content: FeaturedCategori
     <div className="space-y-3.5">
       <TextField label="Título" value={draft.title ?? ''} onChange={v => setDraft(p => ({ ...p, title: v }))} placeholder="Nuestro oficio" />
       <TextField label="Subtítulo" value={draft.subtitle ?? ''} onChange={v => setDraft(p => ({ ...p, subtitle: v }))} multiline />
-      <IconItemsEditor items={draft.items ?? []} onChange={items => setDraft(p => ({ ...p, items }))} />
+      <IconItemsEditor items={draft.items ?? []} onChange={items => setDraft(p => ({ ...p, items }))} onUploadImage={onUploadImage} />
       <SaveButton onClick={handleSave} saving={saving} saved={saved} />
     </div>
   )
@@ -343,7 +367,7 @@ export function SectionCard({ section, index, total, reordering, onSave, onToggl
             <ValuePropsForm content={section.content as ValuePropsContent} onSave={c => onSave(c as Record<string, unknown>)} />
           )}
           {section.sectionType === 'FEATURED_CATEGORIES' && (
-            <FeaturedCategoriesForm content={section.content as FeaturedCategoriesContent} onSave={c => onSave(c as Record<string, unknown>)} />
+            <FeaturedCategoriesForm content={section.content as FeaturedCategoriesContent} onSave={c => onSave(c as Record<string, unknown>)} onUploadImage={onUploadImage} />
           )}
           {section.sectionType === 'FEATURED_PRODUCTS' && (
             <FeaturedProductsForm content={section.content as FeaturedProductsContent} onSave={c => onSave(c as Record<string, unknown>)} />

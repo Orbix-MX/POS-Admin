@@ -23,6 +23,7 @@ const STORE_PRODUCT_SELECT = {
   },
   // `cost` is deliberately excluded — internal margin data, never public.
   attributes: { select: { id: true, name: true, price: true } },
+  features: { select: { feature: true, value: true } },
 } satisfies Prisma.ProductSelect;
 
 // Tenant existence + orderable status are already enforced by StoreDomainGuard
@@ -74,11 +75,19 @@ export class StoreService {
   }
 
   async getCategories(tenantId: string) {
-    return this.prisma.category.findMany({
+    const categories = await this.prisma.category.findMany({
       where: { tenantId, status: 'ACTIVE' },
-      select: { id: true, name: true, slug: true, description: true },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        description: true,
+        images: { where: { isPrimary: true }, select: { url: true }, take: 1 },
+      },
       orderBy: { sortOrder: 'asc' },
     });
+
+    return categories.map(({ images, ...rest }) => ({ ...rest, imageUrl: images[0]?.url }));
   }
 
   async getProducts(tenantId: string, query: QueryStoreProductsDto) {

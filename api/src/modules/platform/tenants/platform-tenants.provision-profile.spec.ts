@@ -42,7 +42,7 @@ describe('PlatformTenantsService — provision businessProfile (BP-01)', () => {
       tenant: { name: 'Acme', slug: 'acme', plan: 'FREE' },
       branch: { name: 'Main', code: 'M1' },
       adminUser: { email: 'a@b.com', firstName: 'A', lastName: 'B', password: 'password1' },
-    }) as ProvisionTenantDto;
+    });
 
   beforeEach(async () => {
     jest.clearAllMocks();

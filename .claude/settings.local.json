@@ -32,7 +32,16 @@
       "PowerShell(Stop-Process *)",
       "Bash(powershell -NoProfile -Command \"Get-NetTCPConnection -LocalPort 3001 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess\" 2>/dev/null)",
       "Bash(pnpm exec *)",
-      "mcp__chrome-devtools__list_pages"
+      "mcp__chrome-devtools__list_pages",
+      "Bash(./node_modules/.bin/astro --version)",
+      "Bash(rm -rf \"/c/Users/juanj/source/repos/Orbix/apps/e-commerce-singlepage/node_modules\")",
+      "Bash(mkdir -p \"/c/Users/juanj/AppData/Local/Temp/claude/C--Users-juanj-source-repos-Orbix/7b495862-b489-4049-ab57-2606cce332f5/scratchpad/singlepage-deps\")",
+      "Read(//c/Users/juanj/AppData/Local/Temp/claude/C--Users-juanj-source-repos-Orbix/7b495862-b489-4049-ab57-2606cce332f5/scratchpad/**)",
+      "Bash(npm install *)",
+      "Bash(cat)",
+      "Bash(rm -f /tmp/test_utils.js /tmp/test_utils.js)",
+      "mcp__chrome-devtools__navigate_page",
+      "Bash(./node_modules/.bin/astro build *)"
     ]
   }
 }

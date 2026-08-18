@@ -10,7 +10,7 @@ import {
   openDiningOrder, addDiningOrderItem, fireDiningRound,
   type DiningOrder,
 } from '@/services/restaurant/dining-orders-service'
-import { fetchProducts, type Product } from '@/services/retail/product-service'
+import { fetchAllProducts, type Product } from '@/services/retail/product-service'
 import { fetchSupplies, type Supply } from '@/services/retail/supplies-service'
 import { withdrawForSupplies } from '@/services/core/caja-service'
 import { printOrder } from '@/services/core/print-service'
@@ -308,8 +308,8 @@ function DirectCheckoutPanel({ branchId, kitchenEnabled, onSuccess }: { branchId
   }
 
   useEffect(() => {
-    fetchProducts()
-      .then(res => setProducts((res.data ?? []).filter(p => p.status === 'ACTIVE')))
+    fetchAllProducts()
+      .then(res => setProducts(res.filter(p => p.status === 'ACTIVE')))
       .catch(() => {})
       .finally(() => setCatalogLoading(false))
   }, [])

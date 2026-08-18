@@ -1,0 +1,122 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base>
+  <header class="header" data-header>
+    <div class="contenedor header__interno">
+      <a href="/" class="marca" aria-label="Inicio">
+        <span class="marca__emblema" data-marca-emblema>T</span>
+        <span class="marca__texto" data-marca-texto>Tu Tienda</span>
+      </a>
+
+      <div class="buscador">
+        <input class="buscador__campo" type="search" placeholder="Busca productos…" data-buscador-campo />
+        <svg class="buscador__icono" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"></circle>
+          <path d="m16.5 16.5 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+        </svg>
+      </div>
+
+      <div class="header__acciones">
+        <button class="header__boton" type="button" data-carrito-boton aria-controls="panel-pedido" aria-expanded="false" aria-label="Mi pedido">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M3 3h2l2.4 12.4a2 2 0 0 0 2 1.6h8.4a2 2 0 0 0 2-1.6L21 8H6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+            <circle cx="9" cy="21" r="1.4" fill="currentColor"></circle>
+            <circle cx="18" cy="21" r="1.4" fill="currentColor"></circle>
+          </svg>
+          <span class="header__boton__contador" data-carrito-contador>0</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="nav-categorias" data-nav-categorias hidden aria-label="Categorías">
+    <div class="contenedor">
+      <ul class="nav-categorias__lista" data-nav-categorias-lista></ul>
+    </div>
+  </nav>
+
+  <section class="hero" data-hero hidden>
+    <div class="hero__fondo" data-hero-fondo aria-hidden="true"></div>
+    <div class="contenedor hero__contenido">
+      <h1 class="hero__titulo" data-hero-titulo></h1>
+      <p class="hero__subtitulo" data-hero-subtitulo></p>
+      <a class="hero__boton" href="#destacados">Comprar ahora</a>
+    </div>
+  </section>
+
+  <section class="seccion" data-seccion-categorias hidden>
+    <div class="contenedor carousel-categorias__contenedor">
+      <button type="button" class="carousel-categorias__flecha carousel-categorias__flecha--prev" data-carousel-prev aria-label="Categoría anterior">‹</button>
+      <div class="carousel-categorias" data-carousel-categorias></div>
+      <button type="button" class="carousel-categorias__flecha carousel-categorias__flecha--next" data-carousel-next aria-label="Siguiente categoría">›</button>
+    </div>
+  </section>
+
+  <section class="seccion" id="destacados">
+    <div class="contenedor">
+      <div class="seccion__encabezado">
+        <div>
+          <h2 class="seccion__titulo" data-productos-titulo>Destacados</h2>
+          <p class="seccion__subtitulo" data-productos-subtitulo hidden></p>
+        </div>
+      </div>
+      <div class="grid-productos" data-grid-productos></div>
+      <p class="carrito-vacio" data-productos-vacio hidden>No encontramos productos con ese nombre.</p>
+    </div>
+  </section>
+
+  <footer class="footer" data-footer hidden>
+    <div class="contenedor">
+      <h2 class="footer__titulo" data-footer-titulo>¿Tienes dudas?</h2>
+      <p class="footer__texto" data-footer-subtitulo></p>
+      <a class="footer__whatsapp" data-footer-whatsapp target="_blank" rel="noopener">
+        <span aria-hidden="true">💬</span> Escríbenos por WhatsApp
+      </a>
+      <p class="footer__legal">© <span data-anio></span> <span data-marca-texto>Tu Tienda</span></p>
+    </div>
+  </footer>
+
+  <div class="carrito-velo" data-carrito-velo role="presentation"></div>
+  <aside class="carrito-panel" id="panel-pedido" data-carrito-panel aria-hidden="true" aria-label="Mi pedido">
+    <header class="carrito-panel__cabecera">
+      <p class="carrito-panel__titulo">Mi pedido</p>
+      <button class="carrito-panel__cerrar" type="button" data-carrito-cerrar aria-label="Cerrar el pedido">✕</button>
+    </header>
+
+    <div class="carrito-panel__cuerpo">
+      <ul class="pedido-lista" data-carrito-lista hidden></ul>
+      <div class="carrito-vacio" data-carrito-vacio>Tu pedido está vacío.</div>
+    </div>
+
+    <footer class="carrito-panel__pie" data-carrito-resumen hidden>
+      <div class="resumen">
+        <span>Subtotal (<span data-carrito-articulos>0</span> artículos)</span>
+        <span data-carrito-subtotal>$0.00</span>
+      </div>
+
+      <div class="carrito-panel__campo">
+        <label for="carrito-telefono" class="carrito-panel__etiqueta">Tu WhatsApp para confirmar el pedido</label>
+        <input
+          type="tel"
+          id="carrito-telefono"
+          class="carrito-panel__input"
+          data-carrito-telefono
+          placeholder="Ej. 6561234567"
+          autocomplete="tel"
+          inputmode="numeric"
+          maxlength="15"
+        />
+        <p class="carrito-panel__error" data-carrito-telefono-error hidden>Ingresa un teléfono válido (10 a 15 dígitos).</p>
+      </div>
+
+      <button class="boton boton--whatsapp boton--bloque" type="button" data-carrito-enviar>
+        <span aria-hidden="true">💬</span> Enviar pedido por WhatsApp
+      </button>
+      <button class="boton boton--contorno boton--bloque" type="button" data-carrito-limpiar>
+        Vaciar pedido
+      </button>
+    </footer>
+  </aside>
+</Base>
