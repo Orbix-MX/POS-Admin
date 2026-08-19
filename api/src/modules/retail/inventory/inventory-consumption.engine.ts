@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { Prisma, ProductType } from '@prisma/client';
 import { safeConvertUnits } from '../../../common/helpers/unit-conversion';
+import { InventoryEngine } from './inventory.engine';
 
 /**
  * InventoryConsumptionEngine — single source of truth for stock movement caused
@@ -114,6 +115,8 @@ const MAX_COMBO_DEPTH = 8;
 
 @Injectable()
 export class InventoryConsumptionEngine {
+  constructor(private readonly inventory: InventoryEngine) {}
+
   /**
    * Apply stock consumption for a set of sale lines. Decrements product stock
    * (SIMPLE), supply stock (RECIPE) and branch inventory, guarded against going
@@ -128,16 +131,19 @@ export class InventoryConsumptionEngine {
     const effects = await this.resolveEffects(tx, items);
 
     for (const effect of effects.products.values()) {
-      const res = await tx.product.updateMany({
-        where: { id: effect.productId, stock: { gte: effect.quantity } },
-        data: { stock: { decrement: effect.quantity } },
+      // El engine aplica el guard sobre la fila de (sucursal, variante) —
+      // la fuente de verdad — y espeja el movimiento en `Product.stock`.
+      const applied = await this.inventory.applyProductStockDelta(tx, {
+        productId: effect.productId,
+        delta: -effect.quantity,
+        guardInsufficient: true,
+        branchId: ctx.branchId,
       });
-      if (res.count === 0) {
+      if (!applied) {
         throw new BadRequestException(
           `Stock insuficiente para "${effect.productName}" al procesar la venta`,
         );
       }
-      await this.applyBranchInventoryDelta(tx, ctx, effect.productId, -effect.quantity);
       await tx.inventoryMovement.create({
         data: {
           tenantId: ctx.tenantId,
@@ -191,11 +197,12 @@ export class InventoryConsumptionEngine {
     const effects = await this.resolveEffects(tx, items);
 
     for (const effect of effects.products.values()) {
-      await tx.product.update({
-        where: { id: effect.productId },
-        data: { stock: { increment: effect.quantity } },
+      // Sin guard: una restauración nunca falla por disponibilidad.
+      await this.inventory.applyProductStockDelta(tx, {
+        productId: effect.productId,
+        delta: effect.quantity,
+        branchId: ctx.branchId,
       });
-      await this.applyBranchInventoryDelta(tx, ctx, effect.productId, effect.quantity);
       await tx.inventoryMovement.create({
         data: {
           tenantId: ctx.tenantId,
@@ -236,18 +243,19 @@ export class InventoryConsumptionEngine {
    * tree and verifies each aggregated product/supply has enough stock. Useful
    * for surfacing clear errors before the financial part of a transaction runs.
    */
-  async validate(tx: Prisma.TransactionClient, items: InventoryLineItem[]): Promise<void> {
+  async validate(
+    tx: Prisma.TransactionClient,
+    items: InventoryLineItem[],
+    branchId?: string | null,
+  ): Promise<void> {
     const effects = await this.resolveEffects(tx, items);
 
     for (const effect of effects.products.values()) {
-      const product = await tx.product.findUnique({
-        where: { id: effect.productId },
-        select: { stock: true },
-      });
-      if (product != null && Number(product.stock) < effect.quantity) {
+      const available = await this.inventory.getProductStock(tx, effect.productId, branchId);
+      if (available != null && available < effect.quantity) {
         throw new BadRequestException(
           `Stock insuficiente para "${effect.productName}". ` +
-            `Disponible: ${product.stock}, necesario: ${effect.quantity}`,
+            `Disponible: ${available}, necesario: ${effect.quantity}`,
         );
       }
     }
@@ -383,61 +391,6 @@ export class InventoryConsumptionEngine {
 
     cache.set(productId, product);
     return product;
-  }
-
-  /**
-   * Decrement (delta < 0) or increment (delta > 0) per-branch inventory. Mirrors
-   * the legacy upsert behaviour: when no branch row exists yet it seeds from the
-   * product's current global stock so the branch figure stays consistent.
-   *
-   * The per-branch figure is kept non-negative. Global stock is the authoritative
-   * guard (consume() already blocked any oversell before reaching here); a branch
-   * row that holds less than the decrement is under-tracked, so it is clamped to 0
-   * instead of going negative. The sale is never failed here, so observable
-   * behaviour for every channel is unchanged — only the branch ledger is fixed.
-   */
-  private async applyBranchInventoryDelta(
-    tx: Prisma.TransactionClient,
-    ctx: InventoryContext,
-    productId: string,
-    delta: number,
-  ): Promise<void> {
-    if (!ctx.branchId) return;
-
-    if (delta < 0) {
-      // Guarded decrement: only when the branch row holds enough.
-      const decremented = await tx.branchInventory.updateMany({
-        where: { branchId: ctx.branchId, productId, stock: { gte: -delta } },
-        data: { stock: { increment: delta } },
-      });
-      if (decremented.count > 0) return;
-
-      // Row exists but holds less than needed → clamp to 0 (never negative).
-      const clamped = await tx.branchInventory.updateMany({
-        where: { branchId: ctx.branchId, productId },
-        data: { stock: 0 },
-      });
-      if (clamped.count > 0) return;
-      // No row yet → fall through to seed.
-    } else {
-      const incremented = await tx.branchInventory.updateMany({
-        where: { branchId: ctx.branchId, productId },
-        data: { stock: { increment: delta } },
-      });
-      if (incremented.count > 0) return;
-    }
-
-    const product = await tx.product.findUnique({
-      where: { id: productId },
-      select: { stock: true },
-    });
-    await tx.branchInventory.create({
-      data: {
-        branchId: ctx.branchId,
-        productId,
-        stock: product?.stock ?? 0,
-      },
-    });
   }
 
   private note(prefix: string, ctx: InventoryContext): string {

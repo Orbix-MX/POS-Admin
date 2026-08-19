@@ -3,7 +3,7 @@ import { FormField } from '@/components/shared/form-modal'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { STATUS_OPTIONS, TAX_CODES, TAX_RATE_MAP, PRODUCT_TYPE_OPTIONS } from '@/hooks/retail/use-products'
-import type { Product, RecipeItem, ComboItem, ProductAttribute, ProductFeature } from '@/services/retail/product-service'
+import type { Product, RecipeItem, ComboItem, ProductVariant, ProductFeature } from '@/services/retail/product-service'
 import type { Category } from '@/services/retail/categories-service'
 import { uploadProductImage, deleteProductImage } from '@/services/retail/product-service'
 import { ImageViewer } from '@/components/shared/image-viewer'
@@ -473,26 +473,26 @@ function ComboEditor({
   )
 }
 
-// ── Attributes Editor (variantes ligadas al producto: nombre + costo + precio) ─
+// ── Variants Editor (variantes ligadas al producto: nombre + costo + precio) ─
 
-function AttributesEditor({
+function VariantsEditor({
   items,
   onChange,
 }: {
-  items: ProductAttribute[]
-  onChange: (items: ProductAttribute[]) => void
+  items: ProductVariant[]
+  onChange: (items: ProductVariant[]) => void
 }) {
-  const addItem = () => onChange([...items, { name: '', cost: 0, price: 0 }])
+  const addItem = () => onChange([...items, { name: '', cost: 0, price: 0, stock: 0 }])
 
   const removeItem = (idx: number) => onChange(items.filter((_, i) => i !== idx))
 
-  const updateItem = (idx: number, patch: Partial<ProductAttribute>) =>
+  const updateItem = (idx: number, patch: Partial<ProductVariant>) =>
     onChange(items.map((item, i) => (i !== idx ? item : { ...item, ...patch })))
 
   return (
     <div className="col-span-2 mb-3.5">
       <div className="flex items-center justify-between mb-2">
-        <label className="text-xs font-semibold text-muted-foreground">Atributos (talla, color, tipo...)</label>
+        <label className="text-xs font-semibold text-muted-foreground">Variantes (talla, color, tipo...)</label>
         <button
           type="button"
           onClick={addItem}
@@ -504,12 +504,14 @@ function AttributesEditor({
 
       {items.length === 0 ? (
         <p className="text-xs text-muted-foreground text-center py-4 border border-dashed border-border rounded-lg">
-          Sin atributos. Agrega uno si este producto tiene variantes con costo/precio propio.
+          Sin variantes. Agrega una si este producto se vende en varias presentaciones con
+          existencia, costo y precio propios.
         </p>
       ) : (
         <>
-          <div className="grid grid-cols-[1fr_6rem_6rem_1.75rem] gap-1.5 px-1 mb-1">
+          <div className="grid grid-cols-[1fr_5rem_6rem_6rem_1.75rem] gap-1.5 px-1 mb-1">
             <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Nombre</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground text-right">Stock</span>
             <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground text-right">Costo</span>
             <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground text-right">Precio</span>
             <span />
@@ -517,13 +519,21 @@ function AttributesEditor({
 
           <div className="space-y-1.5">
             {items.map((item, idx) => (
-              <div key={idx} className="grid grid-cols-[1fr_6rem_6rem_1.75rem] gap-1.5 items-center">
+              <div key={item.id ?? idx} className="grid grid-cols-[1fr_5rem_6rem_6rem_1.75rem] gap-1.5 items-center">
                 <input
                   type="text"
                   placeholder="Ej. Talla M"
                   value={item.name}
                   onChange={(e) => updateItem(idx, { name: e.target.value })}
                   className="w-full px-2 py-1.5 border border-border rounded-md text-[12px] bg-card outline-none focus:border-primary"
+                />
+                <input
+                  type="number"
+                  step="1"
+                  min="0"
+                  value={item.stock}
+                  onChange={(e) => updateItem(idx, { stock: Number(e.target.value) || 0 })}
+                  className="w-full px-2 py-1.5 border border-border rounded-md text-[12px] bg-card outline-none focus:border-primary text-right"
                 />
                 <input
                   type="number"
@@ -551,6 +561,10 @@ function AttributesEditor({
               </div>
             ))}
           </div>
+
+          <p className="text-[11px] text-muted-foreground mt-2">
+            La existencia de cada variante corresponde a la sucursal seleccionada.
+          </p>
         </>
       )}
     </div>
@@ -907,10 +921,12 @@ export function ProductFormModal({
             </label>
           </div>
 
-          {form.isEcommerce && (
-            <AttributesEditor
-              items={form.attributes ?? []}
-              onChange={(items) => setForm(p => ({ ...p, attributes: items }))}
+          {/* Las variantes ya no son exclusivas de e-commerce: cualquier producto
+              con inventario puede venderse en varias presentaciones. */}
+          {showStock && (
+            <VariantsEditor
+              items={form.variants ?? []}
+              onChange={(items) => setForm(p => ({ ...p, variants: items }))}
             />
           )}
 
@@ -919,7 +935,8 @@ export function ProductFormModal({
             onChange={(items) => setForm(p => ({ ...p, features: items }))}
           />
 
-          {/* Stock — solo para SIMPLE */}
+          {/* Stock — solo para SIMPLE. Este campo es la existencia del producto
+              "sin variante"; las variantes con nombre llevan la suya arriba. */}
           {showStock && (
             <>
               <FormField label="Stock" type="number" value={Number(form.stock).toString()} onChange={v => setForm(p => ({ ...p, stock: Number(v) || 0 }))} />

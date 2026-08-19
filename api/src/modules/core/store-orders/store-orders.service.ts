@@ -3,6 +3,7 @@ import { Prisma, StoreWhatsappOrderStatus } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { CreateStoreOrderDto, UpdateStoreOrderStatusDto, QueryStoreOrdersDto } from './dto/store-order.dto';
 import { PaginatedResponse } from '../../../common/dto/pagination.dto';
+import { InventoryConsumptionEngine } from '../../retail/inventory/inventory-consumption.engine';
 
 // Sin pago en línea: el status avanza a mano según lo que el administrador
 // confirma que de verdad pasó. DELIVERED/CANCELLED son terminales — el
@@ -18,7 +19,10 @@ type OrderWithItems = Prisma.StoreWhatsappOrderGetPayload<{ include: { items: tr
 
 @Injectable()
 export class StoreOrdersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private inventory: InventoryConsumptionEngine,
+  ) {}
 
   async createOrder(tenantId: string, dto: CreateStoreOrderDto) {
     const subtotal = dto.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -125,25 +129,30 @@ export class StoreOrdersService {
   // Descuenta stock de cada línea de forma atómica y guardada contra stock
   // negativo — si un producto ya no tiene existencia suficiente, se cancela
   // toda la transacción y no se marca nada como entregado.
+  //
+  // Pasa por InventoryConsumptionEngine igual que el resto de los canales de
+  // venta. El descuento a mano que había aquí no expandía COMBO ni RECIPE (un
+  // combo entregado no consumía a sus hijos), no tocaba existencias por sucursal
+  // y no dejaba movimiento en el ledger, así que estas entregas eran invisibles
+  // en el historial de inventario.
   private async deliverOrder(tenantId: string, order: OrderWithItems) {
     return this.prisma.$transaction(async (tx) => {
-      for (const item of order.items) {
-        if (!item.productId) continue;
-
-        const product = await tx.product.findFirst({
-          where: { id: item.productId, tenantId },
-          select: { trackInventory: true },
-        });
-        if (!product || !product.trackInventory) continue;
-
-        const result = await tx.product.updateMany({
-          where: { id: item.productId, tenantId, stock: { gte: item.quantity } },
-          data: { stock: { decrement: item.quantity } },
-        });
-        if (result.count === 0) {
-          throw new ConflictException(`Stock insuficiente para "${item.name}"`);
-        }
-      }
+      await this.inventory.consume(
+        tx,
+        order.items.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          itemType: 'PRODUCT' as const,
+        })),
+        {
+          tenantId,
+          branchId: null,
+          userId: null,
+          referenceId: order.id,
+          referenceType: 'STORE_WHATSAPP_ORDER',
+          note: 'Entrega de pedido de tienda en línea',
+        },
+      );
 
       return tx.storeWhatsappOrder.update({
         where: { id: order.id },

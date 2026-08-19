@@ -781,11 +781,46 @@ async function main() {
     { branchId: branchSur.id, productId: plusProduct3.id, stock: 25 },
   ];
 
+  // Every product needs its default variant — the implicit "the product itself"
+  // line that carries inventory. Branch inventory hangs off the variant, not the
+  // product, so this has to exist before the rows below.
+  const ensureDefaultVariant = async (productId: string): Promise<string> => {
+    const existing = await prisma.productVariant.findFirst({
+      where: { productId, isDefault: true },
+      select: { id: true },
+    });
+    if (existing) return existing.id;
+
+    const product = await prisma.product.findUniqueOrThrow({
+      where: { id: productId },
+      select: { price: true, costPrice: true, trackInventory: true },
+    });
+    const created = await prisma.productVariant.create({
+      data: {
+        productId,
+        name: null,
+        isDefault: true,
+        trackInventory: product.trackInventory,
+        cost: product.costPrice ?? 0,
+        price: product.price,
+      },
+      select: { id: true },
+    });
+    return created.id;
+  };
+
+  const allProducts = await prisma.product.findMany({ select: { id: true } });
+  for (const product of allProducts) {
+    await ensureDefaultVariant(product.id);
+  }
+  console.log(`✅ Ensured default variant for ${allProducts.length} products`);
+
   for (const inv of branchInventoryData) {
+    const variantId = await ensureDefaultVariant(inv.productId);
     await prisma.branchInventory.upsert({
-      where: { branchId_productId: { branchId: inv.branchId, productId: inv.productId } },
+      where: { branchId_variantId: { branchId: inv.branchId, variantId } },
       update: { stock: inv.stock },
-      create: inv,
+      create: { ...inv, variantId },
     });
   }
 

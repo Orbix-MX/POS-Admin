@@ -3,7 +3,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ProductStatus, TaxCode, ProductType } from '@prisma/client';
 import { Type, Transform } from 'class-transformer';
 
-export class ProductAttributeDto {
+export class ProductVariantDto {
   @ApiProperty({ description: 'Ej. "Talla M", "Extra queso"' })
   @IsString()
   @MinLength(1)
@@ -23,6 +23,26 @@ export class ProductAttributeDto {
   @IsNumber()
   @Min(0)
   price?: number;
+
+  @ApiPropertyOptional({
+    description: 'Existencia de esta variante en la sucursal en contexto (o la principal).',
+    default: 0,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  stock?: number;
+
+  /**
+   * Se envía al editar para poder distinguir una variante existente de una nueva
+   * y así conservar sus existencias; sin él, guardar el producto reemplazaría el
+   * juego completo de variantes y el stock se perdería.
+   */
+  @ApiPropertyOptional({ description: 'Id de una variante existente' })
+  @IsOptional()
+  @IsUUID()
+  id?: string;
 }
 
 export class ProductFeatureDto {
@@ -196,12 +216,12 @@ export class CreateProductDto {
   @Type(() => ComboItemDto)
   comboItems?: ComboItemDto[];
 
-  @ApiPropertyOptional({ type: [ProductAttributeDto] })
+  @ApiPropertyOptional({ type: [ProductVariantDto] })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => ProductAttributeDto)
-  attributes?: ProductAttributeDto[];
+  @Type(() => ProductVariantDto)
+  variants?: ProductVariantDto[];
 
   @ApiPropertyOptional({ type: [ProductFeatureDto], description: 'Ficha técnica opcional (característica/valor)' })
   @IsOptional()

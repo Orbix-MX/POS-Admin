@@ -37,10 +37,17 @@ const PRODUCT_INCLUDE = {
     },
   },
   comboItems: { include: { child: true } },
-  attributes: true,
+  // La default primero: es la línea "el producto en sí" y encabeza la lista.
+  variants: { orderBy: [{ isDefault: 'desc' as const }, { name: 'asc' as const }] },
+  // Existencias por sucursal y variante — la fuente de verdad del stock.
+  branchInventory: {
+    select: { branchId: true, variantId: true, stock: true, price: true, cost: true, lowStockAlert: true },
+  },
   features: true,
   _count: { select: { orderItems: true } },
 } satisfies Prisma.ProductInclude;
+
+type ProductWithRelations = Prisma.ProductGetPayload<{ include: typeof PRODUCT_INCLUDE }>;
 
 @Injectable()
 export class ProductsService {
@@ -114,7 +121,7 @@ export class ProductsService {
 
   async create(createProductDto: CreateProductDto): Promise<Product> {
     const tenantId = this.tenantContext.requireTenantId();
-    const { recipeItems, comboItems, attributes, features, aiRequestId, aiOutcome, ...productData } = createProductDto;
+    const { recipeItems, comboItems, variants, features, aiRequestId, aiOutcome, ...productData } = createProductDto;
 
     const existingProduct = await this.prisma.product.findUnique({
       where: { tenantId_sku: { tenantId, sku: productData.sku } },
@@ -160,7 +167,23 @@ export class ProductsService {
         include: PRODUCT_INCLUDE,
       });
 
-      let needsRefetch = false;
+      // Toda alta necesita su variante default — la línea implícita "el producto
+      // en sí", que es la que lleva el inventario — y una fila de existencias por
+      // cada sucursal activa. Sin esas filas el producto nacería invendible.
+      const defaultVariant = await tx.productVariant.create({
+        data: {
+          productId: created.id,
+          name: null,
+          isDefault: true,
+          trackInventory: created.trackInventory,
+          cost: created.costPrice ?? 0,
+          price: created.price,
+        },
+        select: { id: true },
+      });
+      await this.seedBranchInventory(tx, tenantId, created, [defaultVariant.id]);
+
+      let needsRefetch = true;
 
       if (type === 'RECIPE' && recipeItems?.length) {
         const normalizedItems = await Promise.all(
@@ -192,16 +215,28 @@ export class ProductsService {
         needsRefetch = true;
       }
 
-      if (attributes?.length) {
-        await tx.productAttribute.createMany({
-          data: attributes.map((a) => ({
+      if (variants?.length) {
+        await tx.productVariant.createMany({
+          data: variants.map((v) => ({
             productId: created.id,
-            name: a.name,
-            cost: a.cost ?? 0,
-            price: a.price ?? 0,
+            name: v.name,
+            cost: v.cost ?? 0,
+            price: v.price ?? 0,
           })),
         });
-        needsRefetch = true;
+        // Las variantes con nombre también necesitan existencias propias por
+        // sucursal, o quedarían sin precio ni stock donde se vendan.
+        const named = await tx.productVariant.findMany({
+          where: { productId: created.id, isDefault: false },
+          select: { id: true },
+        });
+        await this.seedBranchInventory(
+          tx,
+          tenantId,
+          created,
+          named.map((v) => v.id),
+          0,
+        );
       }
 
       if (features?.length) {
@@ -233,6 +268,96 @@ export class ProductsService {
     return product;
   }
 
+  /**
+   * Adjunta a cada variante su existencia y sus valores comerciales efectivos.
+   *
+   * El stock vive en `branch_inventory` por (sucursal, variante), pero la UI
+   * muestra un número por variante: se usa el de la sucursal del contexto y, si
+   * no hay ninguna seleccionada, la suma de todas — que es lo que el usuario
+   * entiende por "cuánto tengo".
+   *
+   * `stockByBranch` se incluye para que la UI pueda desglosar sin otra llamada.
+   */
+  private attachVariantStock(product: ProductWithRelations, branchId: string | null) {
+    const { branchInventory, variants, ...rest } = product;
+    // Defensivo: hay lecturas que proyectan el producto sin estas relaciones.
+    const allRows = branchInventory ?? [];
+
+    const enrichedVariants = (variants ?? []).map((variant) => {
+      const rows = allRows.filter((row) => row.variantId === variant.id);
+      const scoped = branchId ? rows.filter((row) => row.branchId === branchId) : rows;
+      const source = scoped[0];
+
+      return {
+        ...variant,
+        stock: scoped.reduce((total, row) => total + row.stock, 0),
+        // Precio y costo efectivos: los de la sucursal en contexto, con respaldo
+        // en los valores legacy de la variante mientras dure la fase expand.
+        price: source?.price ?? variant.price,
+        cost: source?.cost ?? variant.cost,
+        lowStockAlert: source?.lowStockAlert ?? null,
+        stockByBranch: rows.map((row) => ({ branchId: row.branchId, stock: row.stock })),
+      };
+    });
+
+    return {
+      ...rest,
+      variants: enrichedVariants,
+      // `stock` a nivel producto = suma de sus variantes, para no romper las
+      // pantallas que todavía leen un escalar.
+      //
+      // Sin ninguna fila de inventario se conserva el valor legacy del producto:
+      // los tenants que aún no tienen sucursales no tienen dónde guardar
+      // existencias por variante, y devolver 0 ocultaría su stock real.
+      stock: allRows.length
+        ? enrichedVariants.reduce((total, variant) => total + variant.stock, 0)
+        : rest.stock,
+    };
+  }
+
+  /**
+   * Crea la fila de existencias de cada variante en todas las sucursales activas
+   * del tenant, copiando los valores comerciales del producto. `stockOverride`
+   * permite arrancar en 0 las variantes con nombre: el stock capturado en el alta
+   * pertenece a la variante default, no se replica en cada una.
+   *
+   * `skipDuplicates` la hace idempotente, de modo que volver a sembrar una
+   * variante existente no rompe.
+   */
+  private async seedBranchInventory(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    product: Product,
+    variantIds: string[],
+    stockOverride?: number,
+  ): Promise<void> {
+    if (variantIds.length === 0) return;
+
+    const branches = await tx.branch.findMany({
+      where: { tenantId, status: 'ACTIVE' },
+      select: { id: true },
+    });
+    if (branches.length === 0) return;
+
+    await tx.branchInventory.createMany({
+      data: branches.flatMap((branch) =>
+        variantIds.map((variantId) => ({
+          branchId: branch.id,
+          productId: product.id,
+          variantId,
+          stock: stockOverride ?? product.stock,
+          cost: product.costPrice,
+          price: product.price,
+          comparePrice: product.comparePrice,
+          lastCost: product.lastCost,
+          avgCost: product.avgCost,
+          lowStockAlert: product.lowStockAlert,
+        })),
+      ),
+      skipDuplicates: true,
+    });
+  }
+
   async findAll(queryDto: QueryProductDto): Promise<PaginatedResponse<Product>> {
     const { skip, limit, page, search, categoryId, status, type } = queryDto;
     const tenantId = this.tenantContext.requireTenantId();
@@ -261,8 +386,10 @@ export class ProductsService {
       this.prisma.product.count({ where }),
     ]);
 
+    const branchId = this.tenantContext.getBranchId() ?? null;
+
     return {
-      data: products,
+      data: products.map((product) => this.attachVariantStock(product, branchId)) as Product[],
       meta: {
         page,
         limit,
@@ -280,7 +407,7 @@ export class ProductsService {
     });
 
     if (!product) throw new NotFoundException('Product not found');
-    return product;
+    return this.attachVariantStock(product, this.tenantContext.getBranchId() ?? null) as Product;
   }
 
   async update(id: string, updateProductDto: UpdateProductDto): Promise<Product> {
@@ -289,7 +416,7 @@ export class ProductsService {
 
     if (!product) throw new NotFoundException('Product not found');
 
-    const { recipeItems, comboItems, attributes, features, ...productData } = updateProductDto;
+    const { recipeItems, comboItems, variants, features, ...productData } = updateProductDto;
 
     if (productData.categoryId) {
       const category = await this.prisma.category.findUnique({
@@ -375,18 +502,47 @@ export class ProductsService {
         }
       }
 
-      // Sync attributes (full replace — mirrors combo items above)
-      if (attributes !== undefined) {
-        await tx.productAttribute.deleteMany({ where: { productId: id } });
-        if (attributes.length > 0) {
-          await tx.productAttribute.createMany({
-            data: attributes.map((a) => ({
-              productId: id,
-              name: a.name,
-              cost: a.cost ?? 0,
-              price: a.price ?? 0,
-            })),
-          });
+      // Sincronización de variantes por id, NO reemplazo completo.
+      //
+      // `branch_inventory` cuelga de `variantId` con borrado en cascada: un
+      // deleteMany aquí se llevaría por delante las existencias de todas las
+      // sucursales cada vez que alguien guarda el producto. Se conserva la
+      // variante default (nunca llega en el DTO — es interna) y las que traen id.
+      if (variants !== undefined) {
+        const existing = await tx.productVariant.findMany({
+          where: { productId: id },
+          select: { id: true, isDefault: true },
+        });
+        const keepIds = new Set(
+          existing.filter((v) => v.isDefault).map((v) => v.id),
+        );
+
+        for (const variant of variants) {
+          if (variant.id && existing.some((v) => v.id === variant.id)) {
+            keepIds.add(variant.id);
+            await tx.productVariant.update({
+              where: { id: variant.id },
+              data: { name: variant.name, cost: variant.cost ?? 0, price: variant.price ?? 0 },
+            });
+          } else {
+            const created = await tx.productVariant.create({
+              data: {
+                productId: id,
+                name: variant.name,
+                cost: variant.cost ?? 0,
+                price: variant.price ?? 0,
+              },
+              select: { id: true },
+            });
+            keepIds.add(created.id);
+            await this.seedBranchInventory(tx, tenantId, product, [created.id], variant.stock ?? 0);
+          }
+        }
+
+        // Solo se eliminan las que el usuario realmente quitó.
+        const removed = existing.filter((v) => !keepIds.has(v.id)).map((v) => v.id);
+        if (removed.length > 0) {
+          await tx.productVariant.deleteMany({ where: { id: { in: removed } } });
         }
       }
 
@@ -522,15 +678,24 @@ export class ProductsService {
       throw new BadRequestException('Product does not track inventory');
     }
 
-    const newStock = product.stock + quantity;
-
-    if (newStock < 0) throw new BadRequestException('Insufficient stock');
+    const branchId = this.tenantContext.getBranchId() ?? null;
 
     // Flujo de ajuste oficial: la baja/alta de stock y su movimiento AJUSTE van
-    // juntos en una transacción. Fase 2A: ambas escrituras se delegan al
-    // InventoryEngine; el resultado (stock final y movimiento) es idéntico.
+    // juntos en una transacción, delegados al InventoryEngine.
+    //
+    // El guard de existencia lo aplica la base DENTRO de la transacción. Antes se
+    // validaba en JS con un stock leído fuera de ella, lo que dejaba una ventana
+    // TOCTOU: una venta concurrente entre la lectura y la escritura podía dejar
+    // el stock en negativo.
     const updated = await this.prisma.$transaction(async (tx) => {
-      await this.inventoryEngine.applyProductStockDelta(tx, { productId: id, delta: quantity });
+      const applied = await this.inventoryEngine.applyProductStockDelta(tx, {
+        productId: id,
+        delta: quantity,
+        guardInsufficient: quantity < 0,
+        branchId,
+      });
+      if (!applied) throw new BadRequestException('Insufficient stock');
+
       if (quantity !== 0) {
         await this.inventoryEngine.recordProductMovement(tx, {
           tenantId,
@@ -557,22 +722,35 @@ export class ProductsService {
     return updated;
   }
 
+  /**
+   * Productos bajo su punto de reorden. La comparación stock ≤ mínimo ahora vive
+   * entera en `branch_inventory` (antes cruzaba dos columnas de `products` con un
+   * field reference), y se acota a la sucursal del contexto cuando la hay.
+   *
+   * Devuelve forma de producto, con `stock`/`lowStockAlert` tomados de la fila de
+   * la sucursal, para no romper el contrato del endpoint.
+   */
   async getLowStock(limit = 10) {
     const tenantId = this.tenantContext.requireTenantId();
-    return this.prisma.product.findMany({
+    const branchId = this.tenantContext.getBranchId() ?? null;
+
+    const rows = await this.prisma.branchInventory.findMany({
       where: {
-        tenantId,
-        type: 'SIMPLE',
-        trackInventory: true,
-        stock: {
-          lte: this.prisma.product.fields.lowStockAlert,
-        },
-        status: 'ACTIVE',
+        ...(branchId ? { branchId } : { branch: { tenantId } }),
+        stock: { lte: this.prisma.branchInventory.fields.lowStockAlert },
+        variant: { trackInventory: true },
+        product: { tenantId, type: 'SIMPLE', status: 'ACTIVE' },
       },
       take: limit,
-      include: { category: true },
       orderBy: { stock: 'asc' },
+      include: { product: { include: { category: true } } },
     });
+
+    return rows.map((row) => ({
+      ...row.product,
+      stock: row.stock,
+      lowStockAlert: row.lowStockAlert,
+    }));
   }
 
   async getRecipe(productId: string) {
