@@ -21,5 +21,7 @@ export default defineConfig({
     watch: {
       ignored: ['**/.claude/**'],
     },
+    host: true,
+    allowedHosts: ['.orbixmx.local'],
   },
 })
