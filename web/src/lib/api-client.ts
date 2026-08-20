@@ -45,6 +45,14 @@ api.interceptors.response.use(
         window.dispatchEvent(new CustomEvent(OPERATOR_EXPIRED_EVENT))
         return Promise.reject(error)
       }
+      // 401 en el propio flujo de acceso = credenciales incorrectas, no sesión
+      // expirada: recargar aquí borraría el formulario antes de que la pantalla
+      // pueda mostrar el mensaje. Se deja pasar el error al llamador.
+      // Mismo criterio que el `isAuthFlow` de TENANT_SUSPENDED, más abajo.
+      const isAuthFlow = url.includes('/auth/login') || url.includes('/auth/select-tenant')
+      if (isAuthFlow) {
+        return Promise.reject(error)
+      }
       clearAccessToken()
       window.location.reload()
     }
