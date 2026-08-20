@@ -1,0 +1,12 @@
+/* Orbix Design System — tokens/typography.css */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&display=swap');
+:root{
+--font-sans:'DM Sans',system-ui,sans-serif;
+--font-heading:'DM Sans',system-ui,sans-serif;
+--font-mono:ui-monospace,'SF Mono',Menlo,monospace;
+--text-xs:11px;--text-sm:12px;--text-base:13px;--text-md:14px;--text-lg:15px;
+--text-xl:18px;--text-2xl:22px;--text-3xl:26px;
+--leading-tight:1.15;--leading-snug:1.35;--leading-normal:1.5;
+--weight-normal:400;--weight-medium:500;--weight-semibold:600;--weight-bold:700;--weight-extrabold:800;
+}
+body{font-family:var(--font-sans);}

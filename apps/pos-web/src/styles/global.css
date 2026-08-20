@@ -1,0 +1,103 @@
+@import './ds/index.css';
+
+/* `--hairline` es el borde fino que el diseño de Orbix POS define encima de
+   los tokens del design system. */
+:root {
+  --hairline: oklch(0.94 0.004 250);
+  color-scheme: light;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--neutral-0);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  /* Superficie táctil: sin selección accidental ni zoom por doble tap. */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+}
+
+button { font-family: inherit; }
+
+a { color: var(--primary); text-decoration: none; }
+a:hover { color: var(--brand-blue-700); }
+
+@keyframes orbix-spin { to { transform: rotate(360deg); } }
+@keyframes orbix-rise { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* Scrollbars discretas en los paneles con overflow del POS. */
+.pos-scroll { overflow: auto; scrollbar-width: thin; scrollbar-color: var(--neutral-200) transparent; }
+.pos-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.pos-scroll::-webkit-scrollbar-thumb { background: var(--neutral-200); border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }
+.pos-scroll::-webkit-scrollbar-track { background: transparent; }
+
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* ---------------------------------------------------------------------------
+   Adaptación por ancho.
+
+   El diseño está trazado a 1440×900. Estas reglas lo bajan a laptop (1366×768)
+   y tablet (768px+) sin re-maquetar: el catálogo cede ancho primero y, cuando
+   ya no cabe la venta al lado, el carrito pasa debajo en lugar de encogerse
+   hasta ser inoperable. Los controles táctiles conservan su altura.
+   --------------------------------------------------------------------------- */
+
+.pos-layout { display: flex; min-height: 0; flex: 1; }
+
+.pos-nav {
+  width: 84px; flex: 0 0 84px;
+  background: var(--neutral-0);
+  border-right: 1px solid var(--hairline);
+  padding: 12px 8px;
+  display: flex; flex-direction: column; gap: 4px;
+  overflow-y: auto;
+}
+
+.pos-cart {
+  width: 430px; flex: 0 0 430px;
+  background: var(--card);
+  border-left: 1px solid var(--hairline);
+  display: flex; flex-direction: column;
+  min-height: 0;
+}
+
+@media (max-width: 1439px) {
+  .pos-cart { width: 390px; flex-basis: 390px; }
+}
+
+@media (max-width: 1279px) {
+  .pos-cart { width: 350px; flex-basis: 350px; }
+}
+
+@media (max-width: 1023px) {
+  .pos-layout { flex-direction: column; }
+  .pos-nav {
+    width: 100%; flex: 0 0 auto;
+    flex-direction: row; overflow-x: auto;
+    border-right: none; border-bottom: 1px solid var(--hairline);
+    padding: 8px 10px;
+  }
+  .pos-nav > button { min-width: 78px; }
+  .pos-cart {
+    width: 100%; flex: 1 1 auto;
+    border-left: none; border-top: 1px solid var(--hairline);
+    min-height: 46vh;
+  }
+}
+
+/* Paneles con teclado numérico al costado (apertura de caja, cobro). */
+.pos-split { display: grid; grid-template-columns: minmax(0, 1fr) 400px; }
+.pos-split--narrow { grid-template-columns: minmax(0, 1fr) 380px; }
+
+@media (max-width: 1023px) {
+  .pos-split,
+  .pos-split--narrow { grid-template-columns: minmax(0, 1fr); }
+  .pos-split > :last-child,
+  .pos-split--narrow > :last-child { border-left: none; border-top: 1px solid var(--hairline); }
+}
