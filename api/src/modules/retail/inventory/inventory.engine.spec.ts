@@ -1,10 +1,34 @@
 import { InventoryEngine } from './inventory.engine';
+import { VariantInventoryResolver } from './variant-inventory.resolver';
 
 /**
- * Fase 1 — InventoryEngine encapsula los primitivos de inventario. Estos tests
- * fijan el comportamiento (guard de stock, siembra de branchInventory, forma de
- * los movimientos) para que la adopción de Fase 2 sea una sustitución 1:1.
+ * InventoryEngine encapsula los primitivos de inventario. La fuente de verdad de
+ * la existencia es la fila de `branch_inventory` de (sucursal, variante) y
+ * `Product.stock` se mantiene como espejo durante la fase expand.
+ *
+ * Estos tests fijan el comportamiento completo del primitivo: resolución de la
+ * llave (variante default / sucursal isMain), siembra de la fila, guard contra
+ * sobreventa, espejo en `Product.stock` y el fallback legacy cuando el producto
+ * todavía no es direccionable por variante/sucursal.
  */
+
+/**
+ * Fila comercial del producto tal como la leen `ensureBranchInventoryRow`
+ * (campos comerciales) y el resolver (`tenantId`).
+ */
+const PRODUCT_ROW = {
+  tenantId: 't1',
+  stock: 7,
+  price: 100,
+  costPrice: 60,
+  comparePrice: 120,
+  lastCost: 58,
+  avgCost: 59,
+  lowStockAlert: 3,
+};
+
+/** Llave que el resolver deduce para 'p1' cuando el llamador no especifica nada. */
+const TARGET = { variantId: 'v-p1', branchId: 'b-main' };
 
 function makeTx() {
   return {
@@ -13,14 +37,27 @@ function makeTx() {
     product: {
       update: jest.fn().mockResolvedValue({}),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-      findUnique: jest.fn().mockResolvedValue({ stock: 7 }),
+      findUnique: jest.fn().mockResolvedValue({ ...PRODUCT_ROW }),
     },
+    // Variante default del producto: la línea implícita "el producto en sí".
+    productVariant: {
+      // Devuelve la variante default; los tests que ejercitan el fallback legacy
+      // la anulan con `mockResolvedValue(null)`, de ahí el tipo nullable.
+      findFirst: jest.fn(({ where }: { where: { productId: string } }): Promise<{ id: string } | null> =>
+        Promise.resolve({ id: `v-${where.productId}` }),
+      ),
+      create: jest.fn().mockResolvedValue({ id: 'v-nueva' }),
+    },
+    // Sucursal isMain del tenant, usada cuando el llamador no trae branchId.
+    branch: { findFirst: jest.fn().mockResolvedValue({ id: 'b-main' }) },
     supply: {
       update: jest.fn().mockResolvedValue({}),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       findUnique: jest.fn().mockResolvedValue({ stock: 12 }),
     },
     branchInventory: {
+      // Por defecto la fila NO existe todavía → el engine la siembra.
+      findUnique: jest.fn().mockResolvedValue(null),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       create: jest.fn().mockResolvedValue({}),
     },
@@ -31,7 +68,9 @@ describe('InventoryEngine', () => {
   let engine: InventoryEngine;
 
   beforeEach(() => {
-    engine = new InventoryEngine();
+    // Resolver real: la resolución variante/sucursal es parte del contrato que
+    // estos tests fijan, no una dependencia que convenga simular.
+    engine = new InventoryEngine(new VariantInventoryResolver());
   });
 
   describe('recordProductMovement', () => {
@@ -83,13 +122,102 @@ describe('InventoryEngine', () => {
     });
   });
 
-  describe('applyProductStockDelta', () => {
+  describe('applyProductStockDelta — resolución de la llave (sucursal, variante)', () => {
+    it('sin variante ni sucursal explícitas → usa la variante default y la sucursal isMain', async () => {
+      const tx = makeTx();
+      await engine.applyProductStockDelta(tx as never, { productId: 'p1', delta: -2 });
+
+      expect(tx.productVariant.findFirst).toHaveBeenCalledWith({
+        where: { productId: 'p1', isDefault: true },
+        select: { id: true },
+      });
+      expect(tx.branch.findFirst).toHaveBeenCalledWith({
+        where: { tenantId: 't1', isMain: true },
+        select: { id: true },
+      });
+      // El delta cae sobre la fila de la variante default, no sobre el producto.
+      expect(tx.branchInventory.updateMany).toHaveBeenCalledWith({
+        where: TARGET,
+        data: { stock: { increment: -2 } },
+      });
+    });
+
+    it('con branchId explícito → no busca la sucursal isMain', async () => {
+      const tx = makeTx();
+      await engine.applyProductStockDelta(tx as never, {
+        productId: 'p1', delta: -2, branchId: 'b9',
+      });
+
+      expect(tx.branch.findFirst).not.toHaveBeenCalled();
+      expect(tx.branchInventory.updateMany).toHaveBeenCalledWith({
+        where: { variantId: 'v-p1', branchId: 'b9' },
+        data: { stock: { increment: -2 } },
+      });
+    });
+
+    it('con variante y sucursal explícitas → no consulta al resolver', async () => {
+      const tx = makeTx();
+      await engine.applyProductStockDelta(tx as never, {
+        productId: 'p1', delta: 3, variantId: 'v-talla-m', branchId: 'b9',
+      });
+
+      expect(tx.productVariant.findFirst).not.toHaveBeenCalled();
+      expect(tx.branch.findFirst).not.toHaveBeenCalled();
+      expect(tx.branchInventory.updateMany).toHaveBeenCalledWith({
+        where: { variantId: 'v-talla-m', branchId: 'b9' },
+        data: { stock: { increment: 3 } },
+      });
+    });
+  });
+
+  describe('applyProductStockDelta — siembra de la fila', () => {
+    it('fila inexistente → la siembra con los valores comerciales del producto', async () => {
+      const tx = makeTx();
+      await engine.applyProductStockDelta(tx as never, { productId: 'p1', delta: -2 });
+
+      // Sin siembra, el updateMany afectaría 0 filas y el movimiento se perdería
+      // en silencio: el modo de falla más peligroso del motor.
+      expect(tx.branchInventory.findUnique).toHaveBeenCalledWith({
+        where: { branchId_variantId: { branchId: 'b-main', variantId: 'v-p1' } },
+        select: { branchId: true },
+      });
+      expect(tx.branchInventory.create).toHaveBeenCalledWith({
+        data: {
+          branchId: 'b-main',
+          productId: 'p1',
+          variantId: 'v-p1',
+          stock: 7,
+          price: 100,
+          cost: 60,
+          comparePrice: 120,
+          lastCost: 58,
+          avgCost: 59,
+          lowStockAlert: 3,
+        },
+      });
+    });
+
+    it('fila existente → no se vuelve a sembrar', async () => {
+      const tx = makeTx();
+      tx.branchInventory.findUnique.mockResolvedValue({ branchId: 'b-main' });
+      await engine.applyProductStockDelta(tx as never, { productId: 'p1', delta: -2 });
+
+      expect(tx.branchInventory.create).not.toHaveBeenCalled();
+      expect(tx.branchInventory.updateMany).toHaveBeenCalled();
+    });
+  });
+
+  describe('applyProductStockDelta — delta y espejo', () => {
     it('delta 0 → escribe increment 0 (preserva bump de updatedAt) y devuelve true', async () => {
       const tx = makeTx();
       const ok = await engine.applyProductStockDelta(tx as never, { productId: 'p1', delta: 0 });
       expect(ok).toBe(true);
       // Sin corto-circuito: siempre se emite el UPDATE (increment 0) para conservar
       // el comportamiento observable de una escritura de stock (updatedAt).
+      expect(tx.branchInventory.updateMany).toHaveBeenCalledWith({
+        where: TARGET,
+        data: { stock: { increment: 0 } },
+      });
       expect(tx.product.update).toHaveBeenCalledWith({
         where: { id: 'p1' },
         data: { stock: { increment: 0 } },
@@ -97,9 +225,77 @@ describe('InventoryEngine', () => {
       expect(tx.product.updateMany).not.toHaveBeenCalled();
     });
 
-    it('resta con guard y stock suficiente → updateMany, devuelve true', async () => {
+    it('resta con guard y stock suficiente → updateMany guardado sobre la fila, devuelve true', async () => {
       const tx = makeTx();
+      tx.branchInventory.updateMany.mockResolvedValue({ count: 1 });
+      const ok = await engine.applyProductStockDelta(tx as never, {
+        productId: 'p1', delta: -5, guardInsufficient: true,
+      });
+      expect(ok).toBe(true);
+      // El guard contra sobreventa vive en la fila de (sucursal, variante).
+      expect(tx.branchInventory.updateMany).toHaveBeenCalledWith({
+        where: { ...TARGET, stock: { gte: 5 } },
+        data: { stock: { increment: -5 } },
+      });
+      // Y `Product.stock` se sigue espejando mientras dure la fase expand. La
+      // baja va guardada para que el espejo nunca quede negativo cuando el dato
+      // global esté desfasado respecto de la fila de sucursal.
+      expect(tx.product.updateMany).toHaveBeenCalledWith({
+        where: { id: 'p1', stock: { gte: 5 } },
+        data: { stock: { increment: -5 } },
+      });
+    });
+
+    it('espejo desfasado: si el global no alcanza, se recorta a 0 en vez de quedar negativo', async () => {
+      const tx = makeTx();
+      tx.branchInventory.updateMany.mockResolvedValue({ count: 1 });
+      // La fila de sucursal sí alcanza (la venta procede), pero el global no.
+      tx.product.updateMany.mockResolvedValue({ count: 0 });
+
+      const ok = await engine.applyProductStockDelta(tx as never, {
+        productId: 'p1', delta: -5, guardInsufficient: true,
+      });
+
+      expect(ok).toBe(true);
+      expect(tx.product.updateMany).toHaveBeenLastCalledWith({
+        where: { id: 'p1' },
+        data: { stock: 0 },
+      });
+    });
+
+    it('resta con guard y stock insuficiente → devuelve false sin mutar ni espejar', async () => {
+      const tx = makeTx();
+      tx.branchInventory.updateMany.mockResolvedValue({ count: 0 });
+      const ok = await engine.applyProductStockDelta(tx as never, {
+        productId: 'p1', delta: -5, guardInsufficient: true,
+      });
+      expect(ok).toBe(false);
+      // El rechazo corta antes del espejo: `Product.stock` no se mueve.
+      expect(tx.product.update).not.toHaveBeenCalled();
+      expect(tx.product.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('suma sin guard → increment directo en la fila y en el espejo', async () => {
+      const tx = makeTx();
+      const ok = await engine.applyProductStockDelta(tx as never, { productId: 'p1', delta: 4 });
+      expect(ok).toBe(true);
+      expect(tx.branchInventory.updateMany).toHaveBeenCalledWith({
+        where: TARGET,
+        data: { stock: { increment: 4 } },
+      });
+      expect(tx.product.update).toHaveBeenCalledWith({
+        where: { id: 'p1' },
+        data: { stock: { increment: 4 } },
+      });
+    });
+  });
+
+  describe('applyProductStockDelta — fallback legacy sobre Product.stock', () => {
+    it('producto sin variante default → resta guardada sobre Product.stock', async () => {
+      const tx = makeTx();
+      tx.productVariant.findFirst.mockResolvedValue(null);
       tx.product.updateMany.mockResolvedValue({ count: 1 });
+
       const ok = await engine.applyProductStockDelta(tx as never, {
         productId: 'p1', delta: -5, guardInsufficient: true,
       });
@@ -108,26 +304,35 @@ describe('InventoryEngine', () => {
         where: { id: 'p1', stock: { gte: 5 } },
         data: { stock: { increment: -5 } },
       });
+      // No es direccionable por variante: nada toca branch_inventory.
+      expect(tx.branchInventory.updateMany).not.toHaveBeenCalled();
+      expect(tx.branchInventory.create).not.toHaveBeenCalled();
     });
 
-    it('resta con guard y stock insuficiente → devuelve false sin mutar increment', async () => {
+    it('tenant sin sucursales → suma directa sobre Product.stock', async () => {
       const tx = makeTx();
-      tx.product.updateMany.mockResolvedValue({ count: 0 });
-      const ok = await engine.applyProductStockDelta(tx as never, {
-        productId: 'p1', delta: -5, guardInsufficient: true,
-      });
-      expect(ok).toBe(false);
-      expect(tx.product.update).not.toHaveBeenCalled();
-    });
+      tx.branch.findFirst.mockResolvedValue(null);
 
-    it('suma sin guard → increment directo', async () => {
-      const tx = makeTx();
       const ok = await engine.applyProductStockDelta(tx as never, { productId: 'p1', delta: 4 });
       expect(ok).toBe(true);
       expect(tx.product.update).toHaveBeenCalledWith({
         where: { id: 'p1' },
         data: { stock: { increment: 4 } },
       });
+      expect(tx.branchInventory.updateMany).not.toHaveBeenCalled();
+      expect(tx.branchInventory.create).not.toHaveBeenCalled();
+    });
+
+    it('legacy con guard y stock insuficiente → devuelve false sin mutar', async () => {
+      const tx = makeTx();
+      tx.productVariant.findFirst.mockResolvedValue(null);
+      tx.product.updateMany.mockResolvedValue({ count: 0 });
+
+      const ok = await engine.applyProductStockDelta(tx as never, {
+        productId: 'p1', delta: -5, guardInsufficient: true,
+      });
+      expect(ok).toBe(false);
+      expect(tx.product.update).not.toHaveBeenCalled();
     });
   });
 
@@ -144,52 +349,108 @@ describe('InventoryEngine', () => {
   });
 
   describe('applyBranchInventoryDelta', () => {
-    it('sin branchId → no-op', async () => {
+    it('sin branchId → resuelve la sucursal isMain del tenant', async () => {
       const tx = makeTx();
       await engine.applyBranchInventoryDelta(tx as never, null, 'p1', -2);
+      // Ya no es no-op: la ausencia de sucursal explícita se resuelve a la isMain.
+      expect(tx.branchInventory.updateMany).toHaveBeenCalledWith({
+        where: { ...TARGET, stock: { gte: 2 } },
+        data: { stock: { increment: -2 } },
+      });
+    });
+
+    it('sin sucursal resoluble → no-op', async () => {
+      const tx = makeTx();
+      tx.branch.findFirst.mockResolvedValue(null);
+      await engine.applyBranchInventoryDelta(tx as never, null, 'p1', -2);
+      expect(tx.branchInventory.updateMany).not.toHaveBeenCalled();
+      expect(tx.branchInventory.create).not.toHaveBeenCalled();
+    });
+
+    it('sin variante default → no-op', async () => {
+      const tx = makeTx();
+      tx.productVariant.findFirst.mockResolvedValue(null);
+      await engine.applyBranchInventoryDelta(tx as never, 'b1', 'p1', -2);
       expect(tx.branchInventory.updateMany).not.toHaveBeenCalled();
       expect(tx.branchInventory.create).not.toHaveBeenCalled();
     });
 
     it('resta con fila suficiente → updateMany guardado, sin siembra', async () => {
       const tx = makeTx();
+      tx.branchInventory.findUnique.mockResolvedValue({ branchId: 'b1' });
       tx.branchInventory.updateMany.mockResolvedValue({ count: 1 });
       await engine.applyBranchInventoryDelta(tx as never, 'b1', 'p1', -2);
       expect(tx.branchInventory.updateMany).toHaveBeenCalledWith({
-        where: { branchId: 'b1', productId: 'p1', stock: { gte: 2 } },
+        where: { branchId: 'b1', variantId: 'v-p1', stock: { gte: 2 } },
         data: { stock: { increment: -2 } },
       });
       expect(tx.branchInventory.create).not.toHaveBeenCalled();
     });
 
-    it('resta sin fila → clamp falla y siembra desde stock global', async () => {
+    it('resta con fila insuficiente → clamp a 0, nunca negativa', async () => {
       const tx = makeTx();
-      // Primer updateMany (guardado) no afecta; segundo (clamp a 0) tampoco → siembra.
-      tx.branchInventory.updateMany
-        .mockResolvedValueOnce({ count: 0 })
-        .mockResolvedValueOnce({ count: 0 });
-      tx.product.findUnique.mockResolvedValue({ stock: 9 });
+      tx.branchInventory.findUnique.mockResolvedValue({ branchId: 'b1' });
+      // El updateMany guardado no afecta filas → se fija en 0 (el guard global ya
+      // evitó la sobreventa, la fila jamás queda negativa).
+      tx.branchInventory.updateMany.mockResolvedValueOnce({ count: 0 });
       await engine.applyBranchInventoryDelta(tx as never, 'b1', 'p1', -2);
-      expect(tx.branchInventory.create).toHaveBeenCalledWith({
-        data: { branchId: 'b1', productId: 'p1', stock: 9 },
+      expect(tx.branchInventory.updateMany).toHaveBeenLastCalledWith({
+        where: { branchId: 'b1', variantId: 'v-p1' },
+        data: { stock: 0 },
       });
     });
 
-    it('suma sin fila → siembra desde stock global', async () => {
+    it('resta sin fila → la siembra desde el producto y luego aplica el delta', async () => {
       const tx = makeTx();
-      tx.branchInventory.updateMany.mockResolvedValue({ count: 0 });
-      tx.product.findUnique.mockResolvedValue({ stock: 5 });
+      tx.product.findUnique.mockResolvedValue({ ...PRODUCT_ROW, stock: 9 });
+      await engine.applyBranchInventoryDelta(tx as never, 'b1', 'p1', -2);
+      expect(tx.branchInventory.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ branchId: 'b1', productId: 'p1', variantId: 'v-p1', stock: 9 }),
+      });
+      expect(tx.branchInventory.updateMany).toHaveBeenCalledWith({
+        where: { branchId: 'b1', variantId: 'v-p1', stock: { gte: 2 } },
+        data: { stock: { increment: -2 } },
+      });
+    });
+
+    it('suma sin fila → la siembra desde el producto y suma', async () => {
+      const tx = makeTx();
+      tx.product.findUnique.mockResolvedValue({ ...PRODUCT_ROW, stock: 5 });
       await engine.applyBranchInventoryDelta(tx as never, 'b1', 'p1', 3);
       expect(tx.branchInventory.create).toHaveBeenCalledWith({
-        data: { branchId: 'b1', productId: 'p1', stock: 5 },
+        data: expect.objectContaining({ branchId: 'b1', productId: 'p1', variantId: 'v-p1', stock: 5 }),
+      });
+      expect(tx.branchInventory.updateMany).toHaveBeenCalledWith({
+        where: { branchId: 'b1', variantId: 'v-p1' },
+        data: { stock: { increment: 3 } },
       });
     });
   });
 
   describe('getProductStock / getSupplyStock', () => {
-    it('devuelve stock de producto', async () => {
+    it('lee la fila de (sucursal, variante) cuando existe', async () => {
       const tx = makeTx();
-      tx.product.findUnique.mockResolvedValue({ stock: 7 });
+      tx.branchInventory.findUnique.mockResolvedValue({ stock: 3 });
+      expect(await engine.getProductStock(tx as never, 'p1')).toBe(3);
+      expect(tx.branchInventory.findUnique).toHaveBeenCalledWith({
+        where: { branchId_variantId: { branchId: 'b-main', variantId: 'v-p1' } },
+        select: { stock: true },
+      });
+    });
+
+    it('respeta la variante y sucursal explícitas', async () => {
+      const tx = makeTx();
+      tx.branchInventory.findUnique.mockResolvedValue({ stock: 11 });
+      expect(await engine.getProductStock(tx as never, 'p1', 'b9', 'v-talla-m')).toBe(11);
+      expect(tx.branchInventory.findUnique).toHaveBeenCalledWith({
+        where: { branchId_variantId: { branchId: 'b9', variantId: 'v-talla-m' } },
+        select: { stock: true },
+      });
+    });
+
+    it('sin fila de sucursal → cae al Product.stock legacy', async () => {
+      const tx = makeTx();
+      tx.branchInventory.findUnique.mockResolvedValue(null);
       expect(await engine.getProductStock(tx as never, 'p1')).toBe(7);
     });
 

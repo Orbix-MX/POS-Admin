@@ -3,7 +3,8 @@ import ExcelJS from 'exceljs';
 import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { SlugUtil } from '../../../common/utils/slug.util';
-import { ProductStatus, TaxCode } from '@prisma/client';
+import { VariantInventoryResolver } from '../inventory/variant-inventory.resolver';
+import { Product, ProductStatus, TaxCode } from '@prisma/client';
 
 const SHEET_PRODUCTS = 'Productos';
 const SHEET_CATEGORIES = 'Categorías';
@@ -46,6 +47,7 @@ export class ProductsImportService {
   constructor(
     private prisma: PrismaService,
     private tenantContext: TenantContextService,
+    private variants: VariantInventoryResolver,
   ) {}
 
   /** Builds a ready-to-fill .xlsx: headers + dropdowns + the tenant's real category names. */
@@ -257,18 +259,20 @@ export class ProductsImportService {
 
       try {
         if (existingSkus.has(sku)) {
-          await this.prisma.product.update({
+          const updated = await this.prisma.product.update({
             where: { tenantId_sku: { tenantId, sku } },
             data,
           });
+          await this.syncBranchInventory(tenantId, updated);
           result.updated++;
         } else {
           const slug = SlugUtil.generateUnique(name, usedSlugs);
           usedSlugs.push(slug);
           existingSkus.add(sku);
-          await this.prisma.product.create({
+          const created = await this.prisma.product.create({
             data: { ...data, tenantId, sku, slug, type: 'SIMPLE' },
           });
+          await this.syncBranchInventory(tenantId, created);
           result.created++;
         }
       } catch (err) {
@@ -281,5 +285,52 @@ export class ProductsImportService {
     }
 
     return result;
+  }
+
+  /**
+   * Refleja en el inventario por variante lo que trae la hoja de cálculo.
+   *
+   * La hoja tiene UNA columna de stock, así que ese número se aplica solo a la
+   * sucursal de destino (la del contexto, o la principal) — replicarlo en todas
+   * multiplicaría la existencia. Los valores comerciales (precio, costo, mínimo)
+   * sí se propagan a todas las sucursales, porque son del catálogo.
+   */
+  private async syncBranchInventory(tenantId: string, product: Product): Promise<void> {
+    const variantId = await this.variants.ensureDefaultVariantId(this.prisma, product.id);
+    if (!variantId) return;
+
+    const branches = await this.prisma.branch.findMany({
+      where: { tenantId, status: 'ACTIVE' },
+      select: { id: true, isMain: true },
+    });
+    if (branches.length === 0) return;
+
+    const contextBranchId = this.tenantContext.getBranchId();
+    const targetBranchId =
+      (contextBranchId && branches.some((b) => b.id === contextBranchId) ? contextBranchId : null) ??
+      branches.find((b) => b.isMain)?.id ??
+      branches[0].id;
+
+    const commercial = {
+      price: product.price,
+      cost: product.costPrice,
+      comparePrice: product.comparePrice,
+      lowStockAlert: product.lowStockAlert,
+    };
+
+    for (const branch of branches) {
+      const isTarget = branch.id === targetBranchId;
+      await this.prisma.branchInventory.upsert({
+        where: { branchId_variantId: { branchId: branch.id, variantId } },
+        update: isTarget ? { ...commercial, stock: product.stock } : commercial,
+        create: {
+          branchId: branch.id,
+          productId: product.id,
+          variantId,
+          stock: isTarget ? product.stock : 0,
+          ...commercial,
+        },
+      });
+    }
   }
 }

@@ -37,7 +37,7 @@ describe('UsersService', () => {
     // `getOwnerUserId` lo consulta para saber a quién no se puede desactivar.
     tenant: { findUnique: jest.fn().mockResolvedValue(null), findFirst: jest.fn().mockResolvedValue(null) },
     $transaction: jest.fn((cb: (tx: unknown) => unknown) =>
-      typeof cb === 'function' ? cb(mockPrismaService) : Promise.all(cb as never),
+      typeof cb === 'function' ? cb(mockPrismaService) : Promise.all(cb),
     ),
   };
 

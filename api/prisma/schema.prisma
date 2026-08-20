@@ -582,11 +582,31 @@ model Category {
   children  Category[] @relation("CategoryToCategory")
   products  Product[]
   coupons   Coupon[]
+  images    CategoryImage[]
   createdBy User?      @relation("CategoryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy User?      @relation("CategoryUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, slug])
   @@map("categories")
+}
+
+// Foto de referencia de la categoría — misma estructura que ProductImage
+// (un solo registro "primary" a la vez; upload reemplaza el anterior).
+model CategoryImage {
+  id         String   @id @default(uuid())
+  categoryId String
+  url        String
+  key        String?
+  mimeType   String?  @map("mime_type")
+  size       Int?
+  altText    String?
+  sortOrder  Int      @default(0)
+  isPrimary  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@map("category_images")
 }
 
 // ============= Products =============
@@ -655,7 +675,7 @@ model Product {
   recipe               Recipe?
   comboItems           ComboItem[]          @relation("ComboItems")
   inCombos             ComboItem[]          @relation("ComboChildItems")
-  attributes           ProductAttribute[]
+  variants             ProductVariant[]
   features             ProductFeature[]
   storeWhatsappOrderItems StoreWhatsappOrderItem[]
   createdBy            User?                @relation("ProductCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -683,28 +703,44 @@ model ProductImage {
   @@map("product_images")
 }
 
-// ============= Product Attributes (e-commerce) =============
-// Per-product line (variant/modifier): always owned by exactly one Product,
-// with its own cost and price. Not a reusable cross-product catalog.
-model ProductAttribute {
-  id        String   @id @default(uuid())
-  productId String
-  name      String
-  cost      Decimal  @default(0) @db.Decimal(10, 2)
-  price     Decimal  @default(0) @db.Decimal(10, 2)
+// ============= Product Variants =============
+// Per-product line (variant/modifier): always owned by exactly one Product.
+// Not a reusable cross-product catalog.
+//
+// Every Product has exactly one variant with `isDefault = true`, whose `name`
+// is null — it is the implicit "the product itself" line, and it is what carries
+// the stock of products that were never split into named variants. A partial
+// unique index (see the add_variant_inventory migration) enforces the "exactly
+// one default per product" invariant at the DB level.
+//
+// Stock/cost/price live on BranchInventory keyed by [branchId, variantId] —
+// `cost`/`price` here are legacy columns kept during the expand phase of the
+// migration and are no longer the source of truth.
+model ProductVariant {
+  id             String   @id @default(uuid())
+  productId      String
+  name           String?
+  isDefault      Boolean  @default(false)
+  // Policy flag: does this variant carry inventory at all? Per-variant rather
+  // than per-branch (unlike lowStockAlert, a genuinely branch-level reorder
+  // point). Mirrors the legacy Product.trackInventory, kept in sync during expand.
+  trackInventory Boolean  @default(true)
+  cost           Decimal  @default(0) @db.Decimal(10, 2)
+  price          Decimal  @default(0) @db.Decimal(10, 2)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product         Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  branchInventory BranchInventory[]
 
-  @@map("product_attributes")
+  @@map("product_variants")
 }
 
 // ============= Product Features (specs) =============
 // Free-form key/value spec sheet for a product (e.g. "Material" → "Algodón").
 // Always owned by exactly one Product. Purely descriptive — no cost/price,
-// unlike ProductAttribute (which models priced variants).
+// unlike ProductVariant (which models priced variants).
 model ProductFeature {
   id        String @id @default(uuid())
   productId String
@@ -1406,16 +1442,43 @@ model BranchMembership {
   @@map("branch_memberships")
 }
 
+// Single source of truth for the commercial data of a sellable line: stock,
+// cost and price, per branch and per variant.
+//
+// Keyed [branchId, variantId]: one row per variant per branch. The older
+// [branchId, productId] key could only ever hold one row per product per branch,
+// which made stocking two variants of the same product impossible.
+//
+// Expand phase (see the add_variant_inventory / variant_inventory_primary_key
+// migrations): every row was backfilled to its product's default variant. The
+// legacy commercial columns on Product and ProductVariant are deliberately still
+// in place and still written to, so this change stays revertible; the contract
+// phase drops them once all reads come from here.
 model BranchInventory {
   branchId  String
+  // Denormalized parent pointer: no longer unique per branch (a product may hold
+  // one row per variant), kept indexed for product-keyed lookups.
   productId String
+  variantId String
   stock     Int      @default(0)
+  // Effective commercial values for this branch+variant. Nullable during expand
+  // so a missing backfill is visible rather than silently reading as 0.
+  cost          Decimal? @db.Decimal(10, 2)
+  price         Decimal? @db.Decimal(10, 2)
+  comparePrice  Decimal? @db.Decimal(10, 2)
+  lastCost      Decimal? @db.Decimal(10, 2)
+  avgCost       Decimal? @db.Decimal(10, 2)
+  // Branch-level reorder point (a legitimately per-branch number, unlike the
+  // per-variant trackInventory policy flag).
+  lowStockAlert Int      @default(5)
   updatedAt DateTime @updatedAt
 
-  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  branch  Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  product Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
 
-  @@id([branchId, productId])
+  @@id([branchId, variantId])
+  @@index([branchId, productId])
   @@map("branch_inventory")
 }
 

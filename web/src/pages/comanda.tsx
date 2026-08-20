@@ -3,7 +3,7 @@ import {
   Search, X, Check, Loader2, Plus, Minus, ShoppingCart,
   ChevronRight, UtensilsCrossed, Clock, ArrowLeft, LayoutGrid, Store, Delete,
 } from 'lucide-react'
-import { fetchProducts, type Product } from '@/services/retail/product-service'
+import { fetchAllProducts, type Product } from '@/services/retail/product-service'
 import {
   getActiveDiningOrders, openDiningOrder, addDiningOrderItem, fireDiningRound,
   diningOrderTotal, fmtDiningMoney,
@@ -231,8 +231,8 @@ export function Comanda() {
   const loadProducts = useCallback(async () => {
     setCatalogLoading(true)
     try {
-      const res = await fetchProducts()
-      const active = (res.data ?? []).filter((p: Product) => p.status === 'ACTIVE')
+      const res = await fetchAllProducts()
+      const active = res.filter((p: Product) => p.status === 'ACTIVE')
       setProducts(active)
 
       // Derive categories from products — avoids a separate API call and permission issues

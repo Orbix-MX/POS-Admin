@@ -1,6 +1,6 @@
 ﻿import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { useERPStore } from '@/store/erp-store'
-import { fetchProducts, type Product } from '@/services/retail/product-service'
+import { fetchAllProducts, type Product } from '@/services/retail/product-service'
 import { fetchCliente, fetchClientes, type Cliente } from '@/services/core/clientes-service'
 import { fetchServices, type Service } from '@/services/retail/services-service'
 import { createOrder, updateOrderStatus, addOrderPayment } from '@/services/retail/ventas-service'
@@ -269,11 +269,11 @@ export function usePOS() {
     setCatalogLoading(true)
     const loadAll = async () => {
       const [prodRes, cltsRes, svcRes] = await Promise.allSettled([
-        fetchProducts(),
+        fetchAllProducts(),
         fetchClientes(),
         fetchServices({ isActive: true, limit: 200 }),
       ])
-      if (prodRes.status === 'fulfilled') setProducts(prodRes.value.data ?? [])
+      if (prodRes.status === 'fulfilled') setProducts(prodRes.value ?? [])
       if (cltsRes.status === 'fulfilled') setClientes(cltsRes.value)
       if (svcRes.status === 'fulfilled') setServices(svcRes.value.data ?? [])
     }

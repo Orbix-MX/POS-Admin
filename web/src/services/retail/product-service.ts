@@ -44,11 +44,26 @@ export interface ComboItem {
   child?: { id: string; name: string; sku: string; images?: ProductImage[] }
 }
 
-export interface ProductAttribute {
+export interface ProductVariant {
   id?: string
   name: string
   cost: number
   price: number
+  /**
+   * Existencia de la variante en la sucursal en contexto (o la suma de todas
+   * cuando no hay ninguna seleccionada). El stock vive por sucursal+variante,
+   * no en el producto.
+   */
+  stock: number
+  /**
+   * La variante default es la línea implícita "el producto en sí": no tiene
+   * nombre y es la que lleva el stock de los productos que nunca se dividieron
+   * en variantes con nombre. La UI no la lista como una opción más.
+   */
+  isDefault?: boolean
+  trackInventory?: boolean
+  lowStockAlert?: number | null
+  stockByBranch?: { branchId: string; stock: number }[]
 }
 
 export interface ProductFeature {
@@ -94,16 +109,28 @@ export interface Product {
   category?: { id: string; name: string } | null
   recipe?: { id: string; notes?: string; items: RecipeItem[] } | null
   comboItems?: ComboItem[]
-  attributes?: ProductAttribute[]
+  variants?: ProductVariant[]
   features?: ProductFeature[]
   /** Presente cuando el producto viene de un borrador del AI Product Assistant — ver §07. */
   aiRequestId?: string
   aiOutcome?: 'ACCEPTED' | 'EDITED'
 }
 
-export async function fetchProducts(): Promise<ListResponse<Product>> {
-  const { data } = await api.get<ListResponse<Product>>('products')
+export async function fetchProducts(params?: { page?: number; limit?: number }): Promise<ListResponse<Product>> {
+  const { data } = await api.get<ListResponse<Product>>('products', { params })
   return data
+}
+
+/** Trae todo el catálogo del tenant, sin importar cuántas páginas requiera el API. */
+export async function fetchAllProducts(): Promise<Product[]> {
+  const first = await fetchProducts({ page: 1, limit: 500 })
+  const totalPages = first?.meta?.totalPages || 1
+  if (totalPages <= 1) return first?.data || []
+
+  const rest = await Promise.all(
+    Array.from({ length: totalPages - 1 }, (_, i) => fetchProducts({ page: i + 2, limit: 500 }))
+  )
+  return [...(first?.data || []), ...rest.flatMap((r) => r?.data || [])]
 }
 
 export async function createProduct(data: Product): Promise<Product> {
@@ -135,9 +162,12 @@ export async function createProduct(data: Product): Promise<Product> {
       childProductId: ci.childProductId,
       quantity: ci.quantity,
     })),
-    attributes: data.attributes
-      ?.filter((a) => a.name.trim() !== '')
-      .map((a) => ({ name: a.name, cost: a.cost, price: a.price })),
+    // Se conserva el `id`: sin él el backend no puede distinguir una variante
+    // existente de una nueva, y al guardar reemplazaría el juego completo —
+    // llevándose por delante las existencias de todas las sucursales.
+    variants: data.variants
+      ?.filter((v) => !v.isDefault && v.name.trim() !== '')
+      .map((v) => ({ id: v.id, name: v.name, cost: v.cost, price: v.price, stock: v.stock })),
     features: data.features
       ?.filter((f) => f.feature.trim() !== '' && f.value.trim() !== '')
       .map((f) => ({ feature: f.feature, value: f.value })),
@@ -176,9 +206,12 @@ export async function updateProduct(id: string, data: Product): Promise<Product>
       childProductId: ci.childProductId,
       quantity: ci.quantity,
     })),
-    attributes: data.attributes
-      ?.filter((a) => a.name.trim() !== '')
-      .map((a) => ({ name: a.name, cost: a.cost, price: a.price })),
+    // Se conserva el `id`: sin él el backend no puede distinguir una variante
+    // existente de una nueva, y al guardar reemplazaría el juego completo —
+    // llevándose por delante las existencias de todas las sucursales.
+    variants: data.variants
+      ?.filter((v) => !v.isDefault && v.name.trim() !== '')
+      .map((v) => ({ id: v.id, name: v.name, cost: v.cost, price: v.price, stock: v.stock })),
     features: data.features
       ?.filter((f) => f.feature.trim() !== '' && f.value.trim() !== '')
       .map((f) => ({ feature: f.feature, value: f.value })),

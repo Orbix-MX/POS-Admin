@@ -4,6 +4,7 @@ import { CategoriesService } from './categories.service';
 import { PrismaService } from '../../../database/prisma.service';
 import { SlugUtil } from '../../../common/utils/slug.util';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
+import { R2Service } from '../../../storage/r2.service';
 
 describe('CategoriesService', () => {
   let service: CategoriesService;
@@ -26,6 +27,7 @@ describe('CategoriesService', () => {
         CategoriesService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: TenantContextService, useValue: { requireTenantId: () => 'tenant-1', getBranchId: () => null } },
+        { provide: R2Service, useValue: { upload: jest.fn(), delete: jest.fn(), buildCategoryImageKey: jest.fn() } },
       ],
     }).compile();
 

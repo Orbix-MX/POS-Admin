@@ -53,9 +53,9 @@ describe('SuppliesService — BR-02 supplies gating', () => {
     await expect(service.findAll({} as never)).rejects.toBeInstanceOf(ForbiddenException);
     await expect(service.findOne('s1')).rejects.toBeInstanceOf(ForbiddenException);
     await expect(service.create({ sku: 'X', name: 'X' } as never)).rejects.toBeInstanceOf(ForbiddenException);
-    await expect(service.update('s1', {} as never)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.update('s1', {})).rejects.toBeInstanceOf(ForbiddenException);
     await expect(service.remove('s1')).rejects.toBeInstanceOf(ForbiddenException);
-    await expect(service.adjustStock('s1', { quantity: 1 } as never)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.adjustStock('s1', { quantity: 1 })).rejects.toBeInstanceOf(ForbiddenException);
     await expect(service.getLowStock()).rejects.toBeInstanceOf(ForbiddenException);
     await expect(service.getMovements('s1')).rejects.toBeInstanceOf(ForbiddenException);
 
