@@ -8,6 +8,7 @@ import { R2Service } from '../../../storage/r2.service';
 import { BusinessConfigurationService } from '../../../common/business-config/business-configuration.service';
 import { InventoryEngine } from '../inventory/inventory.engine';
 import { SlugUtil } from '../../../common/utils/slug.util';
+import { AiUsageRecorder } from '../../../ai/usage/ai-usage.recorder';
 
 describe('ProductsService', () => {
   let service: ProductsService;
@@ -37,6 +38,15 @@ describe('ProductsService', () => {
       findFirst: jest.fn(),
     },
     inventoryMovement: { create: jest.fn() },
+    // El alta siembra la variante default del producto y su fila de existencias
+    // en cada sucursal activa; sin sucursales el sembrado es un no-op.
+    productVariant: {
+      create: jest.fn().mockResolvedValue({ id: 'variant-default' }),
+      findMany: jest.fn().mockResolvedValue([]),
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
+    branch: { findMany: jest.fn().mockResolvedValue([]) },
+    branchInventory: { createMany: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     $transaction: jest.fn((cb: (tx: unknown) => unknown) =>
       cb({
         product: {
@@ -50,11 +60,17 @@ describe('ProductsService', () => {
           findFirstOrThrow: mockPrismaService.product.findFirst,
         },
         inventoryMovement: { create: jest.fn() },
+        productVariant: mockPrismaService.productVariant,
+        branch: mockPrismaService.branch,
+        branchInventory: mockPrismaService.branchInventory,
       }),
     ),
   };
 
-  const mockTenantContext = { requireTenantId: jest.fn().mockReturnValue('tenant-1') };
+  const mockTenantContext = {
+    requireTenantId: jest.fn().mockReturnValue('tenant-1'),
+    getBranchId: jest.fn().mockReturnValue(null),
+  };
   const mockAuditService = { log: jest.fn() };
   const mockR2Service = { upload: jest.fn(), delete: jest.fn(), buildKey: jest.fn().mockReturnValue('key') };
   const mockBusinessConfig = { hasFeature: jest.fn().mockResolvedValue(false) };
@@ -62,6 +78,7 @@ describe('ProductsService', () => {
     applyProductStockDelta: jest.fn().mockResolvedValue(true),
     recordProductMovement: jest.fn().mockResolvedValue(undefined),
   };
+  const mockAiUsageRecorder = { recordOutcome: jest.fn().mockResolvedValue(undefined) };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -73,6 +90,7 @@ describe('ProductsService', () => {
         { provide: R2Service, useValue: mockR2Service },
         { provide: BusinessConfigurationService, useValue: mockBusinessConfig },
         { provide: InventoryEngine, useValue: mockInventoryEngine },
+        { provide: AiUsageRecorder, useValue: mockAiUsageRecorder },
       ],
     }).compile();
 
@@ -115,7 +133,9 @@ describe('ProductsService', () => {
       };
 
       mockPrismaService.product.findUnique.mockResolvedValue(null);
-      mockPrismaService.product.findFirst.mockResolvedValue(null);
+      // El alta ahora siempre re-consulta el producto al final, para devolverlo
+      // ya con la variante default que acaba de sembrar.
+      mockPrismaService.product.findFirst.mockResolvedValue(mockProduct);
       mockPrismaService.category.findFirst.mockResolvedValue({ id: 'cat-1' });
       mockPrismaService.product.findMany.mockResolvedValue([]);
       mockPrismaService.product.create.mockResolvedValue(mockProduct);

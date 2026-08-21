@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "AiUsageStatus" ADD VALUE 'BUDGET_EXCEEDED';

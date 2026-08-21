@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 import { CashSessionsService } from './cash-sessions.service';
 import { OpenCashSessionDto } from './dto/open-session.dto';
+import { CreateCashRegisterDto, UpdateCashRegisterDto } from './dto/cash-register.dto';
 import { CloseCashSessionDto } from './dto/close-session.dto';
 import { CloseWithAuthDto } from './dto/close-with-auth.dto';
 import { QueryCashSessionsDto } from './dto/query-sessions.dto';
@@ -11,6 +12,7 @@ import { RequirePermissions } from '../../../common/decorators/require-permissio
 import { VerifyAuthDto } from './dto/verify-auth.dto';
 import { WithdrawForSuppliesDto } from './dto/withdraw-supplies.dto';
 import { CreateCashCountDto } from './dto/create-count.dto';
+import { AuthorizePinDto } from './dto/authorize-pin.dto';
 import { WithdrawCashDto } from './dto/withdraw-cash.dto';
 
 @ApiTags('Cash Sessions')
@@ -23,8 +25,11 @@ export class CashSessionsController {
   @HttpCode(200)
   @RequirePermissions('cash:view')
   @ApiOperation({ summary: 'Sesión activa actual' })
-  async getActive(@Query('branchId') branchId?: string) {
-    const session = await this.cashSessionsService.getActive(branchId);
+  async getActive(
+    @Query('branchId') branchId?: string,
+    @Query('cashRegisterId') cashRegisterId?: string,
+  ) {
+    const session = await this.cashSessionsService.getActive(branchId, cashRegisterId);
     return session ?? {};
   }
 
@@ -43,18 +48,23 @@ export class CashSessionsController {
     return this.cashSessionsService.withdrawForSupplies(dto);
   }
 
+  // Sin @RequirePermissions: el guard global rechazaría al cajero antes de que
+  // el servicio pueda pedir el PIN del supervisor. La autorización se resuelve
+  // dentro (permiso propio del usuario, o PIN de un empleado que lo tenga), así
+  // que nadie sin respaldo llega a ejecutar la operación.
   @Patch(':id/start-count')
-  @RequirePermissions('pos.cash:count')
   @ApiOperation({ summary: 'Congelar la caja para arquear (ABIERTA → EN_ARQUEO)' })
-  startCount(@Param('id') id: string) {
-    return this.cashSessionsService.startCount(id);
+  startCount(@Param('id') id: string, @Body() dto?: AuthorizePinDto) {
+    return this.cashSessionsService.startCount(id, dto?.authorizerPin);
   }
 
+  // Reanudar cierra el paréntesis del arqueo. Va por el mismo permiso —y el
+  // mismo PIN— que congelarla: si no, un cajero sin permiso dejaría la caja
+  // parada sin poder devolverla a operación.
   @Patch(':id/resume')
-  @RequirePermissions('pos.cash:count')
   @ApiOperation({ summary: 'Volver a operar tras un arqueo de control (EN_ARQUEO → ABIERTA)' })
-  resumeOperation(@Param('id') id: string) {
-    return this.cashSessionsService.resumeOperation(id);
+  resumeOperation(@Param('id') id: string, @Body() dto?: AuthorizePinDto) {
+    return this.cashSessionsService.resumeOperation(id, dto?.authorizerPin);
   }
 
   @Get('registers')
@@ -64,6 +74,27 @@ export class CashSessionsController {
     return this.cashSessionsService.listRegisters();
   }
 
+  @Get('registers/capacity')
+  @RequirePermissions('cash:view')
+  @ApiOperation({ summary: 'Sesiones de caja abiertas en la sucursal contra el tope del plan' })
+  getCashSessionCapacity() {
+    return this.cashSessionsService.getCashSessionCapacity();
+  }
+
+  @Post('registers')
+  @RequirePermissions('cash:manage')
+  @ApiOperation({ summary: 'Dar de alta una caja física en la sucursal' })
+  createRegister(@Body() dto: CreateCashRegisterDto) {
+    return this.cashSessionsService.createRegister(dto);
+  }
+
+  @Patch('registers/:id')
+  @RequirePermissions('cash:manage')
+  @ApiOperation({ summary: 'Renombrar o desactivar una caja física' })
+  updateRegister(@Param('id') id: string, @Body() dto: UpdateCashRegisterDto) {
+    return this.cashSessionsService.updateRegister(id, dto);
+  }
+
   @Post('active/withdraw')
   @RequirePermissions('pos.cash:withdraw')
   @ApiOperation({ summary: 'Retirar efectivo del cajón (traslado a caja fuerte/banco)' })
@@ -71,8 +102,11 @@ export class CashSessionsController {
     return this.cashSessionsService.withdrawCash(dto);
   }
 
+  // Sin @RequirePermissions: el guard global rechazaría al cajero antes de que
+  // el servicio pueda pedir el PIN del supervisor. La autorización se resuelve
+  // dentro (permiso propio del usuario, o PIN de un empleado que lo tenga), así
+  // que nadie sin respaldo llega a ejecutar la operación.
   @Post('active/count')
-  @RequirePermissions('pos.cash:count')
   @ApiOperation({ summary: 'Registrar arqueo físico sobre la caja abierta (parcial o final)' })
   createCount(@Body() dto: CreateCashCountDto) {
     return this.cashSessionsService.createCount(dto);
@@ -106,8 +140,11 @@ export class CashSessionsController {
     return this.cashSessionsService.open(dto);
   }
 
+  // Sin @RequirePermissions: el guard global rechazaría al cajero antes de que
+  // el servicio pueda pedir el PIN del supervisor. La autorización se resuelve
+  // dentro (permiso propio del usuario, o PIN de un empleado que lo tenga), así
+  // que nadie sin respaldo llega a ejecutar la operación.
   @Patch(':id/close')
-  @RequirePermissions('pos.cash:close')
   @ApiOperation({ summary: 'Cerrar sesión de caja (corte)' })
   close(@Param('id') id: string, @Body() dto: CloseCashSessionDto) {
     return this.cashSessionsService.close(id, dto);

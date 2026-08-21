@@ -94,3 +94,18 @@ export const TaxCode = {
   EXCENTO: 'EXCENTO',
 } as const;
 export type TaxCode = (typeof TaxCode)[keyof typeof TaxCode];
+
+export const CustomerStatus = {
+  ACTIVE: 'ACTIVE',
+  INACTIVE: 'INACTIVE',
+  BLOCKED: 'BLOCKED',
+} as const;
+export type CustomerStatus = (typeof CustomerStatus)[keyof typeof CustomerStatus];
+
+export const CustomerType = {
+  NEW: 'NEW',
+  REGULAR: 'REGULAR',
+  VIP: 'VIP',
+  WHOLESALE: 'WHOLESALE',
+} as const;
+export type CustomerType = (typeof CustomerType)[keyof typeof CustomerType];

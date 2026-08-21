@@ -1,0 +1,457 @@
+<title>Benchmark de Modelos Locales</title>
+
+<style>
+  :root {
+    --ground:      #F5F7F7;
+    --surface:     #FFFFFF;
+    --surface-2:   #EBF0F0;
+    --ink:         #0F1719;
+    --ink-2:       #3A494B;
+    --ink-3:       #6B7B7D;
+    --rule:        #DCE3E3;
+    --rule-strong: #BCC8C8;
+
+    --local:       #0B6E75;
+    --local-soft:  #E2F0F0;
+    --cloud:       #3B4E96;
+    --cloud-soft:  #E7EAF6;
+
+    --ok:          #1C7A4B;
+    --ok-soft:     #E3F1E9;
+    --warn:        #8F5B05;
+    --warn-soft:   #F7EEDC;
+    --crit:        #A32B26;
+    --crit-soft:   #F7E6E5;
+
+    --plate:       #F2F5F5;
+    --plate-rule:  #D2DCDC;
+
+    --shadow: 0 1px 2px rgba(15, 23, 25, .05), 0 8px 24px -14px rgba(15, 23, 25, .22);
+
+    --serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, ui-serif, serif;
+    --sans:  'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+    --mono:  'Cascadia Code', 'JetBrains Mono', 'SF Mono', Consolas, ui-monospace, monospace;
+
+    --measure: 74ch;
+    --gutter: clamp(1.25rem, 4vw, 3rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #0C1113; --surface: #121A1C; --surface-2: #192224;
+      --ink: #E7EDED; --ink-2: #A9B7B8; --ink-3: #77878A;
+      --rule: #243032; --rule-strong: #354446;
+      --local: #4FC3CB; --local-soft: #10292C;
+      --cloud: #93A6EA; --cloud-soft: #1A2033;
+      --ok: #4FBF85; --ok-soft: #10261B;
+      --warn: #DFA23A; --warn-soft: #2A2010;
+      --crit: #E8776F; --crit-soft: #2E1614;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px -16px rgba(0,0,0,.8);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:      #0C1113; --surface: #121A1C; --surface-2: #192224;
+    --ink: #E7EDED; --ink-2: #A9B7B8; --ink-3: #77878A;
+    --rule: #243032; --rule-strong: #354446;
+    --local: #4FC3CB; --local-soft: #10292C;
+    --cloud: #93A6EA; --cloud-soft: #1A2033;
+    --ok: #4FBF85; --ok-soft: #10261B;
+    --warn: #DFA23A; --warn-soft: #2A2010;
+    --crit: #E8776F; --crit-soft: #2E1614;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px -16px rgba(0,0,0,.8);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--sans); font-size: 16.5px; line-height: 1.62;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  }
+
+  .shell { max-width: 880px; margin: 0 auto; padding: 0 var(--gutter); }
+  main { padding-bottom: 6rem; }
+  section { padding-block: clamp(2rem, 5vw, 3rem); border-top: 1px solid var(--rule); }
+  section:first-of-type { border-top: 0; }
+
+  header.masthead { border-bottom: 1px solid var(--rule); padding-block: clamp(2.5rem, 7vw, 4.5rem) clamp(1.75rem, 4vw, 2.5rem); }
+  .eyebrow { font-family: var(--mono); font-size: .72rem; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 1.1rem; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: clamp(2.1rem, 5.5vw, 3.2rem); line-height: 1.05; letter-spacing: -.02em; text-wrap: balance; margin: 0 0 1rem; }
+  .standfirst { font-family: var(--serif); font-size: clamp(1.05rem, 2vw, 1.25rem); line-height: 1.5; color: var(--ink-2); max-width: 58ch; margin: 0 0 2rem; }
+  .factbar { display: flex; flex-wrap: wrap; gap: .5rem 2.2rem; font-family: var(--mono); font-size: .76rem; color: var(--ink-3); padding-top: 1.4rem; border-top: 1px solid var(--rule); }
+  .factbar b { color: var(--ink); font-weight: 600; }
+
+  h2 { font-family: var(--serif); font-weight: 600; font-size: clamp(1.5rem, 3vw, 1.95rem); line-height: 1.15; letter-spacing: -.01em; text-wrap: balance; margin: 0 0 .35rem; }
+  h2 .sec-no { display: block; font-family: var(--mono); font-size: .7rem; letter-spacing: .16em; text-transform: uppercase; color: var(--local); margin-bottom: .65rem; font-weight: 500; }
+  h3 { font-family: var(--sans); font-weight: 650; font-size: 1.02rem; margin: 2rem 0 .55rem; }
+  h4 { font-family: var(--mono); font-weight: 600; font-size: .75rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin: 1.5rem 0 .5rem; }
+
+  p { margin: 0 0 1rem; }
+  .lede { font-size: 1.03rem; color: var(--ink-2); margin-bottom: 1.5rem; }
+  ul, ol { margin: 0 0 1.1rem; padding-left: 1.3rem; display: flex; flex-direction: column; gap: .4rem; }
+  li::marker { color: var(--ink-3); }
+  a { color: var(--local); text-underline-offset: .18em; }
+  strong, b { font-weight: 650; color: var(--ink); }
+
+  code { font-family: var(--mono); font-size: .84em; background: var(--surface-2); border: 1px solid var(--rule); border-radius: 3px; padding: .08em .34em; color: var(--ink); }
+  pre { font-family: var(--mono); font-size: .78rem; line-height: 1.6; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 1rem 1.1rem; overflow-x: auto; margin: 0 0 1.2rem; }
+  pre code { background: none; border: 0; padding: 0; }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); margin: 0 0 1.5rem; }
+  table { width: 100%; border-collapse: collapse; font-size: .87rem; font-variant-numeric: tabular-nums; }
+  thead th { font-family: var(--mono); font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; text-align: left; padding: .75rem .9rem; border-bottom: 1px solid var(--rule-strong); white-space: nowrap; background: var(--surface-2); }
+  tbody td { padding: .68rem .9rem; border-bottom: 1px solid var(--rule); vertical-align: top; color: var(--ink-2); }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody td:first-child { color: var(--ink); font-weight: 550; }
+
+  .note { border-left: 3px solid var(--rule-strong); background: var(--surface); padding: .85rem 1.05rem; border-radius: 0 5px 5px 0; margin: 0 0 1.3rem; font-size: .93rem; color: var(--ink-2); }
+  .note > :last-child { margin-bottom: 0; }
+  .note.crit { border-left-color: var(--crit); background: var(--crit-soft); }
+  .note.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+  .note.ok   { border-left-color: var(--ok);   background: var(--ok-soft); }
+  .note .label { font-family: var(--mono); font-size: .66rem; letter-spacing: .12em; text-transform: uppercase; display: block; margin-bottom: .3rem; }
+  .note.crit .label { color: var(--crit); }
+  .note.warn .label { color: var(--warn); }
+  .note.ok .label   { color: var(--ok); }
+
+  .pill { display: inline-block; font-family: var(--mono); font-size: .66rem; letter-spacing: .05em; text-transform: uppercase; padding: .14em .48em; border-radius: 3px; border: 1px solid currentColor; white-space: nowrap; }
+  .pill.yes { color: var(--ok); background: var(--ok-soft); }
+  .pill.no  { color: var(--crit); background: var(--crit-soft); }
+  .pill.maybe { color: var(--warn); background: var(--warn-soft); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15.5rem), 1fr)); gap: .9rem; margin: 0 0 1.5rem; }
+  .stat { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: .3rem; }
+  .stat .stat-label { font-family: var(--mono); font-size: .66rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+  .stat .stat-value { font-family: var(--serif); font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .stat .stat-sub { font-size: .82rem; color: var(--ink-2); }
+
+  footer.colophon { border-top: 1px solid var(--rule); padding-block: 2rem 3.5rem; font-family: var(--mono); font-size: .73rem; color: var(--ink-3); line-height: 1.7; }
+</style>
+
+<header class="masthead">
+  <div class="shell">
+    <p class="eyebrow">Orbix AI Platform · Fase 2 · Informe técnico</p>
+    <h1>Benchmark de Modelos Locales</h1>
+    <p class="standfirst">
+      Datos reales, no proyectados: tres modelos, 30 casos de evaluación en
+      español mexicano de mostrador, y la primera vez que un modelo
+      "thinking" se topa con un presupuesto de tokens insuficiente en este
+      proyecto.
+    </p>
+    <div class="factbar">
+      <span><b>Fecha</b> 15–16 ago 2026</span>
+      <span><b>Runtime</b> Ollama 0.32.13 (dev)</span>
+      <span><b>Modelos</b> llama3.2:3B · qwen3:4b · gemma4:26b</span>
+      <span><b>Hardware</b> Máquina de desarrollo, no el VPS objetivo</span>
+    </div>
+  </div>
+</header>
+
+<div class="shell">
+<main>
+
+<section id="resumen">
+  <h2><span class="sec-no">00 — Resumen</span>Lo que dicen los números</h2>
+
+  <div class="grid">
+    <div class="stat">
+      <span class="stat-label">Candidato con datos completos</span>
+      <span class="stat-value">llama3.2:3B</span>
+      <span class="stat-sub">30/30 casos, 100% JSON válido</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">p50 de latencia (concurrencia 1)</span>
+      <span class="stat-value">1.5s</span>
+      <span class="stat-sub">llama3.2, este hardware</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Categoría correcta</span>
+      <span class="stat-value">57%</span>
+      <span class="stat-sub">de 30 casos — sin reconciliador todavía</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Costo inventado</span>
+      <span class="stat-value">0/30</span>
+      <span class="stat-sub">la regla más dura del §07 se cumplió</span>
+    </div>
+  </div>
+
+  <div class="note crit">
+    <span class="label">Léase antes que cualquier otra cosa</span>
+    <p>
+      Este benchmark corrió en <b>una máquina de desarrollo con GPU</b>, no en
+      el VPS de 8 vCPU sin GPU que describe §10 del documento de
+      arquitectura. Los tiempos aquí son <b>optimistas respecto de CPU</b> y
+      solo sirven para comparar modelos <em>entre sí en este hardware</em> y
+      para validar que el arnés de evaluación funciona de punta a punta. La
+      decisión de <b>sizing de producción</b> (§10 — vCPU, slots, latencia
+      esperada en CPU) sigue exigiendo una corrida en el VPS real antes de
+      cerrarse. La decisión de <b>qué modelo</b> (D-06) sí se cerró con estos
+      datos — ver §04 y el pie de esta página.
+    </p>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Modelo</th><th>Tamaño</th><th>Resultado</th><th>Veredicto de esta corrida</th></tr></thead>
+      <tbody>
+        <tr><td>llama3.2:latest</td><td>3.2B Q4_K_M</td><td>30/30 evaluados, benchmark completo</td><td><span class="pill yes">dato completo</span></td></tr>
+        <tr><td>qwen3:4b</td><td>4B Q4_K_M</td><td>3/30 — modo "thinking" agota el presupuesto de tokens</td><td><span class="pill maybe">bloqueado, hallazgo real</span></td></tr>
+        <tr><td>gemma4:26b</td><td>25.8B Q4_K_M</td><td>timeout a 120s en la primera petición</td><td><span class="pill no">descartado, confirma sizing del doc</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="metodologia">
+  <h2><span class="sec-no">01 — Metodología</span>Qué se corrió y con qué código</h2>
+
+  <p class="lede">
+    Todo lo de esta página salió de código real en <code>api/scripts/ai/</code>,
+    construido sobre el mismo <code>OpenAICompatibleProvider</code> que entra
+    a producción — no hay un script de prueba separado del código real.
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Script</th><th>Qué mide</th></tr></thead>
+      <tbody>
+        <tr><td><code>scripts/ai/benchmark.ts</code></td><td>Latencia (p50/p95) y throughput por nivel de concurrencia, contra un prompt del tamaño real de <code>products.draft</code></td></tr>
+        <tr><td><code>scripts/ai/evaluate.ts</code></td><td>Corre el conjunto de evaluación completo contra uno o más modelos y produce la tabla comparativa</td></tr>
+        <tr><td><code>scripts/ai/eval/dataset.ts</code></td><td>30 casos en español mexicano de mostrador, con el <code>ProductDraft</code> esperado — ver §03</td></tr>
+        <tr><td><code>scripts/ai/eval/scorer.ts</code></td><td>Valida contra Zod y compara campo a campo: categoría, unidad, impuesto, error de precio, costo inventado/perdido</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    El mecanismo de salida estructurada es <code>response_format</code>
+    estándar OpenAI — no gramática GBNF hecha a mano (ver nota de diseño en
+    §04). Se verificó en vivo contra Ollama que el campo funciona igual que
+    contra un servidor OpenAI-compatible genérico.
+  </p>
+
+  <pre><code># Reproducir
+pnpm exec tsx scripts/ai/benchmark.ts --model llama3.2:latest --concurrency 1,2,4 --requests 6
+pnpm exec tsx scripts/ai/evaluate.ts --models llama3.2:latest --max-tokens 300</code></pre>
+</section>
+
+<section id="benchmark">
+  <h2><span class="sec-no">02 — Latencia y throughput</span>llama3.2:3B, concurrencia 1/2/4</h2>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Concurrencia</th><th>p50</th><th>p95</th><th>Media</th><th>tok/s aprox.</th><th>Errores</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>1529ms</td><td>18370ms</td><td>4318ms</td><td>14.9</td><td>0/6</td></tr>
+        <tr><td>2</td><td>1565ms</td><td>2837ms</td><td>2177ms</td><td>30.3</td><td>0/6</td></tr>
+        <tr><td>4</td><td>2830ms</td><td>5381ms</td><td>3052ms</td><td>21.6</td><td>0/6</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note warn">
+    <span class="label">El p95 de concurrencia=1 es ruido, no señal</span>
+    <p>
+      18.4s en una muestra de 6 peticiones es casi con certeza la primera
+      petición cargando el modelo en memoria (cold start de Ollama), no
+      latencia de inferencia estable. Con una muestra tan pequeña un solo
+      outlier domina el percentil 95 — el benchmark real de la Fase 2 (en el
+      VPS objetivo) necesita más de 6 peticiones por nivel para que p95
+      signifique algo.
+    </p>
+  </div>
+
+  <p>
+    Con eso descontado, el patrón es el esperable: throughput sube de
+    concurrencia 1 a 2 (paralelismo real), y empieza a degradar hacia 4 — la
+    misma curva que §10 predice para un servidor con pocos <em>slots</em>,
+    aunque aquí la GPU disimula la caída que se vería en CPU pura.
+  </p>
+</section>
+
+<section id="evaluacion">
+  <h2><span class="sec-no">03 — Calidad</span>llama3.2:3B contra las 30 entradas</h2>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Métrica</th><th>Resultado</th><th>Lectura</th></tr></thead>
+      <tbody>
+        <tr><td>JSON válido contra el schema</td><td><b>100%</b> (30/30)</td><td><code>response_format</code> cumplió su trabajo en todos los casos — nunca hubo que reparar</td></tr>
+        <tr><td>Categoría correcta</td><td><b>57%</b></td><td>Sin reconciliador (Fase 3), el string libre del modelo no siempre calza exacto con el catálogo — ver nota abajo</td></tr>
+        <tr><td>Unidad correcta</td><td><b>50%</b></td><td>Mismo patrón — p. ej. propuso "Mililitro" para una Coca de 600ml en vez de "Pieza"</td></tr>
+        <tr><td>Código de impuesto correcto</td><td><b>77%</b></td><td>Mejor señal: el modelo distingue razonablemente alimento básico exento de producto gravado</td></tr>
+        <tr><td>Error medio de precio</td><td><b>$24.00</b></td><td>Alto — dominado por casos donde confundió cuál de los dos números era costo y cuál precio (ver eval-08 abajo)</td></tr>
+        <tr><td><b>Costo inventado</b></td><td><b>0/30</b></td><td>La regla más importante del §07 ("nunca inventar un costo que no está en la entrada") se cumplió siempre</td></tr>
+        <tr><td>Costo "perdido"</td><td>22/30</td><td>Ver nota — en la mayoría de estos casos el modelo no perdió el dato, lo puso en el campo equivocado</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note ok">
+    <span class="label">El hallazgo más importante de esta tabla</span>
+    <p>
+      <b>0/30 costos inventados</b> es la cifra que más le importa a la
+      arquitectura: la regla de negocio más sensible del Product Assistant
+      —nunca inventar un dato financiero— se sostuvo en las 30 entradas, con
+      un modelo pequeño y sin ningún refuerzo adicional en el prompt más
+      allá de la instrucción explícita. Es la señal que hace parecer viable
+      la estrategia local-first para esta feature.
+    </p>
+  </div>
+
+  <div class="note">
+    <span class="label">Por qué categoría y unidad salen bajo — y por qué eso está bien</span>
+    <p>
+      El scorer exige coincidencia exacta de string contra el catálogo
+      (<code>"Pieza"</code> ≠ <code>"pieza"</code> ≠ <code>"Mililitro"</code>).
+      El modelo no tiene ninguna restricción de valor sobre estos dos campos
+      — <code>response_format</code> garantiza que sean <em>strings</em>, no
+      que sean <em>uno de estos strings concretos</em>. Esto es exactamente
+      lo que §08 del documento anticipa: <b>el reconciliador de dominio
+      (Fase 3) existe precisamente porque no se puede confiar en que el
+      texto libre del modelo calce con el catálogo del tenant</b>. Un 57%/50%
+      "en crudo" no es un mal resultado del modelo — es la medida de cuánto
+      trabajo le toca al reconciliador, y confirma que ese componente no es
+      opcional.
+    </p>
+  </div>
+
+  <h3>Caso de estudio: confusión costo/precio</h3>
+  <pre><code>Entrada:  "Dame de alta cigarros Marlboro, me cuestan 48 y los doy en 60."
+Esperado: costPrice: 48, price: 60
+Modelo:   costPrice: null, price: 48</code></pre>
+  <p>
+    El modelo tomó el primer número mencionado ("me cuestan 48") como el
+    precio de venta y descartó el segundo. No inventó nada — perdió una
+    señal real que estaba en el texto. Es un error de extracción, no de
+    alucinación, y es exactamente el tipo de caso que el conjunto de
+    evaluación existe para encontrar antes de que llegue a un tenant real.
+  </p>
+</section>
+
+<section id="qwen3">
+  <h2><span class="sec-no">04 — Hallazgo</span>Qwen3-4B y el modo "thinking"</h2>
+
+  <p class="lede">
+    Qwen3-4B es el candidato principal de D-06 en el documento de
+    arquitectura. Esta corrida no lo descarta — lo <b>bloquea con una causa
+    concreta y accionable</b>, distinta de "el modelo es peor".
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Presupuesto de salida</th><th>Resultado</th><th>Tokens de razonamiento consumidos</th></tr></thead>
+      <tbody>
+        <tr><td>300 tokens</td><td>0% JSON válido — contenido vacío</td><td>300/300 (100%)</td></tr>
+        <tr><td>1500 tokens</td><td>0% JSON válido — contenido vacío</td><td>1500/1500 (100%)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    Vía Ollama, <code>qwen3:4b</code> es un modelo híbrido "thinking": separa
+    su razonamiento en un campo <code>message.reasoning</code> distinto de
+    <code>message.content</code>. Para una tarea trivial de una sola clave
+    (<code>{"x": 1}</code>) ya gasta <b>~200–700 tokens pensando</b> antes de
+    responder. Con el prompt real de <code>products.draft</code> — más largo,
+    con tres listas de catálogo — el razonamiento se comió los 1500 tokens
+    completos sin llegar nunca a emitir el JSON.
+  </p>
+
+  <div class="note warn">
+    <span class="label">Se intentó desactivar el razonamiento — no funcionó en este entorno</span>
+    <p>
+      Tanto <code>"think": false</code> en el endpoint OpenAI-compatible como
+      en el endpoint nativo <code>/api/chat</code> de Ollama 0.32.13 <b>no
+      suprimieron el razonamiento</b> con este modelo. El
+      <code>Modelfile</code> del tag sí referencia una variable de plantilla
+      <code>IsThinkSet</code>, lo que sugiere que el mecanismo existe pero no
+      se está activando como se esperaba — posible desalineación entre la
+      versión de Ollama, el tag específico <code>qwen3:4b</code> y el
+      parámetro documentado.
+    </p>
+  </div>
+
+  <h3>Qué significa esto para D-06</h3>
+  <p>
+    <b>D-06 se cerró con Llama-3.2-3B-Instruct</b> — responde directo, sin
+    modo híbrido, 100% JSON válido en las 30 entradas (§03). Qwen3-4B no
+    queda descartado como modelo, queda <b>pospuesto</b>:
+  </p>
+  <ul>
+    <li><b>No es evidencia de que Qwen3-4B sea un mal candidato.</b> Es evidencia de que <b>este tag de Ollama, en esta versión, en modo por defecto, no es el punto de comparación correcto</b> para una tarea de extracción rápida sin necesidad de razonamiento.</li>
+    <li>Con <code>llama.cpp</code> (el runtime de producción, §09) el control sobre parámetros de generación es más directo — si se retoma como candidato, vale la pena repetir esta prueba ahí antes de descartarlo del todo.</li>
+    <li>Alternativa a evaluar entonces: la variante <b>no-thinking</b> de Qwen3 si existe como tag separado, o <b>Qwen3-4B-Instruct-2507</b> específicamente (el release posterior sin modo híbrido) en vez del tag genérico <code>qwen3:4b</code>.</li>
+    <li>No es prioridad ahora mismo: sin servidor de inferencia propio todavía (§06), no hay urgencia de resolver esta ambigüedad hasta que exista una razón real para desplegar.</li>
+  </ul>
+</section>
+
+<section id="gemma">
+  <h2><span class="sec-no">05 — Referencia</span>gemma4:26b: confirma la aritmética del §10</h2>
+
+  <p class="lede">
+    No era un candidato — 26B parámetros excede por mucho lo que el
+    documento considera razonable para un VPS sin GPU dedicada. Se probó
+    solo porque ya estaba disponible localmente.
+  </p>
+
+  <div class="note crit">
+    <span class="label">Resultado</span>
+    <p>
+      Timeout a los <b>120 segundos</b> en la primera petición, con
+      <code>response_format</code> activo, en una máquina <em>con</em> GPU.
+      Confirma empíricamente lo que §10 del documento de arquitectura ya
+      argumentaba con aritmética: un modelo de esta escala está fuera de
+      cuestión para inferencia local interactiva en la infraestructura que
+      Orbix puede pagar en esta etapa. No se investiga más.
+    </p>
+  </div>
+</section>
+
+<section id="siguiente">
+  <h2><span class="sec-no">06 — Qué falta</span>Para que la Fase 2 esté realmente cerrada</h2>
+
+  <div class="note ok">
+    <span class="label">Decisión tomada — 16 ago 2026</span>
+    <p>
+      <b>D-06 se cierra con Llama-3.2-3B-Instruct.</b> No se aprovisiona VPS
+      todavía — se sigue sirviendo desde Ollama en la máquina de desarrollo
+      hasta que exista una razón real para desplegar (Fase 3, cuando
+      <code>products.draft</code> necesite estar disponible fuera de esta
+      máquina). La decisión es reabrible, no definitiva: si más adelante se
+      logra correr Qwen3-4B sin el bloqueo de razonamiento, vale la pena
+      repetir la comparación.
+    </p>
+  </div>
+
+  <ul>
+    <li><b>Aprovisionar el VPS de inferencia y correr este mismo arnés ahí</b> (8 vCPU, sin GPU) — todo lo de esta página es de una máquina de desarrollo con GPU y solo sirve para comparar modelos entre sí, no para dimensionar producción. Pendiente hasta que haya una razón real para desplegar.</li>
+    <li><b>Repetir la evaluación de Qwen3 contra <code>llama-server</code></b> directamente, con control explícito sobre el modo de razonamiento, en vez de depender del comportamiento por defecto de Ollama — solo si se retoma como candidato.</li>
+    <li><b>Ampliar el conjunto de evaluación</b> más allá de 30 casos si en algún momento el margen entre modelos resulta cerrado — con 30 casos, una diferencia de 2-3 aciertos es ruido.</li>
+    <li><b>Medir con el reconciliador real de la Fase 3</b>, no solo con coincidencia exacta de string — la cifra que de verdad importa es cuántos campos el reconciliador logra resolver, no cuántos el modelo acertó literalmente.</li>
+  </ul>
+
+  <div class="note ok">
+    <span class="label">Lo que sí queda demostrado, sin condiciones</span>
+    <p>
+      El pipeline completo — <code>OpenAICompatibleProvider</code>,
+      <code>response_format</code>, el arnés de evaluación, el scorer —
+      <b>funciona de punta a punta contra un runtime OpenAI-compatible
+      real</b>, no solo contra <code>MockProvider</code>. Eso no dependía del
+      hardware ni del modelo elegido, y ya está probado.
+    </p>
+  </div>
+</section>
+
+</main>
+</div>
+
+<footer class="colophon">
+  <div class="shell">
+    <p>
+      Orbix AI Platform · Informe de benchmark, Fase 2 · 15–16 de agosto de 2026<br>
+      Datos generados por <code>api/scripts/ai/benchmark.ts</code> y <code>api/scripts/ai/evaluate.ts</code> contra Ollama 0.32.13 local.<br>
+      Companion de <i>Orbix AI Platform</i> (arquitectura, revisión 2) — no reemplaza esa decisión, la informa.
+    </p>
+  </div>
+</footer>

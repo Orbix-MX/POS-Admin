@@ -148,6 +148,9 @@ model Tenant {
   userLimitOverride Int?    @map("user_limit_override")
   // Extra branches added on top of the plan default (addons, upgrades, etc.)
   extraBranchLimit  Int?    @default(0) @map("extra_branch_limit")
+  // Cash sessions open at once per branch. Absolute override of the plan
+  // default (not additive), set from the platform panel.
+  cashSessionLimitOverride Int? @map("cash_session_limit_override")
   // Protected owner — cannot be deactivated.
   ownerUserId       String? @map("owner_user_id")
 
@@ -197,6 +200,9 @@ model Tenant {
   domains Domain[]
   site    TenantSite?
   storeWhatsappOrders StoreWhatsappOrder[]
+
+  aiUsageEvents   AiUsageEvent[]
+  aiUsageCounters AiUsageCounter[]
 
   @@map("tenants")
 }
@@ -250,13 +256,20 @@ enum UserStatus {
 model User {
   id        String     @id @default(uuid())
   email     String     @unique
-  password  String
+  // Null para cuentas creadas por un proveedor OAuth: ese usuario no tiene
+  // contraseña local y solo puede entrar por su proveedor hasta que fije una.
+  password  String?
   firstName String
   lastName  String
   role      UserRole   @default(STAFF)
   status    UserStatus @default(ACTIVE)
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
+
+  // ── Identidad Google (OAuth) ───────────────────────────────────────────────
+  googleId      String?  @unique @map("google_id")
+  emailVerified Boolean  @default(false) @map("email_verified")
+  avatarUrl     String?  @map("avatar_url")
 
   tenantMemberships TenantMembership[]
 
@@ -313,6 +326,7 @@ model User {
   permissionGrants UserPermissionGrant[]
 
   refreshTokens RefreshToken[]
+  oauthTickets  OAuthTicket[]
 
   managedBranches   Branch[]           @relation("BranchManager")
   branchMemberships BranchMembership[]
@@ -324,6 +338,8 @@ model User {
   lastBranchSelected Branch? @relation("UserLastBranch", fields: [lastBranchSelectedId], references: [id], onDelete: SetNull)
 
   tenantsOwned Tenant[] @relation("TenantOwner")
+
+  aiUsageEvents AiUsageEvent[] @relation("AiUsageEventUser")
 
   @@map("users")
 }
@@ -577,11 +593,31 @@ model Category {
   children  Category[] @relation("CategoryToCategory")
   products  Product[]
   coupons   Coupon[]
+  images    CategoryImage[]
   createdBy User?      @relation("CategoryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy User?      @relation("CategoryUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, slug])
   @@map("categories")
+}
+
+// Foto de referencia de la categoría — misma estructura que ProductImage
+// (un solo registro "primary" a la vez; upload reemplaza el anterior).
+model CategoryImage {
+  id         String   @id @default(uuid())
+  categoryId String
+  url        String
+  key        String?
+  mimeType   String?  @map("mime_type")
+  size       Int?
+  altText    String?
+  sortOrder  Int      @default(0)
+  isPrimary  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@map("category_images")
 }
 
 // ============= Products =============
@@ -650,7 +686,7 @@ model Product {
   recipe               Recipe?
   comboItems           ComboItem[]          @relation("ComboItems")
   inCombos             ComboItem[]          @relation("ComboChildItems")
-  attributes           ProductAttribute[]
+  variants             ProductVariant[]
   features             ProductFeature[]
   storeWhatsappOrderItems StoreWhatsappOrderItem[]
   createdBy            User?                @relation("ProductCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -678,28 +714,44 @@ model ProductImage {
   @@map("product_images")
 }
 
-// ============= Product Attributes (e-commerce) =============
-// Per-product line (variant/modifier): always owned by exactly one Product,
-// with its own cost and price. Not a reusable cross-product catalog.
-model ProductAttribute {
-  id        String   @id @default(uuid())
-  productId String
-  name      String
-  cost      Decimal  @default(0) @db.Decimal(10, 2)
-  price     Decimal  @default(0) @db.Decimal(10, 2)
+// ============= Product Variants =============
+// Per-product line (variant/modifier): always owned by exactly one Product.
+// Not a reusable cross-product catalog.
+//
+// Every Product has exactly one variant with `isDefault = true`, whose `name`
+// is null — it is the implicit "the product itself" line, and it is what carries
+// the stock of products that were never split into named variants. A partial
+// unique index (see the add_variant_inventory migration) enforces the "exactly
+// one default per product" invariant at the DB level.
+//
+// Stock/cost/price live on BranchInventory keyed by [branchId, variantId] —
+// `cost`/`price` here are legacy columns kept during the expand phase of the
+// migration and are no longer the source of truth.
+model ProductVariant {
+  id             String   @id @default(uuid())
+  productId      String
+  name           String?
+  isDefault      Boolean  @default(false)
+  // Policy flag: does this variant carry inventory at all? Per-variant rather
+  // than per-branch (unlike lowStockAlert, a genuinely branch-level reorder
+  // point). Mirrors the legacy Product.trackInventory, kept in sync during expand.
+  trackInventory Boolean  @default(true)
+  cost           Decimal  @default(0) @db.Decimal(10, 2)
+  price          Decimal  @default(0) @db.Decimal(10, 2)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product         Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  branchInventory BranchInventory[]
 
-  @@map("product_attributes")
+  @@map("product_variants")
 }
 
 // ============= Product Features (specs) =============
 // Free-form key/value spec sheet for a product (e.g. "Material" → "Algodón").
 // Always owned by exactly one Product. Purely descriptive — no cost/price,
-// unlike ProductAttribute (which models priced variants).
+// unlike ProductVariant (which models priced variants).
 model ProductFeature {
   id        String @id @default(uuid())
   productId String
@@ -1382,6 +1434,8 @@ model Branch {
 
   usersLastSelected User[] @relation("UserLastBranch")
 
+  aiUsageEvents AiUsageEvent[]
+
   @@unique([tenantId, code])
   @@map("branches")
 }
@@ -1399,16 +1453,43 @@ model BranchMembership {
   @@map("branch_memberships")
 }
 
+// Single source of truth for the commercial data of a sellable line: stock,
+// cost and price, per branch and per variant.
+//
+// Keyed [branchId, variantId]: one row per variant per branch. The older
+// [branchId, productId] key could only ever hold one row per product per branch,
+// which made stocking two variants of the same product impossible.
+//
+// Expand phase (see the add_variant_inventory / variant_inventory_primary_key
+// migrations): every row was backfilled to its product's default variant. The
+// legacy commercial columns on Product and ProductVariant are deliberately still
+// in place and still written to, so this change stays revertible; the contract
+// phase drops them once all reads come from here.
 model BranchInventory {
   branchId  String
+  // Denormalized parent pointer: no longer unique per branch (a product may hold
+  // one row per variant), kept indexed for product-keyed lookups.
   productId String
+  variantId String
   stock     Int      @default(0)
+  // Effective commercial values for this branch+variant. Nullable during expand
+  // so a missing backfill is visible rather than silently reading as 0.
+  cost          Decimal? @db.Decimal(10, 2)
+  price         Decimal? @db.Decimal(10, 2)
+  comparePrice  Decimal? @db.Decimal(10, 2)
+  lastCost      Decimal? @db.Decimal(10, 2)
+  avgCost       Decimal? @db.Decimal(10, 2)
+  // Branch-level reorder point (a legitimately per-branch number, unlike the
+  // per-variant trackInventory policy flag).
+  lowStockAlert Int      @default(5)
   updatedAt DateTime @updatedAt
 
-  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  branch  Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  product Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
 
-  @@id([branchId, productId])
+  @@id([branchId, variantId])
+  @@index([branchId, productId])
   @@map("branch_inventory")
 }
 
@@ -1624,6 +1705,10 @@ model CashSession {
   openedById         String?
   closedById         String?
   authorizedById     String?
+  /// Empleado que autorizó por PIN desde el POS. Es un `Employee` y no un
+  /// `User` porque un operador con PIN no necesita cuenta del sistema; para la
+  /// autorización con contraseña del Admin Web se sigue usando `authorizedById`.
+  authorizedByEmployeeId String? @map("authorized_by_employee_id")
   openedAt           DateTime          @default(now())
   closedAt           DateTime?
   createdAt          DateTime          @default(now())
@@ -1635,6 +1720,7 @@ model CashSession {
   closedBy     User?          @relation("CashSessionClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
   authorizedBy User?          @relation("CashSessionAuthorizedBy", fields: [authorizedById], references: [id], onDelete: SetNull)
   cashRegister CashRegister?  @relation(fields: [cashRegisterId], references: [id], onDelete: Restrict)
+  authorizedByEmployee Employee? @relation("CashSessionAuthorizedByEmployee", fields: [authorizedByEmployeeId], references: [id], onDelete: SetNull)
   movements    CashMovement[]
   counts       CashCount[]
 
@@ -1912,6 +1998,7 @@ model Employee {
   role         Role?            @relation("EmployeeRole", fields: [roleId], references: [id], onDelete: SetNull)
   branches     EmployeeBranch[]
   diningOrders DiningOrder[]    @relation("DiningOrderWaiter")
+  cashSessionsAuthorized CashSession[] @relation("CashSessionAuthorizedByEmployee")
   createdBy    User?            @relation("EmployeeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy    User?            @relation("EmployeeUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
@@ -2248,6 +2335,25 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
+/// Ticket de un solo uso que cierra el redirect de OAuth. El callback de Google
+/// redirige al frontend con el ticket en la URL —nunca con el JWT— y el
+/// frontend lo canjea por la sesión real vía POST /auth/oauth/exchange.
+/// Igual que los refresh tokens, solo se persiste el SHA-256: el valor crudo
+/// viaja una vez y no queda recuperable desde la base.
+model OAuthTicket {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("oauth_tickets")
+}
+
 // ============= Licensing (SaaS / POS / Mobile / on-prem) =============
 
 enum LicenseStatus {
@@ -2371,4 +2477,104 @@ model PrinterConfig {
   @@index([tenantId])
   @@index([branchId])
   @@map("printer_configs")
+}
+
+// ============= AI Platform (usage) =============
+// Fase 1 — AI Core (Orbix AI Platform, revisión 2). Ver ADR-0025..0027 y
+// mcp-brain/vault (Decisions). Solo dos modelos en v1: el registro append-only
+// de cada invocación y el contador agregado que respalda la verificación O(1)
+// de límites. Sin tablas de routing ni de créditos comerciales — ver D-17.
+
+enum AiUsageStatus {
+  SUCCESS
+  SCHEMA_REPAIRED
+  OUTPUT_INVALID
+  PROVIDER_ERROR
+  TIMEOUT
+  RATE_LIMITED
+  QUOTA_EXCEEDED
+  BUDGET_EXCEEDED
+  CANCELLED
+}
+
+enum AiUsageOutcome {
+  PENDING
+  ACCEPTED
+  EDITED
+  DISCARDED
+}
+
+// Append-only. Una fila por intento (incluidos los fallidos — ver D-18: los
+// fallos también se registran, si no la tasa de error es invisible).
+// Particionado por mes: pendiente como trabajo operativo de infraestructura
+// (native partitioning o pg_partman) cuando el volumen lo justifique; en v1
+// los índices por (tenantId, createdAt) cubren las consultas de reporte y
+// retención sin requerirlo.
+model AiUsageEvent {
+  id        String  @id @default(uuid())
+  tenantId  String
+  branchId  String?
+  userId    String?
+  requestId String  @unique
+
+  featureKey     String
+  promptVersion  Int
+  schemaVersion  Int
+
+  providerId      String
+  modelKey        String
+  attemptNumber   Int      @default(1)
+  degradations    String[] @default([])
+
+  inputTokens  Int?
+  outputTokens Int?
+  totalTokens  Int?
+
+  // Micro-USD (1 USD = 1_000_000). Nunca float — ver D-08 y §13 del documento
+  // de arquitectura: es dato financiero, los errores de redondeo no son
+  // aceptables en algo que algún día puede llegar a una factura.
+  estimatedCostMicros BigInt @default(0)
+
+  latencyMsTotal    Int?
+  latencyMsProvider Int?
+
+  status       AiUsageStatus
+  errorCode    String?
+  errorMessage String?        @db.VarChar(500)
+  outcome      AiUsageOutcome @default(PENDING)
+
+  createdAt DateTime @default(now())
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  user   User?   @relation("AiUsageEventUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, featureKey, createdAt])
+  @@index([status])
+  @@map("ai_usage_events")
+}
+
+// Contador agregado por (tenant, periodo, feature). Existe únicamente para que
+// la verificación de límite sea O(1) en la ruta síncrona del gateway — no
+// requiere escanear ai_usage_events. Se incrementa en la misma transacción
+// que se escribe el evento (ver AiUsageRecorder).
+model AiUsageCounter {
+  id       String @id @default(uuid())
+  tenantId String
+  // Formato 'YYYY-MM', mes calendario en UTC.
+  period     String
+  featureKey String
+
+  invocationCount     Int    @default(0)
+  successCount        Int    @default(0)
+  totalTokens          Int    @default(0)
+  estimatedCostMicros BigInt @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, period, featureKey])
+  @@map("ai_usage_counters")
 }

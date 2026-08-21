@@ -1,0 +1,2372 @@
+<title>Orbix AI Platform</title>
+
+<style>
+  /* ============================================================
+     Orbix AI Platform — hoja de estilo
+     Paleta: neutros con sesgo verde-azulado (instrumentación),
+     teal = lo que se construye ahora, índigo = lo que queda diferido.
+     ============================================================ */
+
+  :root {
+    --ground:      #F5F7F7;
+    --surface:     #FFFFFF;
+    --surface-2:   #EBF0F0;
+    --ink:         #0F1719;
+    --ink-2:       #3A494B;
+    --ink-3:       #6B7B7D;
+    --rule:        #DCE3E3;
+    --rule-strong: #BCC8C8;
+
+    --local:       #0B6E75;
+    --local-soft:  #E2F0F0;
+    --cloud:       #3B4E96;
+    --cloud-soft:  #E7EAF6;
+
+    --ok:          #1C7A4B;
+    --ok-soft:     #E3F1E9;
+    --warn:        #8F5B05;
+    --warn-soft:   #F7EEDC;
+    --crit:        #A32B26;
+    --crit-soft:   #F7E6E5;
+
+    --plate:       #F2F5F5;
+    --plate-rule:  #D2DCDC;
+
+    --shadow: 0 1px 2px rgba(15, 23, 25, .05), 0 8px 24px -14px rgba(15, 23, 25, .22);
+
+    --serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, ui-serif, serif;
+    --sans:  'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+    --mono:  'Cascadia Code', 'JetBrains Mono', 'SF Mono', Consolas, ui-monospace, monospace;
+
+    --measure: 74ch;
+    --gutter: clamp(1.25rem, 4vw, 3rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #0C1113;
+      --surface:     #121A1C;
+      --surface-2:   #192224;
+      --ink:         #E7EDED;
+      --ink-2:       #A9B7B8;
+      --ink-3:       #77878A;
+      --rule:        #243032;
+      --rule-strong: #354446;
+
+      --local:       #4FC3CB;
+      --local-soft:  #10292C;
+      --cloud:       #93A6EA;
+      --cloud-soft:  #1A2033;
+
+      --ok:          #4FBF85;
+      --ok-soft:     #10261B;
+      --warn:        #DFA23A;
+      --warn-soft:   #2A2010;
+      --crit:        #E8776F;
+      --crit-soft:   #2E1614;
+
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 30px -16px rgba(0, 0, 0, .8);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:      #0C1113;
+    --surface:     #121A1C;
+    --surface-2:   #192224;
+    --ink:         #E7EDED;
+    --ink-2:       #A9B7B8;
+    --ink-3:       #77878A;
+    --rule:        #243032;
+    --rule-strong: #354446;
+
+    --local:       #4FC3CB;
+    --local-soft:  #10292C;
+    --cloud:       #93A6EA;
+    --cloud-soft:  #1A2033;
+
+    --ok:          #4FBF85;
+    --ok-soft:     #10261B;
+    --warn:        #DFA23A;
+    --warn-soft:   #2A2010;
+    --crit:        #E8776F;
+    --crit-soft:   #2E1614;
+
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 30px -16px rgba(0, 0, 0, .8);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16.5px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* ---------- Estructura ---------- */
+
+  .shell {
+    display: grid;
+    grid-template-columns: 1fr;
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 0 var(--gutter);
+  }
+
+  @media (min-width: 1140px) {
+    .shell {
+      grid-template-columns: 15.5rem minmax(0, 1fr);
+      gap: clamp(2rem, 5vw, 5rem);
+    }
+  }
+
+  main { min-width: 0; padding-bottom: 7rem; }
+
+  section { padding-block: clamp(2.25rem, 5vw, 3.5rem); border-top: 1px solid var(--rule); }
+  section:first-of-type { border-top: 0; }
+  section > * { max-width: var(--measure); }
+  section > .wide, section > .plate, section > .tablewrap, section > .grid { max-width: none; }
+
+  /* ---------- Encabezado ---------- */
+
+  header.masthead {
+    border-bottom: 1px solid var(--rule);
+    padding-block: clamp(3rem, 8vw, 5.5rem) clamp(2rem, 4vw, 3rem);
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: .72rem;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 1.1rem;
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: clamp(2.4rem, 6.5vw, 4.1rem);
+    line-height: 1.02;
+    letter-spacing: -.02em;
+    text-wrap: balance;
+    margin: 0 0 1rem;
+  }
+
+  .standfirst {
+    font-family: var(--serif);
+    font-size: clamp(1.1rem, 2.2vw, 1.35rem);
+    line-height: 1.5;
+    color: var(--ink-2);
+    max-width: 58ch;
+    margin: 0 0 2.25rem;
+  }
+
+  .factbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem 2.5rem;
+    font-family: var(--mono);
+    font-size: .78rem;
+    color: var(--ink-3);
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--rule);
+    max-width: none;
+  }
+  .factbar b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- Índice lateral ---------- */
+
+  nav.toc {
+    display: none;
+    font-family: var(--mono);
+    font-size: .76rem;
+    line-height: 1.5;
+  }
+
+  @media (min-width: 1140px) {
+    nav.toc {
+      display: block;
+      position: sticky;
+      top: 0;
+      align-self: start;
+      max-height: 100vh;
+      overflow-y: auto;
+      padding-block: 3rem;
+      scrollbar-width: thin;
+    }
+  }
+
+  nav.toc p {
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 .9rem;
+  }
+  nav.toc ol { list-style: none; margin: 0 0 1.6rem; padding: 0; display: flex; flex-direction: column; gap: .42rem; }
+  nav.toc a { color: var(--ink-2); text-decoration: none; display: block; border-left: 2px solid transparent; padding-left: .7rem; }
+  nav.toc a:hover, nav.toc a:focus-visible { color: var(--local); border-left-color: var(--local); }
+  nav.toc .num { color: var(--ink-3); margin-right: .5rem; }
+
+  /* ---------- Tipografía de contenido ---------- */
+
+  h2 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: clamp(1.65rem, 3.4vw, 2.25rem);
+    line-height: 1.15;
+    letter-spacing: -.012em;
+    text-wrap: balance;
+    margin: 0 0 .35rem;
+  }
+
+  h2 .sec-no {
+    display: block;
+    font-family: var(--mono);
+    font-size: .72rem;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--local);
+    margin-bottom: .7rem;
+    font-weight: 500;
+  }
+
+  h3 {
+    font-family: var(--sans);
+    font-weight: 650;
+    font-size: 1.06rem;
+    letter-spacing: -.005em;
+    margin: 2.4rem 0 .6rem;
+  }
+
+  h4 {
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: .78rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 1.8rem 0 .5rem;
+  }
+
+  p { margin: 0 0 1.05rem; }
+  .lede { font-size: 1.06rem; color: var(--ink-2); margin-bottom: 1.6rem; }
+
+  ul, ol { margin: 0 0 1.15rem; padding-left: 1.35rem; display: flex; flex-direction: column; gap: .4rem; }
+  li::marker { color: var(--ink-3); }
+  li > ul, li > ol { margin-top: .4rem; margin-bottom: 0; }
+
+  a { color: var(--local); text-underline-offset: .18em; }
+  :focus-visible { outline: 2px solid var(--local); outline-offset: 3px; border-radius: 2px; }
+
+  strong, b { font-weight: 650; color: var(--ink); }
+  em { font-style: italic; }
+
+  code {
+    font-family: var(--mono);
+    font-size: .855em;
+    background: var(--surface-2);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: .08em .34em;
+    color: var(--ink);
+    word-break: break-word;
+  }
+
+  pre {
+    font-family: var(--mono);
+    font-size: .8rem;
+    line-height: 1.6;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 1.1rem 1.2rem;
+    overflow-x: auto;
+    margin: 0 0 1.3rem;
+  }
+  pre code { background: none; border: 0; padding: 0; font-size: inherit; }
+
+  /* ---------- Tablas ---------- */
+
+  .tablewrap {
+    overflow-x: auto;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: var(--surface);
+    margin: 0 0 1.6rem;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .885rem;
+    font-variant-numeric: tabular-nums;
+  }
+  thead th {
+    font-family: var(--mono);
+    font-size: .7rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 500;
+    text-align: left;
+    padding: .8rem 1rem;
+    border-bottom: 1px solid var(--rule-strong);
+    white-space: nowrap;
+    background: var(--surface-2);
+  }
+  tbody td { padding: .72rem 1rem; border-bottom: 1px solid var(--rule); vertical-align: top; color: var(--ink-2); }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody td:first-child { color: var(--ink); font-weight: 550; }
+  tbody td code { font-size: .82em; }
+
+  /* ---------- Placas de diagrama ---------- */
+
+  .plate {
+    background: var(--plate);
+    border: 1px solid var(--plate-rule);
+    border-radius: 8px;
+    padding: 1.4rem 1rem 1rem;
+    margin: 0 0 1.7rem;
+    overflow-x: auto;
+  }
+  .plate pre.mermaid {
+    background: none;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    text-align: center;
+    color: #0F1719;
+  }
+  .plate figcaption {
+    font-family: var(--mono);
+    font-size: .72rem;
+    letter-spacing: .06em;
+    color: #56666A;
+    text-align: center;
+    padding-top: 1rem;
+    margin-top: .8rem;
+    border-top: 1px solid var(--plate-rule);
+  }
+  .plate figcaption b { color: #0F1719; font-weight: 600; }
+
+  /* ---------- Bloques de decisión ---------- */
+
+  .decision {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    padding: 1.3rem 1.4rem;
+    margin: 0 0 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: .55rem;
+  }
+  .decision > * { margin: 0; }
+  .decision .d-id {
+    font-family: var(--mono);
+    font-size: .7rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .decision .d-q { font-family: var(--serif); font-size: 1.18rem; line-height: 1.3; font-weight: 600; }
+  .decision .d-verdict {
+    font-size: .95rem;
+    background: var(--local-soft);
+    border-left: 3px solid var(--local);
+    padding: .6rem .85rem;
+    border-radius: 0 4px 4px 0;
+  }
+  .decision .d-verdict b { color: var(--local); }
+  .decision ul { margin: 0; }
+
+  /* ---------- Avisos ---------- */
+
+  .note {
+    border-left: 3px solid var(--rule-strong);
+    background: var(--surface);
+    padding: .9rem 1.1rem;
+    border-radius: 0 5px 5px 0;
+    margin: 0 0 1.4rem;
+    font-size: .95rem;
+    color: var(--ink-2);
+  }
+  .note > :last-child { margin-bottom: 0; }
+  .note.crit { border-left-color: var(--crit); background: var(--crit-soft); }
+  .note.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+  .note.ok   { border-left-color: var(--ok);   background: var(--ok-soft); }
+  .note.later { border-left-color: var(--cloud); background: var(--cloud-soft); }
+  .note .label {
+    font-family: var(--mono);
+    font-size: .68rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: .35rem;
+  }
+  .note.crit .label { color: var(--crit); }
+  .note.warn .label { color: var(--warn); }
+  .note.ok .label   { color: var(--ok); }
+  .note.later .label { color: var(--cloud); }
+
+  /* ---------- Píldoras ---------- */
+
+  .pill {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: .68rem;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    padding: .16em .5em;
+    border-radius: 3px;
+    border: 1px solid currentColor;
+    white-space: nowrap;
+  }
+  .pill.now   { color: var(--local); background: var(--local-soft); }
+  .pill.later { color: var(--cloud); background: var(--cloud-soft); }
+  .pill.yes   { color: var(--ok);    background: var(--ok-soft); }
+  .pill.no    { color: var(--crit);  background: var(--crit-soft); }
+  .pill.maybe { color: var(--warn);  background: var(--warn-soft); }
+  .pill.flat  { color: var(--ink-3); background: var(--surface-2); }
+
+  /* ---------- Rejillas ---------- */
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+    gap: 1rem;
+    margin: 0 0 1.6rem;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 1.05rem 1.15rem;
+    display: flex;
+    flex-direction: column;
+    gap: .45rem;
+  }
+  .card > * { margin: 0; }
+  .card .c-kicker {
+    font-family: var(--mono);
+    font-size: .68rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .card .c-title { font-weight: 650; font-size: .98rem; }
+  .card p { font-size: .9rem; color: var(--ink-2); }
+  .card ul { font-size: .88rem; color: var(--ink-2); }
+  .card.later { border-color: var(--rule); background: var(--surface-2); }
+  .card.later .c-kicker { color: var(--cloud); }
+
+  /* ---------- Fases del roadmap ---------- */
+
+  .phase {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 1.3rem 1.4rem;
+    margin: 0 0 1.1rem;
+  }
+  @media (min-width: 820px) {
+    .phase { grid-template-columns: 11rem minmax(0, 1fr); gap: 1.6rem; }
+  }
+  .phase.deferred { background: var(--surface-2); border-style: dashed; }
+  .phase .p-head { display: flex; flex-direction: column; gap: .3rem; }
+  .phase .p-no {
+    font-family: var(--mono);
+    font-size: .7rem;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--local);
+  }
+  .phase.deferred .p-no { color: var(--cloud); }
+  .phase .p-name { font-family: var(--serif); font-size: 1.3rem; font-weight: 600; line-height: 1.2; }
+  .phase .p-meta { font-family: var(--mono); font-size: .7rem; color: var(--ink-3); letter-spacing: .04em; }
+  .phase .p-body > :last-child { margin-bottom: 0; }
+  .phase dl { margin: 0; display: flex; flex-direction: column; gap: .75rem; }
+  .phase dt {
+    font-family: var(--mono);
+    font-size: .68rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: .2rem;
+  }
+  .phase dd { margin: 0; font-size: .93rem; color: var(--ink-2); }
+  .phase dd ul { margin: 0; font-size: .93rem; }
+
+  /* ---------- Checklist ---------- */
+
+  .checklist { list-style: none; padding: 0; gap: .5rem; }
+  .checklist li {
+    display: grid;
+    grid-template-columns: 1.6rem 1fr;
+    gap: .5rem;
+    align-items: start;
+    padding: .6rem .85rem;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    font-size: .93rem;
+    color: var(--ink-2);
+  }
+  .checklist li::before {
+    content: "";
+    width: 1rem;
+    height: 1rem;
+    margin-top: .25rem;
+    border: 1.5px solid var(--rule-strong);
+    border-radius: 3px;
+    display: block;
+  }
+
+  /* ---------- Cierre ---------- */
+
+  footer.colophon {
+    border-top: 1px solid var(--rule);
+    padding-block: 2.5rem 4rem;
+    font-family: var(--mono);
+    font-size: .75rem;
+    color: var(--ink-3);
+    line-height: 1.7;
+  }
+  footer.colophon p { max-width: var(--measure); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  }
+</style>
+
+<header class="masthead">
+  <div class="shell">
+    <div></div>
+    <div>
+      <p class="eyebrow">Documento de arquitectura · Revisión 2 · alcance reducido</p>
+      <h1>Orbix AI Platform</h1>
+      <p class="standfirst">
+        Una sola feature, un solo proveedor, cero facturación. Lo mínimo que hay que
+        construir bien hoy para poder añadir OpenAI o Anthropic mañana sin tocar una línea
+        de los módulos de negocio.
+      </p>
+      <div class="factbar">
+        <span><b>Estado</b> Propuesta para aprobación</span>
+        <span><b>Revisión</b> 2 · 15 ago 2026</span>
+        <span><b>Alcance v1</b> AI Core · llama.cpp · Product Assistant</span>
+        <span><b>Proveedor</b> Local, para todos los planes</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="shell">
+
+<nav class="toc" aria-label="Índice">
+  <p>Contenido</p>
+  <ol>
+    <li><a href="#resumen"><span class="num">00</span>Resumen ejecutivo</a></li>
+    <li><a href="#principios"><span class="num">01</span>Principios rectores</a></li>
+    <li><a href="#arquitectura"><span class="num">02</span>Arquitectura y carpetas</a></li>
+    <li><a href="#gateway"><span class="num">03</span>AI Gateway</a></li>
+    <li><a href="#providers"><span class="num">04</span>Abstracción de proveedor</a></li>
+    <li><a href="#structured"><span class="num">05</span>Structured output</a></li>
+    <li><a href="#prompts"><span class="num">06</span>Prompt management</a></li>
+    <li><a href="#assistant"><span class="num">07</span>Product Assistant</a></li>
+    <li><a href="#confianza"><span class="num">08</span>Qué valida Orbix</a></li>
+    <li><a href="#local"><span class="num">09</span>Inferencia local</a></li>
+    <li><a href="#infra"><span class="num">10</span>Infraestructura</a></li>
+    <li><a href="#config"><span class="num">11</span>Configuración y planes</a></li>
+    <li><a href="#errores"><span class="num">12</span>Errores sin fallback</a></li>
+    <li><a href="#consumo"><span class="num">13</span>Consumo y límites</a></li>
+    <li><a href="#seguridad"><span class="num">14</span>Seguridad</a></li>
+    <li><a href="#offline"><span class="num">15</span>Offline</a></li>
+    <li><a href="#observabilidad"><span class="num">16</span>Observabilidad y evals</a></li>
+  </ol>
+  <p>Cierre</p>
+  <ol>
+    <li><a href="#decisiones">Decisiones vigentes</a></li>
+    <li><a href="#diferidas">Decisiones diferidas</a></li>
+    <li><a href="#riesgos">Riesgos</a></li>
+    <li><a href="#roadmap">Roadmap</a></li>
+    <li><a href="#aceptacion">Criterios de aceptación</a></li>
+    <li><a href="#checklist">Checklist</a></li>
+    <li><a href="#no-construir">Qué NO construir</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="resumen">
+  <h2><span class="sec-no">00 — Resumen ejecutivo</span>La v1 en una página</h2>
+
+  <p class="lede">
+    Orbix construye una capa propia y delgada de IA con <b>una sola implementación real de
+    proveedor</b>. La abstracción existe desde el primer día — pero no para soportar cuatro
+    proveedores hoy, sino para que añadir el segundo mañana no toque
+    <code>src/modules/</code>.
+  </p>
+
+  <div class="plate">
+    <pre class="mermaid">
+%%{init: {'theme':'neutral'}}%%
+flowchart LR
+  A["Flutter POS / Web"] --> B["Orbix API<br/>NestJS"]
+  B --> C["ProductAIService<br/>capa de dominio"]
+  C --> D["AiGatewayService"]
+  D --> E["AIProvider<br/>puerto"]
+  E --> F["OpenAICompatibleProvider"]
+  F --> G["llama.cpp<br/>Ollama en desarrollo"]
+  D -.-> H["Prompts · Schemas<br/>Usage · Límites"]
+  C --> I["ProductsService<br/>única escritura a BD"]
+    </pre>
+    <figcaption><b>Diagrama 1</b> — Flujo general de la v1. Una sola rama bajo el puerto; la ruta a BD nunca pasa por la IA.</figcaption>
+  </div>
+
+  <h3>Lo que cambia respecto de la revisión 1</h3>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Tema</th><th>Revisión 1</th><th>Revisión 2 · vigente</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Proveedores</td>
+          <td>Local + Anthropic en fase 4, con routing multiproveedor</td>
+          <td><b>Solo local</b>, para todos los planes. Segundo proveedor diferido a Fase 4 (no planificada)</td>
+        </tr>
+        <tr>
+          <td>Routing</td>
+          <td>Precedencia TENANT &gt; PLAN &gt; GLOBAL, candidatos ordenados, filtros por capacidad y salud</td>
+          <td><b><code>feature → { proveedor, modelo }</code></b> declarado en configuración. Sin tablas de routing</td>
+        </tr>
+        <tr>
+          <td>Planes</td>
+          <td>El plan compra créditos y capacidades; Orbix elige proveedor por clase de tarea</td>
+          <td><b>El proveedor no es atributo del plan.</b> Todos usan local. El plan solo define límites de uso</td>
+        </tr>
+        <tr>
+          <td>Fallback</td>
+          <td>Taxonomía de 9 tipos de fallo, presupuesto de fallback, circuit breaker</td>
+          <td><b>Ninguno.</b> Si el modelo local falla → error controlado, observable y explicado en la UI</td>
+        </tr>
+        <tr>
+          <td>Consumo</td>
+          <td>Créditos comerciales, overage, kill switch de gasto cloud, BYOK</td>
+          <td><b>Registro de consumo + límite por tenant.</b> Sin facturación, sin overage, sin créditos comerciales</td>
+        </tr>
+        <tr>
+          <td>Embeddings</td>
+          <td>Servidor de embeddings en Fase 2, "el mejor primer caso de uso local"</td>
+          <td><b>Fuera de alcance.</b> Product Assistant no los necesita</td>
+        </tr>
+        <tr>
+          <td>Migraciones en Fase 1</td>
+          <td>Cuatro tablas (<code>usage</code>, <code>counters</code>, <code>model_catalog</code>, <code>routing_policy</code>)</td>
+          <td><b>Dos tablas</b> (<code>ai_usage_events</code>, <code>ai_usage_counters</code>). El catálogo y el binding son configuración en código</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Lo que no cambia</h3>
+  <ul>
+    <li><b>La IA no escribe en la base de datos.</b> Draft efímero → validación → confirmación humana → <code>ProductsService.create()</code>. Un único camino de escritura.</li>
+    <li><b>Los módulos de negocio no conocen al proveedor.</b> Es la razón de existir de esta arquitectura, y se hace cumplir con una regla de ESLint en CI.</li>
+    <li><b>llama.cpp en producción, Ollama en desarrollo</b>, con gramáticas GBNF que garantizan JSON válido por construcción.</li>
+    <li><b>El conjunto de evaluación en español mexicano es obligatorio</b> y decide el modelo. Sin él, cambiar de modelo es a ciegas.</li>
+    <li><b>El consumo vive en PostgreSQL</b>, con tenant, feature, modelo, tokens, latencia, costo estimado y resultado.</li>
+  </ul>
+
+  <div class="note warn">
+    <span class="label">El riesgo que la simplificación concentra</span>
+    <p>
+      Con un solo proveedor y sin fallback, <b>el servidor de inferencia es un punto único de
+      fallo</b> para la feature. Esto es aceptable — y deliberado — porque el principio 04
+      lo cubre: <b>ninguna operación de negocio depende de la IA</b>. Si el modelo cae, el
+      alta manual de productos funciona exactamente igual. Lo que se pierde es una
+      aceleración, no una capacidad. A cambio se evita construir hoy toda la maquinaria de
+      resiliencia multiproveedor, que es la parte más cara y más difícil de probar.
+    </p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="principios">
+  <h2><span class="sec-no">01 — Principios rectores</span>Ocho reglas que no se negocian</h2>
+
+  <p class="lede">Cuando una decisión posterior contradiga una de estas, gana la regla.</p>
+
+  <div class="grid">
+    <div class="card">
+      <span class="c-kicker">Regla 01</span>
+      <span class="c-title">La IA propone, Orbix dispone</span>
+      <p>Ningún camino de código permite que una respuesta del modelo llegue a la base de datos sin pasar por un servicio de dominio y una confirmación humana.</p>
+    </div>
+    <div class="card">
+      <span class="c-kicker">Regla 02 · la central</span>
+      <span class="c-title">El negocio no conoce al proveedor</span>
+      <p>Los módulos de negocio no conocen OpenAI, Anthropic, llama.cpp, Ollama, modelos concretos, API keys, tokens ni costos. Solo conocen <b>la capacidad de IA que necesitan</b>. Se hace cumplir con ESLint, no con buenas intenciones.</p>
+    </div>
+    <div class="card">
+      <span class="c-kicker">Regla 03</span>
+      <span class="c-title">La IA nunca inventa identificadores</span>
+      <p>El modelo devuelve nombres y textos. Los <code>uuid</code>, <code>tenantId</code>, <code>categoryId</code> y <code>createdById</code> los pone el servidor, siempre.</p>
+    </div>
+    <div class="card">
+      <span class="c-kicker">Regla 04</span>
+      <span class="c-title">Ninguna operación depende de la IA</span>
+      <p>Todo lo que el asistente acelera se puede hacer a mano. Si la IA cae, el POS y el alta de productos siguen funcionando idénticos. Es lo que hace aceptable no tener fallback.</p>
+    </div>
+    <div class="card">
+      <span class="c-kicker">Regla 05</span>
+      <span class="c-title">Nada consume sin tope</span>
+      <p>Límite mensual por tenant y límite de ráfaga por usuario, desde la primera versión. El sistema rechaza la invocación antes de llegar al modelo.</p>
+    </div>
+    <div class="card">
+      <span class="c-kicker">Regla 06</span>
+      <span class="c-title">El cliente nunca ve credenciales</span>
+      <p>Flutter conoce <code>featureKey</code> y recibe drafts. No existe endpoint que devuelva configuración de proveedor al dispositivo. Vale hoy con el local y valdrá igual cuando haya claves de pago.</p>
+    </div>
+    <div class="card">
+      <span class="c-kicker">Regla 07</span>
+      <span class="c-title">Todo dato de IA lleva <code>tenantId</code></span>
+      <p>Igual que el resto de Orbix, desde <code>TenantContextService.requireTenantId()</code>. Incluye contadores y cualquier clave de caché que llegue a existir.</p>
+    </div>
+    <div class="card">
+      <span class="c-kicker">Regla 08</span>
+      <span class="c-title">Degradación explícita, nunca silenciosa</span>
+      <p>Si el gateway reparó un JSON o entregó un draft parcial, lo dice en la respuesta y en el evento de consumo. Un fallo silencioso es un fallo que nadie corrige.</p>
+    </div>
+  </div>
+
+  <pre><code>// La regla 02, expresada como código
+
+ProductAIService  →  AiGatewayService.generate(...)          ✅
+
+ProductAIService  →  import { OpenAI } from 'openai'          ❌
+ProductAIService  →  fetch('http://localhost:11434/api/...')  ❌
+ProductAIService  →  import { OpenAICompatibleProvider }      ❌</code></pre>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="arquitectura">
+  <h2><span class="sec-no">02 — Arquitectura</span>Estructura de carpetas</h2>
+
+  <p class="lede">
+    La plataforma de IA es <b>infraestructura transversal</b>, no un vertical de negocio.
+    En el árbol actual de Orbix eso la coloca junto a <code>src/common/</code>,
+    <code>src/database/</code> y <code>src/storage/</code> — no dentro de
+    <code>src/modules/</code>.
+  </p>
+
+  <pre><code>api/src/ai/                            # PLATAFORMA — infraestructura transversal
+  ai.module.ts                         # @Global, exporta SOLO la fachada + tipos
+  contracts/
+    ai-invocation.types.ts             # AiInvocation, AiResult, AiUsage, AiDegradation
+    ai-capability.enum.ts
+    ai-feature.registry.ts             # catálogo declarativo de features, EN CÓDIGO
+  gateway/
+    ai-gateway.service.ts              # ← ÚNICA superficie pública. Orquesta, no decide
+    ai-request.validator.ts
+    ai-execution.service.ts            # un intento: timeout, retry, medición
+  providers/
+    ai-provider.port.ts                # ← la interfaz
+    ai-provider.registry.ts            # id → instancia
+    openai-compatible/
+      openai-compatible.provider.ts    # llama.cpp Y Ollama, misma clase
+      openai-compatible.mapper.ts
+      gbnf.builder.ts                  # JSON Schema → gramática
+    mock/
+      mock.provider.ts                 # 2.ª implementación del puerto — prueba la abstracción
+  config/
+    ai-model.catalog.ts                # (providerId, modelKey, capabilities, ctx) — constante
+    ai-feature.binding.ts              # feature → { providerId, modelKey, promptVersion, params }
+  prompts/
+    prompt-registry.service.ts
+    prompt-renderer.service.ts
+    templates/&lt;feature&gt;/&lt;name&gt;.v1.md
+  schemas/
+    ai-schema.registry.ts              # Zod → JSON Schema → GBNF
+    structured-output.service.ts       # parse · validate · repair · reintento
+  usage/
+    ai-usage.recorder.ts
+    ai-usage.repository.ts
+    ai-cost.calculator.ts              # costo sombra del local
+  limits/
+    ai-quota.service.ts                # límite mensual por tenant — Postgres, transaccional
+    ai-rate-limit.service.ts           # ráfaga por usuario — memoria
+  observability/
+    ai-metrics.ts
+
+api/src/modules/retail/products/ai/    # NEGOCIO — conoce el dominio, no el proveedor
+  product-ai.service.ts
+  product-ai.controller.ts
+  product-draft.schema.ts              # Zod
+  product-draft.reconciler.ts          # draft → entidades reales del tenant
+  dto/</code></pre>
+
+  <h3>Qué desapareció de la revisión 1, y por qué</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Eliminado</th><th>Motivo</th><th>Cuándo vuelve</th></tr></thead>
+      <tbody>
+        <tr><td><code>routing/</code> (5 archivos)</td><td>Con un proveedor no hay nada que enrutar. Reemplazado por <code>config/ai-feature.binding.ts</code></td><td>Fase 4, al llegar el segundo proveedor</td></tr>
+        <tr><td><code>execution/ai-fallback.policy.ts</code>, <code>ai-circuit-breaker.ts</code></td><td>Sin segundo proveedor, el fallback no tiene destino</td><td>Fase 4</td></tr>
+        <tr><td><code>limits/ai-budget.service.ts</code></td><td>El kill switch protege de gasto en proveedores de pago. Hoy no hay ninguno</td><td>Fase 4, <b>en la misma entrega</b> que el primer proveedor cloud</td></tr>
+        <tr><td><code>cache/</code></td><td>Decidido desactivado por defecto (D-15). Una carpeta para algo apagado es ruido</td><td>Cuando una feature demuestre tasa de acierto</td></tr>
+        <tr><td><code>guardrails/pii-policy.service.ts</code></td><td>Con inferencia local, el dato no sale de la infraestructura de Orbix. La política PII se declara en el registro de features, sin servicio propio</td><td>Fase 4, cuando el dato pueda salir a un tercero</td></tr>
+        <tr><td><code>providers/anthropic/</code>, <code>providers/device/</code></td><td>No se implementan</td><td>Fase 4 y más allá</td></tr>
+        <tr><td>Tablas <code>ai_model_catalog</code>, <code>ai_routing_policy</code></td><td>Dos constantes en código hacen el mismo trabajo con cero migraciones</td><td>Fase 4</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>La regla de dependencia, hecha ejecutable</h3>
+  <p>
+    La separación solo es real si algo la rompe cuando se viola. En
+    <code>eslint.config.mjs</code>, una regla <code>no-restricted-imports</code> con
+    <code>patterns: ['**/ai/providers/**', '**/ai/config/**', '**/ai/prompts/templates/**']</code>
+    aplicada a <code>src/modules/**</code> convierte el principio en un error de CI.
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Capa</th><th>Sabe</th><th>No sabe</th></tr></thead>
+      <tbody>
+        <tr><td>Controlador / Flutter</td><td><code>featureKey</code>, input del usuario, el draft</td><td>Modelo, proveedor, prompt, tokens, costo</td></tr>
+        <tr><td><code>ProductAIService</code></td><td>El dominio de producto, el schema del draft, cómo reconciliar</td><td>Qué proveedor lo atendió, qué modelo, cuánto costó</td></tr>
+        <tr><td><code>AiGatewayService</code></td><td>Política: límites, binding de feature, prompt, schema, consumo</td><td>Reglas de negocio de producto; el protocolo HTTP concreto</td></tr>
+        <tr><td><code>AIProvider</code></td><td>El protocolo de <em>un</em> proveedor</td><td>Tenants, planes, features, límites, prompts</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="gateway">
+  <h2><span class="sec-no">03 — AI Gateway</span>Ocho pasos, ninguna decisión propia</h2>
+
+  <p class="lede">
+    <code>AiGatewayService</code> es la única superficie pública de la plataforma y debería
+    caber en unas 120 líneas. No contiene lógica: <b>secuencia</b> colaboradores que sí la
+    contienen. Cada paso es inyectable y testeable en aislamiento.
+  </p>
+
+  <div class="plate">
+    <pre class="mermaid">
+%%{init: {'theme':'neutral'}}%%
+flowchart TB
+  IN["AiInvocation<br/>featureKey · input · requires"] --> V["1 · Validator<br/>feature existe · capacidades coherentes"]
+  V --> Q["2 · Limits<br/>cuota del tenant · ráfaga del usuario"]
+  Q --> B["3 · Feature binding<br/>proveedor y modelo configurados"]
+  B --> P["4 · PromptRegistry<br/>plantilla versionada + render"]
+  P --> S1["5 · SchemaRegistry<br/>Zod a JSON Schema a GBNF"]
+  S1 --> X["6 · Execution<br/>timeout · retry · medición"]
+  X --> PR["AIProvider.chat"]
+  PR --> S2["7 · StructuredOutput<br/>parse · validate · repair"]
+  S2 --> U["8 · Usage + Metrics"]
+  U --> OUT["AiResult<br/>data · degradations · usage"]
+    </pre>
+    <figcaption><b>Diagrama 2</b> — Pipeline de la v1. Los pasos 1 y 2 son fail-fast: rechazan antes de gastar un token.</figcaption>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Servicio</th><th>Responsabilidad única</th><th>Qué NO hace</th></tr></thead>
+      <tbody>
+        <tr><td><code>AiGatewayService</code></td><td>Secuenciar el pipeline y componer el resultado</td><td>Ninguna decisión propia</td></tr>
+        <tr><td><code>AiRequestValidator</code></td><td>Verificar que la feature existe y las capacidades pedidas son coherentes</td><td>Consultar la BD</td></tr>
+        <tr><td><code>AiQuotaService</code></td><td>Límite mensual del tenant (transaccional)</td><td>Ráfaga, latencia</td></tr>
+        <tr><td><code>AiRateLimitService</code></td><td>Ráfaga por usuario y concurrencia por tenant</td><td>Contabilidad mensual</td></tr>
+        <tr><td><code>PromptRegistry</code> + <code>Renderer</code></td><td>Resolver la plantilla versionada y renderizar variables</td><td>Decidir qué modelo la atiende</td></tr>
+        <tr><td><code>AiSchemaRegistry</code></td><td>Del Zod al JSON Schema y a la gramática GBNF</td><td>Conocer el dominio del schema</td></tr>
+        <tr><td><code>AiExecutionService</code></td><td>Un intento: timeout, retry por error transitorio, medición</td><td>Elegir proveedor · intentar otro proveedor</td></tr>
+        <tr><td><code>StructuredOutputService</code></td><td>Del texto al objeto validado, con reparación acotada</td><td>Conocer el dominio del schema</td></tr>
+        <tr><td><code>AiUsageRecorder</code></td><td>Persistir el evento y actualizar contadores</td><td>Bloquear la respuesta al usuario</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="decision">
+    <span class="d-id">Decisión D-01 · vigente</span>
+    <p class="d-q">¿Secuencia explícita o pipeline configurable de middlewares?</p>
+    <ul>
+      <li><b>Secuencia explícita</b> — se lee de arriba abajo, se depura con un breakpoint, el orden es evidente en el código.</li>
+      <li><b>Pipeline de middlewares</b> — cada feature compondría sus pasos. A cambio: indirección, orden implícito, peores stack traces.</li>
+    </ul>
+    <p class="d-verdict">
+      <b>Secuencia explícita.</b> Con una feature y un proveedor, el pipeline configurable
+      resuelve un problema inexistente. Regla de reevaluación: extraerlo cuando más de tres
+      features necesiten órdenes de pasos distintos.
+    </p>
+  </div>
+
+  <div class="note">
+    <span class="label">Detalle con consecuencias</span>
+    <p>
+      El paso 8 <b>no debe bloquear la respuesta</b>, pero tampoco puede perderse. Patrón:
+      escribir el evento en la misma transacción que actualiza el contador del tenant,
+      <em>después</em> de haber enviado la respuesta, con buffer en memoria y volcado por lote
+      cada 2 s o 50 eventos. Perder telemetría es tolerable; perder el decremento del contador
+      convierte el límite en decorativo.
+    </p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="providers">
+  <h2><span class="sec-no">04 — Abstracción de proveedor</span>Un puerto, dos implementaciones, un runtime</h2>
+
+  <p class="lede">
+    La abstracción correcta no es "un adaptador por proveedor": es <b>un adaptador por
+    protocolo</b>. llama.cpp y Ollama hablan el mismo dialecto
+    <code>/v1/chat/completions</code> que OpenAI y vLLM. Por eso la v1 necesita
+    <b>una sola clase real</b>, y cambiar de runtime es cambiar una URL.
+  </p>
+
+  <div class="plate">
+    <pre class="mermaid">
+%%{init: {'theme':'neutral'}}%%
+flowchart TB
+  PORT["AIProvider — puerto<br/>chat · health"]
+  PORT --- OC["OpenAICompatibleProvider<br/>SE IMPLEMENTA AHORA"]
+  PORT --- MK["MockProvider<br/>SE IMPLEMENTA AHORA · tests"]
+  PORT -.- AN["AnthropicProvider<br/>diferido · Fase 4"]
+  PORT -.- OA["OpenAIProvider<br/>diferido · Fase 4"]
+  PORT -.- DV["DeviceAIProvider<br/>diferido · sin fecha"]
+  OC --- L1["llama-server<br/>producción · GBNF"]
+  OC --- L2["Ollama<br/>desarrollo"]
+  REG["AiProviderRegistry<br/>id → instancia"] --> PORT
+    </pre>
+    <figcaption><b>Diagrama 3</b> — Abstracción de proveedores. Línea continua se construye; línea punteada queda reservada en el contrato.</figcaption>
+  </div>
+
+  <div class="decision">
+    <span class="d-id">Decisión D-16 · nueva</span>
+    <p class="d-q">Con un solo proveedor, ¿hace falta el puerto?</p>
+    <ul>
+      <li><b>Sin puerto</b> — <code>ProductAIService</code> llamaría a un cliente HTTP de llama.cpp. Menos código hoy. Cuando llegue Anthropic, habría que refactorizar todos los consumidores.</li>
+      <li><b>Con puerto</b> — una interfaz y un registro. Cuesta ~60 líneas y un archivo.</li>
+    </ul>
+    <p class="d-verdict">
+      <b>Con puerto, y es innegociable</b> — es la razón de ser de todo este documento. Y hay
+      una prueba concreta de que no es teatro arquitectónico: la v1 tiene <b>dos</b>
+      implementaciones del puerto desde la Fase 1, <code>OpenAICompatibleProvider</code> y
+      <code>MockProvider</code>. Una abstracción con dos implementadores reales ya está
+      validada; con uno solo, es una suposición.
+    </p>
+  </div>
+
+  <h3>El puerto</h3>
+  <pre><code>interface AIProvider {
+  readonly id: string;                    // 'local' | 'mock'
+  readonly capabilities: ReadonlySet&lt;AICapability&gt;;
+
+  supports(model: string, required: AICapability[]): boolean;
+
+  chat(req: ChatRequest, ctx: InvocationContext): Promise&lt;ChatResult&gt;;
+
+  health(): Promise&lt;ProviderHealth&gt;;      // alimenta /health y las métricas
+
+  // Reservados en el contrato, sin implementación en v1:
+  // chatStream?(...): AsyncIterable&lt;ChatChunk&gt;;
+  // embed?(...): Promise&lt;EmbedResult&gt;;
+}</code></pre>
+
+  <p>
+    <code>InvocationContext</code> lleva <code>requestId</code>, <code>tenantId</code>,
+    <code>deadline</code> (un instante absoluto, no un timeout relativo, para que el
+    presupuesto de tiempo se reparta bien entre reintentos) y un <code>AbortSignal</code>.
+  </p>
+
+  <h3>Capacidades</h3>
+  <p>
+    El enum existe completo desde v1 — <code>CHAT</code>, <code>STREAMING</code>,
+    <code>STRUCTURED_GRAMMAR</code>, <code>STRUCTURED_NATIVE</code>,
+    <code>TOOL_CALLING</code>, <code>VISION</code>, <code>EMBEDDINGS</code> — pero solo dos
+    se usan. Declarar el resto ahora cuesta nada y evita renombrar después.
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Capacidad</th><th>llama.cpp</th><th>Mock</th><th>Uso en v1</th></tr></thead>
+      <tbody>
+        <tr><td><code>CHAT</code></td><td><span class="pill yes">sí</span></td><td><span class="pill yes">sí</span></td><td><span class="pill now">se usa</span></td></tr>
+        <tr><td><code>STRUCTURED_GRAMMAR</code></td><td><span class="pill yes">GBNF</span></td><td><span class="pill yes">simulado</span></td><td><span class="pill now">se usa</span></td></tr>
+        <tr><td><code>STREAMING</code></td><td><span class="pill yes">sí</span></td><td><span class="pill no">no</span></td><td><span class="pill flat">declarada, sin usar</span></td></tr>
+        <tr><td><code>STRUCTURED_NATIVE</code></td><td><span class="pill no">no</span></td><td><span class="pill no">no</span></td><td><span class="pill flat">para proveedores cloud</span></td></tr>
+        <tr><td><code>TOOL_CALLING</code>, <code>VISION</code>, <code>EMBEDDINGS</code></td><td><span class="pill maybe">según modelo</span></td><td><span class="pill no">no</span></td><td><span class="pill flat">declaradas, sin usar</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note crit">
+    <span class="label">Antipatrón prohibido</span>
+    <p>
+      <code>if (provider instanceof OpenAICompatibleProvider) { ... }</code> en cualquier punto
+      fuera de <code>ai/providers/</code>. Si una diferencia de proveedor necesita ser visible,
+      se modela como <b>capacidad</b> o como <b>degradación</b>, nunca como un tipo.
+    </p>
+  </div>
+
+  <div class="note later">
+    <span class="label">Cuando llegue el segundo proveedor · Fase 4</span>
+    <p>
+      Todo el cambio ocurre dentro de <code>src/ai/</code>: una carpeta
+      <code>providers/anthropic/</code>, una entrada en el catálogo de modelos, y la ruta de
+      la feature apuntando al nuevo modelo. <b><code>ProductAIService</code>,
+      <code>product-draft.schema.ts</code> y <code>product-draft.reconciler.ts</code> no se
+      tocan.</b> Ese es el criterio de aceptación de la Fase 4 y la única razón por la que
+      hoy se paga el costo del puerto.
+    </p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="structured">
+  <h2><span class="sec-no">05 — Structured output</span>JSON válido no es JSON correcto</h2>
+
+  <p class="lede">
+    Hay dos problemas distintos que se confunden todo el tiempo. El primero es
+    <b>sintáctico</b>: que el modelo emita JSON que parsea y cumple el schema. El segundo es
+    <b>semántico</b>: que los valores existan en el tenant y respeten las reglas del negocio.
+    El primero se resuelve con tecnología; el segundo, solo con código de dominio.
+  </p>
+
+  <h3>Garantía sintáctica en la v1</h3>
+  <p>
+    Orbix usa <b>decodificación restringida por gramática</b>: la definición Zod se convierte
+    a JSON Schema y de ahí a una gramática GBNF que se envía a <code>llama-server</code>. El
+    modelo <b>no puede emitir un token que rompa el schema</b>. Es una garantía del
+    decodificador, no una esperanza sobre el prompt.
+  </p>
+
+  <div class="note ok">
+    <span class="label">Ventaja del local que conviene tener presente</span>
+    <p>
+      En structured output, <b>el modelo local tiene una garantía más fuerte que cualquier
+      proveedor cloud</b>, porque controlamos el decodificador. OpenAI y Anthropic ofrecen
+      garantías altas, pero no del 100 % y no auditables. Es un argumento técnico real —
+      independiente del costo — a favor de mantener el local para tareas de extracción y
+      estructuración.
+    </p>
+  </div>
+
+  <div class="decision">
+    <span class="d-id">Decisión D-02 · vigente</span>
+    <p class="d-q">¿Zod o class-validator como fuente de verdad de los schemas de IA?</p>
+    <ul>
+      <li><b>class-validator</b> — ya está en Orbix para DTOs HTTP, pero no tiene camino limpio a JSON Schema, y sin JSON Schema no hay gramática.</li>
+      <li><b>Zod</b> — una definición genera el validador, el JSON Schema, la gramática GBNF y el tipo TypeScript del draft.</li>
+    </ul>
+    <p class="d-verdict">
+      <b>Zod, confinado a <code>src/ai/</code> y a los <code>*.schema.ts</code> de los
+      servicios de IA.</b> Los DTOs HTTP siguen con class-validator sin cambios — son
+      fronteras distintas y conviven sin conflicto.
+    </p>
+  </div>
+
+  <h3>Las dos capas de validación</h3>
+  <div class="grid">
+    <div class="card">
+      <span class="c-kicker">Capa 1 · técnica</span>
+      <span class="c-title">Schema Zod</span>
+      <p>Tipos, campos requeridos, enums cerrados, rangos numéricos, longitudes. Se ejecuta sobre la salida cruda del modelo.</p>
+      <p><b>Si falla:</b> un reintento con el error inyectado, presupuesto de tokens acotado.</p>
+    </div>
+    <div class="card">
+      <span class="c-kicker">Capa 2 · dominio</span>
+      <span class="c-title">Reconciliador</span>
+      <p>Resuelve nombres a entidades reales del tenant: categoría, unidad de medida, <code>TaxCode</code>, unicidad de SKU. Vive en <code>modules/</code>, no en <code>ai/</code>.</p>
+      <p><b>Si falla:</b> el campo se marca <code>unresolved</code> y sube a la UI como decisión del usuario.</p>
+    </div>
+  </div>
+
+  <h3>Política de reparación</h3>
+  <ul>
+    <li><b>Máximo un reintento.</b> Un segundo rara vez cambia el resultado y duplica la latencia — que en CPU local es el recurso escaso.</li>
+    <li>El reintento incluye el error de validación como texto (<code>"price debe ser number, recibí '22 pesos'"</code>), no el schema completo otra vez.</li>
+    <li><b>Nunca un error 500 por schema inválido.</b> Se devuelve el draft parcial con <code>fieldsFailed: ['taxCode']</code>. Un draft con seis campos buenos es útil; un error no.</li>
+    <li>Reparación exitosa → evento con estado <code>SCHEMA_REPAIRED</code>. Es la señal temprana de que el modelo o el prompt se están degradando.</li>
+  </ul>
+
+  <div class="note ok">
+    <span class="label">Regla que elimina una clase entera de errores</span>
+    <p>
+      <b>El schema del draft no contiene ningún campo de tipo id.</b> No hay
+      <code>categoryId</code>, hay <code>categoryName</code>. El modelo no puede alucinar un
+      UUID inexistente si la gramática no le permite emitir UUIDs. El mapeo a identificadores
+      es responsabilidad exclusiva del reconciliador, con una consulta real a la base de datos
+      del tenant.
+    </p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="prompts">
+  <h2><span class="sec-no">06 — Prompt management</span>Los prompts son código</h2>
+
+  <div class="decision">
+    <span class="d-id">Decisión D-03 · vigente</span>
+    <p class="d-q">¿Dónde viven los prompts?</p>
+    <ul>
+      <li><b>Hardcodeados en el servicio</b> — descartado. Imposible versionar o comparar entre versiones.</li>
+      <li><b>Archivos versionados en git</b> (<code>templates/&lt;feature&gt;/&lt;name&gt;.v1.md</code> con frontmatter YAML), cargados al arranque en un registro inmutable.</li>
+      <li><b>Tabla en Postgres</b>, editable en caliente. <b>Servicio externo</b> tipo Langfuse.</li>
+    </ul>
+    <p class="d-verdict">
+      <b>Archivos en git.</b> Un prompt cambia el comportamiento del producto: merece revisión,
+      CI, <code>git blame</code> y rollback junto al deploy. El <code>PromptRegistry</code>
+      expone <code>resolve(featureKey, { locale })</code>, así que añadir una fuente en base de
+      datos más adelante es implementar un segundo <code>PromptSource</code>, no rediseñar.
+    </p>
+  </div>
+
+  <h3>Anatomía de una plantilla</h3>
+  <pre><code>---
+key: products.draft
+version: 1
+schema: product-draft.v1
+requires: [STRUCTURED_GRAMMAR]
+defaults:
+  temperature: 0.2
+  maxOutputTokens: 700
+  timeoutMs: 45000
+locale: es-MX
+---
+
+## sistema        ← prefijo ESTABLE, reutiliza KV cache
+Identidad de Orbix. Reglas duras: nunca inventes identificadores;
+si un dato no está en la entrada, deja el campo vacío en lugar de suponerlo;
+responde solo con el objeto del schema.
+
+## contexto       ← prefijo ESTABLE por tenant, reutiliza KV cache
+Moneda: {{tenant.currency}} · Régimen fiscal: {{tenant.taxRegime}}
+Categorías existentes: {{categories}}
+Unidades disponibles: {{units}}
+Códigos de impuesto válidos: {{taxCodes}}
+
+## entrada        ← VOLÁTIL, siempre al final
+&lt;datos_usuario&gt;{{userInput}}&lt;/datos_usuario&gt;</code></pre>
+
+  <p>
+    El orden no es estético. <code>llama-server</code> reutiliza el KV cache del prefijo
+    común entre peticiones: con el bloque estable primero, el prefill de ~1.5 K tokens deja
+    de pagarse en cada invocación del mismo tenant. <b>En CPU eso es la diferencia entre 20 s
+    y 12 s.</b> Es la optimización de latencia con mejor relación esfuerzo-resultado de todo
+    el diseño, y solo requiere ordenar bien el prompt.
+  </p>
+
+  <h3>Versionado</h3>
+  <ul>
+    <li><b>Inmutable.</b> Una versión publicada no se edita; se crea <code>v2</code>. Así una regresión se localiza por diferencia entre versiones.</li>
+    <li><b>La versión activa está en <code>ai-feature.binding.ts</code></b>, junto al modelo. Cambiar de <code>v1</code> a <code>v2</code> es una línea de configuración.</li>
+    <li><b>El consumo registra <code>promptVersion</code>.</b> Sin eso no se puede atribuir un cambio en la tasa de aceptación a un cambio de prompt.</li>
+    <li><b>Sin variantes por modelo</b> en v1. Se introducen solo si las evaluaciones demuestran que un modelo concreto las necesita.</li>
+  </ul>
+
+  <div class="note later">
+    <span class="label">Diferido</span>
+    <p>
+      A/B testing de prompts, prompts editables en caliente y overrides por tenant. El diseño
+      los admite — el registro ya resuelve por clave y versión — pero con pocos tenants piloto
+      no hay potencia estadística para concluir nada de un experimento.
+    </p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="assistant">
+  <h2><span class="sec-no">07 — AI Product Assistant</span>La única feature de la v1</h2>
+
+  <p class="lede">
+    Entrada: <em>"Quiero agregar Coca-Cola de 600 ml, cuesta 15 pesos y la vendo en 22."</em>
+    Salida: un borrador que el usuario revisa, corrige y confirma. El producto lo crea el
+    mismo servicio que lo crearía desde el formulario manual.
+  </p>
+
+  <div class="plate">
+    <pre class="mermaid">
+%%{init: {'theme':'neutral'}}%%
+flowchart TB
+  U["Usuario escribe"] --> CT["POST /api/ai/products/draft"]
+  CT --> PS["ProductAIService"]
+  PS --> CX["Reúne contexto del tenant<br/>categorías · unidades · taxCodes · moneda"]
+  CX --> GW["AiGatewayService"]
+  GW --> MD["Modelo local<br/>GBNF"]
+  MD --> SC["Validación de schema Zod"]
+  SC --> RC["Reconciliador de dominio<br/>nombres a entidades reales"]
+  RC --> DR["ProductDraft<br/>aiRequestId · confidence · unresolved[]"]
+  DR --> UI["Flutter: formulario prellenado<br/>campos dudosos resaltados"]
+  UI --> ED["Usuario edita y confirma"]
+  ED --> CR["POST /api/products<br/>DTO normal + aiRequestId"]
+  CR --> SV["ProductsService.create"]
+  SV --> DB[("PostgreSQL")]
+  CR -.-> OU["Registra outcome<br/>ACCEPTED · EDITED · DISCARDED"]
+    </pre>
+    <figcaption><b>Diagrama 4</b> — Product Assistant. El borrador nunca toca la base de datos; la creación usa el camino de escritura existente.</figcaption>
+  </div>
+
+  <div class="decision">
+    <span class="d-id">Decisión D-04 · vigente</span>
+    <p class="d-q">¿Se persiste el draft?</p>
+    <p class="d-verdict">
+      <b>No. Efímero.</b> El draft viaja en la respuesta HTTP y vive en la memoria del cliente.
+      Persistirlo añadiría una tabla, un ciclo de vida y un job de limpieza sin beneficio
+      demostrado. <em>Pero</em> el <code>aiRequestId</code> sí viaja de ida y vuelta: el cliente
+      lo devuelve al crear el producto, y eso permite registrar el <b>outcome</b> sin persistir
+      nada. Se replanteará cuando exista conversación multi-turno o alta por lotes.
+    </p>
+  </div>
+
+  <div class="note ok">
+    <span class="label">La métrica que decide el futuro del proyecto</span>
+    <p>
+      <code>outcome</code> ∈ <code>ACCEPTED</code> · <code>EDITED</code> ·
+      <code>DISCARDED</code>, más qué campos tocó el usuario. Los tokens dicen cuánto costó;
+      el <code>outcome</code> dice si sirvió. Es lo que permite responder <em>"¿el modelo
+      local es suficientemente bueno?"</em> con un número en vez de una opinión — y es el
+      criterio que decidirá si algún día vale la pena un proveedor cloud o una GPU. Cuesta un
+      campo y un identificador de ida y vuelta. <b>Debe estar en la v1.</b>
+    </p>
+  </div>
+
+  <h3>Casos que el prompt debe manejar desde el día uno</h3>
+  <ul>
+    <li><b>Jerga real de mostrador mexicano:</b> <em>"coca de 600"</em>, <em>"cagua"</em>, <em>"torta de jamón"</em>, <em>"sabritas grandes"</em>. Un modelo entrenado mayoritariamente en inglés falla aquí, y este es el criterio de selección de modelo más importante — más que cualquier benchmark académico.</li>
+    <li><b>Ambigüedad de precio:</b> <em>"me cuesta 15 y la doy en 22"</em> frente a <em>"la vendo en 22 con todo e impuestos"</em>. El segundo caso implica precio con IVA incluido — el modelo debe marcarlo, no adivinarlo.</li>
+    <li><b>Información faltante:</b> si no se mencionó el costo, el campo va vacío. <b>Nunca inventar un costo</b> — contamina márgenes y reportes financieros en silencio.</li>
+    <li><b>Varios productos a la vez:</b> la v1 rechaza explícitamente y pide uno por uno.</li>
+    <li><b>Entrada sin sentido o maliciosa:</b> devuelve draft vacío con motivo, no una excepción.</li>
+  </ul>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="confianza">
+  <h2><span class="sec-no">08 — No confiar en la IA</span>La frontera exacta, campo por campo</h2>
+
+  <p class="lede">
+    Principio general: <b>la IA propone valores de presentación; Orbix decide valores de
+    consecuencia</b>. Consecuencia significa dinero, impuestos, inventario, identidad o
+    visibilidad pública.
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Campo de <code>Product</code></th><th>La IA propone</th><th>Orbix valida o decide</th></tr></thead>
+      <tbody>
+        <tr><td><code>name</code></td><td>Texto normalizado</td><td>Longitud, <em>trim</em>, aviso si ya existe un nombre idéntico en el tenant</td></tr>
+        <tr><td><code>description</code></td><td>Texto libre</td><td>Longitud máxima, sanitizado de HTML</td></tr>
+        <tr><td><code>categoryName</code> → <code>categoryId</code></td><td><b>Nombre</b>, nunca un id</td><td>Resuelve contra <code>Category</code> del tenant. Si no existe, ofrece crearla — <b>requiere confirmación explícita</b></td></tr>
+        <tr><td><code>sku</code></td><td>Sugerencia legible</td><td><b>Autoridad de Orbix.</b> Verifica <code>@@unique([tenantId, sku])</code> y regenera si choca</td></tr>
+        <tr><td><code>slug</code></td><td><span class="pill no">nunca</span></td><td>Derivado del nombre, con <code>@@unique([tenantId, slug])</code></td></tr>
+        <tr><td>unidad de medida</td><td>Nombre de unidad</td><td>Resuelve contra las unidades del tenant; si no existe, campo sin resolver</td></tr>
+        <tr><td><code>costPrice</code></td><td>Número, o vacío si no se mencionó</td><td>≥ 0, escala decimal, moneda del tenant</td></tr>
+        <tr><td><code>price</code></td><td>Número</td><td>≥ 0 y <b>regla dura: <code>price ≥ costPrice</code></b>. Si no se cumple, se marca conflicto y se pide decisión — no se corrige solo</td></tr>
+        <tr><td><code>taxCode</code></td><td>Sugerencia acotada al enum por la gramática</td><td><b>Debe existir en <code>TaxCode</code></b> y aplicar al régimen del tenant. Jamás una cadena libre</td></tr>
+        <tr><td><code>taxRate</code></td><td><span class="pill no">nunca</span></td><td><b>Derivado por Orbix del <code>taxCode</code>.</b> Un impuesto mal calculado es un problema legal, no un bug de UX</td></tr>
+        <tr><td><code>stock</code></td><td><span class="pill no">nunca</span></td><td>Siempre 0 en el alta. Cargar inventario es un movimiento auditado</td></tr>
+        <tr><td><code>trackInventory</code>, <code>lowStockAlert</code></td><td>Sugerencia</td><td>Los valores por defecto del tenant ganan si la IA no aporta señal clara</td></tr>
+        <tr><td><code>status</code></td><td><span class="pill no">nunca</span></td><td><b>Siempre <code>DRAFT</code>.</b> La IA no publica nada</td></tr>
+        <tr><td><code>isEcommerce</code></td><td><span class="pill no">nunca</span></td><td>Decisión del usuario — expone el producto públicamente</td></tr>
+        <tr><td><code>type</code></td><td>Sugerencia <code>SIMPLE</code></td><td>Combos y recetas nunca desde IA en v1</td></tr>
+        <tr><td><code>tenantId</code>, <code>createdById</code>, cualquier id</td><td><span class="pill no">nunca</span></td><td>Del contexto del servidor: <code>TenantContextService</code> y <code>AuditContextService</code></td></tr>
+        <tr><td><code>confidence</code> por campo</td><td>0–1</td><td>Orbix fija el umbral de resaltado en la UI; nunca el de auto-aceptación</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note crit">
+    <span class="label">La invariante estructural</span>
+    <p>
+      <code>ProductAIService</code> <b>no inyecta <code>PrismaService</code></b> para escritura.
+      La creación ocurre en una petición HTTP posterior e independiente, disparada por una
+      acción explícita del usuario, contra el endpoint normal de productos, con el DTO normal
+      y las validaciones normales, y con <code>createdById</code> = el usuario real. Se añade
+      <code>source: 'AI_ASSISTED'</code> solo para trazabilidad. <b>Un único camino de
+      escritura.</b> Si hubiera dos, las reglas divergirían en tres meses y nadie lo notaría
+      hasta que un reporte fiscal saliera mal.
+    </p>
+  </div>
+
+  <div class="note">
+    <span class="label">Por qué esto también es la mejor defensa de seguridad</span>
+    <p>
+      Como la IA no tiene <em>tool calling</em> contra la base de datos, un ataque de
+      <b>prompt injection</b> escondido en el nombre de un producto no puede crear, modificar
+      ni borrar nada. Lo peor que consigue es proponer un borrador raro que un humano rechaza.
+      Esa contención es arquitectónica: no depende de que el prompt esté bien escrito.
+    </p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="local">
+  <h2><span class="sec-no">09 — Inferencia local</span>llama.cpp en producción, Ollama en desarrollo</h2>
+
+  <div class="plate">
+    <pre class="mermaid">
+%%{init: {'theme':'neutral'}}%%
+flowchart LR
+  API["Orbix API<br/>VPS de aplicación"] -->|"HTTP en red privada"| LS["llama-server<br/>slots paralelos · GBNF"]
+  API -->|"salud cada 15 s"| HL["/health"]
+  API -->|"scrape"| MT["/metrics<br/>Prometheus"]
+  LS --> GG["Modelo GGUF<br/>Q4_K_M en disco"]
+  LS --> HL
+  LS --> MT
+  DEV["Máquina del desarrollador"] -->|"misma API<br/>otra baseUrl"| OL["Ollama"]
+    </pre>
+    <figcaption><b>Diagrama 5</b> — Inferencia local. Producción y desarrollo comparten adaptador; solo cambia <b>baseUrl</b>.</figcaption>
+  </div>
+
+  <div class="decision">
+    <span class="d-id">Decisión D-05 · vigente, simplificada</span>
+    <p class="d-q">¿Qué runtime de inferencia local?</p>
+    <ul>
+      <li>
+        <b>Ollama</b> — DX excelente, gestión de modelos integrada, API compatible con OpenAI.
+        Es un envoltorio sobre llama.cpp: hereda sus límites y añade su propio retraso de
+        versión, gestión opaca de carga y descarga (<code>keep_alive</code>) y menos control
+        del <em>batching</em> bajo concurrencia.
+      </li>
+      <li>
+        <b>llama.cpp / <code>llama-server</code></b> — el motor real. GGUF con cuantización
+        agresiva, rendimiento aceptable en CPU, <b>gramáticas GBNF</b>, <em>slots</em>
+        paralelos, métricas Prometheus nativas, control fino de contexto y KV cache. Coste:
+        elegir <em>flags</em> y operar el binario.
+      </li>
+      <li>
+        <b>vLLM</b> — el mejor rendimiento agregado que existe, pero diseñado para GPU. Sin
+        VRAM es inviable. <span class="pill later">diferido</span> hasta que exista una GPU.
+      </li>
+    </ul>
+    <p class="d-verdict">
+      <b><code>llama-server</code> en producción, Ollama en las máquinas de desarrollo.</b>
+      Y no son dos integraciones: ambos exponen la API de OpenAI, así que Orbix escribe
+      <code>OpenAICompatibleProvider</code> una sola vez y el runtime es una
+      <code>baseUrl</code> en configuración. La razón decisiva de llama.cpp en producción son
+      las gramáticas GBNF: convierten "esperemos que el JSON salga bien" en una garantía del
+      decodificador.
+    </p>
+  </div>
+
+  <div class="decision">
+    <span class="d-id">Decisión D-06 · cerrada 16 ago 2026, con evidencia — re-evaluable si cambia el runtime</span>
+    <p class="d-q">¿Qué modelo local?</p>
+    <ul>
+      <li><b>Qwen3-4B-Instruct</b> <code>Q4_K_M</code> ≈ 2.6 GB — candidato inicial por licencia y tamaño. <b>Descartado en la práctica</b>: vía Ollama es un modelo "thinking" que gasta el presupuesto de salida completo razonando (verificado con 300 y con 1500 tokens, 0% de JSON emitido) y <code>think:false</code> no lo suprimió en esta versión de Ollama. Ver el informe de benchmark de Fase 2.</li>
+      <li><b>Llama-3.2-3B-Instruct</b> <code>Q4_K_M</code> ≈ 2.0 GB — sin modo "thinking", responde directo. Evaluado contra las 30 entradas: <b>100% JSON válido, 0/30 costos inventados</b>. Licencia Llama Community (aceptada por ahora — ver riesgo).</li>
+      <li><b>Gemma4:26B</b> — descartado sin evaluar a fondo: timeout a 120 s en la primera petición, incluso con GPU disponible. Confirma la aritmética de §10.</li>
+      <li><b>Qwen3-8B</b>, <b>Ministral-8B</b>, <b>Gemma-3-4B-it</b>, <b>Phi-4-mini</b> — sin evaluar todavía.</li>
+    </ul>
+    <p class="d-verdict">
+      <b>Llama-3.2-3B-Instruct, hoy.</b> Decisión tomada con datos reales (30/30 casos, ver
+      <a href="fase-2-benchmark.html">informe de benchmark</a>), no con lectura de
+      benchmarks generales — cumple el criterio de la Fase 2. Sigue siendo re-evaluable:
+      Qwen3-4B no está descartado como modelo, solo bloqueado con este runtime — vale la
+      pena repetirlo contra <code>llama-server</code> antes de cerrarlo del todo. El modelo
+      se cambia por configuración (<code>config/ai-model.catalog.ts</code>): ningún cambio
+      en <code>ProductAIService</code> cuando eso pase.
+    </p>
+  </div>
+
+  <div class="note warn">
+    <span class="label">Estado actual: sin servidor de inferencia propio todavía</span>
+    <p>
+      <b>Decisión explícita de no aprovisionar el VPS de inferencia por ahora</b> — se sirve
+      desde Ollama en la máquina de desarrollo, no desde <code>llama-server</code> en
+      infraestructura propia. Es una etapa deliberada, no un descuido: nada en v1 depende de
+      que el servidor de inferencia exista todavía (ai.echo sigue en <code>mock</code>,
+      ninguna feature de negocio está construida). El riesgo de abajo — no compartir host con
+      la API — sigue vigente para cuando se aprovisione, y aplica igual de fuerte entonces.
+    </p>
+  </div>
+
+  <div class="note warn">
+    <span class="label">Riesgo operativo a evitar cuando exista un servidor de producción</span>
+    <p>
+      <b>No ejecutar el modelo en el mismo host que la API de producción.</b> La inferencia en
+      CPU satura todos los núcleos durante decenas de segundos; con Postgres y NestJS en la
+      misma máquina, cada generación de un draft degrada la latencia del POS de todos los
+      tenants. Un VPS de inferencia pequeño y separado cuesta poco y elimina el peor modo de
+      fallo del sistema. Si por presupuesto hay que compartir host en el piloto, aislar con
+      <code>cpuset</code>/cgroups y limitar a un solo slot.
+    </p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="infra">
+  <h2><span class="sec-no">10 — Infraestructura</span>Un VPS, sin GPU, medido antes de crecer</h2>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Recurso</th><th>v1 · CPU</th><th>Nota</th></tr></thead>
+      <tbody>
+        <tr><td>Cómputo</td><td>8 vCPU dedicados con AVX2 (EPYC / Ryzen)</td><td>vCPU compartidos dan latencia errática — no sirven para medir</td></tr>
+        <tr><td>RAM</td><td>32 GB</td><td>Al menos 4× el tamaño del modelo; el page cache importa tanto como la RAM residente</td></tr>
+        <tr><td>Disco</td><td>160 GB NVMe</td><td>Alcanza para 3–4 modelos candidatos durante la evaluación</td></tr>
+        <tr><td>Runtime</td><td><code>llama-server</code> bajo systemd</td><td>2 slots paralelos para empezar</td></tr>
+        <tr><td>Modelo</td><td>Llama-3.2-3B-Instruct <code>Q4_K_M</code> ≈ 2.0 GB — D-06 cerrada</td><td>KV cache ≈ 0.4 GB por slot a 8 K de contexto</td></tr>
+        <tr><td>Contexto</td><td>8 K</td><td>Suficiente: el contexto del tenant son decenas de elementos, no miles</td></tr>
+        <tr><td>Velocidad esperada</td><td>~15–22 tok/s de decode; prefill de 1.5 K tokens ≈ 3–6 s</td><td>El prefill se amortiza con el KV cache del prefijo estable (§06)</td></tr>
+        <tr><td>Concurrencia útil</td><td><b>2–3</b> antes de degradar de forma lineal</td><td>Por eso existe el límite de concurrencia por tenant (§13)</td></tr>
+        <tr><td>Latencia p95 de un draft (~250 tok)</td><td><b>15–25 s</b></td><td><b>Hipótesis a validar en Fase 2</b>, no un dato</td></tr>
+        <tr><td>Costo</td><td>~40–70 EUR/mes</td><td>Separado del VPS de aplicación</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note warn">
+    <span class="label">La latencia es el riesgo número uno de la v1</span>
+    <p>
+      Un draft en 15–25 s no es una espera trivial: es tiempo en el que el usuario podría haber
+      llenado el formulario a mano. La Fase 2 debe <b>medirlo antes</b> de construir el
+      asistente, no después. Tres salidas si el número es malo, en orden de preferencia:
+      (1) ordenar el prompt para maximizar reutilización del KV cache — ya está en el diseño;
+      (2) reducir el modelo o el <code>maxOutputTokens</code>, midiendo el impacto en las
+      evaluaciones; (3) reconsiderar el alcance de la feature. Un proveedor cloud o una GPU son
+      respuestas válidas, pero <b>ambas están explícitamente fuera del alcance de la v1</b> y
+      requieren una decisión aparte, con los datos de la Fase 2 sobre la mesa.
+    </p>
+  </div>
+
+  <h3>Reglas de dimensionamiento</h3>
+  <ul>
+    <li><b>Pesos:</b> <code>parámetros × bits ÷ 8</code>. Un 4 B en <code>Q4_K_M</code> ocupa ≈ 2.6 GB.</li>
+    <li><b>KV cache:</b> ≈ <code>2 × capas × cabezas_kv × dim_cabeza × contexto × slots × 2 bytes</code>.</li>
+    <li><b>Margen:</b> ~15 % de sobrecarga sobre pesos + KV.</li>
+    <li><b>Escalado:</b> primero subir slots, luego vCPU, y solo después plantear GPU — con la métrica que lo justifique.</li>
+  </ul>
+
+  <div class="note later">
+    <span class="label">Fuera del alcance de la v1</span>
+    <p>
+      GPU, vLLM, servidor de embeddings, pgvector, múltiples hosts de inferencia. Ninguno es
+      necesario para el Product Assistant, y cada uno añade una pieza que operar. La sección
+      <a href="#roadmap">Fase 5+</a> define qué métrica dispara cada uno.
+    </p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="config">
+  <h2><span class="sec-no">11 — Configuración y planes</span>Una línea por feature</h2>
+
+  <p class="lede">
+    En la v1 no hay routing. Hay un <b>binding</b>: cada feature declara qué proveedor y qué
+    modelo la atienden, con qué parámetros y con qué versión de prompt. Es una constante en
+    código con overrides por variable de entorno.
+  </p>
+
+  <pre><code>// src/ai/config/ai-feature.binding.ts
+
+export const AI_FEATURE_BINDINGS = {
+  'products.draft': {
+    providerId: 'local',
+    modelKey:   'qwen3-4b-instruct-q4km',
+    promptVersion: 1,
+    temperature: 0.2,
+    maxOutputTokens: 700,
+    timeoutMs: 45_000,
+  },
+  'ai.echo': { /* feature de humo, no expuesta a usuarios */ },
+} as const;
+
+// Override por entorno para poder cambiar el modelo sin tocar código de negocio:
+//   AI_PRODUCTS_DRAFT_MODEL=qwen3-8b-instruct-q4km</code></pre>
+
+  <div class="decision">
+    <span class="d-id">Decisión D-17 · nueva</span>
+    <p class="d-q">¿Binding en código o tabla de routing en la base de datos?</p>
+    <ul>
+      <li><b>Tabla</b> — cambiar de modelo sin deploy, overrides por tenant, A/B testing. Cuesta dos migraciones, un repositorio, un resolutor de precedencia y una caché.</li>
+      <li><b>Constante en código + overrides por entorno</b> — cambiar de modelo es una variable de entorno y un reinicio del proceso. Cero migraciones.</li>
+    </ul>
+    <p class="d-verdict">
+      <b>Constante en código.</b> Con una feature y un proveedor, la tabla de routing sería
+      infraestructura para un grado de libertad que nadie va a usar. El requisito real es
+      <em>"cambiar el modelo sin modificar <code>ProductAIService</code>"</em>, y una variable
+      de entorno lo cumple. La tabla llega en la Fase 4, junto con el segundo proveedor, que es
+      cuando la precedencia empieza a significar algo.
+    </p>
+  </div>
+
+  <div class="decision">
+    <span class="d-id">Decisión D-07 · vigente, reformulada</span>
+    <p class="d-q">¿El plan comercial determina el proveedor de IA?</p>
+    <ul>
+      <li>
+        <b>Escalera por plan</b> (<code>STARTER → local</code>, <code>PLUS → cloud</code>…) —
+        intuitiva de vender, pero acopla la promesa comercial a la implementación técnica. Si
+        mañana el local resulta mejor, la escalera se vuelve absurda: <em>"pagué el plan caro y
+        me dan lo lento"</em>.
+      </li>
+      <li><b>El proveedor no es atributo del plan</b> — el plan define límites y qué features están habilitadas; nada más.</li>
+    </ul>
+    <p class="d-verdict">
+      <b>El proveedor no forma parte del plan.</b> En la v1 la cuestión es doblemente sencilla:
+      <b>los cinco planes usan IA local</b>, porque es el único proveedor que existe. El plan
+      solo modula <b>cuánto</b> se puede usar y <b>qué features</b> están habilitadas.
+      <em>Esta decisión puede evolucionar</em>: si en el futuro un proveedor cloud atiende
+      ciertas features, la elección seguirá siendo de Orbix por clase de tarea, no un atributo
+      vendido en la lista de precios.
+    </p>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Plan</th><th>Proveedor</th><th>Límite mensual (propuesta inicial)</th><th>Features habilitadas</th></tr></thead>
+      <tbody>
+        <tr><td>FREE</td><td><span class="pill now">local</span></td><td>50 invocaciones</td><td>Product Assistant</td></tr>
+        <tr><td>STARTER</td><td><span class="pill now">local</span></td><td>300</td><td>Product Assistant</td></tr>
+        <tr><td>PRO</td><td><span class="pill now">local</span></td><td>1 500</td><td>Product Assistant</td></tr>
+        <tr><td>PLUS</td><td><span class="pill now">local</span></td><td>5 000</td><td>Product Assistant</td></tr>
+        <tr><td>ENTERPRISE</td><td><span class="pill now">local</span></td><td>Negociado</td><td>Product Assistant</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    Los números son un punto de partida para evitar consumo ilimitado, no un compromiso
+    comercial: se ajustan con los datos de consumo real del piloto. La unidad es
+    <b>invocaciones</b>, no créditos ni tokens — con un solo modelo, una invocación cuesta
+    aproximadamente lo mismo siempre, y una unidad más elaborada no aportaría precisión.
+  </p>
+
+  <div class="note later">
+    <span class="label">Diferido</span>
+    <p>
+      Créditos comerciales con conversión por clase de tarea, overage, facturación, precios
+      definitivos y BYOK por tenant. La estructura queda preparada — el contador ya es por
+      <code>(tenant, periodo, feature)</code>, así que convertir "invocaciones" en "créditos"
+      es cambiar el incremento, no el modelo de datos.
+    </p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="errores">
+  <h2><span class="sec-no">12 — Errores</span>Sin fallback, con errores honestos</h2>
+
+  <p class="lede">
+    En la v1 <b>no hay fallback</b>. Si el proveedor local falla, la invocación termina en un
+    error controlado, tipado y observable. No se intenta otro proveedor porque no hay otro, y
+    construir la maquinaria para cuando lo haya sería trabajo sin destino.
+  </p>
+
+  <div class="plate">
+    <pre class="mermaid">
+%%{init: {'theme':'neutral'}}%%
+flowchart TB
+  T["Invocación al proveedor local"] --> R{"¿Resultado?"}
+  R -->|OK| DONE["Éxito"]
+  R -->|"schema inválido"| REP["Un reintento de reparación"]
+  REP --> R2{"¿Válido?"}
+  R2 -->|sí| DEG["Éxito con degradación<br/>SCHEMA_REPAIRED"]
+  R2 -->|no| PART["Draft parcial<br/>fieldsFailed[]"]
+  R -->|"timeout · 5xx · red"| RT["Retry con backoff<br/>máximo 2"]
+  RT --> R3{"¿OK?"}
+  R3 -->|sí| DONE
+  R3 -->|no| ERR["Error tipado<br/>AI_PROVIDER_UNAVAILABLE"]
+  R -->|"cuota o rate limit"| LIM["Error tipado<br/>AI_QUOTA_EXCEEDED"]
+  ERR --> UI["UI: el asistente no está disponible<br/>el formulario manual sigue intacto"]
+  LIM --> UI2["UI: límite alcanzado<br/>con la cifra y el periodo"]
+  ERR --> OBS["Métrica + log + evento de consumo<br/>con status del fallo"]
+    </pre>
+    <figcaption><b>Diagrama 6</b> — Manejo de error de la v1. Toda rama termina en algo que el usuario entiende y que el operador puede ver.</figcaption>
+  </div>
+
+  <div class="decision">
+    <span class="d-id">Decisión D-18 · nueva</span>
+    <p class="d-q">¿Qué pasa cuando el proveedor local no responde?</p>
+    <p class="d-verdict">
+      <b>Error tipado, observable y explicado — sin intentar nada más.</b> Es aceptable porque
+      el principio 04 lo cubre: el alta manual de productos funciona idéntica sin la IA. Lo que
+      se pierde es una aceleración, no una capacidad. Requisitos mínimos: código de error
+      distinguible por el cliente (para que Flutter diga <em>"sin conexión"</em>,
+      <em>"límite alcanzado"</em> o <em>"el asistente no está disponible"</em> según
+      corresponda), métrica incrementada, y evento de consumo registrado con el estado del
+      fallo — <b>los fallos también se registran</b>, si no la tasa de error es invisible.
+    </p>
+  </div>
+
+  <h3>Errores tipados de la v1</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Código</th><th>HTTP</th><th>Cuándo</th><th>Qué ve el usuario</th></tr></thead>
+      <tbody>
+        <tr><td><code>AI_FEATURE_DISABLED</code></td><td>403</td><td>La feature no está habilitada para el plan del tenant</td><td>El control no aparece</td></tr>
+        <tr><td><code>AI_QUOTA_EXCEEDED</code></td><td>429</td><td>Límite mensual del tenant alcanzado</td><td>Cifra, periodo y a quién pedir ampliación</td></tr>
+        <tr><td><code>AI_RATE_LIMITED</code></td><td>429</td><td>Ráfaga por usuario o concurrencia del tenant</td><td>"Espera un momento e inténtalo de nuevo"</td></tr>
+        <tr><td><code>AI_PROVIDER_UNAVAILABLE</code></td><td>503</td><td>Modelo caído o inalcanzable tras los reintentos</td><td>"El asistente no está disponible ahora"</td></tr>
+        <tr><td><code>AI_TIMEOUT</code></td><td>504</td><td>Se agotó el <code>deadline</code></td><td>"Tardó demasiado" + sugerencia de reintentar</td></tr>
+        <tr><td><code>AI_OUTPUT_INVALID</code></td><td>422</td><td>Schema inválido tras la reparación y sin campos aprovechables</td><td>"No pude entender la descripción" — se ofrece el formulario vacío</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    <b>Salud del proveedor:</b> <code>health()</code> se consulta cada 15 s y alimenta
+    <code>/health</code> de la API y la métrica <code>ai_provider_up</code>. Sirve para que el
+    operador vea la caída antes que el usuario, y para que la UI pueda ocultar el control
+    proactivamente. <b>No hay circuit breaker en la v1</b>: sin un destino alternativo, abrir
+    el circuito solo cambia qué error se devuelve. Llega en la Fase 4, cuando cortar temprano
+    permita saltar a otro proveedor.
+  </p>
+
+  <div class="note later">
+    <span class="label">Diferido</span>
+    <p>
+      Fallback entre proveedores, taxonomía de fallos con destinos, presupuesto de fallback y
+      circuit breaker multiproveedor. La estructura lo admite —
+      <code>AiExecutionService</code> ya recibe <em>un</em> candidato y devuelve un resultado
+      tipado, así que envolverlo en un bucle sobre varios candidatos es aditivo — pero nada de
+      eso se construye hoy.
+    </p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="consumo">
+  <h2><span class="sec-no">13 — Consumo y límites</span>Registrar todo, cobrar nada</h2>
+
+  <p class="lede">
+    Dos preguntas deben tener respuesta en SQL desde el primer día: <em>"¿cuánto le cuesta a
+    Orbix cada generación?"</em> y <em>"¿cuánto consume cada tenant?"</em>. Nada de eso
+    implica facturar todavía.
+  </p>
+
+  <div class="plate">
+    <pre class="mermaid">
+%%{init: {'theme':'neutral'}}%%
+flowchart LR
+  INV["Invocación"] --> CHK["Verificación previa<br/>cuota del tenant · ráfaga del usuario"]
+  CHK -->|"excedido"| REJ["Rechazo sin llamar al modelo"]
+  CHK -->|"OK"| MOD["Modelo local"]
+  MOD --> EV["ai_usage_events<br/>append-only · éxitos Y fallos<br/>particionado por mes"]
+  MOD --> CNT["ai_usage_counters<br/>upsert incremental<br/>tenant · periodo · feature"]
+  CNT --> CHK
+  EV --> RPT["Panel de plataforma<br/>costo por tenant, feature, modelo"]
+  EV --> EVAL["Calidad<br/>outcome vs modelo vs promptVersion"]
+  EV --> RET["Retención 180 días<br/>drop de partición"]
+    </pre>
+    <figcaption><b>Diagrama 7</b> — Consumo y límites. Los contadores hacen la verificación O(1); los eventos soportan el análisis.</figcaption>
+  </div>
+
+  <div class="decision">
+    <span class="d-id">Decisión D-08 · vigente</span>
+    <p class="d-q">¿PostgreSQL o un sistema separado para el consumo?</p>
+    <p class="d-verdict">
+      <b>PostgreSQL</b>, tabla append-only particionada por mes más contadores agregados. El
+      consumo es <b>dato financiero</b>: transaccional, auditable y consultable con joins a
+      <code>tenants</code>. El volumen es trivial. Prometheus es <b>complementario</b> — sirve
+      para operar, no para facturar. Timescale sería una extensión, no una migración de
+      sistema, así que la puerta queda abierta.
+    </p>
+  </div>
+
+  <h3>Campos del evento</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Grupo</th><th>Campos</th></tr></thead>
+      <tbody>
+        <tr><td>Identidad</td><td><code>tenantId</code>, <code>branchId?</code>, <code>userId</code>, <code>requestId</code></td></tr>
+        <tr><td>Qué se pidió</td><td><code>featureKey</code>, <code>promptVersion</code>, <code>schemaVersion</code></td></tr>
+        <tr><td>Quién lo atendió</td><td><code>providerId</code>, <code>modelKey</code>, <code>attemptNumber</code>, <code>degradations[]</code></td></tr>
+        <tr><td>Tokens</td><td><code>inputTokens</code>, <code>outputTokens</code>, <code>totalTokens</code></td></tr>
+        <tr><td>Costo</td><td><b><code>estimatedCostMicros</code></b> (BigInt, micro-USD)</td></tr>
+        <tr><td>Tiempo</td><td><code>latencyMsTotal</code>, <code>latencyMsProvider</code></td></tr>
+        <tr><td>Resultado</td><td><code>status</code>, <code>errorCode</code>, <code>errorMessage</code> (truncado), <b><code>outcome</code></b></td></tr>
+        <tr><td>Sello</td><td><code>createdAt</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p><code>status</code> ∈ <code>SUCCESS</code> · <code>SCHEMA_REPAIRED</code> · <code>OUTPUT_INVALID</code> · <code>PROVIDER_ERROR</code> · <code>TIMEOUT</code> · <code>RATE_LIMITED</code> · <code>QUOTA_EXCEEDED</code> · <code>CANCELLED</code></p>
+  <p><code>outcome</code> ∈ <code>PENDING</code> · <code>ACCEPTED</code> · <code>EDITED</code> · <code>DISCARDED</code></p>
+
+  <div class="note">
+    <span class="label">Dos detalles que evitan reescribir esto en un año</span>
+    <p>
+      <b>Dinero como entero.</b> <code>estimatedCostMicros</code> en micro-dólares, nunca
+      <code>float</code>. Los errores de redondeo son inaceptables en un dato que algún día
+      llegará a una factura.
+    </p>
+    <p>
+      <b>El local no cuesta cero.</b> Imputar un <b>costo sombra</b>: el costo mensual del host
+      de inferencia dividido entre los tokens servidos ese mes. Es un cálculo de dos líneas, y
+      sin él la pregunta <em>"¿cuánto cuesta cada generación?"</em> se responde con un cero que
+      no significa nada — y cualquier comparación futura con un proveedor cloud sería imposible.
+    </p>
+  </div>
+
+  <h3>Límites</h3>
+  <div class="grid">
+    <div class="card">
+      <span class="c-kicker">Capa 1 · ráfaga</span>
+      <span class="c-title">Por usuario</span>
+      <p>Ventana deslizante en memoria, del orden de 10 peticiones/minuto. Protege del doble clic y de scripts.</p>
+      <p><b>Almacén:</b> memoria. Perderlo al reiniciar es aceptable.</p>
+    </div>
+    <div class="card">
+      <span class="c-kicker">Capa 2 · concurrencia</span>
+      <span class="c-title">En vuelo por tenant</span>
+      <p>Máximo N simultáneas. Protege los 2–3 slots del servidor local: sin esto, un tenant satura la inferencia de todos.</p>
+      <p><b>Almacén:</b> memoria, un semáforo por tenant.</p>
+    </div>
+    <div class="card">
+      <span class="c-kicker">Capa 3 · mensual</span>
+      <span class="c-title">Invocaciones del tenant</span>
+      <p>Límite del plan. Verificación O(1) contra <code>ai_usage_counters</code>, incremento en la misma transacción que el evento.</p>
+      <p><b>Almacén:</b> <b>PostgreSQL, transaccional.</b></p>
+    </div>
+  </div>
+
+  <p>
+    <b>Comportamiento al agotar el límite:</b> rechazo con <code>AI_QUOTA_EXCEEDED</code>,
+    mensaje claro con la cifra y el periodo. <b>No</b> degradar en silencio: el usuario
+    percibiría que "la IA empeoró" sin entender por qué. Aviso en la UI al 80 % y al 95 %.
+  </p>
+
+  <div class="note later">
+    <span class="label">Diferido</span>
+    <p>
+      Facturación real, overage, precios comerciales, créditos con conversión por clase de
+      tarea, kill switch de gasto (solo tiene sentido con un proveedor de pago), Redis para
+      límites distribuidos. Este último llega cuando haya más de una instancia de API — hasta
+      entonces, la memoria es correcta y más simple.
+    </p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="seguridad">
+  <h2><span class="sec-no">14 — Seguridad</span>Lo que cambia cuando el dato no sale</h2>
+
+  <p class="lede">
+    Con inferencia local, el dato del tenant <b>nunca abandona la infraestructura de Orbix</b>.
+    Eso elimina la mitad de la superficie de riesgo de una plataforma de IA — y es un argumento
+    comercial fuerte frente a clientes que preguntan dónde van sus datos.
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Área</th><th>Decisión v1</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Credenciales de proveedor</td>
+          <td>El servidor local no requiere API key. El principio se mantiene igual: <b>ningún endpoint devuelve configuración de proveedor al cliente</b>. Cuando existan claves de pago, ya estará establecido.</td>
+        </tr>
+        <tr>
+          <td>Red</td>
+          <td>El servidor de inferencia <b>no se expone a internet</b>. Solo acepta tráfico del VPS de aplicación por red privada o firewall por IP. Un <code>llama-server</code> abierto es un servicio de cómputo gratuito para cualquiera.</td>
+        </tr>
+        <tr>
+          <td>Aislamiento de tenant</td>
+          <td>Todo dato de IA lleva <code>tenantId</code> desde <code>requireTenantId()</code>. Aplica a eventos, contadores y cualquier clave de caché que llegue a existir.</td>
+        </tr>
+        <tr>
+          <td>PII</td>
+          <td>Declarada por feature en el registro (<code>piiLevel</code>), sin servicio de redacción en v1: <code>products.draft</code> no maneja datos personales y el dato no sale de la infraestructura propia. <b>El servicio de política PII vuelve en la Fase 4</b>, cuando el dato pueda salir a un tercero.</td>
+        </tr>
+        <tr>
+          <td>Logs</td>
+          <td><b>No se persiste el contenido de prompts ni de salidas</b> — solo hash, longitudes y metadatos. El contenido solo se guarda si el tenant activa "depuración de IA", con TTL de 7 días y consentimiento registrado.</td>
+        </tr>
+        <tr>
+          <td>Prompt injection</td>
+          <td>Entrada del usuario en bloques delimitados y marcados como <em>datos, no instrucciones</em>. La defensa real es arquitectónica: <b>sin tool calling contra la base de datos, la peor consecuencia es un borrador raro que un humano rechaza</b>.</td>
+        </tr>
+        <tr>
+          <td>Retención</td>
+          <td>Eventos de consumo 180 días (drop de partición). Drafts: no se persisten. Contenido de prompts: 0 días por defecto.</td>
+        </tr>
+        <tr>
+          <td>Abuso económico</td>
+          <td>El endpoint de IA es el más caro de Orbix en cómputo. Un usuario con token válido puede saturar los slots. El límite por usuario <b>no es UX: es control de capacidad</b>.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note later">
+    <span class="label">Vuelve en la Fase 4</span>
+    <p>
+      Gestión de secretos, BYOK por tenant con cifrado sobre-cifrado y rotación, política PII
+      con enforcement en el router, DPA con proveedores externos y declaración de
+      subencargados en la política de privacidad. Todo eso aparece <b>en la misma entrega</b>
+      que el primer proveedor externo — no antes, porque hoy no hay nada que proteger de un
+      tercero, y no después, porque entonces sería tarde.
+    </p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="offline">
+  <h2><span class="sec-no">15 — Offline</span>La IA se apaga; el POS no</h2>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Estado</th><th>POS</th><th>IA</th></tr></thead>
+      <tbody>
+        <tr><td>En línea</td><td>Normal</td><td>Normal</td></tr>
+        <tr><td>Sin conectividad</td><td>Opera con cola local de ventas</td><td><b>Deshabilitada, y visiblemente</b></td></tr>
+        <tr><td>Con red, servidor de inferencia caído</td><td>Normal</td><td><code>AI_PROVIDER_UNAVAILABLE</code>, control deshabilitado</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="decision">
+    <span class="d-id">Decisión D-10 · vigente</span>
+    <p class="d-q">¿Encolar las peticiones de IA hechas sin conexión?</p>
+    <p class="d-verdict">
+      <b>No. Deshabilitar.</b> El alta de producto es una tarea sincrónica: un borrador que
+      llega tres horas después es ruido, porque el usuario ya creó el producto a mano —
+      y entonces hay dos registros y nadie sabe cuál vale. La regla es la 04: <b>ninguna
+      feature de IA puede ser el único camino para completar una operación de negocio</b>.
+    </p>
+  </div>
+
+  <p>
+    <b>Contrato con Flutter:</b> el cliente detecta conectividad, deshabilita el control con un
+    mensaje concreto (<em>"El asistente necesita conexión"</em>) y <b>jamás bloquea el
+    formulario</b>. Los códigos de error de §12 permiten distinguir "sin red" de "límite
+    alcanzado" de "asistente caído" y mostrar el mensaje correcto en cada caso.
+  </p>
+
+  <div class="note later">
+    <span class="label">Diferido</span>
+    <p>
+      Cola de tareas diferibles (enriquecer descripciones de productos creados sin conexión) y
+      Device AI. Ambas son razonables algún día; ninguna es necesaria para el Product
+      Assistant, y Device AI además exige una feature de alto volumen, tolerante a menor
+      calidad y con valor real offline — el asistente no cumple ninguna de las tres.
+    </p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="observabilidad">
+  <h2><span class="sec-no">16 — Observabilidad y evaluación</span>Lo mínimo, más lo que decide todo</h2>
+
+  <div class="decision">
+    <span class="d-id">Decisión D-12 · vigente, reducida</span>
+    <p class="d-q">¿Qué observabilidad en la v1?</p>
+    <p class="d-verdict">
+      <b>Prometheus + Grafana</b> — autoalojados o en el nivel gratuito de Grafana Cloud —
+      con un puñado de métricas y logs estructurados correlacionables por
+      <code>requestId</code>. <b>Sin OpenTelemetry ni Langfuse en la v1</b>: con un proveedor
+      y un salto de red, las trazas distribuidas no añaden información que las métricas y los
+      eventos de consumo no den ya. Se reevalúan cuando haya varios proveedores.
+    </p>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Métrica</th><th>Tipo</th><th>Para qué</th></tr></thead>
+      <tbody>
+        <tr><td><code>ai_requests_total{feature,status}</code></td><td>counter</td><td>Volumen y tasa de error</td></tr>
+        <tr><td><code>ai_request_duration_seconds{feature}</code></td><td>histogram</td><td>p50/p95/p99 — buckets 1·2·5·10·20·45·60</td></tr>
+        <tr><td><code>ai_tokens_total{direction}</code></td><td>counter</td><td>Consumo agregado</td></tr>
+        <tr><td><code>ai_schema_repair_total</code> / <code>ai_output_invalid_total</code></td><td>counter</td><td><b>Señal temprana de degradación de calidad</b></td></tr>
+        <tr><td><code>ai_draft_outcome_total{outcome}</code></td><td>counter</td><td><b>La métrica de valor de producto</b></td></tr>
+        <tr><td><code>ai_provider_up</code></td><td>gauge</td><td>Salud del servidor de inferencia</td></tr>
+        <tr><td><code>ai_quota_rejections_total{plan}</code></td><td>counter</td><td>Señal comercial: quién necesita más límite</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    A esto se suman las métricas que <b><code>llama-server</code> ya expone</b> en
+    <code>/metrics</code>: slots ocupados, tokens/s de prefill y decode, uso de KV cache,
+    profundidad de cola. Son imprescindibles para dimensionar y son gratis — solo hay que
+    recolectarlas.
+  </p>
+
+  <h4>Alertas mínimas</h4>
+  <ul>
+    <li><code>ai_provider_up</code> en 0 durante más de 2 min</li>
+    <li>p95 por encima de 30 s durante 10 min</li>
+    <li><code>ai_output_invalid_total</code> por encima del 5 % de las invocaciones</li>
+    <li>Tenant al 90 % de su límite — <span class="pill flat">señal comercial, no incidente</span></li>
+  </ul>
+
+  <div class="note ok">
+    <span class="label">El conjunto de evaluación · entregable obligatorio de la Fase 0</span>
+    <p>
+      <b>30–50 entradas reales en español mexicano</b>, con la jerga de mostrador que aparecerá
+      de verdad, cada una con su <code>ProductDraft</code> esperado revisado por alguien de
+      negocio. Se ejecuta en CI contra el modelo activo y mide cinco cosas:
+    </p>
+    <ul>
+      <li><b>Schema válido</b> al primer intento — porcentaje</li>
+      <li><b>Categoría correcta</b> tras la reconciliación</li>
+      <li><b>Unidad correcta</b> tras la reconciliación</li>
+      <li><b>Precio y costo</b> — error absoluto, y tasa de "inventó un costo que no estaba en la entrada"</li>
+      <li><b>Coincidencia con el draft esperado</b> — campo a campo</li>
+    </ul>
+    <p>
+      Es lo que convierte la elección de modelo en una decisión con evidencia en lugar de una
+      lectura de benchmarks generales, que miden otra cosa y en otro idioma. Y es lo que hará
+      que añadir un proveedor en la Fase 4 sea seguro: se compara contra el mismo conjunto.
+      <b>Sin esto, cambiar de modelo es a ciegas.</b>
+    </p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="decisiones">
+  <h2><span class="sec-no">Cierre</span>Decisiones vigentes</h2>
+
+  <p class="lede">
+    Los identificadores se mantienen estables respecto de la revisión 1 para que los ADRs y
+    los PR que ya los citen sigan siendo válidos. Dieciséis decisiones activas.
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>ID</th><th>Decisión</th><th>Resolución</th><th>Cambio</th></tr></thead>
+      <tbody>
+        <tr><td>D-01</td><td>Estructura del gateway</td><td>Secuencia explícita de colaboradores, 8 pasos</td><td><span class="pill flat">sin cambio</span></td></tr>
+        <tr><td>D-02</td><td>Fuente de schemas</td><td><b>Zod</b> dentro de <code>src/ai/</code>; class-validator sigue en los DTOs HTTP</td><td><span class="pill flat">sin cambio</span></td></tr>
+        <tr><td>D-03</td><td>Almacenamiento de prompts</td><td>Archivos versionados en git, con el registro preparado para otra fuente</td><td><span class="pill flat">sin cambio</span></td></tr>
+        <tr><td>D-04</td><td>Persistencia del draft</td><td>Efímero; <code>outcome</code> registrado vía <code>aiRequestId</code></td><td><span class="pill flat">sin cambio</span></td></tr>
+        <tr><td>D-05</td><td>Runtime local</td><td><b>llama.cpp</b> en producción, Ollama en desarrollo, mismo adaptador</td><td><span class="pill maybe">vLLM sale del alcance</span></td></tr>
+        <tr><td>D-06</td><td>Modelo local inicial</td><td><b>Llama-3.2-3B-Instruct</b>, cerrada con datos reales de Fase 2 (30/30 JSON válido). Qwen3-4B bloqueado por su modo "thinking" en Ollama, no descartado del todo</td><td><span class="pill now">cerrada</span></td></tr>
+        <tr><td>D-07</td><td>Plan y proveedor</td><td><b>El proveedor no es atributo del plan.</b> Los cinco planes usan local; el plan define límites y features</td><td><span class="pill maybe">reformulada</span></td></tr>
+        <tr><td>D-08</td><td>Almacén de consumo</td><td>PostgreSQL, append-only, particionado por mes, con contadores agregados</td><td><span class="pill flat">sin cambio</span></td></tr>
+        <tr><td>D-10</td><td>IA sin conexión</td><td>Deshabilitada explícitamente; nunca encolada</td><td><span class="pill flat">sin cambio</span></td></tr>
+        <tr><td>D-12</td><td>Observabilidad</td><td>Prometheus + Grafana y logs estructurados. Sin OTel ni Langfuse en v1</td><td><span class="pill maybe">reducida</span></td></tr>
+        <tr><td>D-13</td><td>Transporte</td><td><b>REST petición/respuesta.</b> Sin streaming</td><td><span class="pill maybe">ahora firme</span></td></tr>
+        <tr><td>D-14</td><td>Gateway propio</td><td>Capa propia; ni LiteLLM ni OpenRouter — resuelven la parte fácil y no la difícil</td><td><span class="pill flat">sin cambio</span></td></tr>
+        <tr><td>D-15</td><td>Caché de respuestas</td><td>Desactivada. Ni siquiera se crea la carpeta</td><td><span class="pill maybe">reforzada</span></td></tr>
+        <tr><td>D-16</td><td><b>Puerto AIProvider con un solo proveedor</b></td><td>Sí, innegociable. Validado por tener <b>dos</b> implementadores reales: local y mock</td><td><span class="pill now">nueva</span></td></tr>
+        <tr><td>D-17</td><td><b>Binding en vez de routing</b></td><td>Constante en código + override por entorno. Sin tablas de routing</td><td><span class="pill now">nueva</span></td></tr>
+        <tr><td>D-18</td><td><b>Sin fallback</b></td><td>Error tipado, observable y explicado. Nunca se intenta otro proveedor</td><td><span class="pill now">nueva</span></td></tr>
+        <tr><td>D-19</td><td><b>Gemini reutiliza <code>OpenAICompatibleProvider</code></b></td><td>La capa de compatibilidad OpenAI de Google (confirmada oficialmente) hace innecesario un adaptador propio — un registro más en <code>AiProviderRegistry</code>, igual que <code>local</code></td><td><span class="pill now">nueva · Fase 4</span></td></tr>
+        <tr><td>D-20</td><td><b>Presupuesto vs. cuota, códigos separados</b></td><td><code>AI_BUDGET_EXCEEDED</code> (kill switch de toda la plataforma) es distinto de <code>AI_QUOTA_EXCEEDED</code> (límite de un tenant) — el cliente necesita distinguirlos</td><td><span class="pill now">nueva · Fase 4</span></td></tr>
+        <tr><td>D-21</td><td><b>Rehidratación del presupuesto al arrancar</b></td><td><code>AiBudgetService</code> suma <code>ai_usage_events</code> del día/mes en curso en <code>onModuleInit</code>; un contador solo en memoria fallaría abierto tras un reinicio</td><td><span class="pill now">nueva · Fase 4</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <span class="label">D-13 · por qué ahora es firme y no dependiente</span>
+    <p>
+      En la revisión 1, el streaming quedaba condicionado a la latencia medida. Ahora es una
+      decisión cerrada para la v1 por dos razones: transmitir un JSON estructurado token a
+      token es frágil, y la respuesta útil del asistente es el objeto completo validado, no el
+      texto intermedio. Si la Fase 2 arroja un p95 alto, <b>la primera respuesta es reordenar
+      el prompt y ajustar el modelo</b> (§10), no añadir streaming. Si aun así la espera resulta
+      inaceptable en el piloto, el streaming se reconsidera como decisión aparte, con el dato
+      en la mano.
+    </p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="diferidas">
+  <h2><span class="sec-no">Cierre</span>Decisiones diferidas</h2>
+
+  <p class="lede">
+    Estaban resueltas en la revisión 1 y siguen siendo buenas respuestas — pero a preguntas
+    que la v1 no se hace todavía. Se conservan aquí para no volver a discutirlas desde cero.
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>ID</th><th>Tema</th><th>Se retoma cuando</th><th>Dirección ya explorada</th></tr></thead>
+      <tbody>
+        <tr><td>D-09</td><td><b>Redis</b></td><td>Haya más de una instancia de API, o una cola real de lotes</td><td>Interfaces de límite y caché con implementación en memoria y contrato compatible</td></tr>
+        <tr><td>D-11</td><td><b>Autoridad de Device AI</b></td><td>Exista una feature de alto volumen, tolerante y offline</td><td>Manifiesto publicado por el servidor; el dispositivo obedece</td></tr>
+        <tr><td>—</td><td><b>Routing multiproveedor</b></td><td>Fase 4 cerró el núcleo (proveedores + kill switch); routing queda para cuando la precedencia empiece a significar algo</td><td>Precedencia TENANT &gt; PLAN &gt; GLOBAL sobre tabla <code>ai_routing_policy</code></td></tr>
+        <tr><td>—</td><td><b>Fallback y circuit breaker</b></td><td>Sin routing todavía no hay un destino alternativo al que saltar</td><td>Taxonomía de fallos con destino; solo infraestructura, nunca política ni presupuesto; un salto máximo</td></tr>
+        <tr><td>—</td><td><b>Créditos comerciales y facturación</b></td><td>Con tres meses de consumo real del piloto</td><td>Crédito = unidad de trabajo, no token; conversión por clase de tarea</td></tr>
+        <tr><td>—</td><td><b>BYOK por tenant</b></td><td>Lo pida un cliente ENTERPRISE</td><td>Cifrado sobre-cifrado AES-256-GCM, <code>keyVersion</code> para rotación</td></tr>
+        <tr><td>—</td><td><b>GPU y vLLM</b></td><td>p95 inaceptable con el prompt ya optimizado, o volumen que lo justifique</td><td>RTX 4000 Ada / L4, modelo de 8 B AWQ, ~20–50 concurrentes</td></tr>
+        <tr><td>—</td><td><b>Streaming SSE</b></td><td>Solo si la espera resulta inaceptable en el piloto</td><td>Eventos tipados <code>meta</code> → <code>delta</code> → <code>done</code>; el objeto completo va en el último</td></tr>
+        <tr><td>—</td><td><b>Embeddings y pgvector</b></td><td>Exista una necesidad de producto declarada (búsqueda semántica, deduplicación)</td><td>bge-m3 local; el mejor caso de uso local por volumen y coste marginal</td></tr>
+        <tr><td>—</td><td><b>n8n</b></td><td>Fase 5+ · <b>nunca en la ruta de inferencia</b></td><td>Consumidor de eventos de dominio vía outbox; escribe de vuelta por la API pública</td></tr>
+        <tr><td>—</td><td><b>A/B testing de prompts</b></td><td>Haya tenants suficientes para tener potencia estadística</td><td>Split determinista por <code>hash(tenantId)</code>; el registro ya resuelve por versión</td></tr>
+        <tr><td>—</td><td><b>Asistentes en otros verticales</b></td><td>El de retail esté validado en producción</td><td>Restaurante, taller, gimnasio, servicios</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="riesgos">
+  <h2><span class="sec-no">Cierre</span>Riesgos</h2>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Riesgo</th><th>Impacto</th><th>Prob.</th><th>Mitigación</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>Latencia local inaceptable en CPU</b></td>
+          <td><span class="pill no">alto</span></td><td><b>Alta</b></td>
+          <td><b>El riesgo número uno de la v1.</b> Se mide en Fase 2 <em>antes</em> de construir el asistente. Respuestas en orden: reutilización de KV cache por orden del prompt, reducir modelo o <code>maxOutputTokens</code>, reducir alcance de la feature</td>
+        </tr>
+        <tr>
+          <td><b>Calidad insuficiente en español de mostrador</b></td>
+          <td><span class="pill no">alto</span></td><td>Media</td>
+          <td>Conjunto de evaluación con jerga real construido <b>en la Fase 0</b>, antes de elegir modelo. Comparar 3 candidatos con el mismo conjunto</td>
+        </tr>
+        <tr>
+          <td><b>Punto único de fallo sin fallback</b></td>
+          <td><span class="pill maybe">medio</span></td><td>Media</td>
+          <td>Aceptado a conciencia. Cubierto por el principio 04: el alta manual funciona idéntica. Error tipado + <code>ai_provider_up</code> + alerta a los 2 min</td>
+        </tr>
+        <tr>
+          <td><b>La abstracción se filtra</b> — algún módulo importa un proveedor</td>
+          <td><span class="pill maybe">medio</span></td><td>Media</td>
+          <td>Regla ESLint <code>no-restricted-imports</code> en CI desde la Fase 1, escrita <em>antes</em> de que exista el primer proveedor</td>
+        </tr>
+        <tr>
+          <td><b>La inferencia degrada el POS</b></td>
+          <td><span class="pill no">alto</span></td><td>Media</td>
+          <td>Host de inferencia separado desde la Fase 2. Si se comparte en el piloto: cgroups y un solo slot</td>
+        </tr>
+        <tr>
+          <td><b>Deriva de calidad silenciosa</b></td>
+          <td><span class="pill maybe">medio</span></td><td><b>Alta</b></td>
+          <td><code>ai_schema_repair_total</code> y <code>ai_draft_outcome_total</code> con alertas; evaluaciones en CI ante cualquier cambio de modelo o prompt</td>
+        </tr>
+        <tr>
+          <td><b>Sobreingeniería pese a la simplificación</b></td>
+          <td><span class="pill maybe">medio</span></td><td>Media</td>
+          <td>La sección <a href="#no-construir">"Qué NO construir"</a> es normativa. Cada fase tiene un criterio de salida que la corta</td>
+        </tr>
+        <tr>
+          <td><b>Simplificar de más y tener que refactorizar</b></td>
+          <td><span class="pill maybe">medio</span></td><td>Baja</td>
+          <td>El riesgo inverso, y es real. Se acota conservando exactamente tres cosas: el puerto <code>AIProvider</code>, el registro de features y el modelo de datos de consumo. Todo lo demás puede reescribirse sin tocar <code>src/modules/</code></td>
+        </tr>
+        <tr>
+          <td><b>Servidor de inferencia expuesto a internet</b></td>
+          <td><span class="pill no">crítico</span></td><td>Baja</td>
+          <td>Red privada o firewall por IP, verificado en el checklist de despliegue. Un <code>llama-server</code> abierto es cómputo gratis para cualquiera</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="roadmap">
+  <h2><span class="sec-no">Cierre</span>Roadmap</h2>
+
+  <p class="lede">
+    Cuatro fases que se construyen y dos que se documentan. El alcance total de la v1 es
+    Fase 0 a Fase 3.
+  </p>
+
+  <div class="phase">
+    <div class="p-head">
+      <span class="p-no">Fase 0</span>
+      <span class="p-name">Arquitectura</span>
+      <span class="p-meta">sin código</span>
+    </div>
+    <div class="p-body">
+      <dl>
+        <dt>Objetivo</dt><dd>Cerrar decisiones y dejar el proyecto listo para implementarse sin discusiones abiertas.</dd>
+        <dt>Alcance</dt><dd>Este documento aprobado · 4 ADRs cortos en el vault (runtime local D-05, abstracción de proveedor D-16, binding en vez de routing D-17, ausencia de fallback D-18) · <b>conjunto de evaluación de 30–50 entradas reales en español mexicano</b> con su <code>ProductDraft</code> esperado · contratos principales esbozados (<code>AiInvocation</code>, <code>AiResult</code>, <code>AIProvider</code>).</dd>
+        <dt>Dependencias</dt><dd>Ninguna.</dd>
+        <dt>Riesgos</dt><dd>Que el conjunto de evaluación se posponga. Es el entregable más importante de la fase y el más fácil de saltarse.</dd>
+        <dt>Criterios de aceptación</dt><dd>Documento aprobado; ADRs enlazados desde el índice del vault; conjunto de evaluación en el repositorio, revisado por una persona de negocio.</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="p-head">
+      <span class="p-no">Fase 1</span>
+      <span class="p-name">AI Core</span>
+      <span class="p-meta">con MockProvider</span>
+    </div>
+    <div class="p-body">
+      <dl>
+        <dt>Objetivo</dt><dd>Contratos, gateway, consumo y límites funcionando de punta a punta <b>sin ningún modelo real</b>.</dd>
+        <dt>Alcance</dt><dd><code>contracts/</code> · <code>gateway/</code> · <code>providers/ai-provider.port.ts</code> + <code>ai-provider.registry.ts</code> + <b><code>MockProvider</code></b> · <code>config/</code> (catálogo y binding) · <code>prompts/</code> con fuente de archivos · <code>schemas/</code> con Zod · <code>usage/</code> · <code>limits/</code> · <code>observability/ai-metrics.ts</code> · migraciones de <code>ai_usage_events</code> y <code>ai_usage_counters</code> · regla ESLint de dependencia · feature de humo <code>ai.echo</code>, <b>no expuesta a usuarios</b>.</dd>
+        <dt>Módulos esperados</dt><dd>Solo <code>src/ai/</code>. <b>Ningún archivo bajo <code>src/modules/</code>.</b></dd>
+        <dt>Dependencias</dt><dd>Fase 0.</dd>
+        <dt>Riesgos</dt><dd>Sobreingeniería. Si la fase pasa de dos semanas, se está construyendo de más — probablemente routing o caché que ya se decidieron fuera.</dd>
+        <dt>Pruebas</dt><dd>Unitarias de cada colaborador con dobles · integración del gateway contra <code>MockProvider</code> · aislamiento: dos tenants no comparten contador · el límite agotado rechaza <b>antes</b> de invocar al proveedor · el evento de consumo se escribe también cuando la invocación falla.</dd>
+        <dt>Criterios de aceptación</dt><dd><code>ai.echo</code> responde, registra un evento, incrementa el contador del tenant y aparece en <code>/metrics</code>. Un <code>import</code> desde <code>ai/providers/</code> dentro de <code>modules/</code> <b>rompe el build</b>. Los dos implementadores del puerto son intercambiables por configuración.</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="p-head">
+      <span class="p-no">Fase 2</span>
+      <span class="p-name">IA local</span>
+      <span class="p-meta">código y decisión de modelo cerrados · VPS pendiente</span>
+    </div>
+    <div class="p-body">
+      <dl>
+        <dt>Objetivo</dt><dd>Inferencia propia operativa y — sobre todo — <b>medida</b>.</dd>
+        <dt>Alcance</dt><dd>
+          <code>OpenAICompatibleProvider</code> <span class="pill yes">hecho</span> — un adaptador, sin construir GBNF a mano: usa <code>response_format</code> estándar, que llama.cpp y Ollama traducen internamente a su propio mecanismo (verificado en vivo; reemplaza al <code>gbnf.builder.ts</code> planeado, que ya no hace falta) ·
+          <code>AiProviderHealthMonitor</code> <span class="pill yes">hecho</span> — poll cada 15 s ·
+          benchmark de latencia/throughput y arnés de evaluación (<code>scripts/ai/</code>) <span class="pill yes">hecho</span>, corridos contra Ollama en máquina de desarrollo — ver <a href="fase-2-benchmark.html">informe</a> ·
+          <b>D-06 cerrada</b>: Llama-3.2-3B-Instruct, 30/30 JSON válido, 0/30 costos inventados ·
+          <b><code>llama-server</code> en un VPS de inferencia separado — <span class="pill maybe">pendiente</span>, decisión explícita de no aprovisionar todavía</b>.
+        </dd>
+        <dt>Fuera de alcance</dt><dd><b>Embeddings, pgvector, GPU, vLLM.</b></dd>
+        <dt>Dependencias</dt><dd>Fase 1.</dd>
+        <dt>Riesgos</dt><dd>Los números del benchmark son de una máquina de desarrollo con GPU, no del VPS objetivo — válidos para comparar modelos entre sí, no para el sizing de producción (§10). Se repiten cuando exista el VPS.</dd>
+        <dt>Pruebas</dt><dd>Contrato del proveedor contra un servidor real (Ollama) — <span class="pill yes">hecho</span> · <code>response_format</code> fuerza JSON válido en 30/30 intentos reales con Llama-3.2-3B — <span class="pill yes">hecho</span> · con el servidor apagado se devuelve <code>AI_PROVIDER_UNAVAILABLE</code> y se registra el evento fallido — <span class="pill yes">hecho</span>, probado con <code>MockProvider</code> · <code>ai_provider_up</code> refleja el estado real — <span class="pill yes">hecho</span>.</dd>
+        <dt>Criterios de aceptación</dt><dd><b>Informe con números</b> — <span class="pill yes">hecho</span>, con la salvedad de hardware anotada arriba. <b>Decisión de modelo documentada</b> y aplicada por configuración (<code>config/ai-model.catalog.ts</code>), sin tocar código de negocio — <span class="pill yes">hecho</span>. <b>VPS de inferencia con <code>llama-server</code></b> — <span class="pill maybe">pendiente</span>, no bloquea el resto de la Fase 2 porque nada en v1 depende todavía de que exista.</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="p-head">
+      <span class="p-no">Fase 3</span>
+      <span class="p-name">Product Assistant</span>
+      <span class="p-meta">retail · piloto cerrado</span>
+    </div>
+    <div class="p-body">
+      <dl>
+        <dt>Objetivo</dt><dd>Primera feature de valor real, detrás de bandera y con tenants piloto.</dd>
+        <dt>Alcance</dt><dd><code>modules/retail/products/ai/</code> completo · plantilla <code>products.draft.v1</code> · <code>ProductDraft</code> en Zod · reconciliador con categorías, unidades, <code>TaxCode</code> y unicidad de SKU · <code>POST /api/ai/products/draft</code> · UI en Flutter con campos resaltados por confianza y por falta de resolución · <code>aiRequestId</code> de ida y vuelta y registro de <code>outcome</code> · manejo de los seis errores tipados de §12.</dd>
+        <dt>Dependencias</dt><dd>Fases 1 y 2.</dd>
+        <dt>Riesgos</dt><dd>Que la calidad o la espera decepcionen en uso real. Se mitiga con piloto cerrado y una bandera que se apaga en segundos.</dd>
+        <dt>Pruebas</dt><dd>El conjunto de evaluación en CI con umbral que bloquea el merge · test de que <code>ProductAIService</code> <b>no puede escribir en la BD</b> · casos de reconciliación: categoría inexistente, SKU duplicado, <code>price &lt; costPrice</code>, <code>taxCode</code> inválido, costo no mencionado · e2e del flujo completo hasta la creación real · e2e con el gateway apagado: el alta manual funciona igual.</dd>
+        <dt>Criterios de aceptación</dt><dd>≥ 80 % de drafts con schema válido al primer intento · ≥ 70 % de categorías reconciliadas correctamente · <b>0 productos creados sin confirmación humana</b> · <code>outcome</code> registrado en el 100 % de las creaciones asistidas · p95 dentro del umbral acordado tras la Fase 2.</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="p-head">
+      <span class="p-no">Fase 4 · en curso</span>
+      <span class="p-name">Proveedores externos (núcleo)</span>
+      <span class="p-meta">Anthropic + Gemini registrados · kill switch de gasto activo</span>
+    </div>
+    <div class="p-body">
+      <dl>
+        <dt>Objetivo</dt><dd>Habilitar el primer proveedor de pago sin re-enrutar ninguna feature existente, con el kill switch de gasto activo desde el primer día (regla de la tabla de decisiones diferidas: entra en la misma entrega que el primer proveedor de pago).</dd>
+        <dt>Alcance de esta entrega</dt><dd><code>AnthropicProvider</code> (adaptador propio — Messages API, salida estructurada vía <i>tool forcing</i>) · <code>gemini</code> registrado reutilizando <code>OpenAICompatibleProvider</code> contra la capa de compatibilidad OpenAI de Google (confirmada oficialmente, cero adaptador nuevo) · dos entradas nuevas en el catálogo de modelos con tarifas reales (Claude Haiku 4.5, Gemini 2.5 Flash) · <code>AiBudgetService</code> con rehidratación desde <code>ai_usage_events</code> en <code>onModuleInit</code> y tope diario/mensual configurable · código de error <code>AI_BUDGET_EXCEEDED</code> (7º código, antes había seis) · se corrige un hueco de contabilidad pre-existente: la rama <code>OUTPUT_INVALID</code> ya registra el costo real de los intentos fallidos, no <code>0n</code>.</dd>
+        <dt>Explícitamente fuera de esta entrega</dt><dd>Routing multiproveedor, fallback y circuit breaker, BYOK, enforcement de PII, cualquier feature re-enrutada a cloud (<code>products.draft</code> sigue en <code>local</code>, D-06 no se reabre) — quedan en "Decisiones diferidas", sin disparador propio todavía.</dd>
+        <dt>Criterio de aceptación</dt><dd><b>Cero líneas modificadas en <code>src/modules/retail/products/</code></b> al registrar los proveedores nuevos — se habilitan, no se enrutan. Suite completa en verde; verificación manual contra credenciales reales antes de dar por buenos los adaptadores.</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="phase deferred">
+    <div class="p-head">
+      <span class="p-no">Fase 5+ · futura</span>
+      <span class="p-name">Escala</span>
+      <span class="p-meta">condicionada a datos</span>
+    </div>
+    <div class="p-body">
+      <dl>
+        <dt>Objetivo</dt><dd>Crecer solo donde una métrica lo pida.</dd>
+        <dt>Alcance condicional</dt><dd>
+          <ul>
+            <li><b>GPU y vLLM</b> ← p95 inaceptable con el prompt ya optimizado</li>
+            <li><b>Streaming SSE</b> ← la espera resulta inaceptable en el piloto</li>
+            <li><b>Redis</b> ← más de una instancia de API</li>
+            <li><b>Cola y workers</b> ← enriquecimiento por lotes (importar 400 productos)</li>
+            <li><b>Embeddings y pgvector</b> ← necesidad de producto declarada</li>
+            <li><b>Créditos y facturación</b> ← tres meses de consumo real</li>
+            <li><b>n8n</b> ← automatizaciones fuera de la ruta de inferencia</li>
+            <li><b>Device AI</b> ← una feature de alto volumen, tolerante y offline</li>
+            <li><b>Otros verticales</b> ← el asistente de retail validado en producción</li>
+          </ul>
+        </dd>
+        <dt>Criterio de aceptación</dt><dd>Cada elemento entregado tiene detrás un número que lo justifica. Lo que no lo tenga, no se construye.</dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="aceptacion">
+  <h2><span class="sec-no">Cierre</span>Criterios de aceptación de la plataforma</h2>
+
+  <p class="lede">Independientes de la fase: si alguno deja de cumplirse, hay una regresión arquitectónica.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>#</th><th>Criterio</th><th>Cómo se verifica</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Ningún módulo de negocio importa un proveedor, un runtime ni una configuración de modelo</td><td>Regla ESLint <code>no-restricted-imports</code> en CI</td></tr>
+        <tr><td>2</td><td>Cambiar el modelo local no requiere tocar <code>ProductAIService</code> ni el gateway</td><td>Variable de entorno + reinicio; test que arranca con dos modelos distintos</td></tr>
+        <tr><td>3</td><td>El puerto tiene al menos dos implementadores intercambiables</td><td><code>OpenAICompatibleProvider</code> y <code>MockProvider</code> pasan la misma suite de contrato</td></tr>
+        <tr><td>4</td><td>Ningún registro de negocio se crea sin confirmación humana</td><td>Test: <code>ProductAIService</code> no puede escribir en la BD; e2e del flujo completo</td></tr>
+        <tr><td>5</td><td>Toda invocación queda registrada con tenant, feature, modelo, tokens, latencia, costo estimado y resultado — <b>incluidos los fallos</b></td><td>Test de que un fallo del proveedor también escribe evento</td></tr>
+        <tr><td>6</td><td>Ninguna invocación excede el límite del tenant</td><td>Test de concurrencia sobre el incremento transaccional</td></tr>
+        <tr><td>7</td><td>Ningún dato de un tenant aparece en respuestas o contadores de otro</td><td>Test de aislamiento</td></tr>
+        <tr><td>8</td><td>Con la IA caída, el alta manual de productos funciona idéntica y el error es tipado y observable</td><td>e2e con el servidor de inferencia apagado</td></tr>
+        <tr><td>9</td><td>Un cambio de modelo o de prompt se valida antes de llegar a producción</td><td>Conjunto de evaluación en CI, con umbral que bloquea el merge</td></tr>
+        <tr><td>10</td><td>Toda degradación es visible en la respuesta y en el evento</td><td>Test del campo <code>degradations[]</code> y del estado <code>SCHEMA_REPAIRED</code></td></tr>
+        <tr><td>11</td><td>El contenido de los prompts no se persiste salvo consentimiento explícito</td><td>Revisión de la configuración de logs; test del registro de consumo</td></tr>
+        <tr><td>12</td><td>El servidor de inferencia no es alcanzable desde internet</td><td>Escaneo de puertos desde fuera de la red privada</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="checklist">
+  <h2><span class="sec-no">Cierre</span>Checklist antes de escribir la primera línea</h2>
+
+  <h4>Decisiones que necesitan tu confirmación</h4>
+  <ul class="checklist">
+    <li>Aprobar D-16: se paga el costo del puerto <code>AIProvider</code> aunque hoy solo haya un proveedor</li>
+    <li>Aprobar D-18: sin fallback — si el modelo local cae, la feature se cae con un error explicado</li>
+    <li>Aceptar que la latencia esperada es de <b>15–25 s por draft</b> y que la Fase 2 puede obligar a replantear el alcance de la feature</li>
+    <li>Confirmar el presupuesto para un <b>segundo VPS</b> de inferencia, separado del de aplicación (~40–70 EUR/mes)</li>
+    <li>Definir los límites mensuales por plan de la tabla de §11 (los valores son un punto de partida, no un compromiso)</li>
+    <li>Confirmar que la unidad de límite en v1 son <b>invocaciones</b>, no créditos ni tokens</li>
+  </ul>
+
+  <h4>Trabajo previo que debe existir</h4>
+  <ul class="checklist">
+    <li><b>Conjunto de evaluación</b> de 30–50 entradas reales en español mexicano, con el <code>ProductDraft</code> esperado revisado por alguien de negocio</li>
+    <li>Inventario de campos de <code>Product</code> confirmado con la tabla de §8 — especialmente unidad de medida y <code>TaxCode</code> por régimen fiscal</li>
+    <li>Lista de 3–5 tenants piloto dispuestos a probar el asistente y a dar retroalimentación</li>
+    <li>Decisión sobre si el vault de conocimiento recibe los 4 ADRs de esta arquitectura</li>
+  </ul>
+
+  <h4>Preparación técnica</h4>
+  <ul class="checklist">
+    <li>VPS de inferencia aprovisionado, con red privada hacia el host de la API y <b>sin exposición pública</b></li>
+    <li>Regla ESLint <code>no-restricted-imports</code> escrita y probada <b>antes</b> de que exista el primer proveedor</li>
+    <li>Nombres de <code>featureKey</code> acordados: <code>ai.echo</code>, <code>products.draft</code></li>
+    <li>Particionado mensual de <code>ai_usage_events</code> decidido en el diseño de la migración, no después</li>
+    <li>Grafana o equivalente accesible antes de la Fase 2, para que el benchmark tenga dónde mirarse</li>
+    <li>Ollama instalado y documentado en el README para el entorno de desarrollo</li>
+  </ul>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="no-construir">
+  <h2><span class="sec-no">Cierre</span>Qué NO debemos construir todavía</h2>
+
+  <p class="lede">
+    Esta sección es normativa. Cada elemento resuelve un problema que Orbix <b>todavía no
+    tiene</b>, y construirlo ahora costaría mantenimiento durante meses antes de dar valor.
+  </p>
+
+  <div class="grid">
+    <div class="card later">
+      <span class="c-kicker">No construir</span>
+      <span class="c-title">Múltiples proveedores</span>
+      <p>El puerto queda listo. <code>AnthropicProvider</code> y <code>OpenAIProvider</code> no se escriben. La abstracción ya está validada por tener local + mock.</p>
+    </div>
+    <div class="card later">
+      <span class="c-kicker">No construir</span>
+      <span class="c-title">Fallback automático</span>
+      <p>Sin un segundo proveedor no hay destino. Error tipado y observable en su lugar.</p>
+    </div>
+    <div class="card later">
+      <span class="c-kicker">No construir</span>
+      <span class="c-title">Routing avanzado</span>
+      <p>Ni tablas, ni precedencia, ni candidatos ordenados, ni filtros por clase de tarea. Una constante <code>feature → modelo</code>.</p>
+    </div>
+    <div class="card later">
+      <span class="c-kicker">No construir</span>
+      <span class="c-title">Créditos, facturación y overage</span>
+      <p>Se registra el consumo y se aplican límites por invocaciones. Cobrar es una decisión con tres meses de datos por delante.</p>
+    </div>
+    <div class="card later">
+      <span class="c-kicker">No construir</span>
+      <span class="c-title">BYOK y gestión de secretos</span>
+      <p>El servidor local no lleva API key. Llega con el primer proveedor de pago, en la misma entrega que el kill switch.</p>
+    </div>
+    <div class="card later">
+      <span class="c-kicker">No construir</span>
+      <span class="c-title">Embeddings y pgvector</span>
+      <p>El Product Assistant no los necesita. El contexto del tenant son decenas de elementos y cabe en el prompt.</p>
+    </div>
+    <div class="card later">
+      <span class="c-kicker">No construir</span>
+      <span class="c-title">Streaming</span>
+      <p>Transmitir JSON estructurado token a token es frágil, y la respuesta útil es el objeto completo validado.</p>
+    </div>
+    <div class="card later">
+      <span class="c-kicker">No construir</span>
+      <span class="c-title">Redis, colas y workers</span>
+      <p>Nada en las fases 1–3 lo exige con una sola instancia. Las interfaces de límite quedan preparadas; la infraestructura, no.</p>
+    </div>
+    <div class="card later">
+      <span class="c-kicker">No construir</span>
+      <span class="c-title">Kubernetes y autoescalado</span>
+      <p>Se escala subiendo slots y vCPU. Introducir un orquestador por la IA sería resolver un problema organizativo con infraestructura.</p>
+    </div>
+    <div class="card later">
+      <span class="c-kicker">No construir</span>
+      <span class="c-title">Agentes con tool calling contra la BD</span>
+      <p>La tentación más grande y el mayor riesgo. Rompe el principio 01 y abre toda la superficie de prompt injection que hoy está cerrada por construcción.</p>
+    </div>
+    <div class="card later">
+      <span class="c-kicker">No construir</span>
+      <span class="c-title">Panel de prompts y A/B testing</span>
+      <p>Los prompts viven en git y se despliegan con el código. Con pocos tenants piloto no hay potencia estadística para un experimento.</p>
+    </div>
+    <div class="card later">
+      <span class="c-kicker">No construir</span>
+      <span class="c-title">Visión, OCR y multi-turno</span>
+      <p>Extraer datos de una factura escaneada es otra clase de problema. La memoria conversacional implica persistencia, ventana y coste creciente.</p>
+    </div>
+    <div class="card later">
+      <span class="c-kicker">No construir</span>
+      <span class="c-title">Device AI</span>
+      <p>Contrato reservado en el puerto. Exige una feature de alto volumen, tolerante y offline; el asistente no cumple ninguna de las tres.</p>
+    </div>
+    <div class="card later">
+      <span class="c-kicker">No construir</span>
+      <span class="c-title">n8n en la ruta de inferencia</span>
+      <p>Nunca. Como consumidor de eventos de dominio, más adelante y fuera del camino crítico.</p>
+    </div>
+    <div class="card later">
+      <span class="c-kicker">No construir</span>
+      <span class="c-title">Asistentes en otros verticales</span>
+      <p>Restaurante, taller, gimnasio y servicios esperan. Una feature bien resuelta en retail enseña más sobre la plataforma que cuatro a medias.</p>
+    </div>
+    <div class="card later">
+      <span class="c-kicker">No construir</span>
+      <span class="c-title">Gateway externo (LiteLLM, OpenRouter)</span>
+      <p>Resuelven la parte fácil y no la difícil. Se reevalúa si Orbix superara los cinco proveedores simultáneos.</p>
+    </div>
+  </div>
+
+  <div class="note ok">
+    <span class="label">El criterio, en una frase</span>
+    <p>
+      La v1 debe caber en la cabeza de una persona: <b>un puerto, un adaptador, un prompt,
+      un schema, una feature y un límite</b>. Todo lo demás son extensiones del mismo diseño,
+      añadidas cuando un número — no una intuición — las pida.
+    </p>
+  </div>
+</section>
+
+</main>
+</div>
+
+<footer class="colophon">
+  <div class="shell">
+    <div></div>
+    <p>
+      Orbix AI Platform · Documento de arquitectura, revisión 2 · 15 de agosto de 2026<br>
+      Los identificadores D-01 a D-18 son estables y se conservan entre revisiones: cítalos en los ADRs y en los PR que los implementen.<br>
+      Las decisiones diferidas no están descartadas — están esperando el dato que las active.
+    </p>
+  </div>
+</footer>

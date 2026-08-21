@@ -37,4 +37,26 @@ export default tseslint.config(
       "prettier/prettier": "off",
     },
   },
+  {
+    // Regla 02 / ADR-0025: los módulos de negocio no conocen al proveedor de
+    // IA, la configuración de routing ni los prompts. Solo dependen de
+    // `AiGatewayService` (exportado por AiModule). Violarla rompe el build,
+    // no solo la revisión de código — ver §02 y el criterio de aceptación
+    // #1 del documento de arquitectura Orbix AI Platform.
+    files: ['src/modules/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/ai/providers/**', '**/ai/config/**', '**/ai/prompts/templates/**'],
+              message:
+                'Los módulos de negocio no importan proveedores, configuración de routing ni plantillas de IA directamente — dependan de AiGatewayService (src/ai/ai.module.ts). Ver ADR-0025.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

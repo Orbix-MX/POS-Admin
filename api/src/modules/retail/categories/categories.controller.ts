@@ -6,13 +6,22 @@
   Patch,
   Param,
   Delete,
+  UseInterceptors,
+  UploadedFile,
+  ParseFilePipe,
+  MaxFileSizeValidator,
+  FileTypeValidator,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import { memoryStorage } from 'multer';
 import { CategoriesService, CategoryWithChildren } from './categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
 import { RequireModule } from '../../../common/guards/require-module.guard';
+
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
 
 @RequireModule('inventario')
 @ApiTags('Categories')
@@ -69,5 +78,35 @@ export class CategoriesController {
   @ApiOperation({ summary: 'Delete category' })
   remove(@Param('id') id: string) {
     return this.categoriesService.remove(id);
+  }
+
+  @Post(':id/image')
+  @ApiBearerAuth()
+  @RequirePermissions('categories:edit')
+  @ApiOperation({ summary: 'Upload category reference photo (replaces existing primary image)' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  uploadImage(
+    @Param('id') id: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: MAX_IMAGE_SIZE }),
+          new FileTypeValidator({ fileType: /^image\/(jpeg|png|webp)$/ }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    return this.categoriesService.uploadImage(id, file);
+  }
+
+  @Delete(':id/images/:imageId')
+  @ApiBearerAuth()
+  @RequirePermissions('categories:edit')
+  @ApiOperation({ summary: 'Remove category reference photo' })
+  removeImage(@Param('id') id: string, @Param('imageId') imageId: string) {
+    return this.categoriesService.removeImage(id, imageId);
   }
 }

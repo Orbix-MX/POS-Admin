@@ -72,4 +72,8 @@ export class R2Service {
   buildSiteImageKey(tenantId: string, imageId: string): string {
     return `tenant-${tenantId}/site/${imageId}.webp`;
   }
+
+  buildCategoryImageKey(tenantId: string, categoryId: string, imageId: string): string {
+    return `tenant-${tenantId}/categories/${categoryId}/${imageId}.webp`;
+  }
 }

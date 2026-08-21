@@ -41,6 +41,8 @@ function buildOpen() {
   });
 
   const prisma = {
+    // SUPER_ADMIN: `resolveCashAuthorizer` no pide PIN ni consulta permisos.
+    user: { findUnique: jest.fn().mockResolvedValue({ role: 'SUPER_ADMIN' }) },
     cashSession: {
       findFirst: jest.fn().mockResolvedValue(null), // pre-check: nadie abierto (deja pasar)
       create,
@@ -48,6 +50,9 @@ function buildOpen() {
     // La sesión se abre sobre una caja física; la sucursal ya tiene la suya.
     cashRegister: {
       findFirst: jest.fn().mockResolvedValue({ id: 'reg-1' }),
+      // Libre: la contención que prueba esta suite es la del índice único al
+      // insertar, no la elección de caja.
+      findMany: jest.fn().mockResolvedValue([{ id: 'reg-1', sessions: [] }]),
       create: jest.fn().mockResolvedValue({ id: 'reg-1' }),
     },
     $transaction: jest.fn(async (cb: (tx: { cashSession: { create: typeof create } }) => Promise<unknown>) =>
@@ -60,6 +65,8 @@ function buildOpen() {
     { requireTenantId: () => TENANT, getBranchId: () => BRANCH } as never,
     { getUserId: () => 'user-1' } as never,
     { log: jest.fn() } as never,
+    { assertCanOpenCashSession: jest.fn(), getCashSessionCapacity: jest.fn() } as never,
+    { get: () => 'test-secret' } as never,
   );
 
   const close = () => openKeys.delete(keyOf(TENANT, BRANCH));

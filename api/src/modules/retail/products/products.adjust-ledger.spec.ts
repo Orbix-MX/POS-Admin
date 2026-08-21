@@ -32,11 +32,12 @@ function build(prev: number) {
 
   const service = new ProductsService(
     prisma as never,
-    { requireTenantId: () => TENANT } as never,
+    { requireTenantId: () => TENANT, getBranchId: () => null } as never,
     { log: jest.fn() } as never,
     { upload: jest.fn(), delete: jest.fn(), buildKey: () => 'k' } as never,
     { hasFeature: jest.fn().mockResolvedValue(false) } as never,
     engine as never,
+    { recordOutcome: jest.fn().mockResolvedValue(undefined) } as never,
   );
 
   return { service, applyProductStockDelta, recordProductMovement, findFirstOrThrow };
@@ -49,8 +50,9 @@ describe('ProductsService.updateStock — delegación al InventoryEngine (Fase 2
 
     const result = await service.updateStock('p1', 5);
 
+    // Un alta no necesita guard: solo las bajas pueden dejar el stock negativo.
     expect(applyProductStockDelta).toHaveBeenCalledWith(expect.anything(), {
-      productId: 'p1', delta: 5,
+      productId: 'p1', delta: 5, guardInsufficient: false, branchId: null,
     });
     expect(recordProductMovement).toHaveBeenCalledTimes(1);
     expect(recordProductMovement.mock.calls[0][1]).toMatchObject({
@@ -70,8 +72,10 @@ describe('ProductsService.updateStock — delegación al InventoryEngine (Fase 2
 
     await service.updateStock('p1', -3);
 
+    // La baja sí lo pide: el guard contra stock negativo lo aplica la base
+    // dentro de la transacción, no una comprobación previa en JS.
     expect(applyProductStockDelta).toHaveBeenCalledWith(expect.anything(), {
-      productId: 'p1', delta: -3,
+      productId: 'p1', delta: -3, guardInsufficient: true, branchId: null,
     });
     expect(recordProductMovement.mock.calls[0][1]).toMatchObject({
       type: 'AJUSTE', quantity: -3, notes: 'Ajuste manual (-3)',
@@ -84,7 +88,7 @@ describe('ProductsService.updateStock — delegación al InventoryEngine (Fase 2
     await service.updateStock('p1', 0);
 
     expect(applyProductStockDelta).toHaveBeenCalledWith(expect.anything(), {
-      productId: 'p1', delta: 0,
+      productId: 'p1', delta: 0, guardInsufficient: false, branchId: null,
     });
     expect(recordProductMovement).not.toHaveBeenCalled();
   });

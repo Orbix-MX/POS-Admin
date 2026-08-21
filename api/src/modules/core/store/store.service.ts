@@ -12,6 +12,8 @@ const STORE_PRODUCT_SELECT = {
   name: true,
   slug: true,
   description: true,
+  // Legacy: se conservan como respaldo mientras existan productos sin fila de
+  // existencias sembrada. El precio y el stock efectivos salen de branchInventory.
   price: true,
   comparePrice: true,
   stock: true,
@@ -22,7 +24,8 @@ const STORE_PRODUCT_SELECT = {
     orderBy: { sortOrder: 'asc' as const },
   },
   // `cost` is deliberately excluded — internal margin data, never public.
-  attributes: { select: { id: true, name: true, price: true } },
+  variants: { select: { id: true, name: true, price: true, isDefault: true } },
+  features: { select: { feature: true, value: true } },
 } satisfies Prisma.ProductSelect;
 
 // Tenant existence + orderable status are already enforced by StoreDomainGuard
@@ -74,11 +77,19 @@ export class StoreService {
   }
 
   async getCategories(tenantId: string) {
-    return this.prisma.category.findMany({
+    const categories = await this.prisma.category.findMany({
       where: { tenantId, status: 'ACTIVE' },
-      select: { id: true, name: true, slug: true, description: true },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        description: true,
+        images: { where: { isPrimary: true }, select: { url: true }, take: 1 },
+      },
       orderBy: { sortOrder: 'asc' },
     });
+
+    return categories.map(({ images, ...rest }) => ({ ...rest, imageUrl: images[0]?.url }));
   }
 
   async getProducts(tenantId: string, query: QueryStoreProductsDto) {
@@ -100,10 +111,51 @@ export class StoreService {
       where.category = { slug: query.categorySlug };
     }
 
-    return this.prisma.product.findMany({
+    // La tienda pública no tiene sesión ni sucursal: se sirve con los precios y
+    // existencias de la sucursal principal del tenant.
+    const branchId = await this.resolveMainBranchId(tenantId);
+
+    const products = await this.prisma.product.findMany({
       where,
-      select: STORE_PRODUCT_SELECT,
+      select: {
+        ...STORE_PRODUCT_SELECT,
+        branchInventory: {
+          // Cuando el tenant no tiene sucursal principal esto no trae nada y
+          // todo cae al respaldo legacy del producto.
+          where: { branchId: branchId ?? '' },
+          select: { variantId: true, stock: true, price: true, comparePrice: true },
+        },
+      },
       orderBy: { createdAt: 'asc' },
     });
+
+    return products.map(({ branchInventory, variants, ...rest }) => {
+      const rowByVariant = new Map(branchInventory.map((row) => [row.variantId, row]));
+      const defaultVariant = variants.find((v) => v.isDefault);
+      const own = defaultVariant ? rowByVariant.get(defaultVariant.id) : undefined;
+
+      return {
+        ...rest,
+        price: own?.price ?? rest.price,
+        comparePrice: own?.comparePrice ?? rest.comparePrice,
+        stock: own?.stock ?? rest.stock,
+        // La variante default es un detalle interno (no tiene nombre): se omite
+        // para que la tienda no muestre una opción en blanco.
+        variants: variants
+          .filter((v) => !v.isDefault)
+          .map((v) => {
+            const row = rowByVariant.get(v.id);
+            return { id: v.id, name: v.name, price: row?.price ?? v.price, stock: row?.stock ?? 0 };
+          }),
+      };
+    });
+  }
+
+  private async resolveMainBranchId(tenantId: string): Promise<string | null> {
+    const branch = await this.prisma.branch.findFirst({
+      where: { tenantId, isMain: true },
+      select: { id: true },
+    });
+    return branch?.id ?? null;
   }
 }

@@ -75,6 +75,8 @@ function build(opts: BuildOpts = {}) {
   };
 
   const prisma = {
+    // SUPER_ADMIN: `resolveCashAuthorizer` no pide PIN ni consulta permisos.
+    user: { findUnique: jest.fn().mockResolvedValue({ role: 'SUPER_ADMIN' }) },
     ...tx,
     $transaction: jest.fn((cb: (t: typeof tx) => Promise<unknown>) => cb(tx)),
   };
@@ -84,6 +86,8 @@ function build(opts: BuildOpts = {}) {
     { requireTenantId: () => TENANT, getBranchId: () => null } as never,
     { getUserId: () => 'user-1' } as never,
     { log: auditLog } as never,
+    { assertCanOpenCashSession: jest.fn(), getCashSessionCapacity: jest.fn() } as never,
+    { get: () => 'test-secret' } as never,
   );
 
   return { service, updateMany, update, countCreate, auditLog };
@@ -220,7 +224,7 @@ describe('CashSessionsService.close — atomicidad (Fase 7 — CASH-002)', () =>
     const failed = results.filter((r) => r.status === 'rejected');
     expect(ok).toHaveLength(1);
     expect(failed).toHaveLength(1);
-    expect((failed[0] as PromiseRejectedResult).reason).toBeInstanceOf(BadRequestException);
+    expect((failed[0]).reason).toBeInstanceOf(BadRequestException);
   });
 });
 

@@ -1,6 +1,6 @@
 ﻿import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
-  fetchProducts,
+  fetchAllProducts,
   createProduct,
   updateProduct,
   deleteProduct,
@@ -64,7 +64,7 @@ export const EMPTY_FORM: Product = {
   isEcommerce: false,
   recipe: null,
   comboItems: [],
-  attributes: [],
+  variants: [],
   features: [],
 }
 
@@ -86,8 +86,7 @@ export function useProducts() {
     setLoading(true)
     setError(null)
     try {
-      const data = await fetchProducts()
-      setProducts(data?.data || [])
+      setProducts(await fetchAllProducts())
     } catch {
       setError('Error al cargar productos')
     } finally {
@@ -115,12 +114,18 @@ export function useProducts() {
     return filtered.slice(start, start + PER_PAGE)
   }, [page, filtered])
 
-  const stats = useMemo(() => ({
-    total: products.length,
-    ok: products.filter(x => x.status === "ACTIVE" && (!x.trackInventory || x.stock > x.lowStockAlert)).length,
-    bajo: products.filter(x => x.status === "ACTIVE" && x.trackInventory && x.stock <= x.lowStockAlert && x.stock > 0).length,
-    agotado: products.filter(x => x.trackInventory && x.stock === 0).length,
-  }), [products])
+  // `stock` ya llega agregado del API (suma de las variantes en la sucursal en
+  // contexto), así que los cortes siguen siendo a nivel producto.
+  const stats = useMemo(() => {
+    let ok = 0, bajo = 0, agotado = 0
+    for (const p of products) {
+      const activo = p.status === "ACTIVE"
+      if (activo && (!p.trackInventory || p.stock > p.lowStockAlert)) ok++
+      if (activo && p.trackInventory && p.stock <= p.lowStockAlert && p.stock > 0) bajo++
+      if (p.trackInventory && p.stock === 0) agotado++
+    }
+    return { total: products.length, ok, bajo, agotado }
+  }, [products])
 
   const handleSave = useCallback(async () => {
     try {
@@ -139,7 +144,17 @@ export function useProducts() {
   }, [editingId, form, loadProducts])
 
   const handleEdit = useCallback((p: Product) => {
-    setForm(p)
+    // El API devuelve `stock` como la suma de todas las variantes, pero el campo
+    // "Stock" del formulario edita la existencia de la variante default (el
+    // producto "sin variante"). Si se cargara la suma, guardar la asignaría
+    // entera a la default e inflaría el inventario.
+    const defaultVariant = p.variants?.find(v => v.isDefault)
+    setForm({
+      ...p,
+      stock: defaultVariant?.stock ?? p.stock,
+      // La default es interna y no tiene nombre: no se lista como una opción más.
+      variants: p.variants?.filter(v => !v.isDefault) ?? [],
+    })
     setEditingId(p.id || null)
     setModalOpen(true)
   }, [])
@@ -156,6 +171,13 @@ export function useProducts() {
 
   const handleOpenNew = useCallback(() => {
     setForm(EMPTY_FORM)
+    setEditingId(null)
+    setModalOpen(true)
+  }, [])
+
+  /** Abre el modal de alta prellenado con un borrador del AI Product Assistant (§07) — el usuario sigue revisando y confirmando en el mismo formulario de siempre. */
+  const handleOpenWithDraft = useCallback((patch: Partial<Product>) => {
+    setForm({ ...EMPTY_FORM, ...patch })
     setEditingId(null)
     setModalOpen(true)
   }, [])
@@ -217,6 +239,7 @@ export function useProducts() {
     handleEdit,
     handleDelete,
     handleOpenNew,
+    handleOpenWithDraft,
     handleCloseModal,
     loadProducts,
     importing,

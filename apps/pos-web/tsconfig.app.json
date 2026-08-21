@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    // Los archivos de `web/src` que se consumen por alias entran al programa de
+    // TypeScript. Sus reglas de estilo son las del Admin Web, no las de este
+    // paquete, así que aquí se comprueban tipos y el lint de variables sin usar
+    // queda a cargo de ESLint sobre `src/`.
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+    "paths": {
+      "~/*": ["./src/*"],
+      "@web/*": ["../../web/src/*"],
+      "@/*": ["../../web/src/*"]
+    }
+  },
+  "include": ["src"],
+  "exclude": ["../../web/src/**/*.spec.ts", "../../web/src/**/*.test.ts"]
+}

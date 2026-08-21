@@ -1,4 +1,4 @@
-import { IsEnum, IsNumber, IsObject, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsEnum, IsNumber, IsObject, IsOptional, IsString, MaxLength, Min, Length } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -38,4 +38,14 @@ export class CreateCashCountDto {
   @IsString()
   @MaxLength(500)
   reason?: string;
+
+  /**
+   * PIN del empleado que autoriza. Solo hace falta cuando el usuario de la
+   * sesión no tiene el permiso por sí mismo; el servidor decide, no el cliente.
+   */
+  @ApiPropertyOptional({ description: 'PIN del supervisor que autoriza la operación' })
+  @IsOptional()
+  @IsString()
+  @Length(4, 12)
+  authorizerPin?: string;
 }

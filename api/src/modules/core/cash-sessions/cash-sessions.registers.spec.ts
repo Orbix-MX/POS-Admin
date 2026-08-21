@@ -15,8 +15,8 @@ const TENANT = 'tenant-1';
 const BRANCH = 'branch-1';
 
 interface Opts {
-  /** Cajas activas que ya existen en la sucursal. */
-  registers?: { id: string; name: string }[];
+  /** Cajas activas que ya existen en la sucursal. `busy` = tiene sesión viva. */
+  registers?: { id: string; name: string; busy?: boolean }[];
   /** Sesión viva encontrada en el pre-chequeo. */
   liveSession?: { id: string } | null;
 }
@@ -28,6 +28,8 @@ function build({ registers = [{ id: 'reg-1', name: 'Caja 1' }], liveSession = nu
   const registerCreate = jest.fn().mockResolvedValue({ id: 'reg-nuevo' });
 
   const prisma = {
+    // SUPER_ADMIN: `resolveCashAuthorizer` no pide PIN ni consulta permisos.
+    user: { findUnique: jest.fn().mockResolvedValue({ role: 'SUPER_ADMIN' }) },
     cashSession: {
       findFirst: jest.fn().mockResolvedValue(liveSession),
       create: sessionCreate,
@@ -37,7 +39,15 @@ function build({ registers = [{ id: 'reg-1', name: 'Caja 1' }], liveSession = nu
         if (where.id) return Promise.resolve(registers.find((r) => r.id === where.id) ?? null);
         return Promise.resolve(registers[0] ?? null);
       }),
-      findMany: jest.fn().mockResolvedValue(registers),
+      // `resolveCashRegister` elige la primera caja libre, así que el mock tiene
+      // que decir cuáles están ocupadas. Una sesión viva en el pre-chequeo
+      // implica que su caja lo está.
+      findMany: jest.fn().mockResolvedValue(
+        registers.map((r) => ({
+          ...r,
+          sessions: r.busy ?? (liveSession ? registers[0]?.id === r.id : false) ? [{ id: 'cs-viva' }] : [],
+        })),
+      ),
       create: registerCreate,
     },
     $transaction: jest.fn((cb: (t: unknown) => Promise<unknown>) =>
@@ -50,6 +60,8 @@ function build({ registers = [{ id: 'reg-1', name: 'Caja 1' }], liveSession = nu
     { requireTenantId: () => TENANT, getBranchId: () => BRANCH } as never,
     { getUserId: () => 'user-1' } as never,
     { log: jest.fn() } as never,
+    { assertCanOpenCashSession: jest.fn(), getCashSessionCapacity: jest.fn() } as never,
+    { get: () => 'test-secret' } as never,
   );
 
   return { service, sessionCreate, registerCreate, prisma };
@@ -61,9 +73,38 @@ describe('CashSessionsService.open — caja física (Fase 8)', () => {
   it('sin caja indicada usa la primera activa de la sucursal', async () => {
     const { service, sessionCreate } = build();
 
-    await service.open(dto as never);
+    await service.open(dto);
 
     expect(sessionCreate.mock.calls[0][0].data.cashRegisterId).toBe('reg-1');
+  });
+
+  it('con la primera caja ocupada abre en la siguiente libre', async () => {
+    // El bug que motivó el cambio: se tomaba la primera caja a secas, así que el
+    // segundo cajero de la sucursal chocaba con la sesión del primero y la
+    // sucursal quedaba con una sola caja operable.
+    const { service, sessionCreate } = build({
+      registers: [
+        { id: 'reg-1', name: 'Caja 1', busy: true },
+        { id: 'reg-2', name: 'Caja 2' },
+      ],
+    });
+
+    await service.open(dto);
+
+    expect(sessionCreate.mock.calls[0][0].data.cashRegisterId).toBe('reg-2');
+  });
+
+  it('con todas las cajas ocupadas pide cerrar una en vez de crear otra', async () => {
+    const { service, registerCreate, sessionCreate } = build({
+      registers: [
+        { id: 'reg-1', name: 'Caja 1', busy: true },
+        { id: 'reg-2', name: 'Caja 2', busy: true },
+      ],
+    });
+
+    await expect(service.open(dto)).rejects.toThrow(BadRequestException);
+    expect(registerCreate).not.toHaveBeenCalled();
+    expect(sessionCreate).not.toHaveBeenCalled();
   });
 
   it('abre en la caja indicada cuando hay varias en la sucursal', async () => {
@@ -74,7 +115,7 @@ describe('CashSessionsService.open — caja física (Fase 8)', () => {
       ],
     });
 
-    await service.open({ ...dto, cashRegisterId: 'reg-2' } as never);
+    await service.open({ ...dto, cashRegisterId: 'reg-2' });
 
     expect(sessionCreate.mock.calls[0][0].data.cashRegisterId).toBe('reg-2');
   });
@@ -83,7 +124,7 @@ describe('CashSessionsService.open — caja física (Fase 8)', () => {
     const { service, sessionCreate } = build();
 
     await expect(
-      service.open({ ...dto, cashRegisterId: 'reg-fantasma' } as never),
+      service.open({ ...dto, cashRegisterId: 'reg-fantasma' }),
     ).rejects.toThrow(NotFoundException);
     expect(sessionCreate).not.toHaveBeenCalled();
   });
@@ -91,7 +132,7 @@ describe('CashSessionsService.open — caja física (Fase 8)', () => {
   it('sucursal sin cajas: crea "Caja 1" para no exigir un alta manual previa', async () => {
     const { service, registerCreate, sessionCreate } = build({ registers: [] });
 
-    await service.open(dto as never);
+    await service.open(dto);
 
     expect(registerCreate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ name: 'Caja 1', branchId: BRANCH }) }),
@@ -109,7 +150,7 @@ describe('CashSessionsService.open — caja física (Fase 8)', () => {
   it('el pre-chequeo mira la caja, no la sucursal, y excluye solo las CERRADAS', async () => {
     const { service, prisma } = build();
 
-    await service.open(dto as never);
+    await service.open(dto);
 
     expect(prisma.cashSession.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({

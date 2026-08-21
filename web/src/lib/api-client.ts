@@ -1,5 +1,6 @@
 ﻿import axios from 'axios'
-import { getAccessToken, clearAccessToken } from '@/services/core/auth-service'
+import { getAccessToken, clearAccessToken, clearRefreshToken, getRefreshToken } from '@/services/core/auth-service'
+import { refreshSession } from '@/lib/session-refresh'
 import {
   getOperatorToken,
   clearOperatorToken,
@@ -35,7 +36,7 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   response => response,
-  error => {
+  async error => {
     if (error.response?.status === 401) {
       // 401 en ruta de operador → expira SOLO la sesión de operador (re-PIN),
       // sin tocar la sesión administrativa ni recargar la app.
@@ -45,7 +46,40 @@ api.interceptors.response.use(
         window.dispatchEvent(new CustomEvent(OPERATOR_EXPIRED_EVENT))
         return Promise.reject(error)
       }
+      // 401 en el propio flujo de acceso = credenciales incorrectas, no sesión
+      // expirada: recargar aquí borraría el formulario antes de que la pantalla
+      // pueda mostrar el mensaje. Se deja pasar el error al llamador.
+      // Mismo criterio que el `isAuthFlow` de TENANT_SUSPENDED, más abajo.
+      //
+      // `oauth/exchange` y `refresh` entran por la misma razón y una más:
+      // recargar con el ticket todavía en la URL relanza el canje, que vuelve a
+      // fallar, que recarga otra vez — un bucle infinito.
+      const isAuthFlow =
+        url.includes('/auth/login') ||
+        url.includes('/auth/select-tenant') ||
+        url.includes('/auth/oauth/exchange') ||
+        url.includes('/auth/refresh')
+      if (isAuthFlow) {
+        return Promise.reject(error)
+      }
+
+      // Access token vencido: se renueva con el refresh token y se reintenta la
+      // petición una sola vez. `_retry` corta el ciclo si el token nuevo también
+      // da 401 (p. ej. el permiso se revocó de verdad).
+      const config = error.config ?? {}
+      if (!config._retry && getRefreshToken()) {
+        config._retry = true
+        try {
+          const accessToken = await refreshSession()
+          config.headers = { ...config.headers, Authorization: `Bearer ${accessToken}` }
+          return api.request(config)
+        } catch {
+          // Cae al cierre de sesión de abajo.
+        }
+      }
+
       clearAccessToken()
+      clearRefreshToken()
       window.location.reload()
     }
     if (error.response?.status === 403 && error.response?.data?.code === 'TENANT_SUSPENDED') {
@@ -53,6 +87,7 @@ api.interceptors.response.use(
       const isAuthFlow = url.includes('/auth/login') || url.includes('/auth/select-tenant')
       if (!isAuthFlow) {
         clearAccessToken()
+        clearRefreshToken()
         window.dispatchEvent(new CustomEvent('tenant:suspended'))
       }
     }

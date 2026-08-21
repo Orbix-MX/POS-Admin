@@ -9,6 +9,7 @@ import { RefreshTokenService } from './services/refresh-token.service';
 import { LicenseService } from '../../../common/services/license.service';
 import { PlanLimitsService } from '../../../common/services/plan-limits.service';
 import { TokenBlacklistService } from './services/token-blacklist.service';
+import { OAuthTicketService } from './services/oauth-ticket.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -35,6 +36,12 @@ describe('AuthService', () => {
     }),
   };
 
+  const mockOAuthTicketService = {
+    issue: jest.fn().mockResolvedValue('test-ticket'),
+    consume: jest.fn(),
+    purgeExpired: jest.fn(),
+  };
+
   const mockRefreshTokenService = {
     issue: jest.fn().mockResolvedValue('test-refresh-token'),
     rotate: jest.fn(),
@@ -57,6 +64,7 @@ describe('AuthService', () => {
       providers: [
         AuthService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: OAuthTicketService, useValue: mockOAuthTicketService },
         { provide: JwtService, useValue: mockJwtService },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: RefreshTokenService, useValue: mockRefreshTokenService },

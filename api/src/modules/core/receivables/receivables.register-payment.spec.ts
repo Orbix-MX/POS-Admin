@@ -93,7 +93,7 @@ describe('ReceivablesService.registerPayment — montos y moneda (Fase 7)', () =
   it('cobro en efectivo: caja +200 y el saldo de CxC baja de 500 a 300', async () => {
     const { service, cashMovementCreate, tx } = build('branch-A');
 
-    await service.registerPayment('ar-1', { amount: 200, paymentMethod: 'CASH' } as never);
+    await service.registerPayment('ar-1', { amount: 200, paymentMethod: 'CASH' });
 
     const mov = cashMovementCreate.mock.calls[0][0].data;
     expect(mov.type).toBe('CXC_PAYMENT');
@@ -109,7 +109,7 @@ describe('ReceivablesService.registerPayment — montos y moneda (Fase 7)', () =
   it('cobro con tarjeta no entra como efectivo pero sí abona a CxC', async () => {
     const { service, cashMovementCreate, tx } = build('branch-A');
 
-    await service.registerPayment('ar-1', { amount: 200, paymentMethod: 'CARD' } as never);
+    await service.registerPayment('ar-1', { amount: 200, paymentMethod: 'CARD' });
 
     expect(cashMovementCreate.mock.calls[0][0].data.paymentMethod).toBe('CARD');
     expect(tx.accountReceivable.update).toHaveBeenCalledWith(

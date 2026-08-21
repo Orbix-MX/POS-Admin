@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { InventoryConsumptionEngine } from './inventory-consumption.engine';
 import { InventoryEngine } from './inventory.engine';
+import { VariantInventoryResolver } from './variant-inventory.resolver';
 
 /**
  * Shared module exposing the inventory engines. Imported by any module that
@@ -13,7 +14,7 @@ import { InventoryEngine } from './inventory.engine';
  *   ningún llamador.
  */
 @Module({
-  providers: [InventoryConsumptionEngine, InventoryEngine],
-  exports: [InventoryConsumptionEngine, InventoryEngine],
+  providers: [InventoryConsumptionEngine, InventoryEngine, VariantInventoryResolver],
+  exports: [InventoryConsumptionEngine, InventoryEngine, VariantInventoryResolver],
 })
 export class InventoryModule {}

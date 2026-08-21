@@ -7,6 +7,7 @@ import { CreatePurchaseOrderDto } from './dto/create-purchase-order.dto';
 import { UpdatePurchaseOrderDto } from './dto/update-purchase-order.dto';
 import { QueryPurchaseOrdersDto } from './dto/query-purchase-orders.dto';
 import { ReceivePurchaseOrderDto } from './dto/receive-purchase-order.dto';
+import { VariantInventoryResolver } from '../inventory/variant-inventory.resolver';
 
 @Injectable()
 export class PurchasesService {
@@ -14,6 +15,7 @@ export class PurchasesService {
     private prisma: PrismaService,
     private tenantContext: TenantContextService,
     private auditContext: AuditContextService,
+    private variants: VariantInventoryResolver,
   ) {}
 
   async create(dto: CreatePurchaseOrderDto) {
@@ -317,14 +319,30 @@ export class PurchasesService {
         const orderItem = orderItemsByProduct.get(ri.productId)!;
         const unitCost = Number(orderItem.unitCost);
 
-        // Get current product state for cost calculation
+        // El costeo promedio ponderado ahora es por (sucursal, variante): cada
+        // sucursal lleva su propia base de costo, que es lo correcto cuando el
+        // mismo producto se compra a distintos precios en distintas plazas.
+        const variantId = await this.variants.ensureDefaultVariantId(tx, ri.productId);
+        const targetBranchId =
+          effectiveBranchId ?? (await this.variants.resolveBranchId(tx, ri.productId));
+
+        const currentRow =
+          variantId && targetBranchId
+            ? await tx.branchInventory.findUnique({
+                where: { branchId_variantId: { branchId: targetBranchId, variantId } },
+                select: { stock: true, avgCost: true },
+              })
+            : null;
+
+        // Fallback al producto mientras existan filas sin sembrar (fase expand).
         const currentProduct = await tx.product.findUnique({
           where: { id: ri.productId },
           select: { stock: true, avgCost: true },
         });
 
-        const currentStock = currentProduct?.stock ?? 0;
-        const currentAvgCost = currentProduct?.avgCost ? Number(currentProduct.avgCost) : unitCost;
+        const currentStock = currentRow?.stock ?? currentProduct?.stock ?? 0;
+        const currentAvgCostRaw = currentRow?.avgCost ?? currentProduct?.avgCost;
+        const currentAvgCost = currentAvgCostRaw ? Number(currentAvgCostRaw) : unitCost;
 
         const newAvgCost =
           currentStock + ri.quantityReceived > 0
@@ -332,7 +350,27 @@ export class PurchasesService {
               (currentStock + ri.quantityReceived)
             : unitCost;
 
-        // c. Increment product global stock + update costs
+        // c. Upsert de la fila autoritativa (sucursal, variante)
+        if (variantId && targetBranchId) {
+          await tx.branchInventory.upsert({
+            where: { branchId_variantId: { branchId: targetBranchId, variantId } },
+            update: {
+              stock: { increment: ri.quantityReceived },
+              lastCost: unitCost,
+              avgCost: newAvgCost,
+            },
+            create: {
+              branchId: targetBranchId,
+              productId: ri.productId,
+              variantId,
+              stock: ri.quantityReceived,
+              lastCost: unitCost,
+              avgCost: newAvgCost,
+            },
+          });
+        }
+
+        // d. Espejo en el producto (legacy, se elimina en la fase contract)
         await tx.product.update({
           where: { id: ri.productId },
           data: {
@@ -341,19 +379,6 @@ export class PurchasesService {
             avgCost: newAvgCost,
           },
         });
-
-        // d. Upsert branch inventory if branchId available (DTO or JWT context)
-        if (effectiveBranchId) {
-          await tx.branchInventory.upsert({
-            where: { branchId_productId: { branchId: effectiveBranchId, productId: ri.productId } },
-            update: { stock: { increment: ri.quantityReceived } },
-            create: {
-              branchId: effectiveBranchId,
-              productId: ri.productId,
-              stock: ri.quantityReceived,
-            },
-          });
-        }
 
         // e. Create inventory movement
         await tx.inventoryMovement.create({

@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { BulkUpdateInventoryDto, TransferStockDto } from './dto/update-inventory.dto';
+import { VariantInventoryResolver } from '../../retail/inventory/variant-inventory.resolver';
 import { Branch, BranchInventory } from '@prisma/client';
 
 @Injectable()
@@ -18,6 +19,7 @@ export class BranchesService {
     private tenantContext: TenantContextService,
     private audit: AuditService,
     private planLimits: PlanLimitsService,
+    private variants: VariantInventoryResolver,
   ) {}
 
   async create(dto: CreateBranchDto): Promise<Branch> {
@@ -152,8 +154,13 @@ export class BranchesService {
     const branch = await this.prisma.branch.findFirst({ where: { id: branchId, tenantId } });
     if (!branch) throw new NotFoundException('Branch not found');
 
+    // El inventario se lleva por variante; esta API sigue siendo por producto,
+    // así que apunta a la variante default (la línea "el producto en sí").
+    const variantId = await this.variants.ensureDefaultVariantId(this.prisma, productId);
+    if (!variantId) throw new NotFoundException('Product not found');
+
     const existing = await this.prisma.branchInventory.findUnique({
-      where: { branchId_productId: { branchId, productId } },
+      where: { branchId_variantId: { branchId, variantId } },
       select: { stock: true },
     });
 
@@ -164,9 +171,9 @@ export class BranchesService {
     // que el ajuste manual quede trazable (antes solo existía audit.log).
     const result = await this.prisma.$transaction(async (tx) => {
       const upserted = await tx.branchInventory.upsert({
-        where: { branchId_productId: { branchId, productId } },
+        where: { branchId_variantId: { branchId, variantId } },
         update: { stock },
-        create: { branchId, productId, stock },
+        create: { branchId, productId, variantId, stock },
       });
       if (delta !== 0) {
         await tx.inventoryMovement.create({
@@ -211,14 +218,25 @@ export class BranchesService {
     });
     const prevByProduct = new Map(existingRows.map((r) => [r.productId, r.stock]));
 
+    // Resuelto fuera de la transacción para no alargarla: el conteo físico es
+    // por producto, pero cada fila cuelga de la variante default.
+    const variantByProduct = new Map<string, string>();
+    for (const productId of productIds) {
+      const variantId = await this.variants.ensureDefaultVariantId(this.prisma, productId);
+      if (variantId) variantByProduct.set(productId, variantId);
+    }
+
     await this.prisma.$transaction(
       dto.items.flatMap((item) => {
+        const variantId = variantByProduct.get(item.productId);
+        if (!variantId) return [];
+
         const delta = item.stock - (prevByProduct.get(item.productId) ?? 0);
         const ops: ReturnType<typeof this.prisma.branchInventory.upsert>[] = [
           this.prisma.branchInventory.upsert({
-            where: { branchId_productId: { branchId, productId: item.productId } },
+            where: { branchId_variantId: { branchId, variantId } },
             update: { stock: item.stock },
-            create: { branchId, productId: item.productId, stock: item.stock },
+            create: { branchId, productId: item.productId, variantId, stock: item.stock },
           }),
         ];
         if (delta !== 0) {
@@ -250,8 +268,11 @@ export class BranchesService {
     ]);
     if (!from || !to) throw new NotFoundException('Branch not found');
 
+    const variantId = await this.variants.ensureDefaultVariantId(this.prisma, dto.productId);
+    if (!variantId) throw new NotFoundException('Product not found');
+
     const fromInv = await this.prisma.branchInventory.findUnique({
-      where: { branchId_productId: { branchId: fromBranchId, productId: dto.productId } },
+      where: { branchId_variantId: { branchId: fromBranchId, variantId } },
     });
     if (!fromInv || fromInv.stock < dto.quantity) {
       throw new BadRequestException('Insufficient stock in source branch');
@@ -264,13 +285,18 @@ export class BranchesService {
 
     await this.prisma.$transaction([
       this.prisma.branchInventory.update({
-        where: { branchId_productId: { branchId: fromBranchId, productId: dto.productId } },
+        where: { branchId_variantId: { branchId: fromBranchId, variantId } },
         data: { stock: { decrement: dto.quantity } },
       }),
       this.prisma.branchInventory.upsert({
-        where: { branchId_productId: { branchId: dto.toBranchId, productId: dto.productId } },
+        where: { branchId_variantId: { branchId: dto.toBranchId, variantId } },
         update: { stock: { increment: dto.quantity } },
-        create: { branchId: dto.toBranchId, productId: dto.productId, stock: dto.quantity },
+        create: {
+          branchId: dto.toBranchId,
+          productId: dto.productId,
+          variantId,
+          stock: dto.quantity,
+        },
       }),
       this.prisma.inventoryMovement.create({
         data: {

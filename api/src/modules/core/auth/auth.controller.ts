@@ -1,4 +1,19 @@
-import { Controller, Post, Get, Patch, Body, Param, Headers, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Body,
+  Param,
+  Query,
+  Req,
+  Res,
+  Headers,
+  UseGuards,
+  HttpException,
+} from '@nestjs/common';
+import type { Request, Response } from 'express';
+import { ConfigService } from '@nestjs/config';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
@@ -13,6 +28,10 @@ import {
   RefreshResponseDto,
 } from './dto/auth-response.dto';
 import { RefreshTokenDto, LogoutDto } from './dto/refresh-token.dto';
+import { ExchangeOAuthTicketDto } from './dto/exchange-oauth-ticket.dto';
+import { GoogleOAuthGuard } from './guards/google-oauth.guard';
+import type { GoogleProfile } from './strategies/google.strategy';
+import { OAuthTicketService } from './services/oauth-ticket.service';
 import { Public } from '../../../common/decorators/public.decorator';
 import { AllowInvalidLicense } from '../../../common/decorators/allow-invalid-license.decorator';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
@@ -35,7 +54,11 @@ type AuthUser = {
 // is still gated inside selectTenant.
 @AllowInvalidLicense()
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(
+    private authService: AuthService,
+    private oauthTickets: OAuthTicketService,
+    private config: ConfigService,
+  ) {}
 
   @Public()
   @UseGuards(ThrottlerGuard)
@@ -74,6 +97,73 @@ export class AuthController {
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : '';
     await this.authService.logout(token, dto?.refreshToken);
     return { message: 'Logged out successfully' };
+  }
+
+  // ── Google OAuth (authorization code + redirect) ───────────────────────────
+  //
+  //   navegador → GET /auth/google?redirect=<app>
+  //     → consentimiento en Google
+  //       → GET /auth/google/callback
+  //         → 302 <app>/auth/callback?ticket=<uso único>
+  //           → POST /auth/oauth/exchange  → sesión (igual que /auth/login)
+  //
+  // El JWT nunca viaja en la URL: solo el ticket, de un solo uso y vida corta.
+
+  @Public()
+  @UseGuards(GoogleOAuthGuard)
+  @Get('google')
+  @ApiOperation({ summary: 'Inicia el flujo de acceso con Google (redirige a Google)' })
+  googleAuth(): void {
+    // El guard redirige; este cuerpo nunca se ejecuta.
+  }
+
+  @Public()
+  @UseGuards(GoogleOAuthGuard)
+  @Get('google/callback')
+  @ApiOperation({ summary: 'Callback de Google — redirige al frontend con un ticket de un solo uso' })
+  async googleCallback(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Query('state') state?: string,
+  ): Promise<void> {
+    const target = this.resolveRedirect(state);
+
+    try {
+      const profile = req.user as GoogleProfile;
+      const userId = await this.authService.resolveGoogleIdentity(profile);
+      const ticket = await this.oauthTickets.issue(userId);
+      res.redirect(`${target}/auth/callback?ticket=${encodeURIComponent(ticket)}`);
+    } catch (e) {
+      const message = e instanceof HttpException ? (e.getResponse() as { message?: string })?.message : undefined;
+      res.redirect(
+        `${target}/auth/callback?error=${encodeURIComponent(
+          message ?? 'No fue posible completar el acceso con Google',
+        )}`,
+      );
+    }
+  }
+
+  @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('oauth/exchange')
+  @ApiOperation({ summary: 'Canjea el ticket del callback por la sesión (JWT preliminar + tenants)' })
+  exchangeOAuthTicket(@Body() dto: ExchangeOAuthTicketDto): Promise<AuthResponseDto> {
+    return this.authService.exchangeOAuthTicket(dto.ticket);
+  }
+
+  /**
+   * Solo se redirige a orígenes de la allowlist. Sin esta validación el `state`
+   * convertiría el callback en un open redirect con un ticket de sesión válido
+   * adjunto — es decir, en un robo de cuenta de un clic.
+   */
+  private resolveRedirect(state?: string): string {
+    const fallback = this.config.get<string>('googleOAuth.defaultRedirect') as string;
+    if (!state) return fallback;
+
+    const allowed = this.config.get<string[]>('googleOAuth.allowedRedirects') ?? [];
+    const candidate = state.trim().replace(/\/$/, '');
+    return allowed.includes(candidate) ? candidate : fallback;
   }
 
   @Get('me')

@@ -34,10 +34,61 @@ async function bootstrap() {
     origin: async (origin, callback) => {
       // Permitir requests sin Origin (curl, server-to-server, healthchecks)
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+
+      const normalizedOrigin = origin.toLowerCase();
+
+      if (allowedOrigins.includes('*') || allowedOrigins.includes(normalizedOrigin)) {
         return callback(null, true);
       }
+
       try {
+        const url = new URL(origin);
+        const host = url.hostname.toLowerCase();
+
+        // --------------------------------------------------------------------
+        // Producción
+        // --------------------------------------------------------------------
+        //
+        // https://orbixmx.com
+        // https://www.orbixmx.com
+        // https://cliente.orbixmx.com
+        //
+        const isOrbixProduction =
+          url.protocol === 'https:' &&
+          (
+            host === 'orbixmx.com' ||
+            host === 'www.orbixmx.com' ||
+            host.endsWith('.orbixmx.com')
+          );
+
+        if (isOrbixProduction) {
+          return callback(null, true);
+        }
+
+        // --------------------------------------------------------------------
+        // Desarrollo local
+        // --------------------------------------------------------------------
+        //
+        // http://cliente.orbixmx.local:5173
+        // http://app.orbixmx.local:5173
+        //
+        const isOrbixLocal =
+          url.protocol === 'http:' &&
+          host.endsWith('.orbixmx.local');
+
+        if (isOrbixLocal) {
+          return callback(null, true);
+        }
+
+        // --------------------------------------------------------------------
+        // Dominios personalizados
+        // --------------------------------------------------------------------
+        //
+        // Ejemplo:
+        // https://www.tienda.com
+        //
+        // Estos continúan validándose contra la tabla Domain.
+        //
         if (await domainResolver.isKnownStorefrontOrigin(origin)) {
           return callback(null, true);
         }

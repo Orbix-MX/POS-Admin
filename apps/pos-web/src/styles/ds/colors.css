@@ -1,0 +1,73 @@
+/* Orbix Design System — tokens/colors.css
+   Copia fiel del proyecto de diseño `orbix-design-system-74bb2898`.
+   No editar valores: sincronizar contra el design system. */
+:root{
+--brand-blue-50:oklch(0.97 0.02 250);
+--brand-blue-100:oklch(0.93 0.04 250);
+--brand-blue-300:oklch(0.78 0.10 250);
+--brand-blue-500:oklch(0.52 0.18 250);
+--brand-blue-600:oklch(0.46 0.18 250);
+--brand-blue-700:oklch(0.38 0.16 250);
+--brand-teal-400:oklch(0.80 0.14 190);
+--neutral-0:oklch(1 0 0);
+--neutral-50:oklch(0.97 0.005 250);
+--neutral-100:oklch(0.96 0.004 250);
+--neutral-200:oklch(0.91 0.005 250);
+--neutral-400:oklch(0.70 0.01 250);
+--neutral-500:oklch(0.55 0.01 250);
+--neutral-900:oklch(0.15 0.01 250);
+--semantic-green-bg:#dcfce7;--semantic-green-fg:#166534;
+--semantic-yellow-bg:#fef9c3;--semantic-yellow-fg:#854d0e;
+--semantic-red-bg:#fee2e2;--semantic-red-fg:#991b1b;
+--semantic-blue-bg:#dbeafe;--semantic-blue-fg:#1e40af;
+--semantic-gray-bg:#f3f4f6;--semantic-gray-fg:#6b7280;
+--background:var(--neutral-50);
+--foreground:var(--neutral-900);
+--card:var(--neutral-0);
+--card-foreground:var(--neutral-900);
+--popover:var(--neutral-0);
+--popover-foreground:var(--neutral-900);
+--primary:var(--brand-blue-500);
+--primary-foreground:var(--neutral-0);
+--secondary:oklch(0.96 0.04 250);
+--secondary-foreground:var(--neutral-900);
+--muted:var(--neutral-100);
+--muted-foreground:var(--neutral-500);
+--accent:oklch(0.96 0.04 250);
+--accent-foreground:var(--neutral-900);
+--destructive:oklch(0.577 0.245 27.325);
+--border:var(--neutral-200);
+--input:var(--neutral-200);
+--ring:var(--brand-blue-500);
+--chart-1:oklch(0.6 0.2 260);
+--chart-2:oklch(0.65 0.15 150);
+--chart-3:oklch(0.7 0.15 50);
+--chart-4:oklch(0.65 0.2 310);
+--chart-5:oklch(0.55 0.2 30);
+--sidebar:var(--neutral-0);
+--sidebar-foreground:var(--neutral-900);
+--sidebar-border:var(--neutral-200);
+}
+.dark{
+--background:oklch(0.12 0.01 250);
+--foreground:oklch(0.95 0.005 250);
+--card:oklch(0.17 0.01 250);
+--card-foreground:oklch(0.95 0.005 250);
+--popover:oklch(0.17 0.01 250);
+--popover-foreground:oklch(0.95 0.005 250);
+--primary:oklch(0.65 0.18 250);
+--primary-foreground:oklch(1 0 0);
+--secondary:oklch(0.22 0.06 250);
+--secondary-foreground:oklch(0.95 0.005 250);
+--muted:oklch(0.21 0.01 250);
+--muted-foreground:oklch(0.55 0.01 250);
+--accent:oklch(0.22 0.06 250);
+--accent-foreground:oklch(0.95 0.005 250);
+--destructive:oklch(0.704 0.191 22.216);
+--border:oklch(0.26 0.01 250);
+--input:oklch(0.26 0.01 250);
+--ring:oklch(0.65 0.18 250);
+--sidebar:oklch(0.17 0.01 250);
+--sidebar-foreground:oklch(0.95 0.005 250);
+--sidebar-border:oklch(0.26 0.01 250);
+}
