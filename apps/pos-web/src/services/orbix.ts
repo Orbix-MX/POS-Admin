@@ -48,13 +48,26 @@ export {
   fetchActiveCashSession,
   openCashSession,
   closeCashSession,
+  listCashRegisters,
+  createCashRegister,
+  fetchCashSessionCapacity,
+  withdrawCash,
+  createCashCount,
+  startCashCount,
+  resumeCashSession,
 } from '@web/services/core/caja-service'
 export type {
   ApiCashSession,
   ApiCashMovement,
   CashSessionStatus,
   OpenSessionInput,
+  CloseSessionInput,
+  CashCountInput,
+  WithdrawCashInput,
+  ApiCashCount,
   SessionSummary,
+  CashRegister,
+  CashSessionCapacity,
 } from '@web/services/core/caja-service'
 
 // ---- catálogo ----

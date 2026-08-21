@@ -3,8 +3,10 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { RequireAuth, RequireBranch, RequireOpenCash } from './guards'
 import { LoadingState } from '~/components/shared/StateBlock'
 import { LoginScreen } from '~/modules/auth/LoginScreen'
+import { OAuthCallbackScreen } from '~/modules/auth/OAuthCallbackScreen'
 import { SelectContextScreen } from '~/modules/session/SelectContextScreen'
 import { OpenCashScreen } from '~/modules/cash/OpenCashScreen'
+import { CashScreen } from '~/modules/cash/CashScreen'
 import { TenantSuspendedScreen } from '~/modules/auth/TenantSuspendedScreen'
 
 /**
@@ -22,6 +24,7 @@ export function AppRouter() {
     <Suspense fallback={<LoadingState label="Cargando…" minHeight="100vh" />}>
       <Routes>
         <Route path="/login" element={<LoginScreen />} />
+        <Route path="/auth/callback" element={<OAuthCallbackScreen />} />
         <Route path="/suspendido" element={<TenantSuspendedScreen />} />
 
         <Route
@@ -68,8 +71,21 @@ export function AppRouter() {
           }
         />
 
+        {/* Caja del turno: retiro, arqueo y corte desde la propia terminal. No
+            exige caja vendible —una sesión EN_ARQUEO se opera justo desde aquí—. */}
+        <Route
+          path="/caja"
+          element={
+            <RequireAuth>
+              <RequireBranch>
+                <CashScreen />
+              </RequireBranch>
+            </RequireAuth>
+          }
+        />
+
         {/* Secciones del menú lateral aún sin pantalla diseñada. */}
-        {['inicio', 'caja', 'tickets', 'productos', 'clientes', 'reportes'].map((section) => (
+        {['inicio', 'tickets', 'productos', 'clientes', 'reportes'].map((section) => (
           <Route
             key={section}
             path={`/${section}`}

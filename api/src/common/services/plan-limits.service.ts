@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { getMaxUsersForPlan, getMaxBranchesForPlan } from '@orbix/types';
+import { getMaxUsersForPlan, getMaxBranchesForPlan, getMaxCashSessionsForPlan } from '@orbix/types';
 import { PrismaService } from '../../database/prisma.service';
 
 export interface BranchCapacity {
@@ -7,6 +7,13 @@ export interface BranchCapacity {
   maxBranches: number | null;
   activeBranches: number;
   extraBranchLimit: number;
+  hasCapacity: boolean;
+}
+
+export interface CashSessionCapacity {
+  /** null === unlimited */
+  maxSessions: number | null;
+  openSessions: number;
   hasCapacity: boolean;
 }
 
@@ -85,6 +92,46 @@ export class PlanLimitsService {
     const hasCapacity = maxBranches == null || activeBranches < maxBranches;
 
     return { maxBranches, activeBranches, extraBranchLimit: extra, hasCapacity };
+  }
+
+  /**
+   * Sesiones de caja abiertas ahora mismo en una sucursal, contra el tope.
+   *
+   * Se cuenta por sucursal y no por tenant: el tope describe cuántas cajas puede
+   * operar un local a la vez, así que una empresa con tres sucursales puede
+   * tener el triple de sesiones vivas sin salirse de su plan.
+   */
+  async getCashSessionCapacity(
+    tenantId: string,
+    branchId: string | null,
+  ): Promise<CashSessionCapacity> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { plan: true, cashSessionLimitOverride: true },
+    });
+    if (!tenant) throw new NotFoundException('Tenant not found');
+
+    const maxSessions = getMaxCashSessionsForPlan(tenant.plan, tenant.cashSessionLimitOverride);
+
+    const openSessions = await this.prisma.cashSession.count({
+      where: { tenantId, branchId, status: { not: 'CERRADA' } },
+    });
+
+    return {
+      maxSessions,
+      openSessions,
+      hasCapacity: maxSessions == null || openSessions < maxSessions,
+    };
+  }
+
+  async assertCanOpenCashSession(tenantId: string, branchId: string | null): Promise<void> {
+    const cap = await this.getCashSessionCapacity(tenantId, branchId);
+    if (!cap.hasCapacity) {
+      throw new BadRequestException(
+        `Esta sucursal ya tiene ${cap.openSessions} caja(s) abierta(s), el máximo de tu plan. ` +
+          'Cierra una para abrir otra.',
+      );
+    }
   }
 
   async assertCanAddBranch(tenantId: string): Promise<void> {

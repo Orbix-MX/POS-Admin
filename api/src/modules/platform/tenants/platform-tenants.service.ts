@@ -344,10 +344,20 @@ export class PlatformTenantsService {
     const tenant = await this.prisma.tenant.findUnique({ where: { id } });
     if (!tenant) throw new NotFoundException('Tenant not found');
 
-    const before = { userLimitOverride: tenant.userLimitOverride };
+    const before = {
+      userLimitOverride: tenant.userLimitOverride,
+      cashSessionLimitOverride: tenant.cashSessionLimitOverride,
+    };
+    // Cada límite solo se toca si viene en el DTO: un PATCH que ajusta usuarios
+    // no debe devolver el tope de cajas al valor del plan por omisión.
     const updated = await this.prisma.tenant.update({
       where: { id },
-      data: { userLimitOverride: dto.userLimitOverride ?? null },
+      data: {
+        ...('userLimitOverride' in dto && { userLimitOverride: dto.userLimitOverride ?? null }),
+        ...('cashSessionLimitOverride' in dto && {
+          cashSessionLimitOverride: dto.cashSessionLimitOverride ?? null,
+        }),
+      },
     });
 
     await this.prisma.platformAuditLog.create({
@@ -358,7 +368,10 @@ export class PlatformTenantsService {
         entityType: 'Tenant',
         entityId: id,
         before,
-        after: { userLimitOverride: dto.userLimitOverride },
+        after: {
+          userLimitOverride: dto.userLimitOverride,
+          cashSessionLimitOverride: dto.cashSessionLimitOverride,
+        },
       },
     });
 

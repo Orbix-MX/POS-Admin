@@ -232,6 +232,37 @@ export const PLAN_BRANCH_LIMITS: Record<TenantPlan, number | null> = {
   ENTERPRISE: null,
 }
 
+// ─── Cash sessions open at once, per branch ──────────────────────────────────
+//
+// Tope de sesiones de caja simultáneas en una misma sucursal. No limita cuántas
+// cajas físicas existen: limita cuántas pueden estar operando a la vez, que es
+// lo que consume licencia y lo que hay que cuadrar al cierre del día.
+
+export const PLAN_CASH_SESSION_LIMITS: Record<TenantPlan, number | null> = {
+  // Dos es el default del producto: hasta el plan más chico opera dos cajas a
+  // la vez. Restringir eso a una convertía el tope en un muro para el caso
+  // normal —un mostrador con dos terminales— en lugar de un límite comercial.
+  FREE:       2,
+  STARTER:    2,
+  PRO:        5,
+  PLUS:       15,
+  ENTERPRISE: null,
+}
+
+/**
+ * Max cash sessions open simultaneously in one branch.
+ * Returns `null` when unlimited. A positive `override` wins over the plan
+ * default (unlike branches, where the extra stacks) — platform sets an absolute
+ * number per tenant.
+ */
+export function getMaxCashSessionsForPlan(
+  plan: TenantPlan,
+  override?: number | null,
+): number | null {
+  if (override != null && override > 0) return override
+  return PLAN_CASH_SESSION_LIMITS[plan]
+}
+
 /**
  * Max active branches allowed for a tenant.
  * Returns `null` when unlimited. A positive `extraBranchLimit` adds to the

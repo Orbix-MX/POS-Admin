@@ -5,6 +5,7 @@ import {
   Clock, Eye, ChevronRight, Banknote, CreditCard, Wifi, Printer,
 } from 'lucide-react'
 import { DataTable, Pagination, type Column } from '@/components/shared/data-table'
+import { CashRegistersPanel } from '@/components/caja/cash-registers-panel'
 import { useCaja, type ApiCashSession } from '@/hooks/core/use-caja'
 import {
   MOVEMENT_TYPE_LABELS,
@@ -839,6 +840,9 @@ export function Caja() {
       ) : (
         <NoSessionBanner onOpen={() => hook.setOpenModalVisible(true)} />
       )}
+
+      {/* Cajas físicas de la sucursal */}
+      <CashRegistersPanel />
 
       {/* History table */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">

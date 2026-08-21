@@ -31,6 +31,16 @@ export class UpdateTenantLimitsDto {
   @IsInt()
   @Min(1)
   userLimitOverride?: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Cajas que pueden estar abiertas a la vez en una misma sucursal. Null vuelve al tope del plan.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  cashSessionLimitOverride?: number | null;
 }
 
 export class UpdateTenantProfileDto {

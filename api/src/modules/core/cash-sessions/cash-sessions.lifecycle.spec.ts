@@ -81,6 +81,8 @@ function build({ status = 'ABIERTA', movements = [], opening = 1000, threshold }
   };
 
   const prisma = {
+    // SUPER_ADMIN: `resolveCashAuthorizer` no pide PIN ni consulta permisos.
+    user: { findUnique: jest.fn().mockResolvedValue({ role: 'SUPER_ADMIN' }) },
     ...tx,
     $transaction: jest.fn((cb: (t: typeof tx) => Promise<unknown>) => cb(tx)),
   };
@@ -91,6 +93,8 @@ function build({ status = 'ABIERTA', movements = [], opening = 1000, threshold }
     { requireTenantId: () => TENANT, getBranchId: () => null } as never,
     { getUserId: () => 'user-1' } as never,
     { log: auditLog } as never,
+    { assertCanOpenCashSession: jest.fn(), getCashSessionCapacity: jest.fn() } as never,
+    { get: () => 'test-secret' } as never,
   );
 
   return { service, prisma, state, update, auditLog };
@@ -217,7 +221,10 @@ describe('Ciclo de caja — revisión del corte (CASH-011)', () => {
 describe('closeWithAuth — un autorizador inválido no desloguea al operador', () => {
   function buildAuth(user: unknown) {
     const prisma = {
-      user: { findFirst: jest.fn().mockResolvedValue(user) },
+      user: {
+      // `resolveCashAuthorizer` mira el rol del usuario actual: SUPER_ADMIN
+      // salta el RBAC, así que estas suites no necesitan PIN ni permisos.
+      findUnique: jest.fn().mockResolvedValue({ role: 'SUPER_ADMIN' }), findFirst: jest.fn().mockResolvedValue(user) },
       tenantMembership: { findFirst: jest.fn().mockResolvedValue(null) },
       cashSession: { updateMany: jest.fn(), update: jest.fn(), findFirst: jest.fn(), findFirstOrThrow: jest.fn() },
     };
@@ -226,6 +233,8 @@ describe('closeWithAuth — un autorizador inválido no desloguea al operador', 
       { requireTenantId: () => TENANT, getBranchId: () => null } as never,
       { getUserId: () => 'user-1' } as never,
       { log: jest.fn() } as never,
+      { assertCanOpenCashSession: jest.fn(), getCashSessionCapacity: jest.fn() } as never,
+      { get: () => 'test-secret' } as never,
     );
     return { service };
   }
@@ -260,7 +269,10 @@ describe('closeWithAuth — permiso dedicado para autorizar', () => {
   function buildPerms(permissionKeys: string[]) {
     const hash = require('bcrypt').hashSync('secreta', 4);
     const prisma = {
-      user: { findFirst: jest.fn().mockResolvedValue({ id: 'admin-1', role: 'STAFF', password: hash, email: 'jefe@x.com' }) },
+      user: {
+      // `resolveCashAuthorizer` mira el rol del usuario actual: SUPER_ADMIN
+      // salta el RBAC, así que estas suites no necesitan PIN ni permisos.
+      findUnique: jest.fn().mockResolvedValue({ role: 'SUPER_ADMIN' }), findFirst: jest.fn().mockResolvedValue({ id: 'admin-1', role: 'STAFF', password: hash, email: 'jefe@x.com' }) },
       tenantMembership: { findFirst: jest.fn().mockResolvedValue({ id: 'm-1' }) },
       userRoleAssignment: {
         findMany: jest.fn().mockResolvedValue([
@@ -275,6 +287,8 @@ describe('closeWithAuth — permiso dedicado para autorizar', () => {
       { requireTenantId: () => TENANT, getBranchId: () => null } as never,
       { getUserId: () => 'user-1' } as never,
       { log: jest.fn() } as never,
+      { assertCanOpenCashSession: jest.fn(), getCashSessionCapacity: jest.fn() } as never,
+      { get: () => 'test-secret' } as never,
     );
     return { service };
   }

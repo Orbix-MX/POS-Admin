@@ -1,8 +1,11 @@
-import { useAuthStore, useInitials, useShortName } from '~/stores/session-store'
+import { useAuthStore } from '~/stores/session-store'
 import { useCashStore, expectedCash } from '~/stores/cash-store'
 import { useNetworkStatus } from '~/app/providers/NetworkStatusProvider'
 import { BrandLockup } from '~/components/shared/Brand'
 import { money } from '~/utils/money'
+import { useState } from 'react'
+import { CashRegisterPicker } from '~/modules/cash/CashRegisterPicker'
+import { UserMenu } from './UserMenu'
 
 /**
  * Barra superior: identifica en todo momento empresa, sucursal, caja y usuario,
@@ -18,10 +21,9 @@ export function PosTopbar({
   onOpenCash: () => void
 }) {
   const branch = useAuthStore((s) => s.currentBranch)
-  const role = useAuthStore((s) => s.user?.role ?? '')
-  const initials = useInitials()
-  const shortName = useShortName()
   const session = useCashStore((s) => s.session)
+  const registerName = useCashStore((s) => s.registerName)
+  const [pickerOpen, setPickerOpen] = useState(false)
   const { online } = useNetworkStatus()
 
   const expected = expectedCash(session)
@@ -42,7 +44,12 @@ export function PosTopbar({
       <BrandLockup size="sm" />
       <div style={{ height: 22, width: 1, background: 'var(--border)' }} />
 
-      <div
+      {/* El chip abre el selector: la caja es del puesto, y un relevo que llega
+          en otro equipo necesita apuntar a la que le toca sin cerrar el turno. */}
+      <button
+        type="button"
+        onClick={() => setPickerOpen(true)}
+        title="Cambiar de caja"
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -52,6 +59,8 @@ export function PosTopbar({
           borderRadius: 999,
           padding: '5px 12px',
           minWidth: 0,
+          cursor: 'pointer',
+          fontFamily: 'inherit',
         }}
       >
         <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--brand-blue-700)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -59,9 +68,11 @@ export function PosTopbar({
         </span>
         <span style={{ width: 3, height: 3, borderRadius: '50%', background: 'var(--brand-blue-300)', flex: '0 0 auto' }} />
         <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--brand-blue-700)', whiteSpace: 'nowrap' }}>
-          {session?.status === 'ABIERTA' ? 'Caja abierta' : 'Caja'}
+          {registerName ?? (session?.status === 'ABIERTA' ? 'Caja abierta' : 'Caja')}
         </span>
-      </div>
+      </button>
+
+      <CashRegisterPicker open={pickerOpen} onClose={() => setPickerOpen(false)} />
 
       <div
         title={online ? 'Conectado al servidor' : 'Sin conexión: no se pueden registrar ventas'}
@@ -83,27 +94,7 @@ export function PosTopbar({
         <TopbarButton onClick={onOpenCash}>
           {expected != null ? `Efectivo esperado · ${money(expected)}` : 'Caja abierta'}
         </TopbarButton>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 6 }}>
-          <div
-            style={{
-              width: 30,
-              height: 30,
-              borderRadius: '50%',
-              background: 'var(--secondary)',
-              color: 'var(--brand-blue-700)',
-              display: 'grid',
-              placeItems: 'center',
-              fontSize: 12,
-              fontWeight: 700,
-            }}
-          >
-            {initials}
-          </div>
-          <div style={{ lineHeight: 1.15 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 700 }}>{shortName}</div>
-            <div style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>{role}</div>
-          </div>
-        </div>
+        <UserMenu />
       </div>
     </header>
   )

@@ -148,6 +148,9 @@ model Tenant {
   userLimitOverride Int?    @map("user_limit_override")
   // Extra branches added on top of the plan default (addons, upgrades, etc.)
   extraBranchLimit  Int?    @default(0) @map("extra_branch_limit")
+  // Cash sessions open at once per branch. Absolute override of the plan
+  // default (not additive), set from the platform panel.
+  cashSessionLimitOverride Int? @map("cash_session_limit_override")
   // Protected owner — cannot be deactivated.
   ownerUserId       String? @map("owner_user_id")
 
@@ -1702,6 +1705,10 @@ model CashSession {
   openedById         String?
   closedById         String?
   authorizedById     String?
+  /// Empleado que autorizó por PIN desde el POS. Es un `Employee` y no un
+  /// `User` porque un operador con PIN no necesita cuenta del sistema; para la
+  /// autorización con contraseña del Admin Web se sigue usando `authorizedById`.
+  authorizedByEmployeeId String? @map("authorized_by_employee_id")
   openedAt           DateTime          @default(now())
   closedAt           DateTime?
   createdAt          DateTime          @default(now())
@@ -1713,6 +1720,7 @@ model CashSession {
   closedBy     User?          @relation("CashSessionClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
   authorizedBy User?          @relation("CashSessionAuthorizedBy", fields: [authorizedById], references: [id], onDelete: SetNull)
   cashRegister CashRegister?  @relation(fields: [cashRegisterId], references: [id], onDelete: Restrict)
+  authorizedByEmployee Employee? @relation("CashSessionAuthorizedByEmployee", fields: [authorizedByEmployeeId], references: [id], onDelete: SetNull)
   movements    CashMovement[]
   counts       CashCount[]
 
@@ -1990,6 +1998,7 @@ model Employee {
   role         Role?            @relation("EmployeeRole", fields: [roleId], references: [id], onDelete: SetNull)
   branches     EmployeeBranch[]
   diningOrders DiningOrder[]    @relation("DiningOrderWaiter")
+  cashSessionsAuthorized CashSession[] @relation("CashSessionAuthorizedByEmployee")
   createdBy    User?            @relation("EmployeeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy    User?            @relation("EmployeeUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 

@@ -1,5 +1,7 @@
 ﻿import { Injectable, NotFoundException, BadRequestException, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+import { createHash } from 'crypto';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { AuditContextService } from '../../../common/context/audit-context.service';
@@ -12,10 +14,12 @@ import { QueryCashSessionsDto } from './dto/query-sessions.dto';
 import { WithdrawForSuppliesDto } from './dto/withdraw-supplies.dto';
 import { CreateCashCountDto } from './dto/create-count.dto';
 import { WithdrawCashDto } from './dto/withdraw-cash.dto';
+import { CreateCashRegisterDto, UpdateCashRegisterDto } from './dto/cash-register.dto';
 import { roundMoney } from '../../../common/utils/money.util';
 import { convertToBaseUnit } from '../../../common/helpers/unit-conversion';
 import { requireOpenSession } from '../../../common/helpers/cash-session.helper';
 import { AuditService } from '../../../common/services/audit.service';
+import { PlanLimitsService } from '../../../common/services/plan-limits.service';
 
 const CASH_INCOME_TYPES = ['SALE', 'CXC_PAYMENT', 'INCOME'] as const;
 const CASH_EXPENSE_TYPES = ['SUPPLIER_PAYMENT', 'EXPENSE', 'WITHDRAWAL', 'REFUND'] as const;
@@ -43,12 +47,18 @@ export class CashSessionsService {
     private tenantContext: TenantContextService,
     private auditContext: AuditContextService,
     private audit: AuditService,
+    private planLimits: PlanLimitsService,
+    private configService: ConfigService,
   ) {}
 
   async open(dto: OpenCashSessionDto) {
     const tenantId = this.tenantContext.requireTenantId();
     const userId = this.auditContext.getUserId();
     const branchId = dto.branchId ?? this.tenantContext.getBranchId() ?? null;
+
+    // El tope es de sesiones simultáneas por sucursal, no de cajas dadas de alta:
+    // una sucursal puede tener seis cajas y operar solo dos a la vez.
+    await this.planLimits.assertCanOpenCashSession(tenantId, branchId);
 
     const cashRegisterId = await this.resolveCashRegister(tenantId, branchId, dto.cashRegisterId);
 
@@ -131,7 +141,11 @@ export class CashSessionsService {
   async close(id: string, dto: CloseCashSessionDto) {
     const tenantId = this.tenantContext.requireTenantId();
     const userId = this.auditContext.getUserId();
-    return this.closeSessionAtomically(id, tenantId, userId, dto, null);
+    // Cortar caja mueve dinero: si el cajero no tiene el permiso, hace falta el
+    // PIN de alguien que sí lo tenga. `authorizerPin` no llega desde el Admin
+    // Web, que sigue autorizando con contraseña por `closeWithAuth`.
+    const authorizer = await this.resolveCashAuthorizer(tenantId, 'pos.cash:close', dto.authorizerPin);
+    return this.closeSessionAtomically(id, tenantId, userId, dto, null, authorizer?.id ?? null);
   }
 
   /**
@@ -154,6 +168,13 @@ export class CashSessionsService {
     closedById: string | null | undefined,
     dto: CloseCashSessionDto,
     authorizedById: string | null,
+    /**
+     * Empleado que autorizó por PIN desde el POS. Solo se registra: a diferencia
+     * de `authorizedById`, no exime de la revisión por diferencia — autorizar el
+     * corte (`pos.cash:close`) y firmar un descuadre (`pos.cash:authorize`) son
+     * permisos distintos y no deben confundirse en la misma señal.
+     */
+    authorizedByEmployeeId: string | null = null,
   ) {
     return this.prisma.$transaction(async (tx) => {
       // Reclamo atómico a PENDIENTE_REVISION, no directo a CERRADA: el estado
@@ -254,6 +275,7 @@ export class CashSessionsService {
             differenceMxn,
             differenceUsd,
             authorizedById,
+            authorizedByEmployeeId,
           },
           reason: dto.differenceReason ?? dto.notes ?? undefined,
         },
@@ -269,6 +291,7 @@ export class CashSessionsService {
             closedAt: new Date(),
           }),
           ...(authorizedById != null && { authorizedById }),
+          ...(authorizedByEmployeeId != null && { authorizedByEmployeeId }),
           expectedAmount: expectedCashMxn,
           cashCounted: dto.cashCounted,
           cashCountedUsd,
@@ -301,10 +324,40 @@ export class CashSessionsService {
    * (CASH-011). Para *registrar movimientos* la regla sigue siendo ABIERTA:
    * eso lo decide `requireOpenSession`, no esta consulta.
    */
-  async getActive(branchId?: string) {
+  /**
+   * La sesión viva de la caja en la que se está operando.
+   *
+   * La caja pertenece al **puesto**, no a la persona: un relevo de turno entra en
+   * la misma terminal y continúa la misma sesión, sin cerrar ni volver a abrir.
+   * Por eso el criterio principal es `cashRegisterId` —que el POS recuerda por
+   * terminal— y no quién la abrió. Quién entrega y quién recibe queda en la
+   * bitácora y en `openedBy` / `closedBy`, que pueden ser personas distintas.
+   *
+   * Sin caja indicada:
+   *  - una sola sesión viva en la sucursal → esa (instalación de caja única);
+   *  - varias → la que abrió el propio usuario, y si no abrió ninguna, ninguna.
+   *    Adivinar aquí es lo que metía los cobros de un cajero en el cajón de otro.
+   */
+  async getActive(branchId?: string, cashRegisterId?: string) {
     const tenantId = this.tenantContext.requireTenantId();
+    const userId = this.auditContext.getUserId();
+
+    const scope: Prisma.CashSessionWhereInput = {
+      tenantId,
+      branchId: branchId ?? undefined,
+      status: { not: 'CERRADA' },
+    };
+
+    let where: Prisma.CashSessionWhereInput;
+    if (cashRegisterId) {
+      where = { ...scope, cashRegisterId };
+    } else {
+      const live = await this.prisma.cashSession.count({ where: scope });
+      where = live <= 1 ? scope : { ...scope, openedById: userId ?? undefined };
+    }
+
     const session = await this.prisma.cashSession.findFirst({
-      where: { tenantId, branchId: branchId ?? undefined, status: { not: 'CERRADA' } },
+      where,
       include: {
         branch: { select: { id: true, name: true } },
         openedBy: { select: { id: true, email: true } },
@@ -497,6 +550,10 @@ export class CashSessionsService {
     const user = await this.prisma.user.findFirst({ where: { email: authEmail } });
     if (!user) throw new ForbiddenException('Credenciales del autorizador incorrectas');
 
+    // Un autorizador que entra solo con Google no tiene contraseña local, así que
+    // no puede autorizar por este camino. Mismo mensaje genérico que el resto.
+    if (!user.password) throw new ForbiddenException('Credenciales del autorizador incorrectas');
+
     const passwordValid = await bcrypt.compare(authPassword, user.password);
     if (!passwordValid) throw new ForbiddenException('Credenciales del autorizador incorrectas');
 
@@ -617,6 +674,75 @@ export class CashSessionsService {
     });
   }
 
+  /**
+   * Resuelve quién respalda una operación sensible de caja (arqueo, corte).
+   *
+   * Si el usuario de la sesión ya tiene el permiso, la operación va a su nombre
+   * y no se pide nada. Si no lo tiene, hace falta el PIN de un empleado cuyo rol
+   * sí lo tenga: es el supervisor que se acerca a la caja y teclea su PIN, sin
+   * que el cajero conozca contraseña alguna ni tenga que salir de la terminal.
+   *
+   * Devuelve el `Employee` autorizador, o `null` cuando el propio usuario bastó.
+   * El PIN se compara por hash determinista (igual que el login de comandera),
+   * así que nunca viaja ni se guarda en claro.
+   */
+  private async resolveCashAuthorizer(
+    tenantId: string,
+    permission: string,
+    pin?: string,
+  ): Promise<{ id: string; firstName: string; lastName: string } | null> {
+    const userId = this.auditContext.getUserId();
+
+    if (userId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
+      });
+      // SUPER_ADMIN se salta el RBAC en todo el API; aquí también.
+      if (user?.role === 'SUPER_ADMIN') return null;
+
+      const perms = await this.getEffectivePermissions(userId, tenantId);
+      if (perms.includes(permission)) return null;
+    }
+
+    if (!pin) {
+      throw new ForbiddenException({
+        code: 'AUTHORIZATION_REQUIRED',
+        message: 'Esta operación requiere la autorización de un supervisor.',
+        permission,
+      });
+    }
+
+    const employee = await this.prisma.employee.findFirst({
+      where: { tenantId, pinHash: this.hashPin(tenantId, pin), status: 'ACTIVE' },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        role: { select: { permissions: { select: { permission: { select: { key: true } } } } } },
+      },
+    });
+
+    // Mismo mensaje para PIN inexistente y PIN sin permiso: distinguirlos
+    // permitiría sondear qué PINes existen probando en la terminal.
+    const authorized =
+      employee?.role?.permissions.some((rp) => rp.permission.key === permission) ?? false;
+    if (!employee || !authorized) {
+      throw new ForbiddenException({
+        code: 'AUTHORIZATION_INVALID',
+        message: 'PIN incorrecto o sin permiso para autorizar esta operación.',
+      });
+    }
+
+    return { id: employee.id, firstName: employee.firstName, lastName: employee.lastName };
+  }
+
+  /** Mismo hash que el login por PIN de comandera (sha256 + pepper por tenant). */
+  private hashPin(tenantId: string, pin: string): string {
+    const pepper = process.env.STAFF_PIN_PEPPER ?? this.configService.get<string>('jwt.secret') ?? 'orbix';
+    return createHash('sha256').update(`${tenantId}:${pin}:${pepper}`).digest('hex');
+  }
+
   private async getEffectivePermissions(userId: string, tenantId: string): Promise<string[]> {
     const assignments = await this.prisma.userRoleAssignment.findMany({
       where: { userId, tenantId },
@@ -651,6 +777,10 @@ export class CashSessionsService {
     const tenantId = this.tenantContext.requireTenantId();
     const userId = this.auditContext.getUserId();
     const branchId = this.tenantContext.getBranchId() ?? null;
+
+    // Contar el cajón es tan sensible como cortarlo: deja constancia de cuánto
+    // había y de quién lo vio. Mismo permiso que el arqueo.
+    await this.resolveCashAuthorizer(tenantId, 'pos.cash:count', dto.authorizerPin);
 
     const active = await requireOpenSession(
       this.prisma,
@@ -769,8 +899,9 @@ export class CashSessionsService {
    * ningún movimiento entra, así que el efectivo contado no se mueve bajo los
    * pies del cajero (CASH-011).
    */
-  async startCount(id: string) {
+  async startCount(id: string, authorizerPin?: string) {
     const tenantId = this.tenantContext.requireTenantId();
+    await this.resolveCashAuthorizer(tenantId, 'pos.cash:count', authorizerPin);
     return this.transition(id, tenantId, ['ABIERTA'], 'EN_ARQUEO', 'CASH_COUNT_START');
   }
 
@@ -778,8 +909,9 @@ export class CashSessionsService {
    * EN_ARQUEO → ABIERTA. Devuelve la caja a operación cuando el arqueo fue de
    * control y no termina en cierre.
    */
-  async resumeOperation(id: string) {
+  async resumeOperation(id: string, authorizerPin?: string) {
     const tenantId = this.tenantContext.requireTenantId();
+    await this.resolveCashAuthorizer(tenantId, 'pos.cash:count', authorizerPin);
     return this.transition(id, tenantId, ['EN_ARQUEO'], 'ABIERTA', 'CASH_COUNT_RESUME');
   }
 
@@ -845,15 +977,90 @@ export class CashSessionsService {
     });
   }
 
+  /**
+   * Alta de caja física. El tope del plan es de sesiones simultáneas, no de
+   * cajas, así que aquí no se valida capacidad: dar de alta una caja de reserva
+   * no consume nada hasta que alguien la abre.
+   */
+  async createRegister(dto: CreateCashRegisterDto) {
+    const tenantId = this.tenantContext.requireTenantId();
+    const branchId = dto.branchId ?? this.tenantContext.getBranchId() ?? null;
+    const name = dto.name.trim();
+
+    const duplicate = await this.prisma.cashRegister.findFirst({
+      where: { tenantId, branchId, name },
+      select: { id: true },
+    });
+    if (duplicate) throw new BadRequestException('Ya existe una caja con ese nombre en la sucursal');
+
+    return this.prisma.cashRegister.create({
+      data: { tenantId, branchId, name },
+    });
+  }
+
+  /**
+   * Renombra o desactiva una caja. Desactivar con una sesión viva se rechaza:
+   * dejaría una sesión abierta colgando de una caja que ya no se lista, sin
+   * forma de cerrarla desde el POS.
+   */
+  async updateRegister(id: string, dto: UpdateCashRegisterDto) {
+    const tenantId = this.tenantContext.requireTenantId();
+
+    const register = await this.prisma.cashRegister.findFirst({
+      where: { id, tenantId },
+      select: { id: true, branchId: true },
+    });
+    if (!register) throw new NotFoundException('Caja no encontrada');
+
+    if (dto.isActive === false) {
+      const live = await this.prisma.cashSession.findFirst({
+        where: { cashRegisterId: id, status: { not: 'CERRADA' } },
+        select: { id: true },
+      });
+      if (live) {
+        throw new BadRequestException('No se puede desactivar una caja con una sesión abierta');
+      }
+    }
+
+    const name = dto.name?.trim();
+    if (name) {
+      const duplicate = await this.prisma.cashRegister.findFirst({
+        where: { tenantId, branchId: register.branchId, name, id: { not: id } },
+        select: { id: true },
+      });
+      if (duplicate) {
+        throw new BadRequestException('Ya existe una caja con ese nombre en la sucursal');
+      }
+    }
+
+    return this.prisma.cashRegister.update({
+      where: { id },
+      data: { ...(name && { name }), ...(dto.isActive != null && { isActive: dto.isActive }) },
+    });
+  }
+
+  /** Capacidad de sesiones simultáneas de la sucursal activa. */
+  async getCashSessionCapacity() {
+    const tenantId = this.tenantContext.requireTenantId();
+    const branchId = this.tenantContext.getBranchId() ?? null;
+    return this.planLimits.getCashSessionCapacity(tenantId, branchId);
+  }
+
   // ---- helpers ----
 
   /**
    * Resuelve la caja física en la que se abre la sesión.
    *
-   * Sin `cashRegisterId` explícito toma la primera activa de la sucursal, que es
-   * el comportamiento de una instalación de caja única; si la sucursal todavía no
-   * tiene ninguna, se crea "Caja 1" para no obligar a un alta manual antes de la
-   * primera venta.
+   * Sin `cashRegisterId` explícito toma la primera activa **libre** — sin sesión
+   * viva. Antes tomaba la primera activa a secas, y como el POS no manda caja,
+   * todos los cajeros de la sucursal caían en la misma: el segundo en abrir
+   * chocaba contra el índice único y la sucursal quedaba de facto con una sola
+   * caja, por mucho que hubiera varias dadas de alta.
+   *
+   * Si no hay ninguna libre se pide elegir en vez de inventar una caja nueva:
+   * crear cajas sobre la marcha en cada apertura acabaría llenando la sucursal
+   * de cajas fantasma. La autocreación queda solo para la sucursal que aún no
+   * tiene ninguna, para no exigir un alta manual antes de la primera venta.
    */
   private async resolveCashRegister(
     tenantId: string,
@@ -869,12 +1076,23 @@ export class CashSessionsService {
       return found.id;
     }
 
-    const existing = await this.prisma.cashRegister.findFirst({
+    const active = await this.prisma.cashRegister.findMany({
       where: { tenantId, branchId, isActive: true },
       orderBy: { name: 'asc' },
-      select: { id: true },
+      select: {
+        id: true,
+        sessions: { where: { status: { not: 'CERRADA' } }, select: { id: true }, take: 1 },
+      },
     });
-    if (existing) return existing.id;
+
+    const free = active.find((r) => r.sessions.length === 0);
+    if (free) return free.id;
+
+    if (active.length > 0) {
+      throw new BadRequestException(
+        'Todas las cajas de esta sucursal están abiertas. Cierra una o da de alta otra caja.',
+      );
+    }
 
     const created = await this.prisma.cashRegister.create({
       data: { tenantId, branchId, name: 'Caja 1' },

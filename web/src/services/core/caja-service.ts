@@ -24,6 +24,8 @@ export interface ApiCashSession {
   id: string
   tenantId: string
   branchId: string | null
+  /** Caja física de la sesión. La terminal la recuerda para el relevo de turno. */
+  cashRegisterId: string | null
   status: CashSessionStatus
   exchangeRateUsdMxn: string | number
   openingAmount: string | number
@@ -68,9 +70,34 @@ export interface OpenSessionInput {
   openingAmountUsd?: number
   notes?: string
   branchId?: string
+  /** Caja física. Sin esto el backend toma la primera libre de la sucursal. */
+  cashRegisterId?: string
+}
+
+export interface CashRegister {
+  id: string
+  name: string
+  isActive: boolean
+  branchId: string | null
+  /** Sesión viva de esa caja, si la tiene. Vacío = caja libre. */
+  sessions: {
+    id: string
+    status: string
+    openedAt: string
+    openedBy?: { email: string } | null
+  }[]
+}
+
+export interface CashSessionCapacity {
+  /** null === sin tope */
+  maxSessions: number | null
+  openSessions: number
+  hasCapacity: boolean
 }
 
 export interface CloseSessionInput {
+  /** PIN del supervisor; solo si el usuario no tiene `pos.cash:close`. */
+  authorizerPin?: string
   cashCounted: number
   cashCountedUsd?: number
   /** Requerido por el servidor cuando la diferencia supera el umbral del tenant. */
@@ -79,6 +106,8 @@ export interface CloseSessionInput {
 }
 
 export interface CashCountInput {
+  /** PIN del supervisor; solo si el usuario no tiene `pos.cash:count`. */
+  authorizerPin?: string
   type?: 'PARCIAL' | 'FINAL'
   countedMxn: number
   countedUsd?: number
@@ -102,14 +131,20 @@ export interface ApiCashCount {
 
 /** Arqueo sobre la caja abierta. Puede repetirse en el mismo día. */
 /** ABIERTA → EN_ARQUEO: congela la caja para contar. */
-export async function startCashCount(id: string): Promise<ApiCashSession> {
-  const { data } = await api.patch<ApiCashSession>(`/cash-sessions/${id}/start-count`)
+export async function startCashCount(id: string, authorizerPin?: string): Promise<ApiCashSession> {
+  const { data } = await api.patch<ApiCashSession>(
+    `/cash-sessions/${id}/start-count`,
+    authorizerPin ? { authorizerPin } : {},
+  )
   return data
 }
 
 /** EN_ARQUEO → ABIERTA: vuelve a operar tras un arqueo de control. */
-export async function resumeCashSession(id: string): Promise<ApiCashSession> {
-  const { data } = await api.patch<ApiCashSession>(`/cash-sessions/${id}/resume`)
+export async function resumeCashSession(id: string, authorizerPin?: string): Promise<ApiCashSession> {
+  const { data } = await api.patch<ApiCashSession>(
+    `/cash-sessions/${id}/resume`,
+    authorizerPin ? { authorizerPin } : {},
+  )
   return data
 }
 
@@ -144,8 +179,14 @@ interface PaginatedResponse<T> {
   meta: { page: number; limit: number; total: number; totalPages: number }
 }
 
-export async function fetchActiveCashSession(branchId?: string): Promise<ApiCashSession | null> {
-  const params = branchId ? { branchId } : {}
+export async function fetchActiveCashSession(
+  branchId?: string,
+  cashRegisterId?: string,
+): Promise<ApiCashSession | null> {
+  const params = {
+    ...(branchId ? { branchId } : {}),
+    ...(cashRegisterId ? { cashRegisterId } : {}),
+  }
   const { data } = await api.get<ApiCashSession | Record<string, never>>('/cash-sessions/active', { params })
   return data && 'id' in data ? data as ApiCashSession : null
 }
@@ -162,6 +203,32 @@ export async function fetchCashSessions(params?: {
 
 export async function fetchCashSession(id: string): Promise<ApiCashSession> {
   const { data } = await api.get<ApiCashSession>(`/cash-sessions/${id}`)
+  return data
+}
+
+export async function listCashRegisters(): Promise<CashRegister[]> {
+  const { data } = await api.get<CashRegister[]>('/cash-sessions/registers')
+  return data
+}
+
+export async function fetchCashSessionCapacity(): Promise<CashSessionCapacity> {
+  const { data } = await api.get<CashSessionCapacity>('/cash-sessions/registers/capacity')
+  return data
+}
+
+export async function createCashRegister(name: string, branchId?: string): Promise<CashRegister> {
+  const { data } = await api.post<CashRegister>('/cash-sessions/registers', {
+    name,
+    ...(branchId ? { branchId } : {}),
+  })
+  return data
+}
+
+export async function updateCashRegister(
+  id: string,
+  input: { name?: string; isActive?: boolean },
+): Promise<CashRegister> {
+  const { data } = await api.patch<CashRegister>(`/cash-sessions/registers/${id}`, input)
   return data
 }
 

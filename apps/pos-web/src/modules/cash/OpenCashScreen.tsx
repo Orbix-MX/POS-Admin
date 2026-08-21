@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore, useDisplayName } from '~/stores/session-store'
-import { useCashStore } from '~/stores/cash-store'
+import { useCashStore, getTerminalRegisterId } from '~/stores/cash-store'
 import { Button } from '~/components/ui/Button'
 import { Input } from '~/components/ui/Input'
 import { NumericKeypad, QuickAmounts } from '~/components/ui/NumericKeypad'
 import { Spinner } from '~/components/shared/StateBlock'
 import { amount, money, toNumber } from '~/utils/money'
+import { listCashRegisters, type CashRegister } from '~/services/orbix'
+import { sessionLabel } from '~/utils/cash-session-label'
 
 /**
  * Paso 3 de 3: apertura de caja.
@@ -24,10 +26,30 @@ export function OpenCashScreen() {
   const [fondo, setFondo] = useState('')
   const [rate, setRate] = useState('')
   const [now] = useState(() => new Date())
+  const [registers, setRegisters] = useState<CashRegister[] | null>(null)
+  const [registerId, setRegisterId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!checked) void refresh(branch?.id)
   }, [checked, refresh, branch?.id])
+
+  // Las cajas ocupadas se muestran deshabilitadas, con quién las tiene: es más
+  // útil que esconderlas — el cajero ve que su caja de siempre está tomada.
+  useEffect(() => {
+    listCashRegisters()
+      .then((list) => {
+        setRegisters(list)
+        setRegisterId((current) => {
+          if (current) return current
+          // La caja que esta terminal usó la última vez, si sigue libre: en un
+          // mostrador fijo la caja es siempre la misma y no hay que elegirla cada día.
+          const remembered = getTerminalRegisterId()
+          const usable = list.find((r) => r.id === remembered && r.sessions.length === 0)
+          return usable?.id ?? list.find((r) => r.sessions.length === 0)?.id ?? null
+        })
+      })
+      .catch(() => setRegisters([]))
+  }, [])
 
   // Si la caja ya está abierta (otro equipo del mismo turno), no se abre otra.
   useEffect(() => {
@@ -36,7 +58,11 @@ export function OpenCashScreen() {
 
   const fondoValue = toNumber(fondo)
   const rateValue = toNumber(rate)
-  const canOpen = rateValue > 0 && fondoValue >= 0 && !opening
+  const freeRegisters = registers?.filter((r) => r.sessions.length === 0) ?? []
+  // Con cajas cargadas hay que tener una elegida; si la sucursal no tiene
+  // ninguna dada de alta, el backend crea "Caja 1" en la apertura.
+  const needsRegister = registers != null && registers.length > 0 && !registerId
+  const canOpen = rateValue > 0 && fondoValue >= 0 && !opening && !needsRegister
 
   const fecha = useMemo(
     () => now.toLocaleString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
@@ -48,7 +74,10 @@ export function OpenCashScreen() {
       exchangeRateUsdMxn: rateValue,
       openingAmount: fondoValue,
       ...(branch?.id ? { branchId: branch.id } : {}),
-    })
+      ...(registerId ? { cashRegisterId: registerId } : {}),
+    },
+    // Solo para rotular la terminal en la barra superior; no viaja al backend.
+    registers?.find((r) => r.id === registerId)?.name)
     if (created) navigate('/pos', { replace: true })
   }
 
@@ -99,6 +128,52 @@ export function OpenCashScreen() {
               />
             </InfoCell>
           </div>
+
+          {registers != null && registers.length > 0 && (
+            <>
+              <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted-foreground)', marginBottom: 10 }}>
+                Caja
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 28 }}>
+                {registers.map((r) => {
+                  const busy = r.sessions.length > 0
+                  const selected = r.id === registerId
+                  return (
+                    <button
+                      key={r.id}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => setRegisterId(r.id)}
+                      style={{
+                        flex: '1 1 160px',
+                        textAlign: 'left',
+                        padding: '12px 14px',
+                        borderRadius: 12,
+                        fontFamily: 'inherit',
+                        cursor: busy ? 'not-allowed' : 'pointer',
+                        background: selected ? 'var(--primary)' : 'var(--card)',
+                        color: selected ? 'var(--primary-foreground)' : 'var(--foreground)',
+                        border: `1px solid ${selected ? 'var(--primary)' : 'var(--hairline)'}`,
+                        opacity: busy ? 0.55 : 1,
+                      }}
+                    >
+                      <div style={{ fontSize: 14.5, fontWeight: 700 }}>{r.name}</div>
+                      <div style={{ fontSize: 12, opacity: 0.8 }}>
+                        {busy
+                          ? `${sessionLabel(r.sessions[0]?.status)} · ${r.sessions[0]?.openedBy?.email ?? 'otro usuario'}`
+                          : 'Libre'}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+              {freeRegisters.length === 0 && (
+                <div style={{ fontSize: 12.5, color: 'var(--muted-foreground)', marginBottom: 24 }}>
+                  Todas las cajas de esta sucursal están abiertas. Cierra una para abrir otra.
+                </div>
+              )}
+            </>
+          )}
 
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted-foreground)', marginBottom: 10 }}>
             Fondo inicial

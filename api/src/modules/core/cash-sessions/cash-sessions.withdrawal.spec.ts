@@ -34,6 +34,8 @@ function build(movements: Movement[], opening = 500, openingUsd = 0) {
   };
 
   const prisma = {
+    // SUPER_ADMIN: `resolveCashAuthorizer` no pide PIN ni consulta permisos.
+    user: { findUnique: jest.fn().mockResolvedValue({ role: 'SUPER_ADMIN' }) },
     cashSession: {
       findFirst: jest.fn().mockResolvedValue({ id: SESSION }),
       findFirstOrThrow: jest.fn().mockResolvedValue(session),
@@ -46,6 +48,8 @@ function build(movements: Movement[], opening = 500, openingUsd = 0) {
     { requireTenantId: () => TENANT, getBranchId: () => null } as never,
     { getUserId: () => 'user-1' } as never,
     { log: jest.fn() } as never,
+    { assertCanOpenCashSession: jest.fn(), getCashSessionCapacity: jest.fn() } as never,
+    { get: () => 'test-secret' } as never,
   );
 
   return { service, create };
