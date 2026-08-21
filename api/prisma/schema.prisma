@@ -253,13 +253,20 @@ enum UserStatus {
 model User {
   id        String     @id @default(uuid())
   email     String     @unique
-  password  String
+  // Null para cuentas creadas por un proveedor OAuth: ese usuario no tiene
+  // contraseña local y solo puede entrar por su proveedor hasta que fije una.
+  password  String?
   firstName String
   lastName  String
   role      UserRole   @default(STAFF)
   status    UserStatus @default(ACTIVE)
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
+
+  // ── Identidad Google (OAuth) ───────────────────────────────────────────────
+  googleId      String?  @unique @map("google_id")
+  emailVerified Boolean  @default(false) @map("email_verified")
+  avatarUrl     String?  @map("avatar_url")
 
   tenantMemberships TenantMembership[]
 
@@ -316,6 +323,7 @@ model User {
   permissionGrants UserPermissionGrant[]
 
   refreshTokens RefreshToken[]
+  oauthTickets  OAuthTicket[]
 
   managedBranches   Branch[]           @relation("BranchManager")
   branchMemberships BranchMembership[]
@@ -2316,6 +2324,25 @@ model RefreshToken {
 
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+/// Ticket de un solo uso que cierra el redirect de OAuth. El callback de Google
+/// redirige al frontend con el ticket en la URL —nunca con el JWT— y el
+/// frontend lo canjea por la sesión real vía POST /auth/oauth/exchange.
+/// Igual que los refresh tokens, solo se persiste el SHA-256: el valor crudo
+/// viaja una vez y no queda recuperable desde la base.
+model OAuthTicket {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("oauth_tickets")
 }
 
 // ============= Licensing (SaaS / POS / Mobile / on-prem) =============

@@ -6,6 +6,7 @@ import { Button } from '~/components/ui/Button'
 import { Input } from '~/components/ui/Input'
 import { BrandLockup } from '~/components/shared/Brand'
 import { Spinner } from '~/components/shared/StateBlock'
+import { GoogleSignInButton } from '~/components/shared/GoogleSignInButton'
 import { translateMessage } from '~/utils/api-error'
 
 /**
@@ -136,6 +137,8 @@ export function LoginScreen() {
                     {loading ? <Spinner size={16} color="var(--primary-foreground)" /> : 'Ingresar'}
                   </Button>
                 </div>
+
+                <GoogleSignInButton disabled={loading} />
               </div>
             </form>
           )}

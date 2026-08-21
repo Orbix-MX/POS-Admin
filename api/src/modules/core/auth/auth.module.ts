@@ -5,8 +5,11 @@ import { ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { GoogleStrategy } from './strategies/google.strategy';
 import { TokenBlacklistService } from './services/token-blacklist.service';
 import { RefreshTokenService } from './services/refresh-token.service';
+import { OAuthTicketService } from './services/oauth-ticket.service';
+import { GoogleOAuthGuard } from './guards/google-oauth.guard';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { LicenseGuard } from '../../../common/guards/license.guard';
 import { PermissionsGuard } from '../../../common/guards/permissions.guard';
@@ -32,6 +35,19 @@ import { APP_GUARD } from '@nestjs/core';
     JwtStrategy,
     TokenBlacklistService,
     RefreshTokenService,
+    OAuthTicketService,
+    GoogleOAuthGuard,
+    // La estrategia de Google solo se registra si hay credenciales: sin ellas
+    // `passport-google-oauth20` lanza en el constructor y tumba el arranque del
+    // API entero. El guard responde 503 en ese caso.
+    {
+      provide: GoogleStrategy,
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) =>
+        configService.get<boolean>('googleOAuth.enabled')
+          ? new GoogleStrategy(configService)
+          : null,
+    },
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
@@ -49,6 +65,6 @@ import { APP_GUARD } from '@nestjs/core';
       useClass: RequireModuleGuard,
     },
   ],
-  exports: [AuthService, TokenBlacklistService, RefreshTokenService],
+  exports: [AuthService, TokenBlacklistService, RefreshTokenService, OAuthTicketService],
 })
 export class AuthModule {}

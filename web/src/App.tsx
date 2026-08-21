@@ -7,6 +7,7 @@ import { Sidebar } from '@/components/shared/sidebar'
 import { Topbar, MODULE_META } from '@/components/shared/topbar'
 import { PlatformLayout } from '@/components/platform/platform-layout'
 import { Login } from '@/pages/login'
+import { OAuthCallback } from '@/pages/oauth-callback'
 import { SelectTenant } from '@/pages/select-tenant'
 import { SelectBranch } from '@/pages/select-branch'
 import { Dashboard } from '@/pages/dashboard'
@@ -229,6 +230,9 @@ function TenantAuthGate() {
   }, [setTenantSuspended])
 
   if (tenantSuspended) { document.title = `Empresa suspendida | ${APP_SUFFIX}`; return <TenantSuspended /> }
+  // El regreso de Google llega sin sesión todavía: se canjea el ticket antes de
+  // que el gate mande al login y borre el parámetro de la URL.
+  if (!isAuthenticated && location.pathname === '/auth/callback') return <OAuthCallback />
   if (!isAuthenticated && !availableTenants) { document.title = `Iniciar sesión | ${APP_SUFFIX}`; return <Login /> }
   if (!isAuthenticated && availableTenants) { document.title = APP_SUFFIX; return <SelectTenant /> }
   if (!capabilitiesLoaded || availableBranches === null) return (

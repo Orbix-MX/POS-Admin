@@ -14,6 +14,7 @@ import { PrismaService } from '../../../database/prisma.service';
 import { PasswordUtil } from '../../../common/utils/password.util';
 import { TokenBlacklistService } from './services/token-blacklist.service';
 import { RefreshTokenService } from './services/refresh-token.service';
+import { OAuthTicketService } from './services/oauth-ticket.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import {
@@ -43,6 +44,7 @@ export class AuthService {
     private configService: ConfigService,
     private tokenBlacklist: TokenBlacklistService,
     private refreshTokens: RefreshTokenService,
+    private oauthTickets: OAuthTicketService,
     private planLimits: PlanLimitsService,
     private licenseService: LicenseService,
   ) {}
@@ -80,9 +82,26 @@ export class AuthService {
 
     if (!user) throw new UnauthorizedException('Invalid credentials');
 
+    // Cuenta creada por OAuth: no hay hash contra el que comparar. Se responde
+    // igual que ante credenciales inválidas para no revelar qué correos existen
+    // ni con qué proveedor entran.
+    if (!user.password) throw new UnauthorizedException('Invalid credentials');
+
     const valid = await PasswordUtil.compare(loginDto.password, user.password);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
 
+    return this.buildSession(user);
+  }
+
+  /**
+   * Cierra el login: valida estado de cuenta y de tenants, y emite el par de
+   * tokens con la lista de empresas disponibles. Lo comparten el login por
+   * contraseña y el canje del ticket de OAuth, para que ambos caminos apliquen
+   * exactamente las mismas reglas de acceso.
+   */
+  private async buildSession(
+    user: { id: string; email: string; status: string; tenantMemberships: unknown },
+  ): Promise<AuthResponseDto> {
     if (user.status !== 'ACTIVE') throw new UnauthorizedException('Account is not active');
 
     const memberships = user.tenantMemberships as MembershipWithTenant[];
@@ -112,6 +131,102 @@ export class AuthService {
       user: this.mapUser(user),
       availableTenants: activeMemberships.map((m) => this.mapMembership(m)),
     };
+  }
+
+  /**
+   * Resuelve la identidad Google del callback a un usuario local y devuelve su id.
+   *
+   * Tres casos:
+   *  1. `googleId` ya vinculado → ese usuario.
+   *  2. Correo existente y verificado por Google → se vincula la identidad al
+   *     usuario existente (decisión de producto: auto-vinculación solo con
+   *     `email_verified`; sin verificar se rechaza, porque bastaría registrar
+   *     ese correo en un IdP propio para apropiarse de la cuenta).
+   *  3. Correo nuevo → alta de usuario sin contraseña y sin tenant. Cae en el
+   *     wizard de `POST /tenants/onboarding` igual que un registro normal.
+   */
+  async resolveGoogleIdentity(profile: {
+    googleId: string;
+    email: string;
+    emailVerified: boolean;
+    firstName: string;
+    lastName: string;
+    avatarUrl?: string;
+  }): Promise<string> {
+    const email = profile.email.toLowerCase();
+
+    const linked = await this.prisma.user.findUnique({ where: { googleId: profile.googleId } });
+    if (linked) {
+      if (linked.status !== 'ACTIVE') throw new UnauthorizedException('Account is not active');
+      // El nombre y la foto pueden cambiar del lado de Google; el correo no se
+      // reescribe aquí — mover una cuenta de correo es una operación aparte.
+      await this.prisma.user.update({
+        where: { id: linked.id },
+        data: { avatarUrl: profile.avatarUrl ?? linked.avatarUrl },
+      });
+      return linked.id;
+    }
+
+    const byEmail = await this.prisma.user.findUnique({ where: { email } });
+    if (byEmail) {
+      if (!profile.emailVerified) {
+        throw new UnauthorizedException(
+          'Google no ha verificado ese correo. Entra con tu contraseña.',
+        );
+      }
+      if (byEmail.status !== 'ACTIVE') throw new UnauthorizedException('Account is not active');
+
+      await this.prisma.user.update({
+        where: { id: byEmail.id },
+        data: {
+          googleId: profile.googleId,
+          emailVerified: true,
+          avatarUrl: byEmail.avatarUrl ?? profile.avatarUrl,
+        },
+      });
+      return byEmail.id;
+    }
+
+    const created = await this.prisma.user.create({
+      data: {
+        email,
+        password: null,
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        googleId: profile.googleId,
+        emailVerified: profile.emailVerified,
+        avatarUrl: profile.avatarUrl,
+        role: 'STAFF',
+        status: 'ACTIVE',
+      },
+    });
+    return created.id;
+  }
+
+  /**
+   * Canjea el ticket de un solo uso emitido por el callback de OAuth por la
+   * sesión completa — mismo shape que `login`, para que el frontend reutilice
+   * el flujo de selección de tenant sin ramificar.
+   */
+  async exchangeOAuthTicket(rawTicket: string): Promise<AuthResponseDto> {
+    // Marcar el ticket y leer al usuario van en la misma transacción: si la
+    // lectura falla, el rollback devuelve el ticket a "sin usar" y el reintento
+    // del usuario funciona. Sin esto, cualquier corte transitorio entre ambos
+    // pasos quemaba el ticket y dejaba al usuario con un 401 irrecuperable.
+    const user = await this.prisma.$transaction(async (tx) => {
+      const userId = await this.oauthTickets.consume(rawTicket, tx);
+      return tx.user.findUnique({
+        where: { id: userId },
+        include: { tenantMemberships: { include: { tenant: true } } },
+      });
+    });
+
+    if (!user) throw new UnauthorizedException('Ticket inválido o expirado');
+
+    // Fuera de la transacción: es limpieza, y su fallo no debe tirar el canje.
+    void this.oauthTickets.purgeExpired();
+
+    return this.buildSession(user);
   }
 
   async logout(token: string, refreshToken?: string): Promise<void> {

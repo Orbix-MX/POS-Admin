@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import {
   login as loginApi,
+  exchangeOAuthTicket,
   logout as logoutApi,
   selectTenant as selectTenantApi,
   selectBranch as selectBranchApi,
@@ -9,9 +10,13 @@ import {
   fetchBranches,
   setAccessToken,
   clearAccessToken,
+  setRefreshToken,
+  clearRefreshToken,
   getAccessToken,
+  getRefreshToken,
 } from '@/services/core/auth-service'
-import type { AuthUser, Tenant, Branch } from '@/services/core/auth-service'
+import type { AuthUser, Tenant, Branch, LoginResponse } from '@/services/core/auth-service'
+import { refreshSession } from '@/lib/session-refresh'
 import { DEFAULT_BUSINESS_FEATURES, type BusinessFeatures } from '@/types/business-config'
 
 interface AuthState {
@@ -41,10 +46,56 @@ interface AuthState {
 
   init: () => Promise<void>
   login: (email: string, password: string) => Promise<void>
+  loginWithOAuthTicket: (ticket: string) => Promise<void>
   confirmTenant: (slug: string) => Promise<void>
   confirmBranch: (branchId: string) => Promise<void>
   logout: () => Promise<void>
   setTenantSuspended: (value: boolean) => void
+}
+
+/**
+ * Aplica la respuesta de un login —por contraseña o por OAuth— al store.
+ *
+ * Con un solo tenant se encadena select-tenant + carga de sucursales y el
+ * usuario entra directo. Con varios (o ninguno) se deja el JWT preliminar en
+ * `tempToken` y decide la UI. Ambos caminos de acceso comparten esta función
+ * para que no se separen con el tiempo.
+ */
+async function applySession(
+  set: (partial: Partial<AuthState>) => void,
+  session: LoginResponse,
+) {
+  const { accessToken, refreshToken, user, availableTenants } = session
+
+  // Se guarda antes de ramificar: el refresh token no depende del tenant, y con
+  // varias empresas la selección puede tardar más que el access token en vencer.
+  if (refreshToken) setRefreshToken(refreshToken)
+
+  if (availableTenants.length !== 1) {
+    set({ tempToken: accessToken, user, availableTenants, loading: false })
+    return
+  }
+
+  const res = await selectTenantApi(availableTenants[0].slug, accessToken)
+  setAccessToken(res.accessToken)
+  const profile = await fetchMe().catch(() => null)
+  set({
+    isAuthenticated: true,
+    user: profile?.user ?? user,
+    permissions: profile?.permissions ?? [],
+    tempToken: null,
+    availableTenants: null,
+    loading: false,
+    plan: res.plan ?? null,
+    enabledModules: res.enabledModules ?? [],
+    capabilitiesLoaded: true,
+    businessVertical: res.businessVertical ?? 'RETAIL',
+    businessProfile: res.businessProfile ?? 'RETAIL',
+    posOperationMode: res.posOperationMode ?? 'QUICK_SALE',
+    enabledFeatures: res.enabledFeatures ?? [],
+    businessFeatures: res.businessFeatures ?? DEFAULT_BUSINESS_FEATURES,
+  })
+  await loadBranchesAndAutoSelect(set, profile?.currentBranchId)
 }
 
 async function loadBranchesAndAutoSelect(
@@ -115,6 +166,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   }),
 
   init: async () => {
+    // Sin access token pero con refresh token: sesión recuperable. Pasa cuando
+    // el access token se limpió y el navegador conserva el refresh. Si la
+    // renovación falla, se sigue al camino normal de "no hay sesión".
+    if (!getAccessToken() && getRefreshToken()) {
+      await refreshSession().catch(() => {})
+    }
     if (!getAccessToken()) { set({ capabilitiesLoaded: true }); return }
     try {
       const [caps, profile] = await Promise.all([fetchCapabilities(), fetchMe()])
@@ -141,35 +198,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   login: async (email, password) => {
     set({ loading: true, error: null })
     try {
-      const { accessToken, user, availableTenants } = await loginApi(email, password)
-
-      if (availableTenants.length === 1) {
-        const res = await selectTenantApi(availableTenants[0].slug, accessToken)
-        setAccessToken(res.accessToken)
-        const profile = await fetchMe().catch(() => null)
-        set({
-          isAuthenticated: true,
-          user: profile?.user ?? user,
-          permissions: profile?.permissions ?? [],
-          tempToken: null,
-          availableTenants: null,
-          loading: false,
-          plan: res.plan ?? null,
-          enabledModules: res.enabledModules ?? [],
-          capabilitiesLoaded: true,
-          businessVertical: res.businessVertical ?? 'RETAIL',
-          businessProfile: res.businessProfile ?? 'RETAIL',
-          posOperationMode: res.posOperationMode ?? 'QUICK_SALE',
-          enabledFeatures: res.enabledFeatures ?? [],
-          businessFeatures: res.businessFeatures ?? DEFAULT_BUSINESS_FEATURES,
-        })
-        await loadBranchesAndAutoSelect(set, profile?.currentBranchId)
-      } else {
-        set({ tempToken: accessToken, user, availableTenants, loading: false })
-      }
+      await applySession(set, await loginApi(email, password))
     } catch (e: unknown) {
       const data = (e as { response?: { data?: { message?: string; code?: string } } })?.response?.data
       const msg = data?.message ?? 'Credenciales incorrectas'
+      set({ error: msg, loading: false })
+    }
+  },
+
+  /**
+   * Cierra el acceso con Google: canjea el ticket de un solo uso del callback y
+   * continúa por el mismo camino que el login con contraseña — un solo tenant
+   * entra directo, varios caen en la pantalla de selección.
+   */
+  loginWithOAuthTicket: async (ticket) => {
+    set({ loading: true, error: null })
+    try {
+      await applySession(set, await exchangeOAuthTicket(ticket))
+    } catch (e: unknown) {
+      const data = (e as { response?: { data?: { message?: string; code?: string } } })?.response?.data
+      const msg = data?.message ?? 'No fue posible completar el acceso con Google'
       set({ error: msg, loading: false })
     }
   },
@@ -221,8 +269,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
+    // El logout va antes de borrar nada: la petición necesita el access token
+    // para autenticarse y el refresh token en el cuerpo para revocarse.
     await logoutApi().catch(() => {})
     clearAccessToken()
+    clearRefreshToken()
     set({
       isAuthenticated: false,
       user: null,

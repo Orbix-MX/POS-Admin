@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Loader2, Eye, EyeOff } from 'lucide-react'
 import { useAuthStore } from '@/store/auth-store'
+import { GoogleSignInButton } from '@/components/google-sign-in-button'
 
 // White-label hook: future ENTERPRISE plans can set VITE_WHITE_LABEL=true to hide Orbix branding
 const SHOW_PLATFORM_BRAND = import.meta.env.VITE_WHITE_LABEL !== 'true'
@@ -100,6 +101,8 @@ export function Login() {
               }
             </button>
           </form>
+
+          <GoogleSignInButton disabled={loading} />
         </div>
 
         {/* Footer */}
