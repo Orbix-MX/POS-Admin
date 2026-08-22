@@ -2,6 +2,7 @@ import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PERMISSIONS_KEY } from '../decorators/require-permissions.decorator';
 import { NO_PERMISSIONS_REQUIRED_KEY } from '../decorators/no-permissions-required.decorator';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { EffectivePermissionsService } from '../services/effective-permissions.service';
 
 @Injectable()
@@ -22,12 +23,20 @@ export class PermissionsGuard implements CanActivate {
     // @RequirePermissions silently opened the endpoint to every authenticated
     // user of the tenant — which is how the PIN admin endpoints stayed open.
     if (!requiredPermissions || requiredPermissions.length === 0) {
-      return (
-        this.reflector.getAllAndOverride<boolean>(NO_PERMISSIONS_REQUIRED_KEY, [
-          context.getHandler(),
-          context.getClass(),
-        ]) === true
+      // `@Public()` already means "no session, no permissions" — JwtAuthGuard let
+      // the request through and there is no user to check. Denying here would
+      // break login, device activation and the storefront.
+      const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]);
+
+      const allowsNoPermissions = this.reflector.getAllAndOverride<boolean>(
+        NO_PERMISSIONS_REQUIRED_KEY,
+        [context.getHandler(), context.getClass()],
       );
+
+      return isPublic === true || allowsNoPermissions === true;
     }
 
     const request = context.switchToHttp().getRequest();

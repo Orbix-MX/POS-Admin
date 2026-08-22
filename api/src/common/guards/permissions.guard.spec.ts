@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { PermissionsGuard } from './permissions.guard';
 import { PERMISSIONS_KEY } from '../decorators/require-permissions.decorator';
 import { NO_PERMISSIONS_REQUIRED_KEY } from '../decorators/no-permissions-required.decorator';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { EffectivePermissionsService } from '../services/effective-permissions.service';
 import { PermissionCacheService } from '../cache/permission-cache.service';
 import { InMemoryPermissionCacheStore } from '../cache/permission-cache.store';
@@ -35,7 +36,7 @@ type PrismaStub = {
 function buildContext(
   user: unknown,
   requiredPermissions?: string[],
-  opts: { noPermissionsRequired?: boolean } = {},
+  opts: { noPermissionsRequired?: boolean; isPublic?: boolean } = {},
 ): ExecutionContext {
   const handler = () => undefined;
   if (requiredPermissions) {
@@ -43,6 +44,9 @@ function buildContext(
   }
   if (opts.noPermissionsRequired) {
     Reflect.defineMetadata(NO_PERMISSIONS_REQUIRED_KEY, true, handler);
+  }
+  if (opts.isPublic) {
+    Reflect.defineMetadata(IS_PUBLIC_KEY, true, handler);
   }
 
   return {
@@ -108,6 +112,15 @@ describe('PermissionsGuard — comportamiento por defecto (fail-closed)', () => 
 
     await expect(guard.canActivate(context)).resolves.toBe(true);
     expect(prisma.userRoleAssignment.findMany).not.toHaveBeenCalled();
+  });
+
+  it('@Public() pasa: no hay sesión que comprobar', async () => {
+    const { guard } = buildGuard([]);
+    // Un endpoint público llega aquí sin `user` porque JwtAuthGuard lo dejó
+    // pasar. Denegarlo rompía login, activación de dispositivos y la tienda.
+    const context = buildContext(undefined, undefined, { isPublic: true });
+
+    await expect(guard.canActivate(context)).resolves.toBe(true);
   });
 
   it('deniega cuando no hay usuario en el request', async () => {
