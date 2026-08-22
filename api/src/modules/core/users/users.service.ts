@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { EffectivePermissionsService } from '../../../common/services/effective-permissions.service';
+import { PermissionCacheService } from '../../../common/cache/permission-cache.service';
 import { PlanLimitsService, UserCapacity } from '../../../common/services/plan-limits.service';
 import { AuditService } from '../../../common/services/audit.service';
 import { PasswordUtil } from '../../../common/utils/password.util';
@@ -33,6 +34,7 @@ export class UsersService {
     private prisma: PrismaService,
     private tenantContext: TenantContextService,
     private effectivePermissions: EffectivePermissionsService,
+    private permissionCache: PermissionCacheService,
     private planLimits: PlanLimitsService,
     private audit: AuditService,
   ) {}
@@ -203,6 +205,10 @@ export class UsersService {
     // Releasing a seat may bring the tenant back under its limit.
     await this.planLimits.recomputeOverLimit(tenantId);
 
+    // Suspending someone must take their access away immediately — this is the
+    // path a dismissal goes through.
+    await this.permissionCache.invalidateUser(userId, tenantId);
+
     await this.audit.log({
       action: 'USER_STATUS_CHANGE',
       entityType: 'TenantMembership',
@@ -236,6 +242,7 @@ export class UsersService {
     }
 
     await this.prisma.user.delete({ where: { id } });
+    await this.permissionCache.invalidateUser(id, tenantId);
   }
 
   async findOneWithRoles(id: string) {
@@ -296,6 +303,9 @@ export class UsersService {
         });
       }
     });
+
+    // A revoked role has to stop granting access now, not when the TTL expires.
+    await this.permissionCache.invalidateUser(userId, tenantId);
   }
 
   async setPermissions(userId: string, grants: PermissionGrantInput[]): Promise<void> {
@@ -324,6 +334,8 @@ export class UsersService {
         });
       }
     });
+
+    await this.permissionCache.invalidateUser(userId, tenantId);
   }
 
   async getEffectivePermissions(userId: string): Promise<string[]> {

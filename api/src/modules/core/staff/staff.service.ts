@@ -6,6 +6,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { DevicesService } from '../devices/devices.service';
 import { EffectivePermissionsService } from '../../../common/services/effective-permissions.service';
+import { PermissionCacheService } from '../../../common/cache/permission-cache.service';
 import { getModulesForPlan, getAllowedModulesForVertical } from '@orbix/types';
 
 /**
@@ -31,6 +32,7 @@ export class StaffService {
     private readonly devicesService: DevicesService,
     private readonly jwtService: JwtService,
     private readonly effectivePermissions: EffectivePermissionsService,
+    private readonly permissionCache: PermissionCacheService,
   ) {}
 
   private hashPin(tenantId: string, pin: string): string {
@@ -218,6 +220,11 @@ export class StaffService {
       }
       throw e;
     }
+
+    // The operator's permissions ride in their JWT, minted at PIN login, so an
+    // already-issued operator token keeps its old role until it expires. The
+    // cache flush only covers users; that token lifetime is the real bound.
+    await this.permissionCache.invalidateTenant(tenantId);
     return { ok: true };
   }
 

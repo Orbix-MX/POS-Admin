@@ -3,35 +3,35 @@ import { Reflector } from '@nestjs/core';
 import { PermissionsGuard } from './permissions.guard';
 import { PERMISSIONS_KEY } from '../decorators/require-permissions.decorator';
 import { NO_PERMISSIONS_REQUIRED_KEY } from '../decorators/no-permissions-required.decorator';
+import { EffectivePermissionsService } from '../services/effective-permissions.service';
+import { PermissionCacheService } from '../cache/permission-cache.service';
+import { InMemoryPermissionCacheStore } from '../cache/permission-cache.store';
 
 /**
- * FASE 0 — Tests de `PermissionsGuard`.
+ * `PermissionsGuard` y el caché de permisos efectivos.
  *
- * Los `it.failing()` describen el comportamiento CORRECTO y fallan hoy a
- * propósito: documentan una vulnerabilidad abierta. Cuando la corrección
- * aterrice, Jest reportará "Failing test passed unexpectedly" → quitar el
- * `.failing` y el test queda como regresión.
+ * Cubre dos vulnerabilidades ya corregidas:
  *
- * Vulnerabilidades cubiertas:
- *  1. FAIL-OPEN (ya corregido): si un handler no declaraba `@RequirePermissions`,
- *     el guard concedía acceso a cualquier usuario autenticado, así que un
- *     olvido del decorador abría el endpoint en silencio (así quedó abierto
- *     `StaffController`). Ahora deniega salvo `@NoPermissionsRequired`.
- *  2. CACHÉ SIN INVALIDACIÓN: los permisos efectivos se cachean 60 s sin que
- *     ningún cambio de rol/grant lo limpie → un permiso revocado sigue
- *     concediendo acceso hasta un minuto. Odoo invalida su caché de forma
- *     síncrona al escribir `groups_id`; aquí no hay equivalente.
+ *  1. FAIL-OPEN: si un handler no declaraba `@RequirePermissions`, el guard
+ *     concedía acceso a cualquier usuario autenticado, así que un olvido del
+ *     decorador abría el endpoint en silencio (así quedaron abiertos los
+ *     endpoints de PIN). Ahora deniega salvo `@NoPermissionsRequired`.
+ *  2. CACHÉ SIN INVALIDACIÓN: los permisos efectivos se cacheaban 60 s sin que
+ *     ningún cambio de rol o de grant lo limpiara, así que un permiso revocado
+ *     seguía concediendo acceso hasta un minuto. Odoo invalida su caché de
+ *     forma síncrona al escribir `groups_id`; ahora hay equivalente.
  */
 
 const USER_ID = 'user-1';
 const TENANT = 'tenant-1';
 
 type PrismaStub = {
+  user: { findUnique: jest.Mock };
   userRoleAssignment: { findMany: jest.Mock };
   userPermissionGrant: { findMany: jest.Mock };
 };
 
-/** Construye un ExecutionContext con el `user` y la metadata de permisos dados. */
+/** Construye un ExecutionContext con el `user` y la metadata dados. */
 function buildContext(
   user: unknown,
   requiredPermissions?: string[],
@@ -54,18 +54,27 @@ function buildContext(
 
 function buildGuard(permissionKeys: string[]) {
   const prisma: PrismaStub = {
+    user: { findUnique: jest.fn().mockResolvedValue({ role: 'STAFF' }) },
     userRoleAssignment: {
       findMany: jest.fn().mockResolvedValue([
-        {
-          role: { permissions: permissionKeys.map((key) => ({ permission: { key } })) },
-        },
+        { role: { permissions: permissionKeys.map((key) => ({ permission: { key } })) } },
       ]),
     },
     userPermissionGrant: { findMany: jest.fn().mockResolvedValue([]) },
   };
 
-  const guard = new PermissionsGuard(new Reflector(), prisma as never);
-  return { guard, prisma };
+  // Caché y resolución reales: el objeto de esta suite es justamente comprobar
+  // que cachear no deja permisos revocados con vida.
+  const cache = new PermissionCacheService(new InMemoryPermissionCacheStore());
+  const effectivePermissions = new EffectivePermissionsService(
+    prisma as never,
+    { getUserId: () => USER_ID, isOperator: () => false } as never,
+    { requireTenantId: () => TENANT } as never,
+    cache,
+  );
+
+  const guard = new PermissionsGuard(new Reflector(), effectivePermissions);
+  return { guard, prisma, cache };
 }
 
 describe('PermissionsGuard — comportamiento por defecto (fail-closed)', () => {
@@ -159,19 +168,10 @@ describe('PermissionsGuard — comportamiento vigente que no debe romperse', () 
   });
 
   it('los permisos revocados individualmente ganan sobre los del rol', async () => {
-    const prisma: PrismaStub = {
-      userRoleAssignment: {
-        findMany: jest.fn().mockResolvedValue([
-          { role: { permissions: [{ permission: { key: 'users:delete' } }] } },
-        ]),
-      },
-      userPermissionGrant: {
-        findMany: jest.fn().mockResolvedValue([
-          { granted: false, permission: { key: 'users:delete' } },
-        ]),
-      },
-    };
-    const guard = new PermissionsGuard(new Reflector(), prisma as never);
+    const { guard, prisma } = buildGuard(['users:delete']);
+    prisma.userPermissionGrant.findMany.mockResolvedValue([
+      { granted: false, permission: { key: 'users:delete' } },
+    ]);
     const context = buildContext({ id: USER_ID, role: 'STAFF', tenantId: TENANT }, ['users:delete']);
 
     await expect(guard.canActivate(context)).resolves.toBe(false);
@@ -179,30 +179,52 @@ describe('PermissionsGuard — comportamiento vigente que no debe romperse', () 
 });
 
 describe('PermissionsGuard — invalidación del caché de permisos', () => {
-  it.failing(
-    'revocar un permiso debe surtir efecto de inmediato, no tras el TTL de 60 s',
-    async () => {
-      const { guard, prisma } = buildGuard(['users:delete']);
-      const context = buildContext({ id: USER_ID, role: 'STAFF', tenantId: TENANT }, ['users:delete']);
+  it('cachea: dos comprobaciones seguidas consultan la base una sola vez', async () => {
+    const { guard, prisma } = buildGuard(['users:view']);
+    const context = buildContext({ id: USER_ID, role: 'STAFF', tenantId: TENANT }, ['users:view']);
 
-      // 1) El usuario entra: tiene el permiso y queda cacheado.
-      await expect(guard.canActivate(context)).resolves.toBe(true);
+    await guard.canActivate(context);
+    await guard.canActivate(context);
 
-      // 2) Se le revoca el rol en la base (simula un despido o una degradación).
-      prisma.userRoleAssignment.findMany.mockResolvedValue([]);
+    expect(prisma.userRoleAssignment.findMany).toHaveBeenCalledTimes(1);
+  });
 
-      // 3) Hoy sigue entrando durante 60 s: el guard nunca releé la base ni nadie
-      //    invalida la entrada. Debería denegar ya.
-      await expect(guard.canActivate(context)).resolves.toBe(false);
-    },
-  );
+  it('revocar un permiso surte efecto de inmediato tras invalidar al usuario', async () => {
+    const { guard, prisma, cache } = buildGuard(['users:delete']);
+    const context = buildContext({ id: USER_ID, role: 'STAFF', tenantId: TENANT }, ['users:delete']);
 
-  it.failing('el guard debe exponer una forma de invalidar a un usuario concreto', () => {
-    const { guard } = buildGuard(['users:view']);
+    // 1) El usuario entra: tiene el permiso y queda cacheado.
+    await expect(guard.canActivate(context)).resolves.toBe(true);
 
-    // La Fase 2 extrae el caché a un `PermissionCacheService` inyectable con
-    // `invalidate(userId, tenantId)` / `invalidateTenant(tenantId)`, para que
-    // UsersService/RolesService/StaffService puedan limpiarlo al escribir.
-    expect(typeof (guard as unknown as { invalidate?: unknown }).invalidate).toBe('function');
+    // 2) Se le revoca el rol en la base (simula un despido o una degradación).
+    prisma.userRoleAssignment.findMany.mockResolvedValue([]);
+    await cache.invalidateUser(USER_ID, TENANT);
+
+    // 3) Deja de entrar en la siguiente petición, sin esperar al TTL.
+    await expect(guard.canActivate(context)).resolves.toBe(false);
+  });
+
+  it('invalidar el tenant afecta a todos sus usuarios (cambio de rol)', async () => {
+    const { guard, prisma, cache } = buildGuard(['users:delete']);
+    const context = buildContext({ id: USER_ID, role: 'STAFF', tenantId: TENANT }, ['users:delete']);
+
+    await expect(guard.canActivate(context)).resolves.toBe(true);
+
+    prisma.userRoleAssignment.findMany.mockResolvedValue([]);
+    await cache.invalidateTenant(TENANT);
+
+    await expect(guard.canActivate(context)).resolves.toBe(false);
+  });
+
+  it('invalidar otro tenant no tira el caché de este', async () => {
+    const { guard, prisma, cache } = buildGuard(['users:view']);
+    const context = buildContext({ id: USER_ID, role: 'STAFF', tenantId: TENANT }, ['users:view']);
+
+    await guard.canActivate(context);
+    await cache.invalidateTenant('otro-tenant');
+    await guard.canActivate(context);
+
+    // Sigue sirviéndose de caché: una sola consulta.
+    expect(prisma.userRoleAssignment.findMany).toHaveBeenCalledTimes(1);
   });
 });

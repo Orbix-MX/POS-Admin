@@ -6,6 +6,7 @@ import { PasswordUtil } from '../../../common/utils/password.util';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { AuditContextService } from '../../../common/context/audit-context.service';
 import { EffectivePermissionsService } from '../../../common/services/effective-permissions.service';
+import { PermissionCacheService } from '../../../common/cache/permission-cache.service';
 import { PlanLimitsService } from '../../../common/services/plan-limits.service';
 import { AuditService } from '../../../common/services/audit.service';
 
@@ -58,6 +59,10 @@ describe('UsersService', () => {
             assertActorCanGrant: jest.fn(),
             keysForRoles: jest.fn().mockResolvedValue([]),
           },
+        },
+        {
+          provide: PermissionCacheService,
+          useValue: { invalidateUser: jest.fn(), invalidateTenant: jest.fn(), get: jest.fn(), set: jest.fn() },
         },
         { provide: PrismaService, useValue: mockPrismaService },
       ],

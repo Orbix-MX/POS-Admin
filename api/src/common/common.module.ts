@@ -7,6 +7,11 @@ import { LicenseService } from './services/license.service';
 import { DomainResolverService } from './services/domain-resolver.service';
 import { BusinessConfigurationService } from './business-config/business-configuration.service';
 import { EffectivePermissionsService } from './services/effective-permissions.service';
+import { PermissionCacheService } from './cache/permission-cache.service';
+import {
+  PERMISSION_CACHE_STORE,
+  InMemoryPermissionCacheStore,
+} from './cache/permission-cache.store';
 
 /**
  * Global module so that AuditContextService and TenantContextService
@@ -17,7 +22,18 @@ import { EffectivePermissionsService } from './services/effective-permissions.se
  */
 @Global()
 @Module({
-  providers: [AuditContextService, TenantContextService, AuditService, PlanLimitsService, LicenseService, DomainResolverService, BusinessConfigurationService, EffectivePermissionsService],
-  exports: [AuditContextService, TenantContextService, AuditService, PlanLimitsService, LicenseService, DomainResolverService, BusinessConfigurationService, EffectivePermissionsService],
+  providers: [
+    AuditContextService, TenantContextService, AuditService, PlanLimitsService, LicenseService,
+    DomainResolverService, BusinessConfigurationService, EffectivePermissionsService,
+    PermissionCacheService,
+    // Swap this binding for a shared (Redis) store when the API runs on more
+    // than one instance; nothing else needs to change.
+    { provide: PERMISSION_CACHE_STORE, useClass: InMemoryPermissionCacheStore },
+  ],
+  exports: [
+    AuditContextService, TenantContextService, AuditService, PlanLimitsService, LicenseService,
+    DomainResolverService, BusinessConfigurationService, EffectivePermissionsService,
+    PermissionCacheService,
+  ],
 })
 export class CommonModule {}

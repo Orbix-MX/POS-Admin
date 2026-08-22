@@ -2,6 +2,7 @@ import { Injectable, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AuditContextService } from '../context/audit-context.service';
 import { TenantContextService } from '../context/tenant-context.service';
+import { PermissionCacheService } from '../cache/permission-cache.service';
 
 /**
  * Single owner of "what can this user actually do in this tenant", plus the rule
@@ -17,10 +18,20 @@ export class EffectivePermissionsService {
     private readonly prisma: PrismaService,
     private readonly auditContext: AuditContextService,
     private readonly tenantContext: TenantContextService,
+    private readonly cache: PermissionCacheService,
   ) {}
 
-  /** Effective permission keys for a user within a tenant. */
+  /** Effective permission keys for a user within a tenant, cached. */
   async getFor(userId: string, tenantId: string): Promise<string[]> {
+    const cached = await this.cache.get(userId, tenantId);
+    if (cached) return cached;
+
+    const permissions = await this.compute(userId, tenantId);
+    await this.cache.set(userId, tenantId, permissions);
+    return permissions;
+  }
+
+  private async compute(userId: string, tenantId: string): Promise<string[]> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { role: true },

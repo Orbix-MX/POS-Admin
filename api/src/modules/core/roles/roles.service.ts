@@ -6,6 +6,7 @@
 } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
+import { PermissionCacheService } from '../../../common/cache/permission-cache.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 
@@ -14,6 +15,7 @@ export class RolesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
+    private readonly permissionCache: PermissionCacheService,
   ) {}
 
   async findAll() {
@@ -103,6 +105,7 @@ export class RolesService {
     if (!role) throw new NotFoundException(`Role with id "${id}" not found`);
     if (role.isSystem) throw new BadRequestException('Cannot delete a system role');
     await this.prisma.role.delete({ where: { id } });
+    await this.permissionCache.invalidateTenant(tenantId);
   }
 
   async setPermissions(roleId: string, permissionIds: string[]): Promise<void> {
@@ -125,5 +128,9 @@ export class RolesService {
           ]
         : []),
     ]);
+
+    // A role change reaches every user holding it, so the whole tenant's cached
+    // permissions are dropped rather than hunting down each member.
+    await this.permissionCache.invalidateTenant(tenantId);
   }
 }
