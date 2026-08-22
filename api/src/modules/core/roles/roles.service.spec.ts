@@ -22,19 +22,21 @@ function buildService(overrides: { isSystem?: boolean } = {}) {
       delete: jest.fn().mockResolvedValue(role),
       update: jest.fn().mockResolvedValue(role),
     },
-    rolePermission: { deleteMany: jest.fn(), createMany: jest.fn() },
+    rolePermission: { deleteMany: jest.fn(), createMany: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     $transaction: jest.fn().mockResolvedValue([]),
   };
 
   const permissionCache = { invalidateUser: jest.fn(), invalidateTenant: jest.fn() };
+  const audit = { log: jest.fn() };
 
   const service = new RolesService(
     prisma as never,
     { requireTenantId: () => TENANT } as never,
     permissionCache as never,
+    audit as never,
   );
 
-  return { service, prisma, permissionCache };
+  return { service, prisma, permissionCache, audit };
 }
 
 describe('RolesService — invalidación del caché de permisos', () => {
@@ -61,6 +63,36 @@ describe('RolesService — invalidación del caché de permisos', () => {
     await expect(service.setPermissions(ROLE, [])).rejects.toBeInstanceOf(BadRequestException);
 
     expect(permissionCache.invalidateTenant).not.toHaveBeenCalled();
+  });
+});
+
+describe('RolesService — auditoría', () => {
+  it('registra el cambio de permisos con el antes y el después', async () => {
+    const { service, prisma, audit } = buildService();
+    prisma.rolePermission.findMany = jest
+      .fn()
+      .mockResolvedValue([{ permissionId: 'perm-viejo' }]);
+
+    await service.setPermissions(ROLE, ['perm-nuevo']);
+
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'ROLE_PERMISSIONS_CHANGE',
+        entityId: ROLE,
+        before: { permissionIds: ['perm-viejo'] },
+        after: { permissionIds: ['perm-nuevo'] },
+      }),
+    );
+  });
+
+  it('registra la eliminación del rol', async () => {
+    const { service, audit } = buildService();
+
+    await service.remove(ROLE);
+
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'ROLE_DELETE', entityId: ROLE }),
+    );
   });
 });
 

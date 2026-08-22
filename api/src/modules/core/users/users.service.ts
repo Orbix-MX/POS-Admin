@@ -82,6 +82,15 @@ export class UsersService {
 
     const ownerUserId = await this.getOwnerUserId(tenantId);
     const { password, ...result } = user;
+
+    await this.audit.log({
+      action: 'USER_CREATE',
+      entityType: 'User',
+      entityId: user.id,
+      // Never the password, not even hashed.
+      after: { email: user.email, role: user.role, membershipStatus },
+    });
+
     return { ...result, status: membershipStatus, isOwner: ownerUserId === user.id };
   }
 
@@ -162,6 +171,16 @@ export class UsersService {
 
     if (Object.keys(userFields).length > 0) {
       await this.prisma.user.update({ where: { id }, data: userFields });
+
+      // UpdateUserDto carries no password field, so nothing secret can reach the
+      // log here — keep it that way if the DTO ever grows one.
+      await this.audit.log({
+        action: 'USER_UPDATE',
+        entityType: 'User',
+        entityId: id,
+        before: { email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role },
+        after: userFields,
+      });
     }
 
     return this.findOne(id);
@@ -243,6 +262,13 @@ export class UsersService {
 
     await this.prisma.user.delete({ where: { id } });
     await this.permissionCache.invalidateUser(id, tenantId);
+
+    await this.audit.log({
+      action: 'USER_DELETE',
+      entityType: 'User',
+      entityId: id,
+      before: { email: user.email, role: user.role },
+    });
   }
 
   async findOneWithRoles(id: string) {
@@ -294,6 +320,15 @@ export class UsersService {
       );
     }
 
+    // Snapshot before overwriting: the audit entry is what makes an escalation
+    // reconstructible afterwards.
+    const previousRoleIds = (
+      await this.prisma.userRoleAssignment.findMany({
+        where: { userId, tenantId },
+        select: { roleId: true },
+      })
+    ).map((a) => a.roleId);
+
     await this.prisma.$transaction(async (tx) => {
       await tx.userRoleAssignment.deleteMany({ where: { userId, tenantId } });
       if (roleIds.length > 0) {
@@ -306,6 +341,14 @@ export class UsersService {
 
     // A revoked role has to stop granting access now, not when the TTL expires.
     await this.permissionCache.invalidateUser(userId, tenantId);
+
+    await this.audit.log({
+      action: 'USER_ROLES_CHANGE',
+      entityType: 'User',
+      entityId: userId,
+      before: { roleIds: previousRoleIds },
+      after: { roleIds },
+    });
   }
 
   async setPermissions(userId: string, grants: PermissionGrantInput[]): Promise<void> {
@@ -325,6 +368,11 @@ export class UsersService {
       await this.effectivePermissions.assertActorCanGrant(permissions.map((p) => p.key));
     }
 
+    const previousGrants = await this.prisma.userPermissionGrant.findMany({
+      where: { userId, tenantId },
+      select: { permissionId: true, granted: true },
+    });
+
     await this.prisma.$transaction(async (tx) => {
       await tx.userPermissionGrant.deleteMany({ where: { userId, tenantId } });
       if (grants.length > 0) {
@@ -336,6 +384,14 @@ export class UsersService {
     });
 
     await this.permissionCache.invalidateUser(userId, tenantId);
+
+    await this.audit.log({
+      action: 'USER_PERMISSIONS_CHANGE',
+      entityType: 'User',
+      entityId: userId,
+      before: { grants: previousGrants },
+      after: { grants },
+    });
   }
 
   async getEffectivePermissions(userId: string): Promise<string[]> {

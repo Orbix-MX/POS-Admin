@@ -7,6 +7,7 @@
 import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { PermissionCacheService } from '../../../common/cache/permission-cache.service';
+import { AuditService } from '../../../common/services/audit.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 
@@ -16,6 +17,7 @@ export class RolesService {
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
     private readonly permissionCache: PermissionCacheService,
+    private readonly audit: AuditService,
   ) {}
 
   async findAll() {
@@ -70,6 +72,13 @@ export class RolesService {
       });
     }
 
+    await this.audit.log({
+      action: 'ROLE_CREATE',
+      entityType: 'Role',
+      entityId: role.id,
+      after: { name: role.name, permissionIds: dto.permissionIds ?? [] },
+    });
+
     return this.findOne(role.id);
   }
 
@@ -106,6 +115,13 @@ export class RolesService {
     if (role.isSystem) throw new BadRequestException('Cannot delete a system role');
     await this.prisma.role.delete({ where: { id } });
     await this.permissionCache.invalidateTenant(tenantId);
+
+    await this.audit.log({
+      action: 'ROLE_DELETE',
+      entityType: 'Role',
+      entityId: id,
+      before: { name: role.name, isSystem: role.isSystem },
+    });
   }
 
   async setPermissions(roleId: string, permissionIds: string[]): Promise<void> {
@@ -116,6 +132,15 @@ export class RolesService {
     if (role.isSystem && permissionIds.length === 0) {
       throw new BadRequestException('Cannot remove all permissions from a system role');
     }
+
+    // Snapshot before overwriting: this is the entry that explains, afterwards,
+    // how a role ended up with more (or less) than it should.
+    const previousPermissionIds = (
+      await this.prisma.rolePermission.findMany({
+        where: { roleId },
+        select: { permissionId: true },
+      })
+    ).map((rp) => rp.permissionId);
 
     await this.prisma.$transaction([
       this.prisma.rolePermission.deleteMany({ where: { roleId } }),
@@ -132,5 +157,13 @@ export class RolesService {
     // A role change reaches every user holding it, so the whole tenant's cached
     // permissions are dropped rather than hunting down each member.
     await this.permissionCache.invalidateTenant(tenantId);
+
+    await this.audit.log({
+      action: 'ROLE_PERMISSIONS_CHANGE',
+      entityType: 'Role',
+      entityId: roleId,
+      before: { permissionIds: previousPermissionIds },
+      after: { permissionIds },
+    });
   }
 }

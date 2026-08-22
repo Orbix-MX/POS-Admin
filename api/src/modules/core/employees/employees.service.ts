@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { AuditContextService } from '../../../common/context/audit-context.service';
+import { AuditService } from '../../../common/services/audit.service';
 import { PaginationDto, PaginatedResponse } from '../../../common/dto/pagination.dto';
 import { Employee, EmployeeStatus } from '@prisma/client';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
@@ -16,6 +17,7 @@ export class EmployeesService {
     private prisma: PrismaService,
     private tenantContext: TenantContextService,
     private auditContext: AuditContextService,
+    private audit: AuditService,
   ) {}
 
   /** Never leak the PIN hash to clients; surface a boolean instead. */
@@ -88,6 +90,18 @@ export class EmployeesService {
         updatedById: userId ?? null,
       },
     });
+    await this.audit.log({
+      action: 'EMPLOYEE_CREATE',
+      entityType: 'Employee',
+      entityId: created.id,
+      after: {
+        employeeNumber: created.employeeNumber,
+        email: created.email,
+        position: created.position,
+        status: created.status,
+      },
+    });
+
     return this.sanitize(created);
   }
 
@@ -122,6 +136,26 @@ export class EmployeesService {
         updatedById: userId ?? null,
       },
     });
+    await this.audit.log({
+      action: 'EMPLOYEE_UPDATE',
+      entityType: 'Employee',
+      entityId: id,
+      before: {
+        employeeNumber: employee.employeeNumber,
+        email: employee.email,
+        position: employee.position,
+        salary: employee.salary?.toString() ?? null,
+        status: employee.status,
+      },
+      after: {
+        employeeNumber: updated.employeeNumber,
+        email: updated.email,
+        position: updated.position,
+        salary: updated.salary?.toString() ?? null,
+        status: updated.status,
+      },
+    });
+
     return this.sanitize(updated);
   }
 
@@ -133,6 +167,14 @@ export class EmployeesService {
       where: { id },
       data: { status: EmployeeStatus.INACTIVE },
     });
+    await this.audit.log({
+      action: 'EMPLOYEE_DEACTIVATE',
+      entityType: 'Employee',
+      entityId: id,
+      before: { status: employee.status },
+      after: { status: removed.status },
+    });
+
     return this.sanitize(removed);
   }
 }

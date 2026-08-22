@@ -72,6 +72,7 @@ function buildService(overrides: {
     jwtService,
     effectivePermissions as never,
     permissionCache as never,
+    { log: jest.fn() } as never,
   );
 
   return { service, prisma, jwtService, devicesService };

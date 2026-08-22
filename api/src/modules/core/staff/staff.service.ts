@@ -7,6 +7,7 @@ import { PrismaService } from '../../../database/prisma.service';
 import { DevicesService } from '../devices/devices.service';
 import { EffectivePermissionsService } from '../../../common/services/effective-permissions.service';
 import { PermissionCacheService } from '../../../common/cache/permission-cache.service';
+import { AuditService } from '../../../common/services/audit.service';
 import { getModulesForPlan, getAllowedModulesForVertical } from '@orbix/types';
 
 /**
@@ -33,6 +34,7 @@ export class StaffService {
     private readonly jwtService: JwtService,
     private readonly effectivePermissions: EffectivePermissionsService,
     private readonly permissionCache: PermissionCacheService,
+    private readonly audit: AuditService,
   ) {}
 
   private hashPin(tenantId: string, pin: string): string {
@@ -225,6 +227,17 @@ export class StaffService {
     // already-issued operator token keeps its old role until it expires. The
     // cache flush only covers users; that token lifetime is the real bound.
     await this.permissionCache.invalidateTenant(tenantId);
+
+    await this.audit.log({
+      action: 'EMPLOYEE_PIN_ASSIGN',
+      entityType: 'Employee',
+      entityId: employeeId,
+      // The PIN is a credential: record that it changed and which role came with
+      // it, never the digits nor their hash.
+      before: { roleId: employee.roleId, hadPin: employee.pinHash != null },
+      after: { roleId: roleId ?? employee.roleId, hadPin: true },
+    });
+
     return { ok: true };
   }
 
@@ -233,6 +246,16 @@ export class StaffService {
     const employee = await this.prisma.employee.findFirst({ where: { id: employeeId, tenantId } });
     if (!employee) throw new NotFoundException('Empleado no encontrado');
     await this.prisma.employee.update({ where: { id: employeeId }, data: { pinHash: null } });
+    await this.permissionCache.invalidateTenant(tenantId);
+
+    await this.audit.log({
+      action: 'EMPLOYEE_PIN_CLEAR',
+      entityType: 'Employee',
+      entityId: employeeId,
+      before: { hadPin: employee.pinHash != null },
+      after: { hadPin: false },
+    });
+
     return { ok: true };
   }
 }
