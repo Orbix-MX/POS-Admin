@@ -1,10 +1,11 @@
 import {
   IsEmail, IsString, IsEnum, IsOptional, IsDateString,
-  IsNumber, Min, MinLength, MaxLength,
+  IsNumber, Min, MinLength, MaxLength, IsUUID, IsBoolean,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { EmployeeStatus, ContractType } from '@prisma/client';
+import { IsStrongPassword } from '../../../../common/validators/is-strong-password.decorator';
 
 export class CreateEmployeeDto {
   @ApiProperty()
@@ -91,4 +92,31 @@ export class CreateEmployeeDto {
   @IsString()
   @MaxLength(500)
   notes?: string;
+
+  // ── Cuenta de back-office (opcional) ────────────────────────────────────────
+  // Dos caminos excluyentes entre sí: enlazar una cuenta que ya existe, o crear
+  // una nueva para esta persona. La mayoría del personal no necesita ninguna de
+  // las dos: opera con PIN y nunca entra al panel.
+
+  @ApiPropertyOptional({
+    description: 'Vincula al empleado con una cuenta existente del tenant.',
+  })
+  @IsOptional()
+  @IsUUID('4')
+  userId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Crea también una cuenta de acceso para este empleado, usando su correo. Requiere permiso users:create.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  createUserAccount?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Contraseña inicial de la cuenta. Obligatoria si createUserAccount es true.',
+  })
+  @IsOptional()
+  @IsStrongPassword()
+  userPassword?: string;
 }

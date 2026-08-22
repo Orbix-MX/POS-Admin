@@ -5,6 +5,7 @@ import { DataTable, Pagination, type Column } from '@/components/shared/data-tab
 import { FormModal, FormField } from '@/components/shared/form-modal'
 import { Search, Plus, Loader2, KeyRound } from 'lucide-react'
 import { useEmpleados } from '@/hooks/core/use-empleados'
+import { EmployeeAccountField } from '@/components/empleados/employee-account-field'
 import type { Empleado } from '@/hooks/core/use-empleados'
 import { EmployeePinModal } from '@/components/empleados/employee-pin-modal'
 
@@ -29,7 +30,7 @@ export function Empleados() {
     loading, error, search, setSearch, statusFilter, setStatusFilter,
     departmentFilter, setDepartmentFilter, departments,
     page, setPage, modalOpen, editModalOpen, selected, setSelected,
-    form, setForm, editForm, setEditForm,
+    form, setForm, editForm, setEditForm, cuentas,
     filtered, pageData, stats, saving,
     formErrors, editErrors, apiError,
     handleSave, handleOpenNew, handleCloseModal,
@@ -157,6 +158,7 @@ export function Empleados() {
                 { label: 'RFC',          value: selected.rfc || '—' },
                 { label: 'CURP',         value: selected.curp || '—' },
                 { label: 'Acceso comandera', value: selected.hasPin ? 'PIN asignado ✓' : 'Sin PIN' },
+                { label: 'Cuenta de acceso', value: selected.user ? selected.user.email : 'Sin cuenta' },
                 { label: 'Notas',        value: selected.notes || '—' },
               ].map((f, i) => (
                 <div key={i} className="bg-muted rounded-lg p-3">
@@ -214,6 +216,15 @@ export function Empleados() {
           <div className="col-span-2">
             <FormField label="Notas" value={form.notes} onChange={v => setForm(p => ({ ...p, notes: v }))} />
           </div>
+          <EmployeeAccountField
+            value={form.cuenta}
+            onChange={v => setForm(p => ({ ...p, cuenta: v }))}
+            password={form.userPassword}
+            onPasswordChange={v => setForm(p => ({ ...p, userPassword: v }))}
+            cuentas={cuentas}
+            allowCreate
+            passwordError={formErrors.userPassword}
+          />
         </div>
         <div className="flex gap-2.5 justify-end mt-2">
           <button onClick={handleCloseModal} className="px-4.5 py-2 border border-border rounded-lg bg-card text-[13px] cursor-pointer text-muted-foreground">Cancelar</button>
@@ -259,6 +270,13 @@ export function Empleados() {
           <div className="col-span-2">
             <FormField label="Notas" value={editForm.notes} onChange={v => setEditForm(p => ({ ...p, notes: v }))} />
           </div>
+          <EmployeeAccountField
+            value={editForm.cuenta}
+            onChange={v => setEditForm(p => ({ ...p, cuenta: v }))}
+            password={editForm.userPassword}
+            onPasswordChange={v => setEditForm(p => ({ ...p, userPassword: v }))}
+            cuentas={cuentas}
+          />
         </div>
         <div className="flex gap-2.5 justify-end mt-2">
           <button onClick={handleCloseEdit} className="px-4.5 py-2 border border-border rounded-lg bg-card text-[13px] cursor-pointer text-muted-foreground">Cancelar</button>

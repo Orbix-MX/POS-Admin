@@ -201,6 +201,8 @@ export interface Empleado {
   salaryRaw?: number | null
   hasPin?: boolean
   roleId?: string | null
+  /** Cuenta de back-office vinculada, si esta persona tiene una. */
+  user?: { id: string; email: string; firstName: string; lastName: string } | null
 }
 
 export type ModuleId =

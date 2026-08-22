@@ -179,6 +179,22 @@ export class EffectivePermissionsService {
     }
   }
 
+  /**
+   * Whether the current actor holds a permission.
+   *
+   * For side doors: an endpoint whose main permission is one thing but that can
+   * also perform a second, more sensitive action. Declaring both permissions on
+   * the handler would demand the second one even when the action isn't used.
+   */
+  async actorHas(permissionKey: string): Promise<boolean> {
+    const actorId = this.auditContext.getUserId();
+    if (!actorId) return false;
+
+    const tenantId = this.tenantContext.requireTenantId();
+    const permissions = await this.getFor(actorId, tenantId);
+    return permissions.includes(permissionKey);
+  }
+
   /** Permission keys carried by the given roles, for escalation checks. */
   async keysForRoles(roleIds: string[], tenantId: string): Promise<string[]> {
     if (roleIds.length === 0) return [];

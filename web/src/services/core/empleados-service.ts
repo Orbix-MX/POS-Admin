@@ -22,6 +22,15 @@ interface ApiEmployee {
   createdAt: string
   hasPin?: boolean
   roleId?: string | null
+  user?: LinkedAccount | null
+}
+
+/** Cuenta de back-office vinculada a un empleado. */
+export interface LinkedAccount {
+  id: string
+  email: string
+  firstName: string
+  lastName: string
 }
 
 interface PaginatedResponse<T> {
@@ -73,6 +82,7 @@ function mapEmployee(e: ApiEmployee): Empleado {
     salaryRaw: salary,
     hasPin: e.hasPin ?? false,
     roleId: e.roleId ?? null,
+    user: e.user ?? null,
   }
 }
 
@@ -92,9 +102,41 @@ export interface CreateEmpleadoInput {
   salary?: number
   status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'ON_LEAVE'
   notes?: string
+  /** Vincula el empleado con una cuenta existente de la empresa. */
+  userId?: string | null
+  /** Crea además una cuenta de acceso usando el correo del empleado. */
+  createUserAccount?: boolean
+  /** Contraseña inicial de esa cuenta. Obligatoria si createUserAccount. */
+  userPassword?: string
 }
 
 export type UpdateEmpleadoInput = Partial<CreateEmpleadoInput>
+
+/** Miembro de la empresa, para el selector de cuenta vinculable. */
+export interface TenantMemberOption {
+  id: string
+  email: string
+  nombre: string
+}
+
+interface ApiMembership {
+  user: { id: string; email: string; firstName: string; lastName: string; status: string }
+}
+
+/**
+ * Cuentas de la empresa que pueden vincularse a un empleado. El backend rechaza
+ * las ya vinculadas, así que se excluyen aquí para no ofrecerlas.
+ */
+export async function fetchCuentasVinculables(yaVinculadas: string[] = []): Promise<TenantMemberOption[]> {
+  const { data } = await api.get<ApiMembership[]>('/tenants/current/members')
+  return data
+    .filter((m) => m.user && m.user.status === 'ACTIVE' && !yaVinculadas.includes(m.user.id))
+    .map((m) => ({
+      id: m.user.id,
+      email: m.user.email,
+      nombre: `${m.user.firstName} ${m.user.lastName}`,
+    }))
+}
 
 export async function fetchEmpleados(): Promise<Empleado[]> {
   const { data } = await api.get<PaginatedResponse<ApiEmployee>>('/employees', {
