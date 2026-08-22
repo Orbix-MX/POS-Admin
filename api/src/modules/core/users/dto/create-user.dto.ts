@@ -1,16 +1,14 @@
 import { Allow, IsEmail, IsString, IsEnum, MinLength, MaxLength, IsOptional } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { UserRole, MembershipStatus } from '@prisma/client';
+import { IsStrongPassword } from '../../../../common/validators/is-strong-password.decorator';
 
 export class CreateUserDto {
   @ApiProperty()
   @IsEmail()
   email: string;
 
-  @ApiProperty({ minLength: 6 })
-  @IsString()
-  @MinLength(6)
-  @MaxLength(50)
+  @IsStrongPassword()
   password: string;
 
   @ApiProperty()

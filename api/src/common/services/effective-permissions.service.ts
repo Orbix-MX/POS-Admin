@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException } from '@nestjs/common';
+import { Injectable, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AuditContextService } from '../context/audit-context.service';
 import { TenantContextService } from '../context/tenant-context.service';
@@ -93,6 +93,88 @@ export class EffectivePermissionsService {
     if (escalated.length > 0) {
       throw new ForbiddenException(
         `No puedes otorgar permisos que tú no posees: ${[...new Set(escalated)].sort().join(', ')}`,
+      );
+    }
+  }
+
+  /**
+   * Permissions that let someone recover control of a tenant: whoever holds both
+   * can hand out roles and permissions again.
+   */
+  static readonly ADMIN_PERMISSIONS = ['users:edit', 'roles:edit'];
+
+  /**
+   * How many ACTIVE members of the tenant can still administer it.
+   *
+   * Guards against locking a tenant out of itself — emptying the permissions of
+   * the role everyone depends on, or stripping the last admin. Nothing stopped
+   * that before: the only protection was on the tenant owner, and even they
+   * could be left with no permissions at all.
+   *
+   * Runs only on RBAC writes, never on the request hot path.
+   */
+  async countAdmins(tenantId: string, excludeUserId?: string): Promise<number> {
+    const memberships = await this.prisma.tenantMembership.findMany({
+      where: {
+        tenantId,
+        status: 'ACTIVE',
+        ...(excludeUserId ? { userId: { not: excludeUserId } } : {}),
+      },
+      select: {
+        userId: true,
+        user: {
+          select: {
+            role: true,
+            roleAssignments: {
+              where: { tenantId },
+              select: { role: { select: { permissions: { select: { permission: { select: { key: true } } } } } } },
+            },
+            permissionGrants: {
+              where: { tenantId },
+              select: { granted: true, permission: { select: { key: true } } },
+            },
+          },
+        },
+      },
+    });
+
+    let admins = 0;
+    for (const membership of memberships) {
+      const user = membership.user;
+      if (!user) continue;
+
+      // A platform SUPER_ADMIN bypasses every permission check, so they count.
+      if (user.role === 'SUPER_ADMIN') {
+        admins++;
+        continue;
+      }
+
+      const keys = new Set<string>();
+      for (const assignment of user.roleAssignments) {
+        for (const rp of assignment.role.permissions) keys.add(rp.permission.key);
+      }
+      for (const grant of user.permissionGrants) {
+        if (grant.granted) keys.add(grant.permission.key);
+        else keys.delete(grant.permission.key);
+      }
+
+      if (EffectivePermissionsService.ADMIN_PERMISSIONS.every((k) => keys.has(k))) {
+        admins++;
+      }
+    }
+
+    return admins;
+  }
+
+  /**
+   * Refuse a change that would leave the tenant with nobody able to administer
+   * it. `excludeUserId` models the user about to lose their access.
+   */
+  async assertTenantKeepsAnAdmin(tenantId: string, excludeUserId?: string): Promise<void> {
+    const admins = await this.countAdmins(tenantId, excludeUserId);
+    if (admins === 0) {
+      throw new BadRequestException(
+        'La empresa quedaría sin ningún usuario que pueda administrar usuarios y roles.',
       );
     }
   }

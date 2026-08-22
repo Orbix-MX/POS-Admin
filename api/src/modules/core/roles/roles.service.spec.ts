@@ -28,15 +28,18 @@ function buildService(overrides: { isSystem?: boolean } = {}) {
 
   const permissionCache = { invalidateUser: jest.fn(), invalidateTenant: jest.fn() };
   const audit = { log: jest.fn() };
+  // Siempre queda un administrador salvo que un test diga lo contrario.
+  const effectivePermissions = { countAdmins: jest.fn().mockResolvedValue(1) };
 
   const service = new RolesService(
     prisma as never,
     { requireTenantId: () => TENANT } as never,
     permissionCache as never,
     audit as never,
+    effectivePermissions as never,
   );
 
-  return { service, prisma, permissionCache, audit };
+  return { service, prisma, permissionCache, audit, effectivePermissions };
 }
 
 describe('RolesService — invalidación del caché de permisos', () => {

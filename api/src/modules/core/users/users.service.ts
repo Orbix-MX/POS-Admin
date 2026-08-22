@@ -216,6 +216,11 @@ export class UsersService {
       await this.planLimits.assertCanAddActiveUser(tenantId);
     }
 
+    // Losing access can also leave the tenant without anyone able to administer it.
+    if (status !== 'ACTIVE') {
+      await this.effectivePermissions.assertTenantKeepsAnAdmin(tenantId, userId);
+    }
+
     await this.prisma.tenantMembership.update({
       where: { tenantId_userId: { tenantId, userId } },
       data: { status },
@@ -272,6 +277,8 @@ export class UsersService {
         'No puedes eliminar al propietario de la empresa.',
       );
     }
+
+    await this.effectivePermissions.assertTenantKeepsAnAdmin(tenantId, id);
 
     await this.prisma.tenantMembership.update({
       where: { tenantId_userId: { tenantId, userId: id } },
@@ -341,6 +348,16 @@ export class UsersService {
       );
     }
 
+    // If the new set of roles no longer administers the tenant, this user stops
+    // counting as an admin — refuse if they were the last one. Checked before
+    // writing, since throwing afterwards would leave the tenant locked out AND
+    // report an error.
+    const newKeys = new Set(await this.effectivePermissions.keysForRoles(roleIds, tenantId));
+    const stillAdmin = EffectivePermissionsService.ADMIN_PERMISSIONS.every((k) => newKeys.has(k));
+    if (!stillAdmin) {
+      await this.effectivePermissions.assertTenantKeepsAnAdmin(tenantId, userId);
+    }
+
     // Snapshot before overwriting: the audit entry is what makes an escalation
     // reconstructible afterwards.
     const previousRoleIds = (
@@ -393,6 +410,16 @@ export class UsersService {
       where: { userId, tenantId },
       select: { permissionId: true, granted: true },
     });
+
+    // Individual revokes can strip an admin just as effectively as removing a
+    // role, so the same lockout check applies.
+    const revokedKeys = await this.prisma.permission.findMany({
+      where: { id: { in: grants.filter((g) => !g.granted).map((g) => g.permissionId) } },
+      select: { key: true },
+    });
+    if (revokedKeys.some((p) => EffectivePermissionsService.ADMIN_PERMISSIONS.includes(p.key))) {
+      await this.effectivePermissions.assertTenantKeepsAnAdmin(tenantId, userId);
+    }
 
     await this.prisma.$transaction(async (tx) => {
       await tx.userPermissionGrant.deleteMany({ where: { userId, tenantId } });

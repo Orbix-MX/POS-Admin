@@ -120,6 +120,24 @@ function buildModule(overrides: { actorIsSuperAdmin?: boolean } = {}) {
       createMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     tenant: { findUnique: jest.fn().mockResolvedValue({ ownerUserId: 'otro-usuario' }) },
+    // La protección de "último administrador" consulta las membresías activas.
+    // Por defecto hay otro admin, así que nunca bloquea estos tests.
+    tenantMembership: {
+      findMany: jest.fn().mockResolvedValue([
+        {
+          userId: 'otro-admin',
+          user: {
+            role: 'STAFF',
+            roleAssignments: [
+              { role: { permissions: [{ permission: PERM_USERS_EDIT }, { permission: PERM_ROLES_EDIT }] } },
+            ],
+            permissionGrants: [],
+          },
+        },
+      ]),
+      findUnique: jest.fn().mockResolvedValue({ status: 'ACTIVE' }),
+      update: jest.fn().mockResolvedValue({}),
+    },
     $transaction: jest.fn((cb: (tx: unknown) => unknown) =>
       typeof cb === 'function' ? cb(prisma) : Promise.all(cb as unknown as unknown[]),
     ),
@@ -281,6 +299,7 @@ describe('UsersService — invalidación del caché de permisos', () => {
   it('desactivar a un usuario invalida su caché de inmediato (despido)', async () => {
     const { service, permissionCache, prisma } = await buildWithCacheSpy();
     prisma.tenantMembership = {
+      ...prisma.tenantMembership,
       findUnique: jest.fn().mockResolvedValue({ status: 'ACTIVE' }),
       update: jest.fn().mockResolvedValue({}),
     } as never;

@@ -1,5 +1,6 @@
 import { IsString, MinLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { IsStrongPassword } from '../../../../common/validators/is-strong-password.decorator';
 
 /**
  * Self-service password change for the signed-in platform user. There is no
@@ -10,8 +11,6 @@ export class ChangePlatformPasswordDto {
   @IsString()
   currentPassword: string;
 
-  @ApiProperty({ minLength: 8 })
-  @IsString()
-  @MinLength(8)
+  @IsStrongPassword()
   newPassword: string;
 }

@@ -8,6 +8,7 @@ import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { PermissionCacheService } from '../../../common/cache/permission-cache.service';
 import { AuditService } from '../../../common/services/audit.service';
+import { EffectivePermissionsService } from '../../../common/services/effective-permissions.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 
@@ -18,6 +19,7 @@ export class RolesService {
     private readonly tenantContext: TenantContextService,
     private readonly permissionCache: PermissionCacheService,
     private readonly audit: AuditService,
+    private readonly effectivePermissions: EffectivePermissionsService,
   ) {}
 
   async findAll() {
@@ -157,6 +159,30 @@ export class RolesService {
     // A role change reaches every user holding it, so the whole tenant's cached
     // permissions are dropped rather than hunting down each member.
     await this.permissionCache.invalidateTenant(tenantId);
+
+    // Now that the new permissions are in place, confirm somebody can still
+    // administer the tenant. Unlike the user-level checks this one cannot be
+    // predicted from a single user, so it runs inside the transaction's wake and
+    // rolls the permissions back if it fails.
+    const admins = await this.effectivePermissions.countAdmins(tenantId);
+    if (admins === 0) {
+      await this.prisma.$transaction([
+        this.prisma.rolePermission.deleteMany({ where: { roleId } }),
+        ...(previousPermissionIds.length > 0
+          ? [
+              this.prisma.rolePermission.createMany({
+                data: previousPermissionIds.map((permissionId) => ({ roleId, permissionId })),
+                skipDuplicates: true,
+              }),
+            ]
+          : []),
+      ]);
+      await this.permissionCache.invalidateTenant(tenantId);
+
+      throw new BadRequestException(
+        'La empresa quedaría sin ningún usuario que pueda administrar usuarios y roles.',
+      );
+    }
 
     await this.audit.log({
       action: 'ROLE_PERMISSIONS_CHANGE',

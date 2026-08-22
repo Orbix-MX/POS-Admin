@@ -28,11 +28,18 @@ describe('UsersService', () => {
     tenantMembership: {
       create: jest.fn(),
       findFirst: jest.fn(),
-      findMany: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(),
       deleteMany: jest.fn(),
       count: jest.fn(),
+      // La protección de "último administrador" consulta las membresías activas;
+      // por defecto queda otro admin, así que no bloquea estos tests.
+      findMany: jest.fn().mockResolvedValue([
+        {
+          userId: 'otro-admin',
+          user: { role: 'SUPER_ADMIN', roleAssignments: [], permissionGrants: [] },
+        },
+      ]),
     },
     userRoleAssignment: { deleteMany: jest.fn(), createMany: jest.fn(), findMany: jest.fn() },
     userPermissionGrant: { deleteMany: jest.fn(), createMany: jest.fn(), findMany: jest.fn() },
@@ -58,6 +65,8 @@ describe('UsersService', () => {
             getFor: jest.fn().mockResolvedValue([]),
             assertActorCanGrant: jest.fn(),
             keysForRoles: jest.fn().mockResolvedValue([]),
+            assertTenantKeepsAnAdmin: jest.fn(),
+            countAdmins: jest.fn().mockResolvedValue(1),
           },
         },
         {
