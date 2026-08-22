@@ -271,6 +271,14 @@ model User {
   emailVerified Boolean  @default(false) @map("email_verified")
   avatarUrl     String?  @map("avatar_url")
 
+  // ── Protección contra fuerza bruta ─────────────────────────────────────────
+  // El throttling por IP no frena un ataque lento y distribuido contra una
+  // cuenta concreta. Estos dos campos acotan los intentos por CUENTA: el
+  // contador se reinicia al entrar bien, y `lockedUntil` marca hasta cuándo se
+  // rechaza el acceso aunque la contraseña sea correcta.
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime? @map("locked_until")
+
   tenantMemberships TenantMembership[]
 
   // Auditoría
@@ -308,6 +316,7 @@ model User {
   auditLogs                 AuditLog[]            @relation("AuditLogUser")
   workOrdersCreated         WorkOrder[]           @relation("WorkOrderCreatedBy")
   workOrderAssignments      WorkOrderAssignment[] @relation("WorkOrderAssignments")
+  employeeProfiles          Employee[]         @relation("EmployeeAccount")
   employeesCreated          Employee[]         @relation("EmployeeCreatedBy")
   employeesUpdated          Employee[]         @relation("EmployeeUpdatedBy")
   diningAreasCreated        DiningArea[]       @relation("DiningAreaCreatedBy")
@@ -1989,6 +1998,13 @@ model Employee {
   pinHash        String?        @map("pin_hash")
   roleId         String?        @map("role_id")
 
+  // Cuenta de back-office de esta misma persona, si la tiene. Opcional a
+  // propósito: la mayoría del personal opera solo con PIN y nunca necesita
+  // entrar al panel. Sin este vínculo, empleado y usuario eran dos altas
+  // manuales sin relación, y sus datos podían divergir sin que nadie lo notara
+  // (mismo patrón que `hr.employee.user_id` en Odoo).
+  userId         String?        @map("user_id")
+
   createdById String?
   updatedById String?
   createdAt   DateTime @default(now())
@@ -2001,10 +2017,13 @@ model Employee {
   cashSessionsAuthorized CashSession[] @relation("CashSessionAuthorizedByEmployee")
   createdBy    User?            @relation("EmployeeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy    User?            @relation("EmployeeUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  user         User?            @relation("EmployeeAccount", fields: [userId], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, employeeNumber])
   @@unique([tenantId, email])
   @@unique([tenantId, pinHash])
+  // Una cuenta no puede estar vinculada a dos empleados del mismo tenant.
+  @@unique([tenantId, userId])
   @@map("employees")
 }
 

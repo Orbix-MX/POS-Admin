@@ -20,6 +20,8 @@ describe('AuthService', () => {
     user: {
       findUnique: jest.fn(),
       create: jest.fn(),
+      // El login registra el intento fallido para el bloqueo por cuenta.
+      update: jest.fn(),
     },
   };
 
