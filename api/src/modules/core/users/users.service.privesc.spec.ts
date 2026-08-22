@@ -6,21 +6,21 @@ import { TenantContextService } from '../../../common/context/tenant-context.ser
 import { AuditContextService } from '../../../common/context/audit-context.service';
 import { PlanLimitsService } from '../../../common/services/plan-limits.service';
 import { AuditService } from '../../../common/services/audit.service';
+import { EffectivePermissionsService } from '../../../common/services/effective-permissions.service';
 
 /**
- * FASE 0 — Tests de escalación de privilegios sobre `UsersService`.
+ * Regresión de escalación de privilegios sobre `UsersService`.
  *
- * Estos tests describen el comportamiento CORRECTO, no el actual. Los que están
- * marcados `it.failing()` fallan hoy a propósito: documentan una vulnerabilidad
- * abierta y pasan mientras siga abierta. Cuando la Fase 1 la cierre, Jest
- * reportará "Failing test passed unexpectedly" — en ese momento hay que quitar el
- * `.failing` y el test queda como regresión permanente.
+ * Cubre dos vulnerabilidades ya corregidas; si alguna vuelve a abrirse, estos
+ * tests se ponen en rojo:
  *
- * Vulnerabilidades cubiertas:
- *  - `setRoles` / `setPermissions` no validan que el actor ya posea lo que otorga
- *    → cualquier usuario con `users:edit` se auto-escala a Owner del tenant.
- *  - `setRoles` no valida que los `roleId` pertenezcan al tenant actual (IDOR
- *    cross-tenant). El patrón correcto ya existe en `StaffService.assignPin`.
+ *  - `setRoles` / `setPermissions` no validaban que el actor ya poseyera lo que
+ *    otorga, así que cualquier usuario con `users:edit` podía auto-asignarse el
+ *    rol de acceso total del tenant, o concederse permisos uno por uno, sin
+ *    pasar nunca por `roles:edit`.
+ *  - `setRoles` no validaba que los `roleId` pertenecieran al tenant actual
+ *    (IDOR cross-tenant). El patrón correcto ya existía en
+ *    `StaffService.assignPin`.
  *
  * Referencia externa: Odoo restringe la escritura de `groups_id` en `res.users`
  * y no permite otorgar privilegios por encima de los del actor.
@@ -98,7 +98,12 @@ function buildModule(overrides: { actorIsSuperAdmin?: boolean } = {}) {
       findFirst: jest.fn().mockResolvedValue(null),
     },
     permission: {
-      findMany: jest.fn().mockResolvedValue([PERM_USERS_EDIT, PERM_ROLES_EDIT, PERM_USERS_DELETE]),
+      findMany: jest.fn().mockImplementation(({ where }: { where?: { id?: { in: string[] } } } = {}) => {
+        const catalog = [PERM_USERS_EDIT, PERM_ROLES_EDIT, PERM_USERS_DELETE];
+        const ids = where?.id?.in;
+        // Sin filtro devuelve el catálogo entero, igual que Prisma.
+        return Promise.resolve(ids ? catalog.filter((p) => ids.includes(p.id)) : catalog);
+      }),
     },
     userRoleAssignment: {
       findMany: jest.fn().mockImplementation(({ where }: { where: { userId: string } }) =>
@@ -127,10 +132,11 @@ async function buildService(overrides: { actorIsSuperAdmin?: boolean } = {}) {
   const module: TestingModule = await Test.createTestingModule({
     providers: [
       UsersService,
+      // El servicio de permisos efectivos va REAL sobre el prisma simulado: es la
+      // pieza que decide si hay escalación, así que mockearla vaciaría el test.
+      EffectivePermissionsService,
       { provide: PrismaService, useValue: prisma },
       { provide: TenantContextService, useValue: { requireTenantId: () => TENANT, getBranchId: () => null } },
-      // Provisto desde ya: la corrección de Fase 1 necesita conocer al actor para
-      // comparar sus permisos contra los que intenta otorgar.
       { provide: AuditContextService, useValue: { getUserId: () => ACTOR, isOperator: () => false } },
       { provide: PlanLimitsService, useValue: { assertCanAddActiveUser: jest.fn(), recomputeOverLimit: jest.fn(), getCapacity: jest.fn() } },
       { provide: AuditService, useValue: { log: jest.fn() } },
@@ -141,7 +147,7 @@ async function buildService(overrides: { actorIsSuperAdmin?: boolean } = {}) {
 }
 
 describe('UsersService — escalación de privilegios vía asignación de roles', () => {
-  it.failing(
+  it(
     'un actor con solo `users:edit` NO puede auto-asignarse el rol de acceso total',
     async () => {
       const { service } = await buildService();
@@ -152,7 +158,7 @@ describe('UsersService — escalación de privilegios vía asignación de roles'
     },
   );
 
-  it.failing('la asignación rechazada no debe persistirse', async () => {
+  it('la asignación rechazada no debe persistirse', async () => {
     const { service, prisma } = await buildService();
 
     await service.setRoles(ACTOR, [OWNER_ROLE]).catch(() => undefined);
@@ -183,7 +189,7 @@ describe('UsersService — escalación de privilegios vía asignación de roles'
 });
 
 describe('UsersService — escalación de privilegios vía grants individuales', () => {
-  it.failing(
+  it(
     'un actor con solo `users:edit` NO puede auto-concederse `roles:edit`',
     async () => {
       const { service } = await buildService();
@@ -194,7 +200,7 @@ describe('UsersService — escalación de privilegios vía grants individuales',
     },
   );
 
-  it.failing('el grant rechazado no debe persistirse', async () => {
+  it('el grant rechazado no debe persistirse', async () => {
     const { service, prisma } = await buildService();
 
     await service
@@ -222,13 +228,13 @@ describe('UsersService — escalación de privilegios vía grants individuales',
 });
 
 describe('UsersService — aislamiento multi-tenant en asignación de roles', () => {
-  it.failing('NO puede asignarse un rol que pertenece a otro tenant (IDOR)', async () => {
+  it('NO puede asignarse un rol que pertenece a otro tenant (IDOR)', async () => {
     const { service } = await buildService();
 
     await expect(service.setRoles(ACTOR, [FOREIGN_ROLE])).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it.failing('el rol ajeno no debe persistirse en `userRoleAssignment`', async () => {
+  it('el rol ajeno no debe persistirse en `userRoleAssignment`', async () => {
     const { service, prisma } = await buildService();
 
     await service.setRoles(ACTOR, [FOREIGN_ROLE]).catch(() => undefined);

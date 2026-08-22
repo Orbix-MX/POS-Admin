@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
+import { EffectivePermissionsService } from '../../../common/services/effective-permissions.service';
 import { PlanLimitsService, UserCapacity } from '../../../common/services/plan-limits.service';
 import { AuditService } from '../../../common/services/audit.service';
 import { PasswordUtil } from '../../../common/utils/password.util';
@@ -31,6 +32,7 @@ export class UsersService {
   constructor(
     private prisma: PrismaService,
     private tenantContext: TenantContextService,
+    private effectivePermissions: EffectivePermissionsService,
     private planLimits: PlanLimitsService,
     private audit: AuditService,
   ) {}
@@ -267,6 +269,24 @@ export class UsersService {
     });
     if (!user) throw new NotFoundException('User not found');
 
+    if (roleIds.length > 0) {
+      // Roles are tenant-owned: scoping the lookup by tenantId means a role id
+      // belonging to another tenant simply won't be found, and the count check
+      // below turns that into a rejection instead of a silent cross-tenant grant.
+      const roles = await this.prisma.role.findMany({
+        where: { id: { in: roleIds }, tenantId },
+        select: { id: true },
+      });
+
+      if (roles.length !== new Set(roleIds).size) {
+        throw new BadRequestException('Alguno de los roles no existe en esta empresa.');
+      }
+
+      await this.effectivePermissions.assertActorCanGrant(
+        await this.effectivePermissions.keysForRoles(roleIds, tenantId),
+      );
+    }
+
     await this.prisma.$transaction(async (tx) => {
       await tx.userRoleAssignment.deleteMany({ where: { userId, tenantId } });
       if (roleIds.length > 0) {
@@ -285,6 +305,16 @@ export class UsersService {
     });
     if (!user) throw new NotFoundException('User not found');
 
+    // Only additive grants can escalate; a revoke (granted:false) never can.
+    const grantedIds = grants.filter((g) => g.granted).map((g) => g.permissionId);
+    if (grantedIds.length > 0) {
+      const permissions = await this.prisma.permission.findMany({
+        where: { id: { in: grantedIds } },
+        select: { key: true },
+      });
+      await this.effectivePermissions.assertActorCanGrant(permissions.map((p) => p.key));
+    }
+
     await this.prisma.$transaction(async (tx) => {
       await tx.userPermissionGrant.deleteMany({ where: { userId, tenantId } });
       if (grants.length > 0) {
@@ -301,35 +331,6 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
-    if (user.role === 'SUPER_ADMIN') {
-      const allPermissions = await this.prisma.permission.findMany();
-      return allPermissions.map((p) => p.key);
-    }
-
-    const roleAssignments = await this.prisma.userRoleAssignment.findMany({
-      where: { userId, tenantId },
-      include: {
-        role: { include: { permissions: { include: { permission: true } } } },
-      },
-    });
-
-    const permissionKeys = new Set<string>();
-    for (const assignment of roleAssignments) {
-      for (const rp of assignment.role.permissions) {
-        permissionKeys.add(rp.permission.key);
-      }
-    }
-
-    const individualGrants = await this.prisma.userPermissionGrant.findMany({
-      where: { userId, tenantId },
-      include: { permission: true },
-    });
-
-    for (const grant of individualGrants) {
-      if (grant.granted) permissionKeys.add(grant.permission.key);
-      else permissionKeys.delete(grant.permission.key);
-    }
-
-    return Array.from(permissionKeys);
+    return this.effectivePermissions.getFor(userId, tenantId);
   }
 }

@@ -5,6 +5,7 @@ import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { DevicesService } from '../devices/devices.service';
+import { EffectivePermissionsService } from '../../../common/services/effective-permissions.service';
 import { getModulesForPlan, getAllowedModulesForVertical } from '@orbix/types';
 
 /**
@@ -29,6 +30,7 @@ export class StaffService {
     private readonly config: ConfigService,
     private readonly devicesService: DevicesService,
     private readonly jwtService: JwtService,
+    private readonly effectivePermissions: EffectivePermissionsService,
   ) {}
 
   private hashPin(tenantId: string, pin: string): string {
@@ -197,6 +199,12 @@ export class StaffService {
     if (roleId) {
       const role = await this.prisma.role.findFirst({ where: { id: roleId, tenantId }, select: { id: true } });
       if (!role) throw new BadRequestException('Rol inválido');
+
+      // The PIN turns this role into a usable login, so assigning it is a grant:
+      // it must not hand the operator permissions the caller lacks.
+      await this.effectivePermissions.assertActorCanGrant(
+        await this.effectivePermissions.keysForRoles([roleId], tenantId),
+      );
     }
 
     try {

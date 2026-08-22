@@ -62,11 +62,14 @@ function buildService(overrides: {
   const config = { get: jest.fn().mockReturnValue(SECRET) };
   const devicesService = { authorizeByToken: jest.fn() };
 
+  const effectivePermissions = { assertActorCanGrant: jest.fn(), keysForRoles: jest.fn().mockResolvedValue([]) };
+
   const service = new StaffService(
     prisma as never,
     config as never,
     devicesService as never,
     jwtService,
+    effectivePermissions as never,
   );
 
   return { service, prisma, jwtService, devicesService };

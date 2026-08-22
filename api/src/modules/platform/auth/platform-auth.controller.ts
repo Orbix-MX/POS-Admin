@@ -5,12 +5,15 @@ import { Public } from '../../../common/decorators/public.decorator';
 import { PlatformAuthService } from './platform-auth.service';
 import { PlatformLoginDto } from './dto/platform-login.dto';
 import { ResetPlatformPasswordDto } from './dto/reset-platform-password.dto';
+import { ChangePlatformPasswordDto } from './dto/change-platform-password.dto';
 import { PlatformAuthResponseDto, PlatformUserResponseDto } from './dto/platform-auth-response.dto';
 import { PlatformJwtAuthGuard } from '../common/guards/platform-jwt-auth.guard';
 import { CurrentPlatformUser } from '../common/decorators/current-platform-user.decorator';
 import type { PlatformUser } from '@prisma/client';
 
-type PlatformActor = Pick<PlatformUser, 'id' | 'email' | 'firstName' | 'lastName' | 'role' | 'status' | 'createdAt'>;
+// Superset of the service's `PlatformActor` (id/email/role), so it satisfies it
+// structurally while also carrying what `me()` returns.
+type PlatformProfile = Pick<PlatformUser, 'id' | 'email' | 'firstName' | 'lastName' | 'role' | 'status' | 'createdAt'>;
 
 @ApiTags('Platform Auth')
 @Controller('platform/auth')
@@ -30,16 +33,31 @@ export class PlatformAuthController {
   @UseGuards(PlatformJwtAuthGuard)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Reset a platform user password' })
-  resetPassword(@Body() dto: ResetPlatformPasswordDto): Promise<void> {
-    return this.platformAuthService.resetPassword(dto);
+  @ApiOperation({ summary: 'Reset another platform user password (SUPER_ADMIN only)' })
+  resetPassword(
+    @Body() dto: ResetPlatformPasswordDto,
+    @CurrentPlatformUser() actor: PlatformProfile,
+  ): Promise<void> {
+    return this.platformAuthService.resetPassword(dto, actor);
+  }
+
+  @Patch('change-password')
+  @UseGuards(PlatformJwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Change your own platform password' })
+  changeOwnPassword(
+    @Body() dto: ChangePlatformPasswordDto,
+    @CurrentPlatformUser() actor: PlatformProfile,
+  ): Promise<void> {
+    return this.platformAuthService.changeOwnPassword(actor, dto);
   }
 
   @Get('me')
   @UseGuards(PlatformJwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current platform user profile' })
-  me(@CurrentPlatformUser() user: PlatformActor): PlatformUserResponseDto {
+  me(@CurrentPlatformUser() user: PlatformProfile): PlatformUserResponseDto {
     return {
       id: user.id,
       email: user.email,

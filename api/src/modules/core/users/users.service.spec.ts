@@ -4,6 +4,8 @@ import { UsersService } from './users.service';
 import { PrismaService } from '../../../database/prisma.service';
 import { PasswordUtil } from '../../../common/utils/password.util';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
+import { AuditContextService } from '../../../common/context/audit-context.service';
+import { EffectivePermissionsService } from '../../../common/services/effective-permissions.service';
 import { PlanLimitsService } from '../../../common/services/plan-limits.service';
 import { AuditService } from '../../../common/services/audit.service';
 
@@ -48,6 +50,15 @@ describe('UsersService', () => {
         { provide: PlanLimitsService, useValue: { assertCanAddUser: jest.fn(), assertCanAddActiveUser: jest.fn(), getUsage: jest.fn() } },
         { provide: AuditService, useValue: { log: jest.fn() } },
         { provide: TenantContextService, useValue: { requireTenantId: () => 'tenant-1', getBranchId: () => null } },
+        { provide: AuditContextService, useValue: { getUserId: () => 'actor-1', isOperator: () => false } },
+        {
+          provide: EffectivePermissionsService,
+          useValue: {
+            getFor: jest.fn().mockResolvedValue([]),
+            assertActorCanGrant: jest.fn(),
+            keysForRoles: jest.fn().mockResolvedValue([]),
+          },
+        },
         { provide: PrismaService, useValue: mockPrismaService },
       ],
     }).compile();
