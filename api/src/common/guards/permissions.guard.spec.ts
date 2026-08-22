@@ -2,6 +2,7 @@ import { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PermissionsGuard } from './permissions.guard';
 import { PERMISSIONS_KEY } from '../decorators/require-permissions.decorator';
+import { NO_PERMISSIONS_REQUIRED_KEY } from '../decorators/no-permissions-required.decorator';
 
 /**
  * FASE 0 — Tests de `PermissionsGuard`.
@@ -12,9 +13,10 @@ import { PERMISSIONS_KEY } from '../decorators/require-permissions.decorator';
  * `.failing` y el test queda como regresión.
  *
  * Vulnerabilidades cubiertas:
- *  1. FAIL-OPEN: si un handler no declara `@RequirePermissions`, el guard
- *     concede acceso a cualquier usuario autenticado. Un olvido del decorador
- *     abre el endpoint en silencio (así quedó abierto `StaffController`).
+ *  1. FAIL-OPEN (ya corregido): si un handler no declaraba `@RequirePermissions`,
+ *     el guard concedía acceso a cualquier usuario autenticado, así que un
+ *     olvido del decorador abría el endpoint en silencio (así quedó abierto
+ *     `StaffController`). Ahora deniega salvo `@NoPermissionsRequired`.
  *  2. CACHÉ SIN INVALIDACIÓN: los permisos efectivos se cachean 60 s sin que
  *     ningún cambio de rol/grant lo limpie → un permiso revocado sigue
  *     concediendo acceso hasta un minuto. Odoo invalida su caché de forma
@@ -30,10 +32,17 @@ type PrismaStub = {
 };
 
 /** Construye un ExecutionContext con el `user` y la metadata de permisos dados. */
-function buildContext(user: unknown, requiredPermissions?: string[]): ExecutionContext {
+function buildContext(
+  user: unknown,
+  requiredPermissions?: string[],
+  opts: { noPermissionsRequired?: boolean } = {},
+): ExecutionContext {
   const handler = () => undefined;
   if (requiredPermissions) {
     Reflect.defineMetadata(PERMISSIONS_KEY, requiredPermissions, handler);
+  }
+  if (opts.noPermissionsRequired) {
+    Reflect.defineMetadata(NO_PERMISSIONS_REQUIRED_KEY, true, handler);
   }
 
   return {
@@ -59,18 +68,38 @@ function buildGuard(permissionKeys: string[]) {
   return { guard, prisma };
 }
 
-describe('PermissionsGuard — fail-open cuando falta el decorador', () => {
-  it.failing(
-    'un handler SIN @RequirePermissions debe denegar por defecto (fail-closed)',
-    async () => {
-      const { guard } = buildGuard([]);
-      const context = buildContext({ id: USER_ID, role: 'STAFF', tenantId: TENANT });
+describe('PermissionsGuard — comportamiento por defecto (fail-closed)', () => {
+  it('un handler SIN @RequirePermissions deniega por defecto', async () => {
+    const { guard } = buildGuard([]);
+    const context = buildContext({ id: USER_ID, role: 'STAFF', tenantId: TENANT });
 
-      // Hoy devuelve true: cualquier usuario autenticado entra a un endpoint al
-      // que se le olvidó poner el decorador.
-      await expect(guard.canActivate(context)).resolves.toBe(false);
-    },
-  );
+    // Un decorador olvidado se convierte en un 403 que alguien reporta, no en un
+    // endpoint abierto a cualquier usuario autenticado del tenant.
+    await expect(guard.canActivate(context)).resolves.toBe(false);
+  });
+
+  it('@NoPermissionsRequired permite el paso de forma explícita', async () => {
+    const { guard } = buildGuard([]);
+    const context = buildContext(
+      { id: USER_ID, role: 'STAFF', tenantId: TENANT },
+      undefined,
+      { noPermissionsRequired: true },
+    );
+
+    await expect(guard.canActivate(context)).resolves.toBe(true);
+  });
+
+  it('@NoPermissionsRequired concede sin consultar la base de permisos', async () => {
+    const { guard, prisma } = buildGuard([]);
+    const context = buildContext(
+      { id: USER_ID, role: 'STAFF', tenantId: TENANT },
+      undefined,
+      { noPermissionsRequired: true },
+    );
+
+    await expect(guard.canActivate(context)).resolves.toBe(true);
+    expect(prisma.userRoleAssignment.findMany).not.toHaveBeenCalled();
+  });
 
   it('deniega cuando no hay usuario en el request', async () => {
     const { guard } = buildGuard([]);

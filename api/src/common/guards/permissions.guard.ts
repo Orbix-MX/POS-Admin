@@ -2,6 +2,7 @@ import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../../database/prisma.service';
 import { PERMISSIONS_KEY } from '../decorators/require-permissions.decorator';
+import { NO_PERMISSIONS_REQUIRED_KEY } from '../decorators/no-permissions-required.decorator';
 
 interface CacheEntry {
   permissions: string[];
@@ -26,9 +27,17 @@ export class PermissionsGuard implements CanActivate {
       [context.getHandler(), context.getClass()],
     );
 
-    // No permissions required → allow
+    // Fail closed: a handler that declares no permissions is only reachable if it
+    // says so explicitly. Allowing by default meant a forgotten
+    // @RequirePermissions silently opened the endpoint to every authenticated
+    // user of the tenant — which is how the PIN admin endpoints stayed open.
     if (!requiredPermissions || requiredPermissions.length === 0) {
-      return true;
+      return (
+        this.reflector.getAllAndOverride<boolean>(NO_PERMISSIONS_REQUIRED_KEY, [
+          context.getHandler(),
+          context.getClass(),
+        ]) === true
+      );
     }
 
     const request = context.switchToHttp().getRequest();

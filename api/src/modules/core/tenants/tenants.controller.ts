@@ -28,6 +28,7 @@ import { Roles } from '../../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import type { TenantInfo } from './tenants.service';
 import type { User } from '@prisma/client';
+import { NoPermissionsRequired } from '../../../common/decorators/no-permissions-required.decorator';
 
 const MAX_BRANDING_SIZE = 5 * 1024 * 1024;
 
@@ -39,6 +40,7 @@ export class TenantsController {
 
   // ── Self-service onboarding (any authenticated user, no tenant yet) ────────
 
+  @NoPermissionsRequired()
   @Post('onboarding')
   @ApiOperation({ summary: 'Self-service: register a company (FREE plan, essentials only)' })
   onboard(@Body() dto: CreateTenantOnboardingDto, @CurrentUser() user: User) {

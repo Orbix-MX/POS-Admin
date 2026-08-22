@@ -36,6 +36,7 @@ import { Public } from '../../../common/decorators/public.decorator';
 import { AllowInvalidLicense } from '../../../common/decorators/allow-invalid-license.decorator';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { TenantRole, TenantPlan } from '@prisma/client';
+import { NoPermissionsRequired } from '../../../common/decorators/no-permissions-required.decorator';
 
 type AuthUser = {
   id: string;
@@ -87,6 +88,7 @@ export class AuthController {
     return this.authService.refresh(dto.refreshToken);
   }
 
+  @NoPermissionsRequired()
   @Post('logout')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Logout — revokes current access token and (optionally) the refresh token' })
@@ -166,6 +168,7 @@ export class AuthController {
     return allowed.includes(candidate) ? candidate : fallback;
   }
 
+  @NoPermissionsRequired()
   @Get('me')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current user profile with active tenant/branch' })
@@ -173,6 +176,7 @@ export class AuthController {
     return this.authService.getProfile(user.id);
   }
 
+  @NoPermissionsRequired()
   @Patch('select-tenant/:slug')
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
@@ -185,6 +189,7 @@ export class AuthController {
     return this.authService.selectTenant(user.id, user.email, slug);
   }
 
+  @NoPermissionsRequired()
   @Patch('select-branch/:branchId')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Select active branch — returns new JWT with branchId embedded' })
@@ -203,6 +208,7 @@ export class AuthController {
     );
   }
 
+  @NoPermissionsRequired()
   @Get('me/capabilities')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get plan capabilities for current tenant session' })

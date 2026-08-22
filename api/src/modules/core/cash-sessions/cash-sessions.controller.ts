@@ -14,6 +14,7 @@ import { WithdrawForSuppliesDto } from './dto/withdraw-supplies.dto';
 import { CreateCashCountDto } from './dto/create-count.dto';
 import { AuthorizePinDto } from './dto/authorize-pin.dto';
 import { WithdrawCashDto } from './dto/withdraw-cash.dto';
+import { NoPermissionsRequired } from '../../../common/decorators/no-permissions-required.decorator';
 
 @ApiTags('Cash Sessions')
 @ApiBearerAuth()
@@ -52,6 +53,7 @@ export class CashSessionsController {
   // el servicio pueda pedir el PIN del supervisor. La autorización se resuelve
   // dentro (permiso propio del usuario, o PIN de un empleado que lo tenga), así
   // que nadie sin respaldo llega a ejecutar la operación.
+  @NoPermissionsRequired()
   @Patch(':id/start-count')
   @ApiOperation({ summary: 'Congelar la caja para arquear (ABIERTA → EN_ARQUEO)' })
   startCount(@Param('id') id: string, @Body() dto?: AuthorizePinDto) {
@@ -61,6 +63,7 @@ export class CashSessionsController {
   // Reanudar cierra el paréntesis del arqueo. Va por el mismo permiso —y el
   // mismo PIN— que congelarla: si no, un cajero sin permiso dejaría la caja
   // parada sin poder devolverla a operación.
+  @NoPermissionsRequired()
   @Patch(':id/resume')
   @ApiOperation({ summary: 'Volver a operar tras un arqueo de control (EN_ARQUEO → ABIERTA)' })
   resumeOperation(@Param('id') id: string, @Body() dto?: AuthorizePinDto) {
@@ -106,6 +109,7 @@ export class CashSessionsController {
   // el servicio pueda pedir el PIN del supervisor. La autorización se resuelve
   // dentro (permiso propio del usuario, o PIN de un empleado que lo tenga), así
   // que nadie sin respaldo llega a ejecutar la operación.
+  @NoPermissionsRequired()
   @Post('active/count')
   @ApiOperation({ summary: 'Registrar arqueo físico sobre la caja abierta (parcial o final)' })
   createCount(@Body() dto: CreateCashCountDto) {
@@ -144,6 +148,7 @@ export class CashSessionsController {
   // el servicio pueda pedir el PIN del supervisor. La autorización se resuelve
   // dentro (permiso propio del usuario, o PIN de un empleado que lo tenga), así
   // que nadie sin respaldo llega a ejecutar la operación.
+  @NoPermissionsRequired()
   @Patch(':id/close')
   @ApiOperation({ summary: 'Cerrar sesión de caja (corte)' })
   close(@Param('id') id: string, @Body() dto: CloseCashSessionDto) {
