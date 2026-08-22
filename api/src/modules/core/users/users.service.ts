@@ -246,6 +246,19 @@ export class UsersService {
     return this.planLimits.getCapacity(tenantId);
   }
 
+  /**
+   * Remove a user FROM THE CURRENT TENANT. Never deletes the account.
+   *
+   * This used to run `user.delete()`, which contradicted the "never physically
+   * delete" note next to `MembershipStatus` and had two consequences beyond this
+   * tenant: dozens of `createdById`/`updatedById` columns across the schema are
+   * `onDelete: SetNull`, so business history lost its author, and a user who
+   * belonged to other tenants lost those memberships too.
+   *
+   * Now it revokes the membership instead, which is what Odoo does when it
+   * archives a `res.users` rather than unlinking it. Erasing an account for real
+   * (a GDPR request) belongs to the platform plane, not to a tenant admin.
+   */
   async remove(id: string): Promise<void> {
     const tenantId = this.tenantContext.requireTenantId();
     const user = await this.prisma.user.findFirst({
@@ -260,14 +273,22 @@ export class UsersService {
       );
     }
 
-    await this.prisma.user.delete({ where: { id } });
+    await this.prisma.tenantMembership.update({
+      where: { tenantId_userId: { tenantId, userId: id } },
+      data: { status: 'INACTIVE' },
+    });
+
+    // Frees the plan seat the membership was holding.
+    await this.planLimits.recomputeOverLimit(tenantId);
     await this.permissionCache.invalidateUser(id, tenantId);
 
     await this.audit.log({
       action: 'USER_DELETE',
-      entityType: 'User',
-      entityId: id,
+      entityType: 'TenantMembership',
+      entityId: `${tenantId}:${id}`,
       before: { email: user.email, role: user.role },
+      after: { membershipStatus: 'INACTIVE' },
+      reason: 'Baja del usuario en la empresa (no elimina la cuenta)',
     });
   }
 

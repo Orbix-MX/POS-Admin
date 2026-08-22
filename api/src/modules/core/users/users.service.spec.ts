@@ -48,7 +48,7 @@ describe('UsersService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
-        { provide: PlanLimitsService, useValue: { assertCanAddUser: jest.fn(), assertCanAddActiveUser: jest.fn(), getUsage: jest.fn() } },
+        { provide: PlanLimitsService, useValue: { assertCanAddUser: jest.fn(), assertCanAddActiveUser: jest.fn(), recomputeOverLimit: jest.fn(), getUsage: jest.fn() } },
         { provide: AuditService, useValue: { log: jest.fn() } },
         { provide: TenantContextService, useValue: { requireTenantId: () => 'tenant-1', getBranchId: () => null } },
         { provide: AuditContextService, useValue: { getUserId: () => 'actor-1', isOperator: () => false } },
@@ -235,7 +235,7 @@ describe('UsersService', () => {
   });
 
   describe('remove', () => {
-    it('should delete a user', async () => {
+    it('da de baja la membresía en el tenant, sin borrar la cuenta', async () => {
       const userId = '1';
       const mockUser = {
         id: userId,
@@ -243,14 +243,17 @@ describe('UsersService', () => {
       };
 
       mockPrismaService.user.findFirst.mockResolvedValue(mockUser);
-      mockPrismaService.user.findFirst.mockResolvedValue(mockUser);
-      mockPrismaService.user.delete.mockResolvedValue(mockUser);
+      mockPrismaService.tenantMembership.update.mockResolvedValue({ status: 'INACTIVE' });
 
       await service.remove(userId);
 
-      expect(mockPrismaService.user.delete).toHaveBeenCalledWith({
-        where: { id: userId },
+      expect(mockPrismaService.tenantMembership.update).toHaveBeenCalledWith({
+        where: { tenantId_userId: { tenantId: 'tenant-1', userId } },
+        data: { status: 'INACTIVE' },
       });
+      // La cuenta sobrevive: borrarla anularía la autoría de su historial de
+      // negocio (onDelete: SetNull) y sus accesos en otros tenants.
+      expect(mockPrismaService.user.delete).not.toHaveBeenCalled();
     });
 
     it('should throw NotFoundException if user not found', async () => {
