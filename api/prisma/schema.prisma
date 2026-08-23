@@ -159,6 +159,7 @@ model Tenant {
   updatedAt   DateTime  @updatedAt
 
   memberships        TenantMembership[]
+  invitations        TenantInvitation[]
   customers          Customer[]
   categories         Category[]
   products           Product[]
@@ -336,6 +337,7 @@ model User {
 
   refreshTokens RefreshToken[]
   oauthTickets  OAuthTicket[]
+  invitationsSent TenantInvitation[] @relation("InvitationInvitedBy")
 
   managedBranches   Branch[]           @relation("BranchManager")
   branchMemberships BranchMembership[]
@@ -2596,4 +2598,40 @@ model AiUsageCounter {
 
   @@unique([tenantId, period, featureKey])
   @@map("ai_usage_counters")
+}
+
+
+/// Invitación para que una persona se una a una empresa.
+///
+/// Dar acceso a alguien no puede ser una decisión unilateral del administrador:
+/// la persona acepta desde su correo. Eso resuelve dos cosas a la vez — nadie
+/// entra a una empresa sin saberlo, y nadie fija la contraseña de otro.
+///
+/// El token solo se guarda hasheado (SHA-256), igual que `RefreshToken` y
+/// `OAuthTicket`: si la base se filtra, los enlaces pendientes no son usables.
+model TenantInvitation {
+  id       String @id @default(uuid())
+  tenantId String
+  /// Correo invitado. Puede tener cuenta en la plataforma o no; el flujo de
+  /// aceptación se adapta a cada caso.
+  email    String
+
+  tokenHash String @unique @map("token_hash")
+
+  /// Roles que se asignarán al aceptar. Se validan al invitar (que sean del
+  /// tenant y que el invitador los posea) y otra vez al aceptar.
+  roleIds String[] @default([]) @map("role_ids")
+
+  invitedById String?   @map("invited_by_id")
+  expiresAt   DateTime  @map("expires_at")
+  acceptedAt  DateTime? @map("accepted_at")
+  revokedAt   DateTime? @map("revoked_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invitedBy User?  @relation("InvitationInvitedBy", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, email])
+  @@index([email])
+  @@map("tenant_invitations")
 }

@@ -47,15 +47,32 @@ export class UsersService {
     return tenant?.ownerUserId ?? null;
   }
 
+  /**
+   * Alta directa de una cuenta. La interfaz ya no la usa: dar acceso a alguien
+   * pasa por una invitación que esa persona acepta (`InvitationsService`), de
+   * modo que nadie fija la contraseña de otro ni entra a una empresa sin
+   * saberlo. Se mantiene para el seed y para clientes que aún no migraron.
+   *
+   * @deprecated Usar `POST /users/invitations`.
+   */
   async create(createUserDto: CreateUserDto): Promise<TenantScopedUser> {
     const tenantId = this.tenantContext.requireTenantId();
 
+    const membershipStatus: MembershipStatus = createUserDto.status ?? 'ACTIVE';
+
+    // Un correo que ya existe puede ser de alguien que trabaja en otra empresa
+    // de la plataforma. No se toca esa cuenta ni se la añade por la fuerza: el
+    // camino es invitarla.
     const existingUser = await this.prisma.user.findUnique({
       where: { email: createUserDto.email },
     });
-    if (existingUser) throw new ConflictException('Email already exists');
-
-    const membershipStatus: MembershipStatus = createUserDto.status ?? 'ACTIVE';
+    if (existingUser) {
+      throw new ConflictException({
+        code: 'USER_EXISTS_INVITE_REQUIRED',
+        message:
+          'Ya existe una cuenta con ese correo. Envíale una invitación para que se una a esta empresa.',
+      });
+    }
 
     // A new ACTIVE member consumes a plan seat — validate before creating.
     if (membershipStatus === 'ACTIVE') {

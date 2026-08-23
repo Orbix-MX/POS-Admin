@@ -10,6 +10,7 @@ import { AuditContextInterceptor } from './common/interceptors/audit-context.int
 
 // Core modules — reusable across verticals
 import { AuthModule } from './modules/core/auth/auth.module';
+import { InvitationsModule } from './modules/core/invitations/invitations.module';
 import { UsersModule } from './modules/core/users/users.module';
 import { PermissionsModule } from './modules/core/permissions/permissions.module';
 import { RolesModule } from './modules/core/roles/roles.module';
@@ -63,6 +64,11 @@ import { AiModule } from './ai/ai.module';
 
     // Core
     AuthModule,
+    // Antes de UsersModule: Express prioriza por orden de registro, no por
+    // especificidad, así que `GET /users/invitations` debe montarse antes que
+    // `GET /users/:id` o esa ruta dinámica se lo come (probado: devolvía
+    // "User not found" con id="invitations").
+    InvitationsModule,
     UsersModule,
     PermissionsModule,
     RolesModule,

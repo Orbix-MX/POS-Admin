@@ -28,6 +28,7 @@ describe('UsersService', () => {
     tenantMembership: {
       create: jest.fn(),
       findFirst: jest.fn(),
+      findUnique: jest.fn().mockResolvedValue(null),
       update: jest.fn(),
       updateMany: jest.fn(),
       deleteMany: jest.fn(),
@@ -119,17 +120,18 @@ describe('UsersService', () => {
       expect(mockPrismaService.user.create).toHaveBeenCalled();
     });
 
-    it('should throw ConflictException if email exists', async () => {
+    it('si el correo ya pertenece a esta empresa, rechaza por duplicado', async () => {
       const createUserDto = {
         email: 'existing@example.com',
-        password: 'password123',
+        password: 'Password1234',
         firstName: 'Test',
         lastName: 'User',
         role: 'STAFF' as const,
       };
 
-      mockPrismaService.user.findUnique.mockResolvedValue({ id: '1' });
-      mockPrismaService.user.findFirst.mockResolvedValue({ id: '1' });
+      // La cuenta existe y ya es miembro de este tenant.
+      mockPrismaService.user.findUnique.mockResolvedValue({ id: '1', status: 'ACTIVE' });
+      mockPrismaService.tenantMembership.findUnique.mockResolvedValue({ status: 'ACTIVE' });
 
       await expect(service.create(createUserDto)).rejects.toThrow(
         ConflictException,
