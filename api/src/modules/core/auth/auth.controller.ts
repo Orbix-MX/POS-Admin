@@ -29,9 +29,12 @@ import {
 } from './dto/auth-response.dto';
 import { RefreshTokenDto, LogoutDto } from './dto/refresh-token.dto';
 import { ExchangeOAuthTicketDto } from './dto/exchange-oauth-ticket.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { GoogleOAuthGuard } from './guards/google-oauth.guard';
 import type { GoogleProfile } from './strategies/google.strategy';
 import { OAuthTicketService } from './services/oauth-ticket.service';
+import { PasswordResetService } from './services/password-reset.service';
 import { Public } from '../../../common/decorators/public.decorator';
 import { AllowInvalidLicense } from '../../../common/decorators/allow-invalid-license.decorator';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
@@ -58,6 +61,7 @@ export class AuthController {
   constructor(
     private authService: AuthService,
     private oauthTickets: OAuthTicketService,
+    private passwordReset: PasswordResetService,
     private config: ConfigService,
   ) {}
 
@@ -77,6 +81,46 @@ export class AuthController {
   @ApiOperation({ summary: 'Login — returns preliminary JWT + available tenants' })
   async login(@Body() loginDto: LoginDto): Promise<AuthResponseDto> {
     return this.authService.login(loginDto);
+  }
+
+  // ── Reseteo de contraseña ────────────────────────────────────────────────────
+  //
+  // La respuesta de forgot-password es idéntica exista o no el correo: decir
+  // "no encontrado" confirmaría qué correos están registrados en la
+  // plataforma. El throttle es agresivo porque, a diferencia de login, este
+  // endpoint no tiene el bloqueo por cuenta como segunda barrera.
+
+  @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('forgot-password')
+  @ApiOperation({ summary: 'Solicitar reseteo de contraseña por correo' })
+  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<{ message: string }> {
+    await this.passwordReset.requestReset(dto.email);
+    return { message: 'Si el correo existe, se envió un enlace para restablecer la contraseña.' };
+  }
+
+  @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Get('reset-password/:token')
+  @ApiOperation({ summary: 'Comprobar si un enlace de reseteo sigue siendo válido' })
+  async checkResetToken(@Param('token') token: string): Promise<{ valid: true }> {
+    await this.passwordReset.checkValid(token);
+    return { valid: true };
+  }
+
+  @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('reset-password/:token')
+  @ApiOperation({ summary: 'Restablecer la contraseña con el token del correo' })
+  async resetPassword(
+    @Param('token') token: string,
+    @Body() dto: ResetPasswordDto,
+  ): Promise<{ message: string }> {
+    await this.passwordReset.resetPassword(token, dto.newPassword);
+    return { message: 'Contraseña actualizada. Ya puedes iniciar sesión.' };
   }
 
   @Public()

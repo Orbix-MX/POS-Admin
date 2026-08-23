@@ -4,6 +4,7 @@ import { Transporter } from 'nodemailer';
 import { Order, OrderItem, Customer, CustomerAddress, Payment } from '@prisma/client';
 import { generateReceiptHTML } from './templates/receipt.template';
 import { generateInvitationHTML } from './templates/invitation.template';
+import { generatePasswordResetHTML } from './templates/password-reset.template';
 import { GmailApiService } from './gmail-api.service';
 
 @Injectable()
@@ -83,14 +84,48 @@ export class EmailService {
     acceptUrl: string;
     expiresAt: Date;
   }): Promise<{ messageId: string; previewUrl?: string }> {
-    const subject = `Te invitaron a ${params.tenantName} en Orbix ERP`;
-    const html = generateInvitationHTML(params);
+    return this.deliver({
+      to: params.to,
+      subject: `Te invitaron a ${params.tenantName} en Orbix ERP`,
+      html: generateInvitationHTML(params),
+      logLabel: 'Invitación',
+    });
+  }
 
-    // Gmail cuando hay credenciales; si no, el transporte de nodemailer, que en
-    // desarrollo cae a Ethereal y permite leer el correo sin configurar nada.
+  /**
+   * Reseteo de contraseña. Igual que la invitación, si el envío falla se
+   * propaga: el correo es el único canal para completar el flujo, así que
+   * darlo por bueno sin haberlo enviado deja a la persona esperando un
+   * mensaje que nunca llega.
+   */
+  async sendPasswordReset(params: {
+    to: string;
+    resetUrl: string;
+    expiresAt: Date;
+  }): Promise<{ messageId: string; previewUrl?: string }> {
+    return this.deliver({
+      to: params.to,
+      subject: 'Restablece tu contraseña de Orbix ERP',
+      html: generatePasswordResetHTML(params),
+      logLabel: 'Reseteo de contraseña',
+    });
+  }
+
+  /**
+   * Envío común a los correos transaccionales de la app: Gmail cuando hay
+   * credenciales configuradas, si no el transporte SMTP/Ethereal existente
+   * (usado hoy por los recibos), que en desarrollo permite leer el correo sin
+   * configurar nada.
+   */
+  private async deliver(params: {
+    to: string;
+    subject: string;
+    html: string;
+    logLabel: string;
+  }): Promise<{ messageId: string; previewUrl?: string }> {
     if (this.gmail.isConfigured()) {
-      const { messageId } = await this.gmail.send({ to: params.to, subject, html });
-      this.logger.log(`Invitación enviada por Gmail a ${params.to}`);
+      const { messageId } = await this.gmail.send(params);
+      this.logger.log(`${params.logLabel} enviado por Gmail a ${params.to}`);
       return { messageId };
     }
 
@@ -98,17 +133,12 @@ export class EmailService {
 
     const from = process.env.SMTP_FROM || `"Orbix ERP" <${process.env.SMTP_USER ?? 'no-reply@orbix.local'}>`;
 
-    const info = await this.transporter!.sendMail({
-      from,
-      to: params.to,
-      subject,
-      html,
-    });
+    const info = await this.transporter!.sendMail({ from, ...params });
 
     // Con Ethereal (dev) nodemailer da una URL para leer el correo enviado.
     const previewUrl = nodemailer.getTestMessageUrl(info) || undefined;
     if (previewUrl) {
-      this.logger.log(`Invitación enviada (preview): ${previewUrl}`);
+      this.logger.log(`${params.logLabel} enviado (preview): ${previewUrl}`);
     }
 
     return { messageId: info.messageId, previewUrl: previewUrl as string | undefined };

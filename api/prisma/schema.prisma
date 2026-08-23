@@ -338,6 +338,7 @@ model User {
   refreshTokens RefreshToken[]
   oauthTickets  OAuthTicket[]
   invitationsSent TenantInvitation[] @relation("InvitationInvitedBy")
+  passwordResetTokens PasswordResetToken[]
 
   managedBranches   Branch[]           @relation("BranchManager")
   branchMemberships BranchMembership[]
@@ -2634,4 +2635,24 @@ model TenantInvitation {
   @@index([tenantId, email])
   @@index([email])
   @@map("tenant_invitations")
+}
+
+/// Reseteo de contraseña por correo, para una cuenta que ya existe.
+///
+/// Vida corta (1h) frente a las 72h de `TenantInvitation`: aquí ya hay una
+/// cuenta y credenciales potencialmente comprometidas en juego, así que la
+/// ventana de uso del enlace se mantiene mínima. Igual que las demás
+/// credenciales de un solo uso del sistema, solo se guarda el hash SHA-256.
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
 }

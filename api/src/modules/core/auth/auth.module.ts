@@ -9,6 +9,8 @@ import { GoogleStrategy } from './strategies/google.strategy';
 import { TokenBlacklistService } from './services/token-blacklist.service';
 import { RefreshTokenService } from './services/refresh-token.service';
 import { OAuthTicketService } from './services/oauth-ticket.service';
+import { PasswordResetService } from './services/password-reset.service';
+import { EmailModule } from '../email/email.module';
 import { GoogleOAuthGuard } from './guards/google-oauth.guard';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { LicenseGuard } from '../../../common/guards/license.guard';
@@ -18,6 +20,7 @@ import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
+    EmailModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       inject: [ConfigService],
@@ -36,6 +39,7 @@ import { APP_GUARD } from '@nestjs/core';
     TokenBlacklistService,
     RefreshTokenService,
     OAuthTicketService,
+    PasswordResetService,
     GoogleOAuthGuard,
     // La estrategia de Google solo se registra si hay credenciales: sin ellas
     // `passport-google-oauth20` lanza en el constructor y tumba el arranque del
