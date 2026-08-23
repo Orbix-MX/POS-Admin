@@ -1,27 +1,37 @@
-﻿import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
-  fetchUsuarios, createUsuario, updateUsuario, deleteUsuario, setUserRoles,
+  fetchUsuarios, updateUsuario, deleteUsuario, setUserRoles,
   activateUsuario, deactivateUsuario, fetchUserCapacity,
 } from '@/services/core/users-service'
 import type { Usuario, UpdateUsuarioInput, UserCapacity, MembershipStatus } from '@/services/core/users-service'
-import { isPasswordValid } from '@/lib/password-policy'
+import {
+  fetchPendingInvitations, createInvitation, revokeInvitation,
+} from '@/services/core/invitations-service'
+import type { PendingInvitation } from '@/services/core/invitations-service'
 
 export type { Usuario }
 
-type FormState = { firstName: string; lastName: string; email: string; password: string; roleId: string; status: MembershipStatus }
+type InviteFormState = { email: string; roleId: string }
 type EditFormState = { firstName: string; lastName: string; email: string; roleId: string; status: MembershipStatus }
 
 function errMessage(e: unknown, fallback: string): string {
   return (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? fallback
 }
 
-const EMPTY_FORM: FormState = { firstName: '', lastName: '', email: '', password: '', roleId: '', status: 'ACTIVE' }
+const EMPTY_INVITE: InviteFormState = { email: '', roleId: '' }
 const EMPTY_EDIT: EditFormState = { firstName: '', lastName: '', email: '', roleId: '', status: 'ACTIVE' }
 
 const PER_PAGE = 8
 
+/**
+ * Dar de alta un usuario es siempre invitarlo: nadie más fija la contraseña de
+ * otra persona, y nadie entra a una empresa sin haberlo aceptado desde su
+ * correo. `POST /users` (creación directa) sigue existiendo en el API por
+ * compatibilidad, pero esta pantalla ya no lo usa.
+ */
 export function useUsuarios() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
+  const [invitations, setInvitations] = useState<PendingInvitation[]>([])
   const [capacity, setCapacity] = useState<UserCapacity | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -33,17 +43,21 @@ export function useUsuarios() {
   const [editModalOpen, setEditModalOpen] = useState(false)
   const [selected, setSelected] = useState<Usuario | null>(null)
   const [editing, setEditing] = useState<Usuario | null>(null)
-  const [form, setForm] = useState<FormState>(EMPTY_FORM)
+  const [inviteForm, setInviteForm] = useState<InviteFormState>(EMPTY_INVITE)
   const [editForm, setEditForm] = useState<EditFormState>(EMPTY_EDIT)
   const [saving, setSaving] = useState(false)
+  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null)
 
   const loadUsuarios = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const [list, cap] = await Promise.all([fetchUsuarios(), fetchUserCapacity()])
+      const [list, cap, pending] = await Promise.all([
+        fetchUsuarios(), fetchUserCapacity(), fetchPendingInvitations(),
+      ])
       setUsuarios(list)
       setCapacity(cap)
+      setInvitations(pending)
     } catch {
       setError('Error al cargar usuarios')
     } finally {
@@ -73,33 +87,35 @@ export function useUsuarios() {
     return { total: usuarios.length, activos, inactivos, admins }
   }, [usuarios])
 
-  const handleSave = useCallback(async () => {
-    // Se comprueba aquí además de en el API: así el aviso es inmediato y no
-    // depende de un 400. La validación que protege sigue siendo la del backend.
-    if (!isPasswordValid(form.password)) {
-      setActionError('La contraseña no cumple los requisitos indicados.')
-      return
+  const handleInvite = useCallback(async () => {
+    setSaving(true)
+    setActionError(null)
+    setInviteSuccess(null)
+    try {
+      await createInvitation({
+        email: inviteForm.email,
+        roleIds: inviteForm.roleId ? [inviteForm.roleId] : [],
+      })
+      await loadUsuarios()
+      setInviteSuccess(`Invitación enviada a ${inviteForm.email}.`)
+      setInviteForm(EMPTY_INVITE)
+    } catch (e) {
+      setActionError(errMessage(e, 'No se pudo enviar la invitación'))
     }
+    finally { setSaving(false) }
+  }, [inviteForm, loadUsuarios])
+
+  const handleRevokeInvitation = useCallback(async (id: string) => {
     setSaving(true)
     setActionError(null)
     try {
-      const newUser = await createUsuario({
-        firstName: form.firstName,
-        lastName: form.lastName,
-        email: form.email,
-        password: form.password,
-        role: 'STAFF',
-        status: form.status,
-      })
-      if (form.roleId) await setUserRoles(newUser.id, [form.roleId])
+      await revokeInvitation(id)
       await loadUsuarios()
-      setModalOpen(false)
-      setForm(EMPTY_FORM)
     } catch (e) {
-      setActionError(errMessage(e, 'No se pudo crear el usuario'))
+      setActionError(errMessage(e, 'No se pudo revocar la invitación'))
     }
     finally { setSaving(false) }
-  }, [form, loadUsuarios])
+  }, [loadUsuarios])
 
   const handleActivate = useCallback(async (id: string) => {
     setSaving(true)
@@ -127,8 +143,18 @@ export function useUsuarios() {
     finally { setSaving(false) }
   }, [loadUsuarios])
 
-  const handleOpenNew = useCallback(() => { setForm(EMPTY_FORM); setModalOpen(true) }, [])
-  const handleCloseModal = useCallback(() => { setModalOpen(false); setForm(EMPTY_FORM) }, [])
+  const handleOpenNew = useCallback(() => {
+    setInviteForm(EMPTY_INVITE)
+    setInviteSuccess(null)
+    setActionError(null)
+    setModalOpen(true)
+  }, [])
+
+  const handleCloseModal = useCallback(() => {
+    setModalOpen(false)
+    setInviteForm(EMPTY_INVITE)
+    setInviteSuccess(null)
+  }, [])
 
   const handleOpenEdit = useCallback((u: Usuario) => {
     setEditing(u)
@@ -166,12 +192,12 @@ export function useUsuarios() {
   }, [loadUsuarios])
 
   return {
-    usuarios, capacity, actionError, setActionError,
+    usuarios, invitations, capacity, actionError, setActionError, inviteSuccess,
     loading, error, search, setSearch, rolFilter, setRolFilter,
     page, setPage, modalOpen, editModalOpen, selected, setSelected,
-    editing, form, setForm, editForm, setEditForm,
+    editing, inviteForm, setInviteForm, editForm, setEditForm,
     filtered, pageData, stats, saving,
-    handleSave, handleOpenNew, handleCloseModal,
+    handleInvite, handleRevokeInvitation, handleOpenNew, handleCloseModal,
     handleOpenEdit, handleCloseEdit, handleUpdate, handleDelete,
     handleActivate, handleDeactivate, loadUsuarios,
   }

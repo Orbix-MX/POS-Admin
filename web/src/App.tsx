@@ -45,6 +45,7 @@ import { PlatformEmpresaDetalle } from '@/pages/platform/platform-empresa-detall
 import { PlatformAuditoria } from '@/pages/platform/platform-auditoria'
 import { PlatformPlantillas } from '@/pages/platform/platform-plantillas'
 import { TenantSuspended } from '@/pages/tenant-suspended'
+import { InvitacionAceptar } from '@/pages/invitacion'
 import { Download, UtensilsCrossed } from 'lucide-react'
 import type { ModuleId } from '@/types/erp'
 
@@ -280,9 +281,20 @@ function PlatformGate() {
 
 function AppRouter() {
   const location = useLocation()
-  const isPlatform = location.pathname.startsWith('/platform')
-  const isComanda  = location.pathname === '/comanda'
+  const isPlatform   = location.pathname.startsWith('/platform')
+  const isComanda    = location.pathname === '/comanda'
+  const isInvitation = location.pathname.startsWith('/invitacion/')
 
+  // Fuera del gate normal a propósito: quien abre este enlace puede no tener
+  // cuenta todavía, o tenerla sin sesión iniciada — TenantAuthGate lo mandaría
+  // al login sin darle oportunidad de aceptar primero.
+  if (isInvitation) {
+    return (
+      <Routes>
+        <Route path="/invitacion/:token" element={<InvitacionAceptar />} />
+      </Routes>
+    )
+  }
   if (isPlatform) return <PlatformGate />
   if (isComanda)  return <ComandaGate />
   return <TenantAuthGate />

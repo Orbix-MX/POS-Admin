@@ -3,11 +3,11 @@ import { AvatarInitials } from '@/components/shared/avatar-initials'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { DataTable, Pagination, type Column } from '@/components/shared/data-table'
 import { FormModal, FormField } from '@/components/shared/form-modal'
-import { Search, Plus, Loader2, AlertTriangle, ShieldCheck } from 'lucide-react'
+import { Search, Plus, Loader2, AlertTriangle, ShieldCheck, Mail, X, CheckCircle2 } from 'lucide-react'
 import { useUsuarios } from '@/hooks/core/use-usuarios'
 import type { Usuario } from '@/hooks/core/use-usuarios'
 import { useRoles } from '@/hooks/core/use-roles'
-import { PasswordRequirements } from '@/components/shared/password-requirements'
+import type { PendingInvitation } from '@/services/core/invitations-service'
 
 const STATUS_OPTIONS = [
   { value: 'ACTIVE', label: 'Activo' },
@@ -22,12 +22,12 @@ export function Usuarios() {
   const { roles } = useRoles()
 
   const {
-    capacity, actionError, setActionError,
+    invitations, capacity, actionError, setActionError, inviteSuccess,
     loading, error, search, setSearch, rolFilter, setRolFilter,
     page, setPage, modalOpen, editModalOpen, selected, setSelected,
-    form, setForm, editForm, setEditForm,
+    inviteForm, setInviteForm, editForm, setEditForm,
     filtered, pageData, stats, saving,
-    handleSave, handleOpenNew, handleCloseModal,
+    handleInvite, handleRevokeInvitation, handleOpenNew, handleCloseModal,
     handleOpenEdit, handleCloseEdit, handleUpdate, handleDelete,
     handleActivate, handleDeactivate, loadUsuarios,
   } = useUsuarios()
@@ -146,13 +146,45 @@ export function Usuarios() {
               title={!canCreate ? 'Sin cupo disponible en tu plan' : undefined}
               className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground border-none rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Plus className="w-3.5 h-3.5" /> Nuevo Usuario
+              <Plus className="w-3.5 h-3.5" /> Invitar Usuario
             </button>
           </div>
         </div>
         <DataTable columns={columns} rows={pageData} onRowClick={setSelected} />
         <Pagination page={page} total={filtered.length} perPage={8} onChange={setPage} />
       </div>
+
+      {invitations.length > 0 && (
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-border">
+            <h2 className="text-[13px] font-bold text-foreground">Invitaciones pendientes</h2>
+            <p className="text-[11px] text-muted-foreground">
+              Aún no han aceptado. El enlace caduca solo si nadie lo usa a tiempo.
+            </p>
+          </div>
+          <div className="divide-y divide-border">
+            {invitations.map((inv: PendingInvitation) => (
+              <div key={inv.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Mail className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-[13px] text-foreground truncate">{inv.email}</span>
+                  <span className="text-[11px] text-muted-foreground shrink-0">
+                    · caduca {new Date(inv.expiresAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })}
+                  </span>
+                </div>
+                <button
+                  onClick={() => handleRevokeInvitation(inv.id)}
+                  disabled={saving}
+                  title="Revocar invitación"
+                  className="p-1.5 text-muted-foreground hover:text-red-500 bg-transparent border-none cursor-pointer disabled:opacity-50 shrink-0"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Modal detalle */}
       <FormModal open={!!selected} onClose={() => setSelected(null)} title="Detalle del Usuario">
@@ -221,42 +253,41 @@ export function Usuarios() {
         )}
       </FormModal>
 
-      {/* Modal crear */}
-      <FormModal open={modalOpen} onClose={handleCloseModal} title="Nuevo Usuario">
-        <div className="grid grid-cols-2 gap-x-4">
-          <FormField label="Nombre" value={form.firstName} onChange={v => setForm(p => ({ ...p, firstName: v }))} />
-          <FormField label="Apellido" value={form.lastName} onChange={v => setForm(p => ({ ...p, lastName: v }))} />
-          <FormField label="Email" type="email" value={form.email} onChange={v => setForm(p => ({ ...p, email: v }))} />
-          <div>
-            <FormField label="Contraseña" type="password" value={form.password} onChange={v => setForm(p => ({ ...p, password: v }))} />
-            <PasswordRequirements password={form.password} />
+      {/* Modal invitar */}
+      <FormModal open={modalOpen} onClose={handleCloseModal} title="Invitar Usuario">
+        <p className="text-[12px] text-muted-foreground -mt-1 mb-4">
+          Se le manda un correo con un enlace para aceptar. Si ya tiene cuenta en Orbix
+          (por ejemplo, trabaja en otra empresa), solo necesita iniciar sesión para unirse
+          aquí también — no se toca su contraseña.
+        </p>
+        {inviteSuccess && (
+          <div className="mb-4 flex items-start gap-2 px-3.5 py-2.5 bg-green-50 border border-green-200 dark:bg-green-950/30 dark:border-green-900 rounded-lg text-[13px] text-green-700 dark:text-green-400">
+            <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+            {inviteSuccess}
           </div>
-          <div className="flex flex-col gap-1">
+        )}
+        <div className="grid grid-cols-1 gap-x-4">
+          <FormField label="Email" type="email" value={inviteForm.email} onChange={v => setInviteForm(p => ({ ...p, email: v }))} />
+          <div className="flex flex-col gap-1 mt-1">
             <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Rol</label>
             <select
-              value={form.roleId}
-              onChange={e => setForm(p => ({ ...p, roleId: e.target.value }))}
+              value={inviteForm.roleId}
+              onChange={e => setInviteForm(p => ({ ...p, roleId: e.target.value }))}
               className={SELECT_CLASS}
             >
               <option value="">Sin rol asignado</option>
               {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Estado</label>
-            <select
-              value={form.status}
-              onChange={e => setForm(p => ({ ...p, status: e.target.value as typeof form.status }))}
-              className={SELECT_CLASS}
-            >
-              {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </div>
         </div>
-        <div className="flex gap-2.5 justify-end mt-2">
-          <button onClick={handleCloseModal} className="px-4.5 py-2 border border-border rounded-lg bg-card text-[13px] cursor-pointer text-muted-foreground">Cancelar</button>
-          <button onClick={handleSave} disabled={saving} className="px-4.5 py-2 bg-primary text-primary-foreground border-none rounded-lg text-[13px] font-semibold cursor-pointer disabled:opacity-60">
-            {saving ? 'Guardando…' : 'Guardar Usuario'}
+        <div className="flex gap-2.5 justify-end mt-4">
+          <button onClick={handleCloseModal} className="px-4.5 py-2 border border-border rounded-lg bg-card text-[13px] cursor-pointer text-muted-foreground">Cerrar</button>
+          <button
+            onClick={handleInvite}
+            disabled={saving || !inviteForm.email.trim()}
+            className="px-4.5 py-2 bg-primary text-primary-foreground border-none rounded-lg text-[13px] font-semibold cursor-pointer disabled:opacity-60"
+          >
+            {saving ? 'Enviando…' : 'Enviar invitación'}
           </button>
         </div>
       </FormModal>
