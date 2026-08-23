@@ -8,6 +8,7 @@ import {
   fetchPendingInvitations, createInvitation, revokeInvitation,
 } from '@/services/core/invitations-service'
 import type { PendingInvitation } from '@/services/core/invitations-service'
+import { requestPasswordReset } from '@/services/core/auth-service'
 
 export type { Usuario }
 
@@ -47,6 +48,7 @@ export function useUsuarios() {
   const [editForm, setEditForm] = useState<EditFormState>(EMPTY_EDIT)
   const [saving, setSaving] = useState(false)
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null)
+  const [resetSentTo, setResetSentTo] = useState<string | null>(null)
 
   const loadUsuarios = useCallback(async () => {
     setLoading(true)
@@ -186,13 +188,33 @@ export function useUsuarios() {
       await loadUsuarios()
       setSelected(null)
     } catch (e) {
-      setActionError(errMessage(e, 'No se pudo eliminar el usuario'))
+      setActionError(errMessage(e, 'No se pudo quitar de la empresa'))
     }
     finally { setSaving(false) }
   }, [loadUsuarios])
 
+  /**
+   * Dispara el mismo flujo público de "olvidé mi contraseña" para el correo
+   * del usuario, desde el panel de admin. No hay atajo para que el admin vea
+   * o fije la contraseña de otra persona — esto solo manda el enlace; la
+   * persona sigue siendo quien la elige.
+   */
+  const handleSendPasswordReset = useCallback(async (email: string) => {
+    setSaving(true)
+    setActionError(null)
+    setResetSentTo(null)
+    try {
+      await requestPasswordReset(email)
+      setResetSentTo(email)
+    } catch (e) {
+      setActionError(errMessage(e, 'No se pudo enviar el enlace de reseteo'))
+    }
+    finally { setSaving(false) }
+  }, [])
+
   return {
     usuarios, invitations, capacity, actionError, setActionError, inviteSuccess,
+    resetSentTo, setResetSentTo, handleSendPasswordReset,
     loading, error, search, setSearch, rolFilter, setRolFilter,
     page, setPage, modalOpen, editModalOpen, selected, setSelected,
     editing, inviteForm, setInviteForm, editForm, setEditForm,

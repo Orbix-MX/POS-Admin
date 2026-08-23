@@ -26,6 +26,7 @@ export function Usuarios() {
     loading, error, search, setSearch, rolFilter, setRolFilter,
     page, setPage, modalOpen, editModalOpen, selected, setSelected,
     inviteForm, setInviteForm, editForm, setEditForm,
+    resetSentTo, setResetSentTo, handleSendPasswordReset,
     filtered, pageData, stats, saving,
     handleInvite, handleRevokeInvitation, handleOpenNew, handleCloseModal,
     handleOpenEdit, handleCloseEdit, handleUpdate, handleDelete,
@@ -187,7 +188,11 @@ export function Usuarios() {
       )}
 
       {/* Modal detalle */}
-      <FormModal open={!!selected} onClose={() => setSelected(null)} title="Detalle del Usuario">
+      <FormModal
+        open={!!selected}
+        onClose={() => { setSelected(null); setResetSentTo(null) }}
+        title="Detalle del Usuario"
+      >
         {selected && (
           <div>
             <div className="flex items-center gap-4 mb-5 p-4 bg-muted rounded-[10px]">
@@ -223,14 +228,26 @@ export function Usuarios() {
                 </div>
               ))}
             </div>
+            {resetSentTo === selected.email && (
+              <div className="mb-4 flex items-center gap-2 px-3.5 py-2.5 bg-green-50 border border-green-200 dark:bg-green-950/30 dark:border-green-900 rounded-lg text-[13px] text-green-700 dark:text-green-400">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                Si la cuenta tiene contraseña, le llegó un enlace para restablecerla.
+              </div>
+            )}
             <div className="flex gap-2.5 justify-end flex-wrap">
-              <button onClick={() => setSelected(null)} className="px-4.5 py-2 border border-border rounded-lg bg-card text-[13px] cursor-pointer text-muted-foreground">Cerrar</button>
+              <button onClick={() => { setSelected(null); setResetSentTo(null) }} className="px-4.5 py-2 border border-border rounded-lg bg-card text-[13px] cursor-pointer text-muted-foreground">Cerrar</button>
+              <button
+                onClick={() => handleSendPasswordReset(selected.email)}
+                disabled={saving}
+                title="Le manda un enlace por correo; nunca ves ni fijas su contraseña"
+                className="px-4.5 py-2 border border-border rounded-lg bg-card text-[13px] font-semibold cursor-pointer text-muted-foreground disabled:opacity-60"
+              >Enviar reseteo de contraseña</button>
               {!selected.isOwner && (
                 <button
-                  onClick={() => { if (window.confirm('¿Eliminar este usuario? Se perderá su acceso; el historial se conserva.')) handleDelete(selected.id) }}
+                  onClick={() => { if (window.confirm('¿Quitar a este usuario de la empresa? Pierde acceso aquí; su cuenta y el historial se conservan.')) handleDelete(selected.id) }}
                   disabled={saving}
                   className="px-4.5 py-2 bg-red-500 text-white border-none rounded-lg text-[13px] font-semibold cursor-pointer disabled:opacity-60"
-                >Eliminar</button>
+                >Quitar de la empresa</button>
               )}
               {selected.statusRaw === 'ACTIVE' ? (
                 !selected.isOwner && (
