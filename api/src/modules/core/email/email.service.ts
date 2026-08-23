@@ -3,9 +3,13 @@ import * as nodemailer from 'nodemailer';
 import { Transporter } from 'nodemailer';
 import { Order, OrderItem, Customer, CustomerAddress, Payment } from '@prisma/client';
 import { generateReceiptHTML } from './templates/receipt.template';
+import { generateInvitationHTML } from './templates/invitation.template';
+import { GmailApiService } from './gmail-api.service';
 
 @Injectable()
 export class EmailService {
+  constructor(private readonly gmail: GmailApiService) {}
+
   private transporter: Transporter | null = null;
   private initPromise: Promise<void> | null = null;
   private readonly logger = new Logger(EmailService.name);
@@ -64,6 +68,50 @@ export class EmailService {
     })();
 
     await this.initPromise;
+  }
+
+  /**
+   * Invitación para unirse a una empresa.
+   *
+   * Si el envío falla se propaga el error: a diferencia de un recibo, aquí el
+   * correo ES el flujo — dar la invitación por buena sin haberla enviado deja a
+   * la persona esperando un mensaje que nunca llega.
+   */
+  async sendTenantInvitation(params: {
+    to: string;
+    tenantName: string;
+    acceptUrl: string;
+    expiresAt: Date;
+  }): Promise<{ messageId: string; previewUrl?: string }> {
+    const subject = `Te invitaron a ${params.tenantName} en Orbix ERP`;
+    const html = generateInvitationHTML(params);
+
+    // Gmail cuando hay credenciales; si no, el transporte de nodemailer, que en
+    // desarrollo cae a Ethereal y permite leer el correo sin configurar nada.
+    if (this.gmail.isConfigured()) {
+      const { messageId } = await this.gmail.send({ to: params.to, subject, html });
+      this.logger.log(`Invitación enviada por Gmail a ${params.to}`);
+      return { messageId };
+    }
+
+    await this.initializeTransporter();
+
+    const from = process.env.SMTP_FROM || `"Orbix ERP" <${process.env.SMTP_USER ?? 'no-reply@orbix.local'}>`;
+
+    const info = await this.transporter!.sendMail({
+      from,
+      to: params.to,
+      subject,
+      html,
+    });
+
+    // Con Ethereal (dev) nodemailer da una URL para leer el correo enviado.
+    const previewUrl = nodemailer.getTestMessageUrl(info) || undefined;
+    if (previewUrl) {
+      this.logger.log(`Invitación enviada (preview): ${previewUrl}`);
+    }
+
+    return { messageId: info.messageId, previewUrl: previewUrl as string | undefined };
   }
 
   async sendReceipt(

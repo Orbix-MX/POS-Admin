@@ -1,8 +1,15 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
-  fetchEmpleados, createEmpleado, updateEmpleado, deleteEmpleado,
+  fetchEmpleados, createEmpleado, updateEmpleado, deleteEmpleado, fetchCuentasVinculables,
 } from '@/services/core/empleados-service'
-import type { Empleado, CreateEmpleadoInput, UpdateEmpleadoInput } from '@/services/core/empleados-service'
+import type {
+  Empleado, CreateEmpleadoInput, UpdateEmpleadoInput, TenantMemberOption,
+} from '@/services/core/empleados-service'
+
+import { isPasswordValid } from '@/lib/password-policy'
+
+/** Valor del select de cuenta que significa "crear una nueva". */
+export const NUEVA_CUENTA = '__nueva__'
 
 export type { Empleado }
 
@@ -22,6 +29,9 @@ const EMPTY_FORM = {
   hireDate: new Date().toISOString().substring(0, 10),
   salary: '',
   notes: '',
+  // Cuenta de acceso: '' = ninguna, NUEVA_CUENTA = crear, o el id de una existente.
+  cuenta: '',
+  userPassword: '',
 }
 
 const PER_PAGE = 8
@@ -59,6 +69,10 @@ function validateForm(f: typeof EMPTY_FORM): Record<string, string> {
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) e.email = 'Ingresa un email válido'
   if (f.salary && isNaN(parseFloat(f.salary)))   e.salary = 'El salario debe ser un número'
   else if (f.salary && parseFloat(f.salary) < 0) e.salary = 'El salario no puede ser negativo'
+  if (f.cuenta === NUEVA_CUENTA) {
+    if (!f.userPassword.trim()) e.userPassword = 'Define una contraseña para la cuenta nueva'
+    else if (!isPasswordValid(f.userPassword)) e.userPassword = 'La contraseña no cumple los requisitos'
+  }
   return e
 }
 
@@ -95,6 +109,7 @@ export function useEmpleados() {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
   const [editErrors, setEditErrors] = useState<Record<string, string>>({})
   const [apiError, setApiError] = useState<string | null>(null)
+  const [cuentas, setCuentas] = useState<TenantMemberOption[]>([])
 
   const loadEmpleados = useCallback(async () => {
     setLoading(true)
@@ -110,6 +125,16 @@ export function useEmpleados() {
   }, [])
 
   useEffect(() => { loadEmpleados() }, [loadEmpleados])
+
+  // Cuentas de la empresa que aún no están vinculadas a nadie. Se recalcula con
+  // la lista de empleados para no ofrecer una que acaba de ser tomada.
+  useEffect(() => {
+    const yaVinculadas = empleados.map(e => e.user?.id).filter((id): id is string => Boolean(id))
+    fetchCuentasVinculables(yaVinculadas)
+      .then(setCuentas)
+      // Sin permiso users:view el selector queda vacío; no es un error de la página.
+      .catch(() => setCuentas([]))
+  }, [empleados])
 
   const departments = useMemo(() => {
     const set = new Set(empleados.map(e => e.departamento).filter(Boolean))
@@ -163,6 +188,11 @@ export function useEmpleados() {
     hireDate: f.hireDate || undefined,
     salary: f.salary ? parseFloat(f.salary) : undefined,
     notes: f.notes || undefined,
+    ...(f.cuenta === NUEVA_CUENTA
+      ? { createUserAccount: true, userPassword: f.userPassword }
+      : f.cuenta
+        ? { userId: f.cuenta }
+        : {}),
   }), [])
 
   const handleSave = useCallback(async () => {
@@ -221,6 +251,8 @@ export function useEmpleados() {
       hireDate: empleado.hireDate ?? '',
       salary: empleado.salaryRaw != null ? String(empleado.salaryRaw) : '',
       notes: empleado.notes ?? '',
+      cuenta: empleado.user?.id ?? '',
+      userPassword: '',
     })
     setSelected(null)
     setEditModalOpen(true)
@@ -262,6 +294,8 @@ export function useEmpleados() {
         hireDate: editForm.hireDate || undefined,
         salary: editForm.salary ? parseFloat(editForm.salary) : undefined,
         notes: editForm.notes || undefined,
+        // '' desvincula explícitamente; el backend distingue null de ausente.
+        userId: editForm.cuenta ? editForm.cuenta : null,
       }
       await updateEmpleado(editing.id, input)
       await loadEmpleados()
@@ -325,5 +359,6 @@ export function useEmpleados() {
     handleUpdate,
     handleDelete,
     loadEmpleados,
+    cuentas,
   }
 }

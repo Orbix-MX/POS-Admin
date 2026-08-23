@@ -54,11 +54,16 @@ api.interceptors.response.use(
       // `oauth/exchange` y `refresh` entran por la misma razón y una más:
       // recargar con el ticket todavía en la URL relanza el canje, que vuelve a
       // fallar, que recarga otra vez — un bucle infinito.
+      // '/invitations/' incluido: un 401 ahí (LOGIN_REQUIRED, WRONG_ACCOUNT) es
+      // parte del flujo normal de la página de invitación, no una sesión vencida
+      // — dejarlo pasar al reintento automático recargaría la página y podría
+      // cerrarle la sesión a un admin que solo abrió el enlace de otra persona.
       const isAuthFlow =
         url.includes('/auth/login') ||
         url.includes('/auth/select-tenant') ||
         url.includes('/auth/oauth/exchange') ||
-        url.includes('/auth/refresh')
+        url.includes('/auth/refresh') ||
+        url.includes('/invitations/')
       if (isAuthFlow) {
         return Promise.reject(error)
       }

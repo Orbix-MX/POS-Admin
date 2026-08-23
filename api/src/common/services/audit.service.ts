@@ -20,7 +20,27 @@ export type AuditAction =
   | 'CASH_COUNT'
   // Transiciones del ciclo de caja (CASH-011).
   | 'CASH_COUNT_START'
-  | 'CASH_COUNT_RESUME';
+  | 'CASH_COUNT_RESUME'
+  // Identidad y RBAC. Sin estos, una escalación de privilegios no deja rastro:
+  // quién le dio qué rol a quién, y cuándo, era irreconstruible.
+  | 'USER_CREATE'
+  | 'USER_UPDATE'
+  | 'USER_DELETE'
+  | 'USER_INVITED'
+  | 'USER_INVITE_REVOKED'
+  | 'USER_ROLES_CHANGE'
+  | 'USER_PERMISSIONS_CHANGE'
+  | 'ROLE_CREATE'
+  | 'ROLE_UPDATE'
+  | 'ROLE_DELETE'
+  | 'ROLE_PERMISSIONS_CHANGE'
+  // Empleados. El PIN es una credencial: se registra el hecho, nunca su valor
+  // ni su hash.
+  | 'EMPLOYEE_CREATE'
+  | 'EMPLOYEE_UPDATE'
+  | 'EMPLOYEE_DEACTIVATE'
+  | 'EMPLOYEE_PIN_ASSIGN'
+  | 'EMPLOYEE_PIN_CLEAR';
 
 interface AuditEntry {
   action: AuditAction;

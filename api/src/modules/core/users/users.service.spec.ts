@@ -4,6 +4,9 @@ import { UsersService } from './users.service';
 import { PrismaService } from '../../../database/prisma.service';
 import { PasswordUtil } from '../../../common/utils/password.util';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
+import { AuditContextService } from '../../../common/context/audit-context.service';
+import { EffectivePermissionsService } from '../../../common/services/effective-permissions.service';
+import { PermissionCacheService } from '../../../common/cache/permission-cache.service';
 import { PlanLimitsService } from '../../../common/services/plan-limits.service';
 import { AuditService } from '../../../common/services/audit.service';
 
@@ -25,11 +28,19 @@ describe('UsersService', () => {
     tenantMembership: {
       create: jest.fn(),
       findFirst: jest.fn(),
-      findMany: jest.fn(),
+      findUnique: jest.fn().mockResolvedValue(null),
       update: jest.fn(),
       updateMany: jest.fn(),
       deleteMany: jest.fn(),
       count: jest.fn(),
+      // La protección de "último administrador" consulta las membresías activas;
+      // por defecto queda otro admin, así que no bloquea estos tests.
+      findMany: jest.fn().mockResolvedValue([
+        {
+          userId: 'otro-admin',
+          user: { role: 'SUPER_ADMIN', roleAssignments: [], permissionGrants: [] },
+        },
+      ]),
     },
     userRoleAssignment: { deleteMany: jest.fn(), createMany: jest.fn(), findMany: jest.fn() },
     userPermissionGrant: { deleteMany: jest.fn(), createMany: jest.fn(), findMany: jest.fn() },
@@ -45,9 +56,24 @@ describe('UsersService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
-        { provide: PlanLimitsService, useValue: { assertCanAddUser: jest.fn(), assertCanAddActiveUser: jest.fn(), getUsage: jest.fn() } },
+        { provide: PlanLimitsService, useValue: { assertCanAddUser: jest.fn(), assertCanAddActiveUser: jest.fn(), recomputeOverLimit: jest.fn(), getUsage: jest.fn() } },
         { provide: AuditService, useValue: { log: jest.fn() } },
         { provide: TenantContextService, useValue: { requireTenantId: () => 'tenant-1', getBranchId: () => null } },
+        { provide: AuditContextService, useValue: { getUserId: () => 'actor-1', isOperator: () => false } },
+        {
+          provide: EffectivePermissionsService,
+          useValue: {
+            getFor: jest.fn().mockResolvedValue([]),
+            assertActorCanGrant: jest.fn(),
+            keysForRoles: jest.fn().mockResolvedValue([]),
+            assertTenantKeepsAnAdmin: jest.fn(),
+            countAdmins: jest.fn().mockResolvedValue(1),
+          },
+        },
+        {
+          provide: PermissionCacheService,
+          useValue: { invalidateUser: jest.fn(), invalidateTenant: jest.fn(), get: jest.fn(), set: jest.fn() },
+        },
         { provide: PrismaService, useValue: mockPrismaService },
       ],
     }).compile();
@@ -94,17 +120,18 @@ describe('UsersService', () => {
       expect(mockPrismaService.user.create).toHaveBeenCalled();
     });
 
-    it('should throw ConflictException if email exists', async () => {
+    it('si el correo ya pertenece a esta empresa, rechaza por duplicado', async () => {
       const createUserDto = {
         email: 'existing@example.com',
-        password: 'password123',
+        password: 'Password1234',
         firstName: 'Test',
         lastName: 'User',
         role: 'STAFF' as const,
       };
 
-      mockPrismaService.user.findUnique.mockResolvedValue({ id: '1' });
-      mockPrismaService.user.findFirst.mockResolvedValue({ id: '1' });
+      // La cuenta existe y ya es miembro de este tenant.
+      mockPrismaService.user.findUnique.mockResolvedValue({ id: '1', status: 'ACTIVE' });
+      mockPrismaService.tenantMembership.findUnique.mockResolvedValue({ status: 'ACTIVE' });
 
       await expect(service.create(createUserDto)).rejects.toThrow(
         ConflictException,
@@ -219,7 +246,7 @@ describe('UsersService', () => {
   });
 
   describe('remove', () => {
-    it('should delete a user', async () => {
+    it('da de baja la membresía en el tenant, sin borrar la cuenta', async () => {
       const userId = '1';
       const mockUser = {
         id: userId,
@@ -227,14 +254,17 @@ describe('UsersService', () => {
       };
 
       mockPrismaService.user.findFirst.mockResolvedValue(mockUser);
-      mockPrismaService.user.findFirst.mockResolvedValue(mockUser);
-      mockPrismaService.user.delete.mockResolvedValue(mockUser);
+      mockPrismaService.tenantMembership.update.mockResolvedValue({ status: 'INACTIVE' });
 
       await service.remove(userId);
 
-      expect(mockPrismaService.user.delete).toHaveBeenCalledWith({
-        where: { id: userId },
+      expect(mockPrismaService.tenantMembership.update).toHaveBeenCalledWith({
+        where: { tenantId_userId: { tenantId: 'tenant-1', userId } },
+        data: { status: 'INACTIVE' },
       });
+      // La cuenta sobrevive: borrarla anularía la autoría de su historial de
+      // negocio (onDelete: SetNull) y sus accesos en otros tenants.
+      expect(mockPrismaService.user.delete).not.toHaveBeenCalled();
     });
 
     it('should throw NotFoundException if user not found', async () => {

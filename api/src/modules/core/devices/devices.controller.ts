@@ -7,6 +7,7 @@ import { ActivateDeviceDto } from './dto/activate-device.dto';
 import { ValidateDeviceDto } from './dto/validate-device.dto';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { Public } from '../../../common/decorators/public.decorator';
+import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
 
 @ApiTags('Devices')
 @Controller('devices')
@@ -37,8 +38,13 @@ export class DevicesController {
   }
 
   // ── Tenant admin (web) ────────────────────────────────────────────────────────
+  // Device management is tenant infrastructure: an enrollment token registers a
+  // new POS terminal and a revoke takes one out of service. It reuses the
+  // `settings:*` permissions rather than introducing new catalog keys, which
+  // existing curated roles would not receive on the next boot sync.
   @Post('enrollment-token')
   @ApiBearerAuth()
+  @RequirePermissions('settings:manage')
   @ApiOperation({ summary: 'Generate a short-lived QR enrollment token for this tenant (admin)' })
   createEnrollmentToken() {
     return this.authService.createEnrollmentToken(
@@ -49,6 +55,7 @@ export class DevicesController {
 
   @Get()
   @ApiBearerAuth()
+  @RequirePermissions('settings:view')
   @ApiOperation({ summary: 'List devices registered for the active tenant' })
   list() {
     return this.devicesService.list(this.tenantContext.requireTenantId());
@@ -56,6 +63,7 @@ export class DevicesController {
 
   @Delete(':id')
   @ApiBearerAuth()
+  @RequirePermissions('settings:manage')
   @ApiOperation({ summary: 'Revoke a device' })
   revoke(@Param('id') id: string) {
     return this.devicesService.revoke(this.tenantContext.requireTenantId(), id);

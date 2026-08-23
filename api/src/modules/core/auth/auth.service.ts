@@ -38,6 +38,13 @@ type MembershipWithTenant = TenantMembership & { tenant: Tenant };
 
 @Injectable()
 export class AuthService {
+  /** Intentos fallidos consecutivos antes del primer bloqueo. */
+  static readonly LOCKOUT_THRESHOLD = 5;
+  /** Duración del primer bloqueo; se duplica con cada tanda posterior. */
+  static readonly LOCKOUT_BASE_MINUTES = 5;
+  /** Techo del bloqueo: pasado este punto no crece más. */
+  static readonly LOCKOUT_MAX_MINUTES = 60;
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
@@ -87,10 +94,63 @@ export class AuthService {
     // ni con qué proveedor entran.
     if (!user.password) throw new UnauthorizedException('Invalid credentials');
 
+    // El throttling del controlador es por IP y no frena un ataque lento
+    // repartido entre muchas; esto acota los intentos por CUENTA.
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
     const valid = await PasswordUtil.compare(loginDto.password, user.password);
-    if (!valid) throw new UnauthorizedException('Invalid credentials');
+    if (!valid) {
+      await this.registerFailedLogin(user.id, user.failedLoginAttempts);
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // Entrar bien limpia el contador: un usuario que se equivoca a ratos y
+    // acierta nunca acumula hasta el bloqueo.
+    if (user.failedLoginAttempts > 0 || user.lockedUntil) {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { failedLoginAttempts: 0, lockedUntil: null },
+      });
+    }
 
     return this.buildSession(user);
+  }
+
+  /**
+   * Cuenta el intento fallido y bloquea la cuenta al llegar al umbral.
+   *
+   * El bloqueo es temporal y crece con cada tanda de fallos, de modo que un
+   * atacante pierde cada vez más tiempo mientras que a la persona real le basta
+   * esperar unos minutos. No se bloquea de forma permanente a propósito: eso
+   * convertiría el mecanismo en una forma de dejar a alguien fuera de su cuenta
+   * a voluntad.
+   *
+   * La respuesta al usuario no cambia (siempre 'Invalid credentials'): decir
+   * "cuenta bloqueada" confirmaría que el correo existe.
+   */
+  private async registerFailedLogin(userId: string, previousAttempts: number): Promise<void> {
+    const attempts = previousAttempts + 1;
+
+    const lockMinutes =
+      attempts >= AuthService.LOCKOUT_THRESHOLD
+        ? Math.min(
+            AuthService.LOCKOUT_BASE_MINUTES *
+              2 ** Math.floor((attempts - AuthService.LOCKOUT_THRESHOLD) / AuthService.LOCKOUT_THRESHOLD),
+            AuthService.LOCKOUT_MAX_MINUTES,
+          )
+        : 0;
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        failedLoginAttempts: attempts,
+        ...(lockMinutes > 0
+          ? { lockedUntil: new Date(Date.now() + lockMinutes * 60_000) }
+          : {}),
+      },
+    });
   }
 
   /**

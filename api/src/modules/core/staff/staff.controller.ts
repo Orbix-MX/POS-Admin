@@ -30,6 +30,7 @@ export class StaffController {
   @ApiBearerAuth()
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @RequirePermissions('comanda:view')
   @Post('pin-verify')
   @ApiOperation({ summary: 'Verify an operative PIN and return the employee (no token)' })
   verifyPin(@Body() dto: VerifyPinDto) {
@@ -51,8 +52,12 @@ export class StaffController {
   }
 
   // ── Admin (web): manage employee PINs ────────────────────────────────────────
+  // A PIN is a credential and `roleId` grants RBAC permissions to whoever holds
+  // it, so both endpoints need an explicit permission — without one they were
+  // reachable by any authenticated user of the tenant.
   @Patch('employees/:id/pin')
   @ApiBearerAuth()
+  @RequirePermissions('employees:edit')
   @ApiOperation({ summary: 'Assign/replace an employee operative PIN (+ optional role)' })
   assignPin(@Param('id') id: string, @Body() dto: AssignPinDto) {
     return this.staffService.assignPin(this.tenantContext.requireTenantId(), id, dto.pin, dto.roleId);
@@ -60,6 +65,7 @@ export class StaffController {
 
   @Delete('employees/:id/pin')
   @ApiBearerAuth()
+  @RequirePermissions('employees:edit')
   @ApiOperation({ summary: 'Clear an employee operative PIN' })
   clearPin(@Param('id') id: string) {
     return this.staffService.clearPin(this.tenantContext.requireTenantId(), id);

@@ -1,23 +1,15 @@
 import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { PrismaService } from '../../database/prisma.service';
 import { PERMISSIONS_KEY } from '../decorators/require-permissions.decorator';
-
-interface CacheEntry {
-  permissions: string[];
-  expiresAt: number;
-}
-
-const CACHE_TTL_MS = 60_000; // 60 seconds
-const CACHE_MAX_SIZE = 500;
+import { NO_PERMISSIONS_REQUIRED_KEY } from '../decorators/no-permissions-required.decorator';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { EffectivePermissionsService } from '../services/effective-permissions.service';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
-  private cache = new Map<string, CacheEntry>();
-
   constructor(
     private readonly reflector: Reflector,
-    private readonly prisma: PrismaService,
+    private readonly effectivePermissions: EffectivePermissionsService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -26,9 +18,25 @@ export class PermissionsGuard implements CanActivate {
       [context.getHandler(), context.getClass()],
     );
 
-    // No permissions required → allow
+    // Fail closed: a handler that declares no permissions is only reachable if it
+    // says so explicitly. Allowing by default meant a forgotten
+    // @RequirePermissions silently opened the endpoint to every authenticated
+    // user of the tenant — which is how the PIN admin endpoints stayed open.
     if (!requiredPermissions || requiredPermissions.length === 0) {
-      return true;
+      // `@Public()` already means "no session, no permissions" — JwtAuthGuard let
+      // the request through and there is no user to check. Denying here would
+      // break login, device activation and the storefront.
+      const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]);
+
+      const allowsNoPermissions = this.reflector.getAllAndOverride<boolean>(
+        NO_PERMISSIONS_REQUIRED_KEY,
+        [context.getHandler(), context.getClass()],
+      );
+
+      return isPublic === true || allowsNoPermissions === true;
     }
 
     const request = context.switchToHttp().getRequest();
@@ -46,10 +54,7 @@ export class PermissionsGuard implements CanActivate {
     // DEVICE_OPERATOR: permissions come directly from the JWT payload (employee role).
     if (user.role === 'DEVICE_OPERATOR') {
       const operatorPerms: string[] = user.permissions ?? [];
-      return requiredPermissions.every((permOrGroup) => {
-        const options = permOrGroup.split('|');
-        return options.some((perm) => operatorPerms.includes(perm));
-      });
+      return this.matches(requiredPermissions, operatorPerms);
     }
 
     // tenantId comes from the JWT (set by JwtStrategy)
@@ -58,89 +63,18 @@ export class PermissionsGuard implements CanActivate {
       return false;
     }
 
-    const effectivePermissions = await this.getEffectivePermissions(
-      user.id,
-      tenantId,
-    );
+    // Resolution and caching both live in EffectivePermissionsService, so the
+    // guard and the services that grant permissions agree on one answer — and an
+    // invalidation from any of them is seen here immediately.
+    const effectivePermissions = await this.effectivePermissions.getFor(user.id, tenantId);
 
-    // Each entry may be a single perm ('a:b') or a pipe-separated OR group ('a:b|a:c').
-    return requiredPermissions.every((permOrGroup) => {
-      const options = permOrGroup.split('|');
-      return options.some((perm) => effectivePermissions.includes(perm));
-    });
+    return this.matches(requiredPermissions, effectivePermissions);
   }
 
-  private async getEffectivePermissions(
-    userId: string,
-    tenantId: string,
-  ): Promise<string[]> {
-    const cacheKey = `${userId}:${tenantId}`;
-    const now = Date.now();
-
-    // Check cache
-    const cached = this.cache.get(cacheKey);
-    if (cached && cached.expiresAt > now) {
-      return cached.permissions;
-    }
-
-    // Get all permissions from assigned roles (scoped to tenant)
-    const roleAssignments = await this.prisma.userRoleAssignment.findMany({
-      where: { userId, tenantId },
-      include: {
-        role: {
-          include: {
-            permissions: {
-              include: {
-                permission: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
-    const permissionKeys = new Set<string>();
-    for (const assignment of roleAssignments) {
-      for (const rp of assignment.role.permissions) {
-        permissionKeys.add(rp.permission.key);
-      }
-    }
-
-    // Get individual grants/revokes (scoped to tenant)
-    const individualGrants = await this.prisma.userPermissionGrant.findMany({
-      where: { userId, tenantId },
-      include: { permission: true },
-    });
-
-    for (const grant of individualGrants) {
-      if (grant.granted) {
-        permissionKeys.add(grant.permission.key);
-      } else {
-        permissionKeys.delete(grant.permission.key);
-      }
-    }
-
-    const permissions = Array.from(permissionKeys);
-
-    // Store in cache
-    this.cache.set(cacheKey, {
-      permissions,
-      expiresAt: now + CACHE_TTL_MS,
-    });
-
-    if (this.cache.size > CACHE_MAX_SIZE) {
-      // First pass: evict expired entries
-      for (const [key, entry] of this.cache) {
-        if (entry.expiresAt <= now) this.cache.delete(key);
-        if (this.cache.size <= CACHE_MAX_SIZE) break;
-      }
-      // Second pass: evict oldest (Map preserves insertion order)
-      for (const key of this.cache.keys()) {
-        if (this.cache.size <= CACHE_MAX_SIZE) break;
-        this.cache.delete(key);
-      }
-    }
-
-    return permissions;
+  /** Each entry is a single perm ('a:b') or a pipe-separated OR group ('a:b|a:c'). */
+  private matches(required: string[], held: string[]): boolean {
+    return required.every((permOrGroup) =>
+      permOrGroup.split('|').some((perm) => held.includes(perm)),
+    );
   }
 }

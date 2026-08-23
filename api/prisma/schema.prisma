@@ -159,6 +159,7 @@ model Tenant {
   updatedAt   DateTime  @updatedAt
 
   memberships        TenantMembership[]
+  invitations        TenantInvitation[]
   customers          Customer[]
   categories         Category[]
   products           Product[]
@@ -271,6 +272,14 @@ model User {
   emailVerified Boolean  @default(false) @map("email_verified")
   avatarUrl     String?  @map("avatar_url")
 
+  // ── Protección contra fuerza bruta ─────────────────────────────────────────
+  // El throttling por IP no frena un ataque lento y distribuido contra una
+  // cuenta concreta. Estos dos campos acotan los intentos por CUENTA: el
+  // contador se reinicia al entrar bien, y `lockedUntil` marca hasta cuándo se
+  // rechaza el acceso aunque la contraseña sea correcta.
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime? @map("locked_until")
+
   tenantMemberships TenantMembership[]
 
   // Auditoría
@@ -308,6 +317,7 @@ model User {
   auditLogs                 AuditLog[]            @relation("AuditLogUser")
   workOrdersCreated         WorkOrder[]           @relation("WorkOrderCreatedBy")
   workOrderAssignments      WorkOrderAssignment[] @relation("WorkOrderAssignments")
+  employeeProfiles          Employee[]         @relation("EmployeeAccount")
   employeesCreated          Employee[]         @relation("EmployeeCreatedBy")
   employeesUpdated          Employee[]         @relation("EmployeeUpdatedBy")
   diningAreasCreated        DiningArea[]       @relation("DiningAreaCreatedBy")
@@ -327,6 +337,7 @@ model User {
 
   refreshTokens RefreshToken[]
   oauthTickets  OAuthTicket[]
+  invitationsSent TenantInvitation[] @relation("InvitationInvitedBy")
 
   managedBranches   Branch[]           @relation("BranchManager")
   branchMemberships BranchMembership[]
@@ -1989,6 +2000,13 @@ model Employee {
   pinHash        String?        @map("pin_hash")
   roleId         String?        @map("role_id")
 
+  // Cuenta de back-office de esta misma persona, si la tiene. Opcional a
+  // propósito: la mayoría del personal opera solo con PIN y nunca necesita
+  // entrar al panel. Sin este vínculo, empleado y usuario eran dos altas
+  // manuales sin relación, y sus datos podían divergir sin que nadie lo notara
+  // (mismo patrón que `hr.employee.user_id` en Odoo).
+  userId         String?        @map("user_id")
+
   createdById String?
   updatedById String?
   createdAt   DateTime @default(now())
@@ -2001,10 +2019,13 @@ model Employee {
   cashSessionsAuthorized CashSession[] @relation("CashSessionAuthorizedByEmployee")
   createdBy    User?            @relation("EmployeeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy    User?            @relation("EmployeeUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  user         User?            @relation("EmployeeAccount", fields: [userId], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, employeeNumber])
   @@unique([tenantId, email])
   @@unique([tenantId, pinHash])
+  // Una cuenta no puede estar vinculada a dos empleados del mismo tenant.
+  @@unique([tenantId, userId])
   @@map("employees")
 }
 
@@ -2577,4 +2598,40 @@ model AiUsageCounter {
 
   @@unique([tenantId, period, featureKey])
   @@map("ai_usage_counters")
+}
+
+
+/// Invitación para que una persona se una a una empresa.
+///
+/// Dar acceso a alguien no puede ser una decisión unilateral del administrador:
+/// la persona acepta desde su correo. Eso resuelve dos cosas a la vez — nadie
+/// entra a una empresa sin saberlo, y nadie fija la contraseña de otro.
+///
+/// El token solo se guarda hasheado (SHA-256), igual que `RefreshToken` y
+/// `OAuthTicket`: si la base se filtra, los enlaces pendientes no son usables.
+model TenantInvitation {
+  id       String @id @default(uuid())
+  tenantId String
+  /// Correo invitado. Puede tener cuenta en la plataforma o no; el flujo de
+  /// aceptación se adapta a cada caso.
+  email    String
+
+  tokenHash String @unique @map("token_hash")
+
+  /// Roles que se asignarán al aceptar. Se validan al invitar (que sean del
+  /// tenant y que el invitador los posea) y otra vez al aceptar.
+  roleIds String[] @default([]) @map("role_ids")
+
+  invitedById String?   @map("invited_by_id")
+  expiresAt   DateTime  @map("expires_at")
+  acceptedAt  DateTime? @map("accepted_at")
+  revokedAt   DateTime? @map("revoked_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invitedBy User?  @relation("InvitationInvitedBy", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, email])
+  @@index([email])
+  @@map("tenant_invitations")
 }

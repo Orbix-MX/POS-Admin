@@ -5,6 +5,9 @@ import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { DevicesService } from '../devices/devices.service';
+import { EffectivePermissionsService } from '../../../common/services/effective-permissions.service';
+import { PermissionCacheService } from '../../../common/cache/permission-cache.service';
+import { AuditService } from '../../../common/services/audit.service';
 import { getModulesForPlan, getAllowedModulesForVertical } from '@orbix/types';
 
 /**
@@ -29,6 +32,9 @@ export class StaffService {
     private readonly config: ConfigService,
     private readonly devicesService: DevicesService,
     private readonly jwtService: JwtService,
+    private readonly effectivePermissions: EffectivePermissionsService,
+    private readonly permissionCache: PermissionCacheService,
+    private readonly audit: AuditService,
   ) {}
 
   private hashPin(tenantId: string, pin: string): string {
@@ -197,6 +203,12 @@ export class StaffService {
     if (roleId) {
       const role = await this.prisma.role.findFirst({ where: { id: roleId, tenantId }, select: { id: true } });
       if (!role) throw new BadRequestException('Rol inválido');
+
+      // The PIN turns this role into a usable login, so assigning it is a grant:
+      // it must not hand the operator permissions the caller lacks.
+      await this.effectivePermissions.assertActorCanGrant(
+        await this.effectivePermissions.keysForRoles([roleId], tenantId),
+      );
     }
 
     try {
@@ -210,6 +222,22 @@ export class StaffService {
       }
       throw e;
     }
+
+    // The operator's permissions ride in their JWT, minted at PIN login, so an
+    // already-issued operator token keeps its old role until it expires. The
+    // cache flush only covers users; that token lifetime is the real bound.
+    await this.permissionCache.invalidateTenant(tenantId);
+
+    await this.audit.log({
+      action: 'EMPLOYEE_PIN_ASSIGN',
+      entityType: 'Employee',
+      entityId: employeeId,
+      // The PIN is a credential: record that it changed and which role came with
+      // it, never the digits nor their hash.
+      before: { roleId: employee.roleId, hadPin: employee.pinHash != null },
+      after: { roleId: roleId ?? employee.roleId, hadPin: true },
+    });
+
     return { ok: true };
   }
 
@@ -218,6 +246,16 @@ export class StaffService {
     const employee = await this.prisma.employee.findFirst({ where: { id: employeeId, tenantId } });
     if (!employee) throw new NotFoundException('Empleado no encontrado');
     await this.prisma.employee.update({ where: { id: employeeId }, data: { pinHash: null } });
+    await this.permissionCache.invalidateTenant(tenantId);
+
+    await this.audit.log({
+      action: 'EMPLOYEE_PIN_CLEAR',
+      entityType: 'Employee',
+      entityId: employeeId,
+      before: { hadPin: employee.pinHash != null },
+      after: { hadPin: false },
+    });
+
     return { ok: true };
   }
 }

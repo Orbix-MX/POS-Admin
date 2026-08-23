@@ -109,7 +109,9 @@ export class UsersController {
   }
 
   @Put(':id/roles')
-  @RequirePermissions('users:edit')
+  // Assigning roles is an RBAC change, so it takes the RBAC permission too —
+  // `users:edit` alone (e.g. an HR-style role) must not reach it.
+  @RequirePermissions('users:edit', 'roles:edit')
   @ApiOperation({ summary: 'Replace all role assignments for a user' })
   @ApiBody({ type: SetRolesDto })
   setRoles(@Param('id') id: string, @Body() body: SetRolesDto) {
@@ -117,7 +119,7 @@ export class UsersController {
   }
 
   @Put(':id/permissions')
-  @RequirePermissions('users:edit')
+  @RequirePermissions('users:edit', 'roles:edit')
   @ApiOperation({ summary: 'Replace all individual permission grants for a user' })
   @ApiBody({ type: SetPermissionsDto })
   setPermissions(@Param('id') id: string, @Body() body: SetPermissionsDto) {
