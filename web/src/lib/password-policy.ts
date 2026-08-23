@@ -12,13 +12,6 @@
 export const PASSWORD_MIN_LENGTH = 9
 export const PASSWORD_MAX_LENGTH = 64
 
-/** Las mismas que rechaza el backend por encabezar las listas de filtraciones. */
-const COMMON_PASSWORDS = [
-  'password', 'contrasena', 'contraseña', '123456', '12345678', '123456789',
-  'qwerty', 'abc123', 'password1', 'admin123', 'iloveyou', 'welcome',
-  'monkey', 'dragon', 'letmein', 'football', 'orbix', 'administrador',
-]
-
 export interface PasswordRule {
   id: string
   label: string
@@ -31,7 +24,6 @@ export interface PasswordRule {
  */
 export function checkPassword(password: string): PasswordRule[] {
   const value = password ?? ''
-  const normalized = value.toLowerCase()
 
   // Etiquetas cortas: la lista vive en la mitad de un modal, y un texto largo se
   // parte en tres líneas y desordena el formulario.
@@ -45,11 +37,6 @@ export function checkPassword(password: string): PasswordRule[] {
     { id: 'upper',  label: 'Una mayúscula', ok: /[A-Z]/.test(value) },
     { id: 'number', label: 'Un número',     ok: /[0-9]/.test(value) },
     { id: 'space',  label: 'Sin espacios',  ok: value.length > 0 && !value.includes(' ') },
-    {
-      id: 'common',
-      label: 'No es común',
-      ok: value.length > 0 && !COMMON_PASSWORDS.some((c) => normalized.includes(c)),
-    },
   ]
 }
 

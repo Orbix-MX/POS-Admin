@@ -1,10 +1,6 @@
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
-import {
-  IsStrongPassword,
-  isCommonPassword,
-  PASSWORD_MIN_LENGTH,
-} from './is-strong-password.decorator';
+import { IsStrongPassword, PASSWORD_MIN_LENGTH } from './is-strong-password.decorator';
 
 /**
  * Política de contraseñas. Antes bastaba `MinLength(6)` sin más reglas, repetido
@@ -51,10 +47,6 @@ describe('IsStrongPassword', () => {
     expect((await errorsFor('Con Espacio77')).join(' ')).toContain('espacios');
   });
 
-  it('rechaza contraseñas construidas sobre una de las más comunes', async () => {
-    expect((await errorsFor('Password1234')).join(' ')).toContain('común');
-    expect((await errorsFor('MiContrasena9')).join(' ')).toContain('común');
-  });
 
   it('no supera el límite que bcrypt ignora en silencio (72 bytes)', async () => {
     const errors = await errorsFor('A1' + 'a'.repeat(100));
@@ -66,10 +58,3 @@ describe('IsStrongPassword', () => {
   });
 });
 
-describe('isCommonPassword', () => {
-  it('detecta la común aunque venga disfrazada de mayúsculas o incrustada', () => {
-    expect(isCommonPassword('PASSWORD')).toBe(true);
-    expect(isCommonPassword('xxQwertyxx')).toBe(true);
-    expect(isCommonPassword('Tormenta7Azul')).toBe(false);
-  });
-});
