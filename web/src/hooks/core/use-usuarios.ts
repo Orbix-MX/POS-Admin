@@ -4,6 +4,7 @@ import {
   activateUsuario, deactivateUsuario, fetchUserCapacity,
 } from '@/services/core/users-service'
 import type { Usuario, UpdateUsuarioInput, UserCapacity, MembershipStatus } from '@/services/core/users-service'
+import { isPasswordValid } from '@/lib/password-policy'
 
 export type { Usuario }
 
@@ -73,6 +74,12 @@ export function useUsuarios() {
   }, [usuarios])
 
   const handleSave = useCallback(async () => {
+    // Se comprueba aquí además de en el API: así el aviso es inmediato y no
+    // depende de un 400. La validación que protege sigue siendo la del backend.
+    if (!isPasswordValid(form.password)) {
+      setActionError('La contraseña no cumple los requisitos indicados.')
+      return
+    }
     setSaving(true)
     setActionError(null)
     try {

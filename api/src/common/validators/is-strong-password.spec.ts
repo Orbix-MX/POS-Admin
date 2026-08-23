@@ -1,6 +1,10 @@
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
-import { IsStrongPassword, isCommonPassword } from './is-strong-password.decorator';
+import {
+  IsStrongPassword,
+  isCommonPassword,
+  PASSWORD_MIN_LENGTH,
+} from './is-strong-password.decorator';
 
 /**
  * Política de contraseñas. Antes bastaba `MinLength(6)` sin más reglas, repetido
@@ -23,9 +27,13 @@ describe('IsStrongPassword', () => {
     await expect(errorsFor('Tormenta7Azul')).resolves.toEqual([]);
   });
 
-  it('rechaza las de menos de 12 caracteres', async () => {
+  it(`rechaza las de menos de ${PASSWORD_MIN_LENGTH} caracteres`, async () => {
     const errors = await errorsFor('Corta7Ab');
-    expect(errors.join(' ')).toContain('al menos 12');
+    expect(errors.join(' ')).toContain(`al menos ${PASSWORD_MIN_LENGTH}`);
+  });
+
+  it('acepta justo en el mínimo', async () => {
+    await expect(errorsFor('Abcdefg9h')).resolves.toEqual([]);
   });
 
   it('rechaza la que era válida bajo la política vieja (6 caracteres)', async () => {

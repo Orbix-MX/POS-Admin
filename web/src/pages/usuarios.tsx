@@ -7,6 +7,7 @@ import { Search, Plus, Loader2, AlertTriangle, ShieldCheck } from 'lucide-react'
 import { useUsuarios } from '@/hooks/core/use-usuarios'
 import type { Usuario } from '@/hooks/core/use-usuarios'
 import { useRoles } from '@/hooks/core/use-roles'
+import { PasswordRequirements } from '@/components/shared/password-requirements'
 
 const STATUS_OPTIONS = [
   { value: 'ACTIVE', label: 'Activo' },
@@ -226,7 +227,10 @@ export function Usuarios() {
           <FormField label="Nombre" value={form.firstName} onChange={v => setForm(p => ({ ...p, firstName: v }))} />
           <FormField label="Apellido" value={form.lastName} onChange={v => setForm(p => ({ ...p, lastName: v }))} />
           <FormField label="Email" type="email" value={form.email} onChange={v => setForm(p => ({ ...p, email: v }))} />
-          <FormField label="Contraseña" type="password" value={form.password} onChange={v => setForm(p => ({ ...p, password: v }))} />
+          <div>
+            <FormField label="Contraseña" type="password" value={form.password} onChange={v => setForm(p => ({ ...p, password: v }))} />
+            <PasswordRequirements password={form.password} />
+          </div>
           <div className="flex flex-col gap-1">
             <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Rol</label>
             <select

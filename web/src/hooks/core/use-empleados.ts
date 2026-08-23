@@ -6,6 +6,8 @@ import type {
   Empleado, CreateEmpleadoInput, UpdateEmpleadoInput, TenantMemberOption,
 } from '@/services/core/empleados-service'
 
+import { isPasswordValid } from '@/lib/password-policy'
+
 /** Valor del select de cuenta que significa "crear una nueva". */
 export const NUEVA_CUENTA = '__nueva__'
 
@@ -67,8 +69,9 @@ function validateForm(f: typeof EMPTY_FORM): Record<string, string> {
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) e.email = 'Ingresa un email válido'
   if (f.salary && isNaN(parseFloat(f.salary)))   e.salary = 'El salario debe ser un número'
   else if (f.salary && parseFloat(f.salary) < 0) e.salary = 'El salario no puede ser negativo'
-  if (f.cuenta === NUEVA_CUENTA && !f.userPassword.trim()) {
-    e.userPassword = 'Define una contraseña para la cuenta nueva'
+  if (f.cuenta === NUEVA_CUENTA) {
+    if (!f.userPassword.trim()) e.userPassword = 'Define una contraseña para la cuenta nueva'
+    else if (!isPasswordValid(f.userPassword)) e.userPassword = 'La contraseña no cumple los requisitos'
   }
   return e
 }

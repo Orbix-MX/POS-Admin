@@ -11,11 +11,11 @@ import {
 import { ApiProperty } from '@nestjs/swagger';
 
 /**
- * Minimum length. Twelve is the current NIST-style recommendation and the point
- * where an offline guess against a bcrypt hash stops being cheap; the previous
- * limit of six was well inside brute-force range.
+ * Minimum length. Nine keeps an offline guess against a bcrypt hash expensive
+ * once combined with the character requirements below, while staying typeable;
+ * the previous limit of six was well inside brute-force range on its own.
  */
-export const PASSWORD_MIN_LENGTH = 12;
+export const PASSWORD_MIN_LENGTH = 9;
 
 /** bcrypt silently ignores anything past 72 bytes, so cap below that. */
 export const PASSWORD_MAX_LENGTH = 64;
@@ -64,8 +64,7 @@ export const IsStrongPassword = () =>
     ApiProperty({
       minLength: PASSWORD_MIN_LENGTH,
       maxLength: PASSWORD_MAX_LENGTH,
-      description:
-        'Mínimo 12 caracteres, con al menos una minúscula, una mayúscula y un número.',
+      description: `Mínimo ${PASSWORD_MIN_LENGTH} caracteres, con al menos una minúscula, una mayúscula y un número.`,
     }),
     IsString(),
     MinLength(PASSWORD_MIN_LENGTH, {

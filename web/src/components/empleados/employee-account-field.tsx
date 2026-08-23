@@ -1,5 +1,7 @@
 import { NUEVA_CUENTA } from '@/hooks/core/use-empleados'
 import type { TenantMemberOption } from '@/services/core/empleados-service'
+import { PasswordRequirements } from '@/components/shared/password-requirements'
+import { isPasswordValid } from '@/lib/password-policy'
 
 const SELECT_CLS =
   'w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary'
@@ -71,11 +73,13 @@ export function EmployeeAccountField({
             className={SELECT_CLS}
             placeholder="Mínimo 12 caracteres"
           />
-          {passwordError ? (
+          {passwordError && (
             <p className="mt-1 text-[11px] text-red-500 leading-snug">{passwordError}</p>
-          ) : (
-            <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
-              Al menos 12 caracteres, con mayúscula, minúscula y número.
+          )}
+          <PasswordRequirements password={password} alwaysVisible />
+          {creating && password && !isPasswordValid(password) && (
+            <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-500 leading-snug">
+              Faltan requisitos por cumplir.
             </p>
           )}
         </div>
