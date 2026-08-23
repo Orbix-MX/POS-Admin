@@ -12,9 +12,11 @@ import { FlatList, Pressable, RefreshControl, View } from 'react-native';
 import { BackButton, OrbixInput, OrbixScaffold, OrbixSkeleton, OrbixText } from '@/components';
 import { PackageIcon, PlusIcon, SearchIcon } from '@/components/ui/icons';
 import { useProducts } from '@/features/products/use-products';
+import { useCurrencyFormatVersion } from '@/hooks/use-currency-format-version';
 import { usePermissions } from '@/hooks/use-permissions';
 import { useTheme } from '@/hooks/use-theme';
 import type { Product } from '@/repositories/products-repository';
+import { currencyFormatStore } from '@/services/currency/currency-format-store';
 import { ProductStatus } from '@/types/api';
 
 const STATUS_TONE: Record<ProductStatus, 'successFg' | 'mutedForeground' | 'dangerFg'> = {
@@ -24,9 +26,7 @@ const STATUS_TONE: Record<ProductStatus, 'successFg' | 'mutedForeground' | 'dang
   ARCHIVED: 'dangerFg',
 };
 
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'MXN', maximumFractionDigits: 2 }).format(value);
-}
+const formatCurrency = currencyFormatStore.format;
 
 export default function ProductsListScreen() {
   const theme = useTheme();
@@ -34,6 +34,7 @@ export default function ProductsListScreen() {
   const { t } = useTranslation();
   const { can } = usePermissions();
   const canCreate = can('products:create');
+  useCurrencyFormatVersion();
 
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');

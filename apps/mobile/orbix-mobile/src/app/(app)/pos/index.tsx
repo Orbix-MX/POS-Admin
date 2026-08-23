@@ -40,7 +40,9 @@ import {
   useSendReceipt,
 } from '@/features/pos/use-pos';
 import { useCategories, useProducts } from '@/features/products/use-products';
+import { usePosSortByPref } from '@/features/settings/use-settings-prefs';
 import { useAuth } from '@/hooks/use-auth';
+import { useCurrencyFormatVersion } from '@/hooks/use-currency-format-version';
 import { usePermissions } from '@/hooks/use-permissions';
 import { useTheme } from '@/hooks/use-theme';
 import type { Order } from '@/repositories/pos-repository';
@@ -182,6 +184,7 @@ export default function PosScreen() {
   const { t } = useTranslation();
   const { session } = useAuth();
   const { can } = usePermissions();
+  useCurrencyFormatVersion();
 
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState<string | null>(null);
@@ -203,8 +206,20 @@ export default function PosScreen() {
   const { data: categories } = useCategories();
   const createOrder = useCreateSaleOrder();
   const sendReceipt = useSendReceipt();
+  const { value: sortBy } = usePosSortByPref();
 
-  const allProducts = useMemo(() => productsResult?.products ?? [], [productsResult]);
+  const allProducts = useMemo(() => {
+    const products = productsResult?.products ?? [];
+    // A copy — `sort` is in-place and `products` is React Query's cached
+    // array, mutating it would corrupt the cache other screens read from.
+    return [...products].sort((a, b) =>
+      sortBy === 'name'
+        ? a.name.localeCompare(b.name)
+        // Newest first — a just-registered product is the one someone is
+        // most likely mid-stocking-and-selling right now.
+        : b.createdAt.localeCompare(a.createdAt),
+    );
+  }, [productsResult, sortBy]);
 
   /**
    * Counts describe the loaded page, not a server aggregate — the chips must

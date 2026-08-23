@@ -67,8 +67,8 @@ function OrbixModalComponent({
         />
 
         <Animated.View
-          entering={ZoomIn.springify().damping(18)}
-          exiting={ZoomOut.duration(140)}
+          entering={ZoomIn.springify().damping(70).stiffness(450)}
+          exiting={ZoomOut.duration(240)}
           accessibilityViewIsModal
           accessibilityRole="alert"
           style={[

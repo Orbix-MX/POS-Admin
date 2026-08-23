@@ -17,5 +17,7 @@ export const queryKeys = {
   tenant: {
     all: ['tenant'] as const,
     branding: (tenantId: string) => [...queryKeys.tenant.all, 'branding', tenantId] as const,
+    info: (tenantId: string) => [...queryKeys.tenant.all, 'info', tenantId] as const,
+    settings: (tenantId: string) => [...queryKeys.tenant.all, 'settings', tenantId] as const,
   },
 } as const;

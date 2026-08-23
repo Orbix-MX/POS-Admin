@@ -6,7 +6,7 @@
  * zeros, so an empty shop and a loading shop never look the same.
  */
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -26,36 +26,46 @@ import {
   UsersIcon,
 } from '@/components';
 import { useDashboardStats } from '@/features/common/use-dashboard-stats';
+import { getHomeScreenPref, type HomeScreenPref } from '@/features/settings/use-settings-prefs';
 import { useAuth } from '@/hooks/use-auth';
+import { useCurrencyFormatVersion } from '@/hooks/use-currency-format-version';
+import { usePermissions } from '@/hooks/use-permissions';
 import { useTheme } from '@/hooks/use-theme';
-import { getCurrentLocale } from '@/i18n';
+import { currencyFormatStore } from '@/services/currency/currency-format-store';
 
-/** Matches the wizard's default; see the TODO in `formatCurrency`. */
-const DEFAULT_CURRENCY = 'MXN';
+const formatCurrency = currencyFormatStore.format;
+
+/** Mirrors the drawer's own gating — a pref pointing at a module the user
+ *  lost access to (role change) must not strand them on a blank redirect. */
+const HOME_SCREEN_ROUTES: Record<Exclude<HomeScreenPref, 'inicio'>, { route: '/(app)/pos' | '/(app)/products' | '/(app)/customers'; permission: string }> = {
+  ventas: { route: '/(app)/pos', permission: 'orders:create' },
+  inventario: { route: '/(app)/products', permission: 'products:view' },
+  clientes: { route: '/(app)/customers', permission: 'customers:view' },
+};
 
 export default function HomeScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { t } = useTranslation();
   const { session } = useAuth();
+  const { can } = usePermissions();
 
   const { data, isLoading } = useDashboardStats();
   const [drawerVisible, setDrawerVisible] = useState(false);
+  useCurrencyFormatVersion();
 
-  const formatCurrency = useCallback(
-    (value: number) =>
-      new Intl.NumberFormat(getCurrentLocale(), {
-        style: 'currency',
-        // TODO(backend): the tenant's currency lives in `Tenant.settings` and is
-        // not exposed on any endpoint the app can reach yet — neither
-        // `/auth/me` nor `/auth/select-tenant` returns it, and
-        // `/tenants/current/settings` needs `settings:manage`. Falling back to
-        // the wizard's default until it is surfaced.
-        currency: DEFAULT_CURRENCY,
-        maximumFractionDigits: 0,
-      }).format(value),
-    [],
-  );
+  // Only ever fires once per mount — `router.replace` unmounts this screen,
+  // so there's no risk of re-triggering (and no dependency array to get wrong).
+  const redirected = useRef(false);
+  useEffect(() => {
+    if (redirected.current) return;
+    const pref = getHomeScreenPref();
+    if (pref === 'inicio') return;
+    const target = HOME_SCREEN_ROUTES[pref];
+    if (!can(target.permission)) return;
+    redirected.current = true;
+    router.replace(target.route);
+  }, [can, router]);
 
   const subtitle = useMemo(() => {
     const parts = [session?.capabilities?.businessVertical, session?.tenant?.plan].filter(Boolean);

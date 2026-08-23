@@ -345,6 +345,97 @@ export const SuccessCheckIcon = memo(function SuccessCheckIcon({
   );
 });
 
+/* ── Settings ────────────────────────────────────────────────────────────── */
+
+export const StoreIcon = memo(function StoreIcon({ size = 14, color, strokeWidth = 2 }: IconProps) {
+  const stroke = { stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M3 9V6a1 1 0 0 1 .3-.7l1.4-1.4A1 1 0 0 1 5.4 3.6h13.2a1 1 0 0 1 .7.3l1.4 1.4a1 1 0 0 1 .3.7v3" {...stroke} />
+      <Path d="M3 9a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0" {...stroke} />
+      <Path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9" {...stroke} />
+      <Path d="M9 20v-5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v5" {...stroke} />
+    </Svg>
+  );
+});
+
+export const WalletIcon = memo(function WalletIcon({ size = 14, color, strokeWidth = 2 }: IconProps) {
+  const stroke = { stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M20 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-5" {...stroke} />
+      <Path d="M18 12h2a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-2a2 2 0 0 1 0-4Z" {...stroke} />
+      <Path d="M3 8h13" {...stroke} />
+    </Svg>
+  );
+});
+
+export const PercentIcon = memo(function PercentIcon({ size = 14, color, strokeWidth = 2 }: IconProps) {
+  const stroke = { stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Line x1={19} y1={5} x2={5} y2={19} {...stroke} />
+      <Circle cx={6.5} cy={6.5} r={2.5} {...stroke} />
+      <Circle cx={17.5} cy={17.5} r={2.5} {...stroke} />
+    </Svg>
+  );
+});
+
+export const PrinterIcon = memo(function PrinterIcon({ size = 14, color, strokeWidth = 2 }: IconProps) {
+  const stroke = { stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M6 9V3h12v6" {...stroke} />
+      <Rect x={2} y={9} width={20} height={9} rx={2} {...stroke} />
+      <Path d="M6 15h12v6H6Z" {...stroke} />
+    </Svg>
+  );
+});
+
+export const PlugIcon = memo(function PlugIcon({ size = 14, color, strokeWidth = 2 }: IconProps) {
+  const stroke = { stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 22v-5" {...stroke} />
+      <Path d="M9 8V2" {...stroke} />
+      <Path d="M15 8V2" {...stroke} />
+      <Path d="M6 8h12v4a6 6 0 0 1-6 6 6 6 0 0 1-6-6Z" {...stroke} />
+    </Svg>
+  );
+});
+
+export const InfoIcon = memo(function InfoIcon({ size = 14, color, strokeWidth = 2 }: IconProps) {
+  const stroke = { stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx={12} cy={12} r={10} {...stroke} />
+      <Line x1={12} y1={11} x2={12} y2={16.5} {...stroke} />
+      <Line x1={12} y1={7.5} x2={12.01} y2={7.5} {...stroke} />
+    </Svg>
+  );
+});
+
+export const ImageIcon = memo(function ImageIcon({ size = 24, color, strokeWidth = 1.6 }: IconProps) {
+  const stroke = { stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Rect x={3} y={3} width={18} height={18} rx={2} {...stroke} />
+      <Circle cx={9} cy={9} r={2} {...stroke} />
+      <Path d="m21 15-5-5L5 21" {...stroke} />
+    </Svg>
+  );
+});
+
+export const MapPinIcon = memo(function MapPinIcon({ size = 14, color, strokeWidth = 2 }: IconProps) {
+  const stroke = { stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" {...stroke} />
+      <Circle cx={12} cy={10} r={3} {...stroke} />
+    </Svg>
+  );
+});
+
 export const GoogleGlyph = memo(function GoogleGlyph({ size = 18 }: { size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 48 48">

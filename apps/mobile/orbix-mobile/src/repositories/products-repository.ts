@@ -27,6 +27,7 @@ export interface Product {
   taxRate: number | null;
   taxCode: ProductDto['taxCode'];
   isEcommerce: boolean;
+  createdAt: string;
 }
 
 export interface ProductListResult {
@@ -69,6 +70,7 @@ function toDomain(dto: ProductDto): Product {
     taxRate: toNumber(dto.taxRate),
     taxCode: dto.taxCode,
     isEcommerce: dto.isEcommerce,
+    createdAt: dto.createdAt,
   };
 }
 

@@ -13,6 +13,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AuthProvider } from './auth-provider';
+import { CurrencyFormatSync } from './currency-format-sync';
 import { QueryProvider } from './query-provider';
 import { TenantThemeSync } from './tenant-theme-sync';
 import { ThemeProvider } from './theme-provider';
@@ -25,6 +26,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
           <AuthProvider>
             <ThemeProvider>
               <TenantThemeSync />
+              <CurrencyFormatSync />
               <BottomSheetModalProvider>{children}</BottomSheetModalProvider>
             </ThemeProvider>
           </AuthProvider>

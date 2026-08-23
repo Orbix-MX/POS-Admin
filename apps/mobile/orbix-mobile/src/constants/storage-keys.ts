@@ -31,6 +31,13 @@ export const StorageKeys = {
   queryCache: 'orbix.query.cache',
   /** Business-type catalog synced from the backend. */
   businessTypes: 'orbix.catalog.businessTypes',
+  /**
+   * Which `(app)` screen to land on after auth — a per-device convenience,
+   * unlike `decimalPlaces` (tenant-wide, lives in `Tenant.settings` instead).
+   */
+  homeScreen: 'orbix.prefs.homeScreen',
+  /** Sort order for the product grid on the POS sell screen. */
+  posSortBy: 'orbix.prefs.posSortBy',
 } as const;
 
 export type SecureKey = (typeof SecureKeys)[keyof typeof SecureKeys];

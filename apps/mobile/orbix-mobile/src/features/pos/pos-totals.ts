@@ -8,6 +8,7 @@
  * understates the tax the server will actually charge. Anything the user is
  * shown *after* the sale comes from the server's own `subtotal`/`tax`/`total`.
  */
+import { currencyFormatStore } from '@/services/currency/currency-format-store';
 
 export interface CartLine {
   productId: string;
@@ -53,11 +54,7 @@ export function computeTotals(lines: CartLine[]): CartTotals {
   return { subtotal, tax, total: roundMoney(subtotal + tax), itemCount };
 }
 
+/** Tenant's real currency + decimal preference — see `CurrencyFormatSync`. */
 export function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('es-MX', {
-    style: 'currency',
-    currency: 'MXN',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
+  return currencyFormatStore.format(value);
 }

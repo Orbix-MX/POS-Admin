@@ -23,8 +23,13 @@ export { OrbixModal } from './ui/orbix-modal';
 export { OrbixBottomSheet, type OrbixBottomSheetRef } from './ui/orbix-bottom-sheet';
 export { OrbixAvatar, initialsOf } from './ui/orbix-avatar';
 export { OrbixToast, toast, toastConfig } from './ui/orbix-toast';
+export { OrbixSwitch } from './ui/orbix-switch';
 
 export { AppDrawer } from './navigation/app-drawer';
+
+export { SettingsRow } from './settings/settings-row';
+export { SettingsSection } from './settings/settings-section';
+export { SettingsOptionRow } from './settings/settings-option-row';
 
 export { Confetti } from './animations/confetti';
 export { AnimatedProgressBar, AnimatedSuccessCheck } from './animations/animated-progress';
