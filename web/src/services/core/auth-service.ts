@@ -170,3 +170,18 @@ export async function selectTenant(slug: string, tempToken: string): Promise<Sel
   )
   return data
 }
+
+export async function requestPasswordReset(email: string): Promise<{ message: string }> {
+  const { data } = await api.post<{ message: string }>('/auth/forgot-password', { email })
+  return data
+}
+
+export async function checkPasswordResetToken(token: string): Promise<{ valid: true }> {
+  const { data } = await api.get<{ valid: true }>(`/auth/reset-password/${token}`)
+  return data
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
+  const { data } = await api.post<{ message: string }>(`/auth/reset-password/${token}`, { newPassword })
+  return data
+}

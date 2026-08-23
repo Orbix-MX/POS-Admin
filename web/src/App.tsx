@@ -46,6 +46,8 @@ import { PlatformAuditoria } from '@/pages/platform/platform-auditoria'
 import { PlatformPlantillas } from '@/pages/platform/platform-plantillas'
 import { TenantSuspended } from '@/pages/tenant-suspended'
 import { InvitacionAceptar } from '@/pages/invitacion'
+import { RecuperarContrasena } from '@/pages/recuperar-contrasena'
+import { RestablecerContrasena } from '@/pages/restablecer-contrasena'
 import { Download, UtensilsCrossed } from 'lucide-react'
 import type { ModuleId } from '@/types/erp'
 
@@ -281,9 +283,12 @@ function PlatformGate() {
 
 function AppRouter() {
   const location = useLocation()
-  const isPlatform   = location.pathname.startsWith('/platform')
-  const isComanda    = location.pathname === '/comanda'
-  const isInvitation = location.pathname.startsWith('/invitacion/')
+  const isPlatform     = location.pathname.startsWith('/platform')
+  const isComanda      = location.pathname === '/comanda'
+  const isInvitation   = location.pathname.startsWith('/invitacion/')
+  const isPasswordFlow =
+    location.pathname === '/recuperar-contrasena' ||
+    location.pathname.startsWith('/restablecer-contrasena/')
 
   // Fuera del gate normal a propósito: quien abre este enlace puede no tener
   // cuenta todavía, o tenerla sin sesión iniciada — TenantAuthGate lo mandaría
@@ -292,6 +297,17 @@ function AppRouter() {
     return (
       <Routes>
         <Route path="/invitacion/:token" element={<InvitacionAceptar />} />
+      </Routes>
+    )
+  }
+  // Mismo motivo: TenantAuthGate muestra <Login/> para CUALQUIER ruta cuando
+  // no hay sesión, sin mirar el pathname — sin este bypass nunca se vería el
+  // formulario de recuperación ni el de reseteo.
+  if (isPasswordFlow) {
+    return (
+      <Routes>
+        <Route path="/recuperar-contrasena" element={<RecuperarContrasena />} />
+        <Route path="/restablecer-contrasena/:token" element={<RestablecerContrasena />} />
       </Routes>
     )
   }

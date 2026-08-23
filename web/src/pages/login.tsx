@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Loader2, Eye, EyeOff } from 'lucide-react'
 import { useAuthStore } from '@/store/auth-store'
 import { GoogleSignInButton } from '@/components/google-sign-in-button'
@@ -88,6 +89,12 @@ export function Login() {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+              <Link
+                to="/recuperar-contrasena"
+                className="mt-1.5 inline-block text-[12px] text-muted-foreground hover:text-primary"
+              >
+                ¿Olvidaste tu contraseña?
+              </Link>
             </div>
 
             <button
