@@ -40,6 +40,11 @@ function buildService(overrides: Partial<typeof USER> = {}) {
     { revoke: jest.fn() } as never,
     { issue: jest.fn().mockResolvedValue('refresh') } as never,
     { create: jest.fn() } as never,
+    // GoogleLinkTicketService y MfaService: no intervienen en el bloqueo por
+    // intentos fallidos (el usuario de estas pruebas no tiene MFA), pero el
+    // constructor los exige.
+    { issue: jest.fn(), consume: jest.fn() } as never,
+    { issueChallenge: jest.fn(), verifyChallenge: jest.fn() } as never,
     { getCapacity: jest.fn() } as never,
     { getStatus: jest.fn() } as never,
   );

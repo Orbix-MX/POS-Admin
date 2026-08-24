@@ -10,6 +10,8 @@ import { LicenseService } from '../../../common/services/license.service';
 import { PlanLimitsService } from '../../../common/services/plan-limits.service';
 import { TokenBlacklistService } from './services/token-blacklist.service';
 import { OAuthTicketService } from './services/oauth-ticket.service';
+import { GoogleLinkTicketService } from './services/google-link-ticket.service';
+import { MfaService } from './services/mfa.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -61,6 +63,20 @@ describe('AuthService', () => {
     getBranchCapacity: jest.fn(),
   };
 
+  const mockGoogleLinkTicketService = {
+    issue: jest.fn().mockResolvedValue('test-link-ticket'),
+    consume: jest.fn(),
+    purgeExpired: jest.fn(),
+  };
+
+  // `mfaEnabled: false` en los usuarios de este spec, así que `completeLogin`
+  // nunca llega a pedir un desafío; el mock existe para que Nest pueda
+  // construir AuthService.
+  const mockMfaService = {
+    issueChallenge: jest.fn().mockResolvedValue('test-mfa-ticket'),
+    verifyChallenge: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -72,6 +88,8 @@ describe('AuthService', () => {
         { provide: RefreshTokenService, useValue: mockRefreshTokenService },
         { provide: LicenseService, useValue: mockLicenseService },
         { provide: PlanLimitsService, useValue: mockPlanLimitsService },
+        { provide: GoogleLinkTicketService, useValue: mockGoogleLinkTicketService },
+        { provide: MfaService, useValue: mockMfaService },
         { provide: TokenBlacklistService, useValue: { isBlacklisted: jest.fn().mockResolvedValue(false), add: jest.fn(), revoke: jest.fn() } },
       ],
     }).compile();
@@ -118,7 +136,7 @@ describe('AuthService', () => {
 
       expect(result).toHaveProperty('accessToken');
       expect(result).toHaveProperty('user');
-      expect(result.user.email).toBe(registerDto.email);
+      expect(result.user!.email).toBe(registerDto.email);
       expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
         where: { email: registerDto.email },
       });
@@ -171,7 +189,7 @@ describe('AuthService', () => {
 
       expect(result).toHaveProperty('accessToken');
       expect(result).toHaveProperty('user');
-      expect(result.user.email).toBe(loginDto.email);
+      expect(result.user!.email).toBe(loginDto.email);
     });
 
     it('should throw UnauthorizedException for invalid email', async () => {
@@ -254,7 +272,7 @@ describe('AuthService', () => {
       const result = await service.getProfile(userId);
 
       expect(result.user.id).toBe(userId);
-      expect(result.user.email).toBe(mockUser.email);
+      expect(result.user!.email).toBe(mockUser.email);
     });
 
     it('should throw UnauthorizedException if user not found', async () => {
