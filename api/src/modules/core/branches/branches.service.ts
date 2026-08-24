@@ -135,6 +135,21 @@ export class BranchesService {
 
   // ── Inventory ─────────────────────────────────────────────────────────────
 
+  /**
+   * Comprueba que un `productId` recibido del cliente pertenezca al tenant.
+   *
+   * La sucursal ya se validaba, el producto no: un id ajeno acababa sembrando
+   * una `ProductVariant` y una fila de `BranchInventory` sobre el producto de
+   * otra organización, desde donde después se leían su nombre, SKU y precios.
+   */
+  private async assertProductInTenant(tenantId: string, productId: string): Promise<void> {
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, tenantId },
+      select: { id: true },
+    });
+    if (!product) throw new NotFoundException('Product not found');
+  }
+
   async getInventory(branchId: string) {
     const tenantId = this.tenantContext.requireTenantId();
     const branch = await this.prisma.branch.findFirst({ where: { id: branchId, tenantId } });
@@ -154,9 +169,11 @@ export class BranchesService {
     const branch = await this.prisma.branch.findFirst({ where: { id: branchId, tenantId } });
     if (!branch) throw new NotFoundException('Branch not found');
 
+    await this.assertProductInTenant(tenantId, productId);
+
     // El inventario se lleva por variante; esta API sigue siendo por producto,
     // así que apunta a la variante default (la línea "el producto en sí").
-    const variantId = await this.variants.ensureDefaultVariantId(this.prisma, productId);
+    const variantId = await this.variants.ensureDefaultVariantId(this.prisma, productId, tenantId);
     if (!variantId) throw new NotFoundException('Product not found');
 
     const existing = await this.prisma.branchInventory.findUnique({
@@ -220,9 +237,19 @@ export class BranchesService {
 
     // Resuelto fuera de la transacción para no alargarla: el conteo físico es
     // por producto, pero cada fila cuelga de la variante default.
+    // Los ids llegan en el body: se rechaza el lote completo si alguno no es de
+    // este tenant, en vez de saltárselo en silencio.
+    const owned = await this.prisma.product.findMany({
+      where: { id: { in: productIds }, tenantId },
+      select: { id: true },
+    });
+    if (owned.length !== new Set(productIds).size) {
+      throw new NotFoundException('Alguno de los productos no existe en esta empresa');
+    }
+
     const variantByProduct = new Map<string, string>();
     for (const productId of productIds) {
-      const variantId = await this.variants.ensureDefaultVariantId(this.prisma, productId);
+      const variantId = await this.variants.ensureDefaultVariantId(this.prisma, productId, tenantId);
       if (variantId) variantByProduct.set(productId, variantId);
     }
 
@@ -268,7 +295,9 @@ export class BranchesService {
     ]);
     if (!from || !to) throw new NotFoundException('Branch not found');
 
-    const variantId = await this.variants.ensureDefaultVariantId(this.prisma, dto.productId);
+    await this.assertProductInTenant(tenantId, dto.productId);
+
+    const variantId = await this.variants.ensureDefaultVariantId(this.prisma, dto.productId, tenantId);
     if (!variantId) throw new NotFoundException('Product not found');
 
     const fromInv = await this.prisma.branchInventory.findUnique({

@@ -118,8 +118,22 @@ function makeTx(
         }
         return Promise.resolve(p);
       }),
-      updateMany: jest.fn(({ where, data }: { where: { id: string; stock: { gte: number } }; data: { stock: { increment: number } } }) => {
+      // Igual que en `supply`: el espejo sobre `Product.stock` pasó de `update` a
+      // `updateMany` al incorporar `tenantId` al filtro. Sin guard (`stock.gte`)
+      // se comporta como el `update` de antes y se registra como tal, para que
+      // las aserciones de simetría sigan hablando del mismo concepto.
+      updateMany: jest.fn(({ where, data }: { where: { id: string; stock?: { gte: number } }; data: { stock: number | { increment: number } } }) => {
+        if (typeof data.stock === 'number') {
+          productStock[where.id] = data.stock;
+          calls.productUpdateMany.push({ id: where.id, increment: 0 });
+          return Promise.resolve({ count: 1 });
+        }
         const inc = data.stock.increment;
+        if (!where.stock) {
+          productStock[where.id] = (productStock[where.id] ?? 0) + inc;
+          calls.productUpdate.push({ id: where.id, increment: inc });
+          return Promise.resolve({ count: 1 });
+        }
         if (productStock[where.id] >= where.stock.gte) {
           productStock[where.id] += inc;
           calls.productUpdateMany.push({ id: where.id, increment: inc });
@@ -145,9 +159,17 @@ function makeTx(
       findUnique: jest.fn(({ where }: { where: { id: string } }) =>
         Promise.resolve({ stock: supplyStock[where.id] ?? 0 }),
       ),
-      updateMany: jest.fn(({ where, data }: { where: { id: string; stock: { gte: number } }; data: { stock: { decrement: number } } }) => {
-        const dec = data.stock.decrement;
-        if ((supplyStock[where.id] ?? 0) >= where.stock.gte) {
+      // Sirve a los dos usos: el consumo (guard `stock.gte` + `decrement`) y la
+      // reversa, que pasó de `update` a `updateMany` porque su filtro ahora
+      // lleva `tenantId` y deja de ser la clave única.
+      updateMany: jest.fn(({ where, data }: { where: { id: string; stock?: { gte: number } }; data: { stock: { decrement?: number; increment?: number } } }) => {
+        if (data.stock.increment != null) {
+          supplyStock[where.id] = (supplyStock[where.id] ?? 0) + data.stock.increment;
+          calls.supplyUpdate.push({ id: where.id, increment: data.stock.increment });
+          return Promise.resolve({ count: 1 });
+        }
+        const dec = data.stock.decrement ?? 0;
+        if (!where.stock || (supplyStock[where.id] ?? 0) >= where.stock.gte) {
           supplyStock[where.id] -= dec;
           calls.supplyUpdateMany.push({ id: where.id, decrement: dec });
           return Promise.resolve({ count: 1 });
@@ -207,6 +229,14 @@ function makeTx(
       }),
     },
   };
+
+  // El motor lee los productos e insumos ACOTADOS AL TENANT (`findFirst`),
+  // no por id suelto. El doble delega en la misma implementación: lo que estos
+  // tests fijan es el movimiento de stock, y el aislamiento tiene su propio
+  // spec (`inventory-consumption.tenant-isolation.spec.ts`).
+  (tx.product as any).findFirst = tx.product.findUnique;
+  if ((tx as any).supply?.findUnique) (tx as any).supply.findFirst = (tx as any).supply.findUnique;
+
 
   return { tx, calls, productStock, supplyStock, rows, rowKey };
 }
@@ -548,8 +578,10 @@ describe('InventoryConsumptionEngine', () => {
       expect(calls.branchInventory).toHaveLength(0);
       expect(calls.branchInventoryCreate).toHaveLength(0);
       expect(rows.size).toBe(0);
-      // Only the supply round-trips back to its original level.
-      expect(tx.supply.update).toHaveBeenCalled();
+      // Only the supply round-trips back to its original level. Se afirma sobre
+      // el reingreso registrado, no sobre el método de Prisma: la reversa pasó a
+      // `updateMany` al llevar `tenantId` en el filtro.
+      expect(calls.supplyUpdate).toContainEqual({ id: 's1', increment: 8 });
     });
   });
 });

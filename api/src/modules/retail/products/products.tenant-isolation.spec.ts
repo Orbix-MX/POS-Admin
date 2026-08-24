@@ -86,6 +86,11 @@ describe('ProductsService — aislamiento de tenant en referencias', () => {
 
     // El tx expone los mismos mocks, de forma que las aserciones valen tanto
     // dentro como fuera de la transacción.
+    // El tx expone los mismos mocks de product/combo/recipe, de forma que las
+    // aserciones valen tanto dentro como fuera de la transacción. El resto son
+    // colaboradores que `create` toca ANTES de llegar al bloque de combo
+    // (variante default + siembra de inventario): sin ellos la creación
+    // reventaba antes de tiempo y los tests pasaban por el motivo equivocado.
     mockPrisma.$transaction.mockImplementation((cb: (tx: unknown) => unknown) =>
       cb({
         product: mockPrisma.product,
@@ -95,6 +100,16 @@ describe('ProductsService — aislamiento de tenant en referencias', () => {
         productAttribute: { createMany: jest.fn(), deleteMany: jest.fn() },
         productFeature: { createMany: jest.fn(), deleteMany: jest.fn() },
         supply: mockPrisma.supply,
+        productVariant: {
+          create: jest.fn().mockResolvedValue({ id: 'variante-default' }),
+          createMany: jest.fn().mockResolvedValue({ count: 0 }),
+          findMany: jest.fn().mockResolvedValue([]),
+          update: jest.fn(),
+          deleteMany: jest.fn(),
+        },
+        // Sin sucursales activas, `seedBranchInventory` sale temprano.
+        branch: { findMany: jest.fn().mockResolvedValue([]) },
+        branchInventory: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
       }),
     );
 
@@ -155,11 +170,22 @@ describe('ProductsService — aislamiento de tenant en referencias', () => {
     it('create(COMBO) comprueba la propiedad del hijo antes de insertarlo', async () => {
       await service.create(comboDto(FOREIGN_PRODUCT_ID)).catch(() => undefined);
 
-      // La comprobación esperada: buscar el hijo acotado al tenant actual.
-      const scopedLookup = mockPrisma.product.findFirst.mock.calls.some(
-        ([args]: [any]) =>
-          args?.where?.id === FOREIGN_PRODUCT_ID && args?.where?.tenantId === TENANT,
-      );
+      // La comprobación esperada: buscar el hijo acotado al tenant actual. Se
+      // acepta tanto la consulta por id como la de lote (`id: { in: [...] }`),
+      // que es la que usa el servicio para validar todos los hijos de una vez —
+      // lo que importa es que el id ajeno se busque bajo el tenant del contexto,
+      // no la forma de la consulta.
+      const mentionsChildUnderTenant = ([args]: [any]) => {
+        const where = args?.where;
+        if (where?.tenantId !== TENANT) return false;
+        const id = where?.id;
+        return id === FOREIGN_PRODUCT_ID || (Array.isArray(id?.in) && id.in.includes(FOREIGN_PRODUCT_ID));
+      };
+
+      const scopedLookup =
+        mockPrisma.product.findFirst.mock.calls.some(mentionsChildUnderTenant) ||
+        mockPrisma.product.findMany.mock.calls.some(mentionsChildUnderTenant);
+
       expect(scopedLookup).toBe(true);
     });
 

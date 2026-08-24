@@ -17,9 +17,22 @@ import { Prisma } from '@prisma/client';
  *    parcial en la base garantiza que hay exactamente una por producto.
  *
  *  - Sucursal: la explícita del contexto; si no hay (hoy el 82% de las órdenes
- *    no trae `branchId`), la sucursal `isMain` del tenant. Si el tenant no tiene
- *    ninguna sucursal, devuelve null y el llamador cae al comportamiento legacy
- *    sobre `Product.stock`, que sigue vigente durante la fase expand.
+ *    no trae `branchId`), la sucursal `isMain` DEL TENANT DEL CONTEXTO. Si el
+ *    tenant no tiene ninguna sucursal, devuelve null y el llamador cae al
+ *    comportamiento legacy sobre `Product.stock`, que sigue vigente durante la
+ *    fase expand.
+ *
+ * Aislamiento multi-tenant: `tenantId` es obligatorio en todos los métodos y
+ * acota TODA resolución. Antes no lo era, y eso abría dos agujeros:
+ *
+ *   1. `ensureDefaultVariantId` creaba una `ProductVariant` sobre el producto de
+ *      otro tenant (escritura cross-tenant).
+ *   2. `resolveBranchId` derivaba la sucursal del tenant DUEÑO DEL PRODUCTO, así
+ *      que un productId ajeno apuntaba el movimiento de stock directamente al
+ *      inventario de la víctima.
+ *
+ * El tenant nunca se deduce del producto: siempre lo impone el llamador desde el
+ * contexto de la petición (`TenantContextService` / `InventoryContext`).
  *
  * Todos los métodos reciben el `Prisma.TransactionClient` del llamador y nunca
  * abren su propia transacción, igual que los engines.
@@ -35,9 +48,12 @@ export class VariantInventoryResolver {
   async resolveVariantId(
     tx: Prisma.TransactionClient,
     productId: string,
+    tenantId: string,
   ): Promise<string | null> {
     const variant = await tx.productVariant.findFirst({
-      where: { productId, isDefault: true },
+      // El filtro viaja por la relación: `ProductVariant` no tiene `tenantId`
+      // propio, su dueño es el producto.
+      where: { productId, isDefault: true, product: { tenantId } },
       select: { id: true },
     });
     return variant?.id ?? null;
@@ -52,12 +68,16 @@ export class VariantInventoryResolver {
   async ensureDefaultVariantId(
     tx: Prisma.TransactionClient,
     productId: string,
+    tenantId: string,
   ): Promise<string | null> {
-    const existing = await this.resolveVariantId(tx, productId);
+    const existing = await this.resolveVariantId(tx, productId, tenantId);
     if (existing) return existing;
 
-    const product = await tx.product.findUnique({
-      where: { id: productId },
+    // Acotado al tenant: un producto ajeno devuelve null en vez de recibir una
+    // variante nueva. Sin este filtro, sembrar la variante era una escritura en
+    // los datos de otra organización.
+    const product = await tx.product.findFirst({
+      where: { id: productId, tenantId },
       select: { price: true, costPrice: true, trackInventory: true },
     });
     if (!product) return null;
@@ -78,23 +98,21 @@ export class VariantInventoryResolver {
 
   /**
    * Sucursal contra la que se carga el inventario: la explícita, o la `isMain`
-   * del tenant dueño del producto. Null cuando el tenant no tiene sucursales.
+   * DEL TENANT DEL CONTEXTO. Null cuando ese tenant no tiene sucursales.
+   *
+   * Antes la sucursal se derivaba de `product.tenantId`, de modo que un
+   * `productId` ajeno resolvía la sucursal principal de la víctima y el delta de
+   * stock caía sobre su inventario. El tenant lo impone ahora el llamador.
    */
   async resolveBranchId(
     tx: Prisma.TransactionClient,
-    productId: string,
+    tenantId: string,
     branchId?: string | null,
   ): Promise<string | null> {
     if (branchId) return branchId;
 
-    const product = await tx.product.findUnique({
-      where: { id: productId },
-      select: { tenantId: true },
-    });
-    if (!product) return null;
-
     const main = await tx.branch.findFirst({
-      where: { tenantId: product.tenantId, isMain: true },
+      where: { tenantId, isMain: true },
       select: { id: true },
     });
     return main?.id ?? null;
@@ -107,11 +125,12 @@ export class VariantInventoryResolver {
   async resolve(
     tx: Prisma.TransactionClient,
     productId: string,
+    tenantId: string,
     branchId?: string | null,
   ): Promise<{ variantId: string; branchId: string } | null> {
     const [variantId, resolvedBranchId] = await Promise.all([
-      this.resolveVariantId(tx, productId),
-      this.resolveBranchId(tx, productId, branchId),
+      this.resolveVariantId(tx, productId, tenantId),
+      this.resolveBranchId(tx, tenantId, branchId),
     ]);
 
     if (!variantId || !resolvedBranchId) return null;

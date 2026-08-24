@@ -242,6 +242,7 @@ export class SuppliesService {
     return this.prisma.$transaction(async (tx) => {
       await this.inventoryEngine.applySupplyStockDelta(tx, {
         supplyId: id,
+        tenantId,
         delta: quantityInBaseUnit,
       });
 

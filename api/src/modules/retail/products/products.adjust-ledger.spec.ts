@@ -52,7 +52,7 @@ describe('ProductsService.updateStock — delegación al InventoryEngine (Fase 2
 
     // Un alta no necesita guard: solo las bajas pueden dejar el stock negativo.
     expect(applyProductStockDelta).toHaveBeenCalledWith(expect.anything(), {
-      productId: 'p1', delta: 5, guardInsufficient: false, branchId: null,
+      productId: 'p1', tenantId: TENANT, delta: 5, guardInsufficient: false, branchId: null,
     });
     expect(recordProductMovement).toHaveBeenCalledTimes(1);
     expect(recordProductMovement.mock.calls[0][1]).toMatchObject({
@@ -75,7 +75,7 @@ describe('ProductsService.updateStock — delegación al InventoryEngine (Fase 2
     // La baja sí lo pide: el guard contra stock negativo lo aplica la base
     // dentro de la transacción, no una comprobación previa en JS.
     expect(applyProductStockDelta).toHaveBeenCalledWith(expect.anything(), {
-      productId: 'p1', delta: -3, guardInsufficient: true, branchId: null,
+      productId: 'p1', tenantId: TENANT, delta: -3, guardInsufficient: true, branchId: null,
     });
     expect(recordProductMovement.mock.calls[0][1]).toMatchObject({
       type: 'AJUSTE', quantity: -3, notes: 'Ajuste manual (-3)',
@@ -88,7 +88,7 @@ describe('ProductsService.updateStock — delegación al InventoryEngine (Fase 2
     await service.updateStock('p1', 0);
 
     expect(applyProductStockDelta).toHaveBeenCalledWith(expect.anything(), {
-      productId: 'p1', delta: 0, guardInsufficient: false, branchId: null,
+      productId: 'p1', tenantId: TENANT, delta: 0, guardInsufficient: false, branchId: null,
     });
     expect(recordProductMovement).not.toHaveBeenCalled();
   });

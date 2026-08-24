@@ -322,9 +322,9 @@ export class PurchasesService {
         // El costeo promedio ponderado ahora es por (sucursal, variante): cada
         // sucursal lleva su propia base de costo, que es lo correcto cuando el
         // mismo producto se compra a distintos precios en distintas plazas.
-        const variantId = await this.variants.ensureDefaultVariantId(tx, ri.productId);
+        const variantId = await this.variants.ensureDefaultVariantId(tx, ri.productId, tenantId);
         const targetBranchId =
-          effectiveBranchId ?? (await this.variants.resolveBranchId(tx, ri.productId));
+          effectiveBranchId ?? (await this.variants.resolveBranchId(tx, tenantId));
 
         const currentRow =
           variantId && targetBranchId
@@ -335,8 +335,8 @@ export class PurchasesService {
             : null;
 
         // Fallback al producto mientras existan filas sin sembrar (fase expand).
-        const currentProduct = await tx.product.findUnique({
-          where: { id: ri.productId },
+        const currentProduct = await tx.product.findFirst({
+          where: { id: ri.productId, tenantId },
           select: { stock: true, avgCost: true },
         });
 

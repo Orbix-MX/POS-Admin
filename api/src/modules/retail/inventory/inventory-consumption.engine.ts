@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { Prisma, ProductType } from '@prisma/client';
 import { safeConvertUnits } from '../../../common/helpers/unit-conversion';
 import { InventoryEngine } from './inventory.engine';
@@ -128,13 +128,14 @@ export class InventoryConsumptionEngine {
     items: InventoryLineItem[],
     ctx: InventoryContext,
   ): Promise<void> {
-    const effects = await this.resolveEffects(tx, items);
+    const effects = await this.resolveEffects(tx, items, ctx.tenantId);
 
     for (const effect of effects.products.values()) {
       // El engine aplica el guard sobre la fila de (sucursal, variante) —
       // la fuente de verdad — y espeja el movimiento en `Product.stock`.
       const applied = await this.inventory.applyProductStockDelta(tx, {
         productId: effect.productId,
+        tenantId: ctx.tenantId,
         delta: -effect.quantity,
         guardInsufficient: true,
         branchId: ctx.branchId,
@@ -161,7 +162,7 @@ export class InventoryConsumptionEngine {
 
     for (const effect of effects.supplies.values()) {
       const res = await tx.supply.updateMany({
-        where: { id: effect.supplyId, stock: { gte: effect.quantity } },
+        where: { id: effect.supplyId, tenantId: ctx.tenantId, stock: { gte: effect.quantity } },
         data: { stock: { decrement: effect.quantity } },
       });
       if (res.count === 0) {
@@ -194,12 +195,13 @@ export class InventoryConsumptionEngine {
     items: InventoryLineItem[],
     ctx: InventoryContext,
   ): Promise<void> {
-    const effects = await this.resolveEffects(tx, items);
+    const effects = await this.resolveEffects(tx, items, ctx.tenantId);
 
     for (const effect of effects.products.values()) {
       // Sin guard: una restauración nunca falla por disponibilidad.
       await this.inventory.applyProductStockDelta(tx, {
         productId: effect.productId,
+        tenantId: ctx.tenantId,
         delta: effect.quantity,
         branchId: ctx.branchId,
       });
@@ -219,8 +221,8 @@ export class InventoryConsumptionEngine {
     }
 
     for (const effect of effects.supplies.values()) {
-      await tx.supply.update({
-        where: { id: effect.supplyId },
+      await tx.supply.updateMany({
+        where: { id: effect.supplyId, tenantId: ctx.tenantId },
         data: { stock: { increment: effect.quantity } },
       });
       await tx.supplyMovement.create({
@@ -246,12 +248,18 @@ export class InventoryConsumptionEngine {
   async validate(
     tx: Prisma.TransactionClient,
     items: InventoryLineItem[],
+    tenantId: string,
     branchId?: string | null,
   ): Promise<void> {
-    const effects = await this.resolveEffects(tx, items);
+    const effects = await this.resolveEffects(tx, items, tenantId);
 
     for (const effect of effects.products.values()) {
-      const available = await this.inventory.getProductStock(tx, effect.productId, branchId);
+      const available = await this.inventory.getProductStock(
+        tx,
+        effect.productId,
+        tenantId,
+        branchId,
+      );
       if (available != null && available < effect.quantity) {
         throw new BadRequestException(
           `Stock insuficiente para "${effect.productName}". ` +
@@ -261,8 +269,8 @@ export class InventoryConsumptionEngine {
     }
 
     for (const effect of effects.supplies.values()) {
-      const supply = await tx.supply.findUnique({
-        where: { id: effect.supplyId },
+      const supply = await tx.supply.findFirst({
+        where: { id: effect.supplyId, tenantId },
         select: { stock: true },
       });
       if (supply != null && Number(supply.stock) < effect.quantity) {
@@ -283,14 +291,15 @@ export class InventoryConsumptionEngine {
   private async resolveEffects(
     tx: Prisma.TransactionClient,
     items: InventoryLineItem[],
+    tenantId: string,
   ): Promise<ResolvedEffects> {
-    const cache = new Map<string, LoadedProduct | null>();
+    const cache = new Map<string, LoadedProduct>();
     const effects: ResolvedEffects = { products: new Map(), supplies: new Map() };
 
     for (const item of items) {
       if (item.itemType === 'SERVICE' || !item.productId) continue;
       if (!Number.isFinite(item.quantity) || item.quantity <= 0) continue;
-      await this.expand(tx, item.productId, item.quantity, effects, cache, 0);
+      await this.expand(tx, item.productId, tenantId, item.quantity, effects, cache, 0);
     }
 
     return effects;
@@ -299,9 +308,10 @@ export class InventoryConsumptionEngine {
   private async expand(
     tx: Prisma.TransactionClient,
     productId: string,
+    tenantId: string,
     multiplier: number,
     effects: ResolvedEffects,
-    cache: Map<string, LoadedProduct | null>,
+    cache: Map<string, LoadedProduct>,
     depth: number,
   ): Promise<void> {
     if (depth > MAX_COMBO_DEPTH) {
@@ -310,8 +320,9 @@ export class InventoryConsumptionEngine {
       );
     }
 
-    const product = await this.loadProduct(tx, productId, cache);
-    if (!product) return;
+    // El tenant se propaga a cada nivel del árbol: un `childProductId` ajeno
+    // dentro de un combo propio se rechaza aquí, no al escribir el stock.
+    const product = await this.loadProduct(tx, productId, tenantId, cache);
 
     switch (product.type) {
       case ProductType.SIMPLE: {
@@ -361,6 +372,7 @@ export class InventoryConsumptionEngine {
           await this.expand(
             tx,
             child.childProductId,
+            tenantId,
             multiplier * child.quantity,
             effects,
             cache,
@@ -376,18 +388,41 @@ export class InventoryConsumptionEngine {
     }
   }
 
+  /**
+   * Carga un producto del árbol de expansión, ACOTADO AL TENANT del contexto.
+   *
+   * Antes era un `findUnique` por id: cualquier `productId` de otra organización
+   * —llegado en el body de una comanda, o persistido como `childProductId` de un
+   * combo— se resolvía sin más y su stock terminaba descontado. Ahora un id que
+   * no pertenece al tenant simplemente no existe para el motor.
+   *
+   * Falla cerrado en vez de ignorar la línea en silencio: una venta que
+   * referencia un producto inalcanzable es un error del llamador, y saltárselo
+   * dejaría la orden creada sin su descuento de inventario. Es seguro para las
+   * reversas porque `products.remove` prohíbe borrar un producto con
+   * `orderItems`, así que toda orden histórica conserva sus productos.
+   */
   private async loadProduct(
     tx: Prisma.TransactionClient,
     productId: string,
+    tenantId: string,
     cache: Map<string, LoadedProduct | null>,
-  ): Promise<LoadedProduct | null> {
+  ): Promise<LoadedProduct> {
     const cached = cache.get(productId);
-    if (cached !== undefined) return cached;
+    if (cached) return cached;
 
-    const product = (await tx.product.findUnique({
-      where: { id: productId },
+    const product = await tx.product.findFirst({
+      where: { id: productId, tenantId },
       select: PRODUCT_LOAD_SELECT,
-    }));
+    });
+
+    if (!product) {
+      // Mensaje deliberadamente igual para "no existe" y "es de otro tenant":
+      // distinguirlos confirmaría la existencia de un producto ajeno.
+      throw new NotFoundException(
+        `Producto ${productId} no encontrado en esta organización`,
+      );
+    }
 
     cache.set(productId, product);
     return product;

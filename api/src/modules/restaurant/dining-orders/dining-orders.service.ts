@@ -302,6 +302,17 @@ export class DiningOrdersService {
     const tenantId = this.tenantContext.requireTenantId();
     await this.requireEditableOrder(tenantId, branchId, orderId);
 
+    // `productId` viaja en el body: sin esta comprobación un id de otra
+    // organización quedaba persistido en la línea y, al cobrar la comanda,
+    // `InventoryConsumptionEngine` descontaba el stock de esa organización.
+    if (dto.productId) {
+      const product = await this.prisma.product.findFirst({
+        where: { id: dto.productId, tenantId },
+        select: { id: true },
+      });
+      if (!product) throw new NotFoundException('Producto no encontrado en esta empresa');
+    }
+
     // Captura offline: la línea trae un id de cliente. Se crea con ese id sin
     // fusionar e idempotente — si ya existe (reintento de sync), se devuelve tal
     // cual para no duplicar. Permite update/remove por id antes de sincronizar.

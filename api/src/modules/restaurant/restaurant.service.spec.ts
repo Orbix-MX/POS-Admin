@@ -37,6 +37,14 @@ const mockPrismaService = {
     findMany:  jest.fn(),
     findFirst: jest.fn(),
   },
+  // Todo `productId` del body se valida contra el tenant antes de crear la
+  // comanda (`assertProductsInTenant`). Por defecto los ids de estos tests son
+  // del tenant; los casos de producto ajeno viven en su propio spec.
+  product: {
+    findMany: jest.fn(({ where }: { where: { id: { in: string[] } } }) =>
+      Promise.resolve(where.id.in.map((id) => ({ id }))),
+    ),
+  },
   cashSession: { findFirst: jest.fn() },
 };
 

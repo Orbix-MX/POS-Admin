@@ -296,7 +296,7 @@ export class ProductsImportService {
    * sí se propagan a todas las sucursales, porque son del catálogo.
    */
   private async syncBranchInventory(tenantId: string, product: Product): Promise<void> {
-    const variantId = await this.variants.ensureDefaultVariantId(this.prisma, product.id);
+    const variantId = await this.variants.ensureDefaultVariantId(this.prisma, product.id, tenantId);
     if (!variantId) return;
 
     const branches = await this.prisma.branch.findMany({

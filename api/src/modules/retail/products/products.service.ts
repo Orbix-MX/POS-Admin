@@ -86,14 +86,64 @@ export class ProductsService {
     }
   }
 
+  /**
+   * Comprueba que los insumos referenciados por una receta sean de este tenant.
+   *
+   * El producto padre siempre se resuelve con `findFirst({ id, tenantId })`, pero
+   * los `supplyId` viajaban en el body y se insertaban tal cual. Un id ajeno
+   * persistido se volvía explotable al vender: `InventoryConsumptionEngine`
+   * expandía la receta y descontaba el insumo de la otra organización.
+   */
+  private async assertSuppliesInTenant(
+    db: { supply: { findMany: (args: any) => Promise<{ id: string }[]> } },
+    tenantId: string,
+    supplyIds: string[],
+  ): Promise<void> {
+    const unique = [...new Set(supplyIds)];
+    if (unique.length === 0) return;
+
+    const owned = await db.supply.findMany({
+      where: { id: { in: unique }, tenantId },
+      select: { id: true },
+    });
+    if (owned.length !== unique.length) {
+      throw new NotFoundException('Alguno de los insumos no existe en esta empresa');
+    }
+  }
+
+  /**
+   * Comprueba que los hijos de un combo sean de este tenant. Mismo razonamiento
+   * que `assertSuppliesInTenant`: un `childProductId` ajeno persistido hacía que
+   * vender el combo descontara el stock del producto de otra organización, y que
+   * `GET /products/:id` devolviera su fila completa (costo incluido) a través de
+   * `comboItems.include.child`.
+   */
+  private async assertChildProductsInTenant(
+    db: { product: { findMany: (args: any) => Promise<{ id: string }[]> } },
+    tenantId: string,
+    childProductIds: string[],
+  ): Promise<void> {
+    const unique = [...new Set(childProductIds)];
+    if (unique.length === 0) return;
+
+    const owned = await db.product.findMany({
+      where: { id: { in: unique }, tenantId },
+      select: { id: true },
+    });
+    if (owned.length !== unique.length) {
+      throw new NotFoundException('Alguno de los productos del combo no existe en esta empresa');
+    }
+  }
+
   private async resolveNormalizedQty(
     db: any,
+    tenantId: string,
     item: { supplyId: string; quantity: number; unitId?: string | null },
   ): Promise<number | null> {
     if (!item.unitId) return null;
 
-    const supply = await db.supply.findUnique({
-      where: { id: item.supplyId },
+    const supply = await db.supply.findFirst({
+      where: { id: item.supplyId, tenantId },
       select: { inventoryUnitId: true, baseUnitId: true, conversionFactor: true },
     });
 
@@ -186,13 +236,14 @@ export class ProductsService {
       let needsRefetch = true;
 
       if (type === 'RECIPE' && recipeItems?.length) {
+        await this.assertSuppliesInTenant(tx, tenantId, recipeItems.map((i) => i.supplyId));
         const normalizedItems = await Promise.all(
           recipeItems.map(async (i) => ({
             supplyId: i.supplyId,
             quantity: i.quantity,
             unit: i.unit,
             unitId: i.unitId ?? null,
-            normalizedQuantity: await this.resolveNormalizedQty(tx, i),
+            normalizedQuantity: await this.resolveNormalizedQty(tx, tenantId, i),
           })),
         );
         await tx.recipe.create({
@@ -205,6 +256,7 @@ export class ProductsService {
       }
 
       if (type === 'COMBO' && comboItems?.length) {
+        await this.assertChildProductsInTenant(tx, tenantId, comboItems.map((ci) => ci.childProductId));
         await tx.comboItem.createMany({
           data: comboItems.map((ci) => ({
             comboProductId: created.id,
@@ -453,6 +505,7 @@ export class ProductsService {
 
       // Sync recipe items
       if (newType === 'RECIPE' && recipeItems !== undefined) {
+        await this.assertSuppliesInTenant(tx, tenantId, recipeItems.map((i) => i.supplyId));
         const existingRecipe = await tx.recipe.findUnique({ where: { productId: id } });
         if (existingRecipe) {
           await tx.recipeItem.deleteMany({ where: { recipeId: existingRecipe.id } });
@@ -464,7 +517,7 @@ export class ProductsService {
                 quantity: i.quantity,
                 unit: i.unit,
                 unitId: i.unitId ?? null,
-                normalizedQuantity: await this.resolveNormalizedQty(tx, i),
+                normalizedQuantity: await this.resolveNormalizedQty(tx, tenantId, i),
               })),
             );
             await tx.recipeItem.createMany({ data: normalizedItems });
@@ -476,7 +529,7 @@ export class ProductsService {
               quantity: i.quantity,
               unit: i.unit,
               unitId: i.unitId ?? null,
-              normalizedQuantity: await this.resolveNormalizedQty(tx, i),
+              normalizedQuantity: await this.resolveNormalizedQty(tx, tenantId, i),
             })),
           );
           await tx.recipe.create({
@@ -490,6 +543,7 @@ export class ProductsService {
 
       // Sync combo items
       if (newType === 'COMBO' && comboItems !== undefined) {
+        await this.assertChildProductsInTenant(tx, tenantId, comboItems.map((ci) => ci.childProductId));
         await tx.comboItem.deleteMany({ where: { comboProductId: id } });
         if (comboItems.length > 0) {
           await tx.comboItem.createMany({
@@ -690,6 +744,7 @@ export class ProductsService {
     const updated = await this.prisma.$transaction(async (tx) => {
       const applied = await this.inventoryEngine.applyProductStockDelta(tx, {
         productId: id,
+        tenantId,
         delta: quantity,
         guardInsufficient: quantity < 0,
         branchId,
@@ -779,13 +834,15 @@ export class ProductsService {
     });
     if (!product) throw new NotFoundException('Producto tipo RECIPE no encontrado');
 
+    await this.assertSuppliesInTenant(this.prisma, tenantId, items.map((i) => i.supplyId));
+
     const normalizedItems = await Promise.all(
       items.map(async (i) => ({
         supplyId: i.supplyId,
         quantity: i.quantity,
         unit: i.unit,
         unitId: i.unitId ?? null,
-        normalizedQuantity: await this.resolveNormalizedQty(this.prisma, i),
+        normalizedQuantity: await this.resolveNormalizedQty(this.prisma, tenantId, i),
       })),
     );
 
@@ -832,6 +889,8 @@ export class ProductsService {
       where: { id: productId, tenantId, type: 'COMBO' },
     });
     if (!product) throw new NotFoundException('Producto tipo COMBO no encontrado');
+
+    await this.assertChildProductsInTenant(this.prisma, tenantId, items.map((i) => i.childProductId));
 
     return this.prisma.$transaction(async (tx) => {
       await tx.comboItem.deleteMany({ where: { comboProductId: productId } });

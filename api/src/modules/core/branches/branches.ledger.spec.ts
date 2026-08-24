@@ -25,6 +25,15 @@ function build() {
 
   const prisma = {
     branch: { findFirst: jest.fn().mockResolvedValue({ id: 'branch' }), updateMany: jest.fn(), update: jest.fn() },
+    // Los `productId` llegan en la URL/body y ahora se validan contra el tenant
+    // antes de tocar inventario. En estos tests todos son del tenant; el caso
+    // del producto ajeno vive en el spec de aislamiento.
+    product: {
+      findFirst: jest.fn(({ where }: { where: { id: string } }) => Promise.resolve({ id: where.id })),
+      findMany: jest.fn(({ where }: { where: { id: { in: string[] } } }) =>
+        Promise.resolve(where.id.in.map((id) => ({ id }))),
+      ),
+    },
     branchInventory: { findUnique: biFindUnique, findMany: biFindMany, upsert: biUpsert, update: biUpdate },
     inventoryMovement: { create: invCreate },
     $transaction: jest.fn((arg: unknown) =>

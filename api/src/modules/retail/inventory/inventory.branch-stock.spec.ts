@@ -155,6 +155,14 @@ function makeTx(
     supplyMovement: { create: jest.fn(() => Promise.resolve({})) },
   };
 
+  // El motor lee los productos e insumos ACOTADOS AL TENANT (`findFirst`),
+  // no por id suelto. El doble delega en la misma implementación: lo que estos
+  // tests fijan es el movimiento de stock, y el aislamiento tiene su propio
+  // spec (`inventory-consumption.tenant-isolation.spec.ts`).
+  (tx.product as any).findFirst = tx.product.findUnique;
+  if ((tx as any).supply?.findUnique) (tx as any).supply.findFirst = (tx as any).supply.findUnique;
+
+
   return { tx, rows, productStock, supplyStock, calls, key };
 }
 
@@ -279,14 +287,14 @@ describe('InventoryEngine.applyBranchInventoryDelta — clamp a 0 (P1-04)', () =
     // en 0 en vez de escribir un número negativo.
     const { tx, rows } = makeTx({ p1: simple('p1', 100) }, {}, { 'b1:v-p1': 2 });
     await new InventoryEngine(new VariantInventoryResolver())
-      .applyBranchInventoryDelta(tx as never, 'b1', 'p1', -5);
+      .applyBranchInventoryDelta(tx as never, 'b1', 'p1', 't1', -5);
     expect(rows.get('b1:v-p1')).toBe(0);
   });
 
   it('sin sucursal resoluble → no-op', async () => {
     const { tx, rows, calls } = makeTx({ p1: simple('p1', 100) }, {}, {}, { mainBranchId: null });
     await new InventoryEngine(new VariantInventoryResolver())
-      .applyBranchInventoryDelta(tx as never, null, 'p1', -5);
+      .applyBranchInventoryDelta(tx as never, null, 'p1', 't1', -5);
     expect(rows.size).toBe(0);
     expect(calls.branchCreate).toHaveLength(0);
   });

@@ -66,6 +66,12 @@ export interface SupplyMovementInput {
 /** Delta a aplicar sobre existencia de producto. */
 export interface ProductStockDelta {
   productId: string;
+  /**
+   * Tenant dueño de la operación. Obligatorio: acota la resolución de
+   * variante/sucursal y TODA escritura de existencias, de modo que un
+   * `productId` de otra organización no pueda mover su stock.
+   */
+  tenantId: string;
   /** Positivo suma, negativo resta. */
   delta: number;
   /**
@@ -90,6 +96,8 @@ export interface ProductStockDelta {
 /** Delta a aplicar sobre existencia de insumo. */
 export interface SupplyStockDelta {
   supplyId: string;
+  /** Tenant dueño de la operación. Acota la escritura — ver `ProductStockDelta`. */
+  tenantId: string;
   delta: number;
   guardInsufficient?: boolean;
 }
@@ -161,31 +169,34 @@ export class InventoryEngine {
    */
   async applyProductStockDelta(
     tx: Prisma.TransactionClient,
-    { productId, delta, guardInsufficient, variantId, branchId }: ProductStockDelta,
+    { productId, tenantId, delta, guardInsufficient, variantId, branchId }: ProductStockDelta,
   ): Promise<boolean> {
     const target =
       variantId && branchId
         ? { variantId, branchId }
-        : await this.resolver.resolve(tx, productId, branchId);
+        : await this.resolver.resolve(tx, productId, tenantId, branchId);
 
     if (!target) {
-      // Legacy: sin inventario por variante, `Product.stock` manda.
+      // Legacy: sin inventario por variante, `Product.stock` manda. `updateMany`
+      // (no `update`) porque el filtro deja de ser la clave única: lleva tenant.
       if (delta < 0 && guardInsufficient) {
         const res = await tx.product.updateMany({
-          where: { id: productId, stock: { gte: -delta } },
+          where: { id: productId, tenantId, stock: { gte: -delta } },
           data: { stock: { increment: delta } },
         });
         return res.count > 0;
       }
 
-      await tx.product.update({
-        where: { id: productId },
+      const res = await tx.product.updateMany({
+        where: { id: productId, tenantId },
         data: { stock: { increment: delta } },
       });
-      return true;
+      // 0 filas = el producto no es de este tenant (o no existe): no hay nada
+      // que mover y el llamador debe tratarlo como fallo, no como éxito silencioso.
+      return res.count > 0;
     }
 
-    await this.ensureBranchInventoryRow(tx, productId, target.variantId, target.branchId);
+    await this.ensureBranchInventoryRow(tx, productId, tenantId, target.variantId, target.branchId);
 
     if (delta < 0 && guardInsufficient) {
       const res = await tx.branchInventory.updateMany({
@@ -200,7 +211,7 @@ export class InventoryEngine {
       });
     }
 
-    await this.mirrorLegacyProductStock(tx, productId, delta);
+    await this.mirrorLegacyProductStock(tx, productId, tenantId, delta);
     return true;
   }
 
@@ -216,24 +227,25 @@ export class InventoryEngine {
   private async mirrorLegacyProductStock(
     tx: Prisma.TransactionClient,
     productId: string,
+    tenantId: string,
     delta: number,
   ): Promise<void> {
     if (delta >= 0) {
-      await tx.product.update({
-        where: { id: productId },
+      await tx.product.updateMany({
+        where: { id: productId, tenantId },
         data: { stock: { increment: delta } },
       });
       return;
     }
 
     const mirrored = await tx.product.updateMany({
-      where: { id: productId, stock: { gte: -delta } },
+      where: { id: productId, tenantId, stock: { gte: -delta } },
       data: { stock: { increment: delta } },
     });
     if (mirrored.count > 0) return;
 
     await tx.product.updateMany({
-      where: { id: productId },
+      where: { id: productId, tenantId },
       data: { stock: 0 },
     });
   }
@@ -247,6 +259,7 @@ export class InventoryEngine {
   private async ensureBranchInventoryRow(
     tx: Prisma.TransactionClient,
     productId: string,
+    tenantId: string,
     variantId: string,
     branchId: string,
   ): Promise<void> {
@@ -256,8 +269,11 @@ export class InventoryEngine {
     });
     if (existing) return;
 
-    const product = await tx.product.findUnique({
-      where: { id: productId },
+    // Acotado al tenant: sin este filtro se sembraba una fila de inventario que
+    // enlazaba el producto de otra organización con una sucursal propia, y de ahí
+    // se leían su nombre, SKU y precios.
+    const product = await tx.product.findFirst({
+      where: { id: productId, tenantId },
       select: {
         stock: true,
         price: true,
@@ -269,18 +285,23 @@ export class InventoryEngine {
       },
     });
 
+    // El producto no es de este tenant (o no existe): no se siembra nada. El
+    // llamador verá 0 filas afectadas y fallará, que es el comportamiento
+    // correcto — antes se creaba la fila con ceros y la operación seguía.
+    if (!product) return;
+
     await tx.branchInventory.create({
       data: {
         branchId,
         productId,
         variantId,
-        stock: product?.stock ?? 0,
-        price: product?.price ?? null,
-        cost: product?.costPrice ?? null,
-        comparePrice: product?.comparePrice ?? null,
-        lastCost: product?.lastCost ?? null,
-        avgCost: product?.avgCost ?? null,
-        lowStockAlert: product?.lowStockAlert ?? 5,
+        stock: product.stock,
+        price: product.price,
+        cost: product.costPrice,
+        comparePrice: product.comparePrice,
+        lastCost: product.lastCost,
+        avgCost: product.avgCost,
+        lowStockAlert: product.lowStockAlert ?? 5,
       },
     });
   }
@@ -288,21 +309,21 @@ export class InventoryEngine {
   /** Aplica un delta sobre `Supply.stock` (Decimal). Mismos patrones que producto. */
   async applySupplyStockDelta(
     tx: Prisma.TransactionClient,
-    { supplyId, delta, guardInsufficient }: SupplyStockDelta,
+    { supplyId, tenantId, delta, guardInsufficient }: SupplyStockDelta,
   ): Promise<boolean> {
     if (delta < 0 && guardInsufficient) {
       const res = await tx.supply.updateMany({
-        where: { id: supplyId, stock: { gte: -delta } },
+        where: { id: supplyId, tenantId, stock: { gte: -delta } },
         data: { stock: { increment: delta } },
       });
       return res.count > 0;
     }
 
-    await tx.supply.update({
-      where: { id: supplyId },
+    const res = await tx.supply.updateMany({
+      where: { id: supplyId, tenantId },
       data: { stock: { increment: delta } },
     });
-    return true;
+    return res.count > 0;
   }
 
   // ── Existencias por sucursal ──────────────────────────────────────────────
@@ -321,16 +342,17 @@ export class InventoryEngine {
     tx: Prisma.TransactionClient,
     branchId: string | null | undefined,
     productId: string,
+    tenantId: string,
     delta: number,
     variantId?: string | null,
   ): Promise<void> {
     const target =
       variantId && branchId
         ? { variantId, branchId }
-        : await this.resolver.resolve(tx, productId, branchId);
+        : await this.resolver.resolve(tx, productId, tenantId, branchId);
     if (!target) return;
 
-    await this.ensureBranchInventoryRow(tx, productId, target.variantId, target.branchId);
+    await this.ensureBranchInventoryRow(tx, productId, tenantId, target.variantId, target.branchId);
 
     if (delta < 0) {
       const decremented = await tx.branchInventory.updateMany({
@@ -364,13 +386,14 @@ export class InventoryEngine {
   async getProductStock(
     tx: Prisma.TransactionClient,
     productId: string,
+    tenantId: string,
     branchId?: string | null,
     variantId?: string | null,
   ): Promise<number | null> {
     const target =
       variantId && branchId
         ? { variantId, branchId }
-        : await this.resolver.resolve(tx, productId, branchId);
+        : await this.resolver.resolve(tx, productId, tenantId, branchId);
 
     if (target) {
       const row = await tx.branchInventory.findUnique({
@@ -380,8 +403,8 @@ export class InventoryEngine {
       if (row) return row.stock;
     }
 
-    const product = await tx.product.findUnique({
-      where: { id: productId },
+    const product = await tx.product.findFirst({
+      where: { id: productId, tenantId },
       select: { stock: true },
     });
     return product ? product.stock : null;
@@ -391,9 +414,10 @@ export class InventoryEngine {
   async getSupplyStock(
     tx: Prisma.TransactionClient,
     supplyId: string,
+    tenantId: string,
   ): Promise<number | null> {
-    const supply = await tx.supply.findUnique({
-      where: { id: supplyId },
+    const supply = await tx.supply.findFirst({
+      where: { id: supplyId, tenantId },
       select: { stock: true },
     });
     return supply ? Number(supply.stock) : null;

@@ -34,6 +34,8 @@ export class RestaurantService {
     const branchId = this.tenantContext.getBranchId() ?? null;
     const createdById = this.auditContext.getUserId() ?? null;
 
+    await this.assertProductsInTenant(tenantId, dto.items);
+
     const subtotal = roundMoney(
       dto.items.reduce((sum, item) => sum + item.price * item.quantity, 0),
     );
@@ -119,6 +121,8 @@ export class RestaurantService {
     });
     if (!order) throw new NotFoundException('Comanda no encontrada o ya cobrada');
     if (!dto.items?.length) throw new BadRequestException('Debes agregar al menos un item');
+
+    await this.assertProductsInTenant(tenantId, dto.items);
 
     await this.prisma.$transaction(async (tx) => {
       for (const item of dto.items) {
@@ -251,6 +255,8 @@ export class RestaurantService {
     const branchId = this.tenantContext.getBranchId() ?? null;
     const userId = this.auditContext.getUserId() ?? null;
 
+    await this.assertProductsInTenant(tenantId, dto.items);
+
     // Verify active cash session before entering the transaction
     const session = await this.checkout.resolveActiveCashSession(tenantId, branchId);
 
@@ -362,6 +368,34 @@ export class RestaurantService {
    * atómica y simétrica con `restore`. Antes había un motor propio aquí (eliminado
    * en A0-02) que no escribía InventoryMovement ni BranchInventory.
    */
+  /**
+   * Valida que todo `productId` recibido en el body pertenezca al tenant.
+   *
+   * Los items de comanda se insertaban con el `productId` del cliente sin
+   * comprobar de quién era. Al cobrar, `InventoryConsumptionEngine` resolvía ese
+   * id y descontaba el stock del producto de otra organización. El motor ya
+   * falla cerrado por su cuenta, pero validar aquí rechaza la petición antes de
+   * crear la orden y devuelve un error claro en vez de reventar a mitad de la
+   * transacción.
+   */
+  private async assertProductsInTenant(
+    tenantId: string,
+    items: Array<{ productId?: string | null }>,
+  ): Promise<void> {
+    const productIds = [
+      ...new Set(items.map((i) => i.productId).filter((id): id is string => Boolean(id))),
+    ];
+    if (productIds.length === 0) return;
+
+    const owned = await this.prisma.product.findMany({
+      where: { id: { in: productIds }, tenantId },
+      select: { id: true },
+    });
+    if (owned.length !== productIds.length) {
+      throw new NotFoundException('Alguno de los productos no existe en esta empresa');
+    }
+  }
+
   private async consumeInventoryForItems(
     tx: Prisma.TransactionClient,
     items: { productId: string; quantity: number }[],
