@@ -15,6 +15,7 @@ import { PasswordUtil } from '../../../common/utils/password.util';
 import { TokenBlacklistService } from './services/token-blacklist.service';
 import { RefreshTokenService } from './services/refresh-token.service';
 import { OAuthTicketService } from './services/oauth-ticket.service';
+import { GoogleLinkTicketService } from './services/google-link-ticket.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import {
@@ -52,6 +53,7 @@ export class AuthService {
     private tokenBlacklist: TokenBlacklistService,
     private refreshTokens: RefreshTokenService,
     private oauthTickets: OAuthTicketService,
+    private googleLinkTickets: GoogleLinkTicketService,
     private planLimits: PlanLimitsService,
     private licenseService: LicenseService,
   ) {}
@@ -261,6 +263,48 @@ export class AuthService {
       },
     });
     return created.id;
+  }
+
+  /**
+   * Resuelve el callback de Google cuando el viaje es "Vincular con Google"
+   * desde una sesión ya autenticada (`GoogleLinkTicketService`), no un login.
+   *
+   * A diferencia de `resolveGoogleIdentity`, aquí el usuario objetivo ya se
+   * sabe de antemano (viene del ticket, emitido mientras había sesión) — el
+   * perfil de Google solo sirve para comprobar que esa identidad no choque
+   * con OTRA cuenta de Orbix. Si choca, se rechaza con un error explícito en
+   * vez de iniciar sesión como el dueño real de esa identidad, que es lo que
+   * pasaba al reusar el login público para vincular.
+   */
+  async linkGoogleIdentity(
+    rawLinkTicket: string,
+    profile: { googleId: string; email: string; avatarUrl?: string },
+  ): Promise<string> {
+    const targetUserId = await this.googleLinkTickets.consume(rawLinkTicket);
+
+    const byGoogleId = await this.prisma.user.findUnique({ where: { googleId: profile.googleId } });
+    if (byGoogleId) {
+      if (byGoogleId.id !== targetUserId) {
+        throw new BadRequestException('Esta cuenta de Google ya está vinculada a otro usuario de Orbix.');
+      }
+      await this.prisma.user.update({
+        where: { id: targetUserId },
+        data: { avatarUrl: profile.avatarUrl ?? byGoogleId.avatarUrl },
+      });
+      return targetUserId;
+    }
+
+    const email = profile.email.toLowerCase();
+    const byEmail = await this.prisma.user.findUnique({ where: { email } });
+    if (byEmail && byEmail.id !== targetUserId) {
+      throw new BadRequestException('Ese correo de Google ya tiene una cuenta distinta en Orbix.');
+    }
+
+    await this.prisma.user.update({
+      where: { id: targetUserId },
+      data: { googleId: profile.googleId, avatarUrl: profile.avatarUrl },
+    });
+    return targetUserId;
   }
 
   /**
@@ -492,9 +536,8 @@ export class AuthService {
       permissions = [...effectiveKeys];
     }
 
-    const { password, ...userWithoutPw } = user;
     return {
-      user: this.mapUser(userWithoutPw as any),
+      user: this.mapUser(user),
       currentTenant,
       currentBranchId: user.lastBranchSelectedId ?? undefined,
       roles,
@@ -723,7 +766,55 @@ export class AuthService {
       role: user.role,
       status: user.status,
       createdAt: user.createdAt,
+      googleLinked: Boolean(user.googleId),
+      hasPassword: Boolean(user.password),
     };
+  }
+
+  /**
+   * Desvincula la identidad Google del usuario actual.
+   *
+   * Bloqueado si no tiene contraseña local: esa cuenta solo entra por Google, y
+   * desvincular la dejaría sin ninguna forma de acceder.
+   */
+  async unlinkGoogle(userId: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('User not found');
+    if (!user.googleId) {
+      throw new BadRequestException('Tu cuenta no está vinculada con Google');
+    }
+    if (!user.password) {
+      throw new BadRequestException(
+        'Establece una contraseña antes de desvincular Google, o perderías acceso a tu cuenta',
+      );
+    }
+
+    await this.prisma.user.update({ where: { id: userId }, data: { googleId: null } });
+  }
+
+  /**
+   * Crea o cambia la contraseña del usuario autenticado, desde configuración.
+   *
+   * Si ya tenía una, exige la actual (evita que una sesión robada la cambie
+   * sin más). Si no tenía —cuenta que solo entraba por Google— no hay nada
+   * que verificar: es la primera vez que se fija.
+   */
+  async changePassword(userId: string, currentPassword: string | undefined, newPassword: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('User not found');
+
+    if (user.password) {
+      if (!currentPassword || !(await PasswordUtil.compare(currentPassword, user.password))) {
+        throw new BadRequestException('Contraseña actual incorrecta');
+      }
+    }
+
+    const hashed = await PasswordUtil.hash(newPassword);
+    await this.prisma.user.update({ where: { id: userId }, data: { password: hashed } });
+
+    // Igual que el reseteo por correo: cambiar la contraseña cierra cualquier
+    // otra sesión activa con la anterior.
+    await this.refreshTokens.revokeAllForUser(userId);
   }
 
   private mapMembership(m: MembershipWithTenant): TenantSummaryDto {

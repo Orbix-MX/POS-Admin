@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -31,9 +32,11 @@ import { RefreshTokenDto, LogoutDto } from './dto/refresh-token.dto';
 import { ExchangeOAuthTicketDto } from './dto/exchange-oauth-ticket.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { GoogleOAuthGuard } from './guards/google-oauth.guard';
 import type { GoogleProfile } from './strategies/google.strategy';
 import { OAuthTicketService } from './services/oauth-ticket.service';
+import { GoogleLinkTicketService } from './services/google-link-ticket.service';
 import { PasswordResetService } from './services/password-reset.service';
 import { Public } from '../../../common/decorators/public.decorator';
 import { AllowInvalidLicense } from '../../../common/decorators/allow-invalid-license.decorator';
@@ -61,6 +64,7 @@ export class AuthController {
   constructor(
     private authService: AuthService,
     private oauthTickets: OAuthTicketService,
+    private googleLinkTickets: GoogleLinkTicketService,
     private passwordReset: PasswordResetService,
     private config: ConfigService,
   ) {}
@@ -163,6 +167,20 @@ export class AuthController {
     // El guard redirige; este cuerpo nunca se ejecuta.
   }
 
+  /**
+   * Emite el ticket que autoriza "Vincular con Google" para el usuario ya
+   * autenticado. El frontend lo agrega como `?linkTicket=` al navegar a
+   * `GET /auth/google` — ver GoogleOAuthGuard y GoogleLinkTicketService.
+   */
+  @NoPermissionsRequired()
+  @Post('google/link-start')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Emitir ticket para vincular Google a la sesión actual' })
+  async startGoogleLink(@CurrentUser() user: AuthUser): Promise<{ token: string }> {
+    const token = await this.googleLinkTickets.issue(user.id);
+    return { token };
+  }
+
   @Public()
   @UseGuards(GoogleOAuthGuard)
   @Get('google/callback')
@@ -172,11 +190,13 @@ export class AuthController {
     @Res() res: Response,
     @Query('state') state?: string,
   ): Promise<void> {
-    const target = this.resolveRedirect(state);
+    const { redirect: target, linkTicket } = this.decodeOAuthState(state);
 
     try {
       const profile = req.user as GoogleProfile;
-      const userId = await this.authService.resolveGoogleIdentity(profile);
+      const userId = linkTicket
+        ? await this.authService.linkGoogleIdentity(linkTicket, profile)
+        : await this.authService.resolveGoogleIdentity(profile);
       const ticket = await this.oauthTickets.issue(userId);
       res.redirect(`${target}/auth/callback?ticket=${encodeURIComponent(ticket)}`);
     } catch (e) {
@@ -199,17 +219,52 @@ export class AuthController {
   }
 
   /**
-   * Solo se redirige a orígenes de la allowlist. Sin esta validación el `state`
-   * convertiría el callback en un open redirect con un ticket de sesión válido
-   * adjunto — es decir, en un robo de cuenta de un clic.
+   * `state` viaja como `{ r: redirect, lt: linkTicket }` en base64url (ver
+   * `GoogleOAuthGuard.getAuthenticateOptions`) — Google solo devuelve un
+   * único string opaco, así que empaquetar es la única forma de mandarle dos
+   * datos propios. `r` solo se acepta si está en la allowlist: sin eso el
+   * `state` sería un open redirect con un ticket de sesión válido adjunto —
+   * un robo de cuenta de un clic.
    */
-  private resolveRedirect(state?: string): string {
+  private decodeOAuthState(state?: string): { redirect: string; linkTicket?: string } {
     const fallback = this.config.get<string>('googleOAuth.defaultRedirect') as string;
-    if (!state) return fallback;
+    if (!state) return { redirect: fallback };
 
-    const allowed = this.config.get<string[]>('googleOAuth.allowedRedirects') ?? [];
-    const candidate = state.trim().replace(/\/$/, '');
-    return allowed.includes(candidate) ? candidate : fallback;
+    try {
+      const parsed = JSON.parse(Buffer.from(state, 'base64url').toString('utf8')) as {
+        r?: string;
+        lt?: string;
+      };
+      const allowed = this.config.get<string[]>('googleOAuth.allowedRedirects') ?? [];
+      const candidate = (parsed.r ?? '').trim().replace(/\/$/, '');
+      return {
+        redirect: allowed.includes(candidate) ? candidate : fallback,
+        linkTicket: parsed.lt || undefined,
+      };
+    } catch {
+      return { redirect: fallback };
+    }
+  }
+
+  @NoPermissionsRequired()
+  @Post('change-password')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Crear o cambiar la contraseña del usuario autenticado' })
+  async changePassword(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<{ message: string }> {
+    await this.authService.changePassword(user.id, dto.currentPassword, dto.newPassword);
+    return { message: 'Contraseña actualizada' };
+  }
+
+  @NoPermissionsRequired()
+  @Delete('google')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Desvincular la cuenta de Google del usuario actual' })
+  async unlinkGoogle(@CurrentUser() user: AuthUser): Promise<{ message: string }> {
+    await this.authService.unlinkGoogle(user.id);
+    return { message: 'Cuenta de Google desvinculada' };
   }
 
   @NoPermissionsRequired()

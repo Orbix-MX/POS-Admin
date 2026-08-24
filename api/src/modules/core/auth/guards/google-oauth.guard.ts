@@ -32,10 +32,18 @@ export class GoogleOAuthGuard extends AuthGuard('google') {
   getAuthenticateOptions(context: ExecutionContext) {
     const req = context.switchToHttp().getRequest<Request>();
     const redirect = typeof req.query.redirect === 'string' ? req.query.redirect : undefined;
+    // Presente solo cuando el viaje es "Vincular con Google" desde una sesión
+    // ya autenticada (Configuración → Mi cuenta) — ver GoogleLinkTicketService.
+    const linkTicket = typeof req.query.linkTicket === 'string' ? req.query.linkTicket : undefined;
+
+    // Google solo devuelve `state` tal cual se lo mandamos, como un único
+    // string opaco — no hay forma de mandarle dos parámetros propios por
+    // separado. Se empaquetan los dos en base64url y el controller los
+    // desempaqueta en el callback (`AuthController['decodeOAuthState']`).
+    const state = Buffer.from(JSON.stringify({ r: redirect, lt: linkTicket })).toString('base64url');
 
     return {
-      // `state` vuelve intacto desde Google en el callback.
-      state: redirect,
+      state,
       // Fuerza el selector de cuenta: sin esto Google reusa en silencio la
       // sesión activa, y en una caja compartida eso entra con el usuario equivocado.
       prompt: 'select_account',

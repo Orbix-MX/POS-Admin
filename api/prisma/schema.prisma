@@ -337,6 +337,7 @@ model User {
 
   refreshTokens RefreshToken[]
   oauthTickets  OAuthTicket[]
+  googleLinkTickets GoogleLinkTicket[]
   invitationsSent TenantInvitation[] @relation("InvitationInvitedBy")
   passwordResetTokens PasswordResetToken[]
 
@@ -2374,6 +2375,30 @@ model OAuthTicket {
 
   @@index([userId])
   @@map("oauth_tickets")
+}
+
+/// Ticket de un solo uso que autoriza vincular una identidad de Google a UN
+/// usuario ya autenticado, emitido desde Configuración → Mi cuenta antes de
+/// mandar al navegador al redirect de Google.
+///
+/// Sin esto, "Vincular con Google" reutilizaría el mismo `resolveGoogleIdentity`
+/// del login público — que resuelve por correo sin saber quién pedía vincular
+/// — y si el correo de Google ya pertenece a OTRO usuario de Orbix, el callback
+/// terminaría iniciando sesión como esa otra cuenta en vez de fallar con un
+/// error. Este ticket amarra el callback al `userId` que realmente pidió
+/// vincular, para poder rechazar ese choque en vez de ejecutarlo en silencio.
+model GoogleLinkTicket {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("google_link_tickets")
 }
 
 // ============= Licensing (SaaS / POS / Mobile / on-prem) =============

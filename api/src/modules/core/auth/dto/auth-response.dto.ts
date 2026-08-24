@@ -10,6 +10,8 @@ export class UserResponseDto {
   @ApiProperty({ enum: UserRole }) role: UserRole;
   @ApiProperty({ enum: UserStatus }) status: UserStatus;
   @ApiProperty() createdAt: Date;
+  @ApiProperty() googleLinked: boolean;
+  @ApiProperty() hasPassword: boolean;
 }
 
 export class TenantSummaryDto {

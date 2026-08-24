@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/auth-store'
 
 /**
@@ -11,6 +12,7 @@ import { useAuthStore } from '@/store/auth-store'
  */
 export function OAuthCallback() {
   const loginWithOAuthTicket = useAuthStore((s) => s.loginWithOAuthTicket)
+  const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
   // React 18 monta dos veces en StrictMode; el ticket es de un solo uso, así que
   // el segundo intento fallaría con "ticket inválido".
@@ -30,7 +32,12 @@ export function OAuthCallback() {
     const ticket = params.get('ticket')
     const failure = params.get('error')
 
-    window.history.replaceState({}, '', '/')
+    // `navigate` (no el `window.history.replaceState` nativo) para que React
+    // Router quede sincronizado con la URL limpia — usar la API nativa
+    // directamente deja a `useLocation()` congelado en `/auth/callback`, y
+    // cuando la sesión termina de armarse el layout ya no matchea ninguna
+    // ruta y la app se queda en blanco (o en este mismo spinner).
+    navigate('/', { replace: true })
 
     if (failure) {
       setError(failure)
@@ -42,7 +49,7 @@ export function OAuthCallback() {
     }
 
     void loginWithOAuthTicket(ticket)
-  }, [loginWithOAuthTicket])
+  }, [loginWithOAuthTicket, navigate])
 
   if (error) {
     return (

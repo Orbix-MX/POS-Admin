@@ -46,6 +46,8 @@ export interface AuthUser {
   role: string
   status: string
   createdAt: string
+  googleLinked: boolean
+  hasPassword: boolean
 }
 
 export interface Tenant {
@@ -146,9 +148,21 @@ export async function logout(): Promise<void> {
  * propia allowlist (OAUTH_ALLOWED_REDIRECTS), así que un valor arbitrario aquí
  * no consigue nada.
  */
-export function googleAuthUrl(): string {
+export function googleAuthUrl(linkTicket?: string): string {
   const base = import.meta.env.VITE_API_URL as string
-  return `${base}/auth/google?redirect=${encodeURIComponent(window.location.origin)}`
+  const params = new URLSearchParams({ redirect: window.location.origin })
+  if (linkTicket) params.set('linkTicket', linkTicket)
+  return `${base}/auth/google?${params.toString()}`
+}
+
+/**
+ * Pide el ticket que autoriza vincular Google a la sesión actual — necesario
+ * porque el paso siguiente es una navegación completa del navegador (no un
+ * fetch), y ahí no hay forma de mandar el Bearer token de la sesión.
+ */
+export async function startGoogleLink(): Promise<{ token: string }> {
+  const { data } = await api.post<{ token: string }>('/auth/google/link-start')
+  return data
 }
 
 /** Canjea el ticket del callback de OAuth por la sesión (mismo shape que login). */
@@ -183,5 +197,15 @@ export async function checkPasswordResetToken(token: string): Promise<{ valid: t
 
 export async function resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
   const { data } = await api.post<{ message: string }>(`/auth/reset-password/${token}`, { newPassword })
+  return data
+}
+
+export async function unlinkGoogle(): Promise<{ message: string }> {
+  const { data } = await api.delete<{ message: string }>('/auth/google')
+  return data
+}
+
+export async function changePassword(newPassword: string, currentPassword?: string): Promise<{ message: string }> {
+  const { data } = await api.post<{ message: string }>('/auth/change-password', { newPassword, currentPassword })
   return data
 }

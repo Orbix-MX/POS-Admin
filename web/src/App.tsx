@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { useERPStore } from '@/store/erp-store'
 import { useAuthStore } from '@/store/auth-store'
 import { usePlatformAuthStore } from '@/store/platform-auth-store'
-import { type ReactNode, useEffect } from 'react'
+import { type ReactNode, useEffect, useRef } from 'react'
 import { Sidebar } from '@/components/shared/sidebar'
 import { Topbar, MODULE_META } from '@/components/shared/topbar'
 import { PlatformLayout } from '@/components/platform/platform-layout'
@@ -221,8 +221,23 @@ function ComandaGate() {
 }
 
 function TenantAuthGate() {
-  const { isAuthenticated, availableTenants, capabilitiesLoaded, needsBranchSelection, availableBranches, init, tenantSuspended, setTenantSuspended } = useAuthStore()
+  const { isAuthenticated, availableTenants, capabilitiesLoaded, needsBranchSelection, availableBranches, loading, error, init, tenantSuspended, setTenantSuspended } = useAuthStore()
   const location = useLocation()
+
+  // Se captura una sola vez, al montar: `OAuthCallback` limpia la URL a `/` en
+  // cuanto arranca, así que `location.pathname` deja de decir "/auth/callback"
+  // mucho antes de que termine de canjear el ticket. Si este gate mirara el
+  // pathname en vivo, saltaría a <Login/> a medio canje.
+  const isOAuthCallback = useRef(location.pathname === '/auth/callback')
+
+  // El canje termina en uno de tres estados: sesión completa (isAuthenticated),
+  // varios tenants a elegir (availableTenants) o error. Con cualquiera de los
+  // tres se apaga el latch — si solo mirara `isAuthenticated`, una cuenta con
+  // más de un tenant se quedaría en este spinner para siempre, porque ese
+  // caso deja `isAuthenticated` en `false` a propósito hasta elegir tenant.
+  if (isOAuthCallback.current && !loading && (isAuthenticated || availableTenants || error)) {
+    isOAuthCallback.current = false
+  }
 
   useEffect(() => { init() }, [init])
 
@@ -233,9 +248,7 @@ function TenantAuthGate() {
   }, [setTenantSuspended])
 
   if (tenantSuspended) { document.title = `Empresa suspendida | ${APP_SUFFIX}`; return <TenantSuspended /> }
-  // El regreso de Google llega sin sesión todavía: se canjea el ticket antes de
-  // que el gate mande al login y borre el parámetro de la URL.
-  if (!isAuthenticated && location.pathname === '/auth/callback') return <OAuthCallback />
+  if (!isAuthenticated && isOAuthCallback.current) return <OAuthCallback />
   if (!isAuthenticated && !availableTenants) { document.title = `Iniciar sesión | ${APP_SUFFIX}`; return <Login /> }
   if (!isAuthenticated && availableTenants) { document.title = APP_SUFFIX; return <SelectTenant /> }
   if (!capabilitiesLoaded || availableBranches === null) return (
