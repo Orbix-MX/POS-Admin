@@ -14,6 +14,7 @@ import { SlugUtil } from '../../../common/utils/slug.util';
 import { R2Service } from '../../../storage/r2.service';
 import { AuthService } from '../auth/auth.service';
 import { ALL_PERMISSIONS } from '../../core/permissions/permissions.constants';
+import { getTemplatesForVertical } from '../roles/role-templates.constants';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { CreateTenantOnboardingDto, OnboardTenantResponseDto } from './dto/onboard-tenant.dto';
@@ -194,6 +195,29 @@ export class TenantsService {
       await tx.userRoleAssignment.create({
         data: { userId, roleId: ownerRole.id, tenantId: tenant.id },
       });
+
+      // Roles típicos del giro elegido, listos para asignar sin que el dueño
+      // tenga que armarlos a mano el primer día — ver role-templates.constants.ts.
+      // No se asignan a nadie: son punto de partida, no una obligación.
+      if (dto.businessVertical) {
+        const permByKey = new Map(permissions.map((p) => [p.key, p.id]));
+        for (const template of getTemplatesForVertical(dto.businessVertical)) {
+          const permissionIds = template.permissionKeys
+            .map((k) => permByKey.get(k))
+            .filter((id): id is string => id !== undefined);
+
+          await tx.role.create({
+            data: {
+              tenantId: tenant.id,
+              name: template.name,
+              description: template.description,
+              color: template.color,
+              isSystem: false,
+              permissions: { create: permissionIds.map((permissionId) => ({ permissionId })) },
+            },
+          });
+        }
+      }
 
       return { tenant, branch };
     });

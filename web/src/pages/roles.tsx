@@ -1,9 +1,92 @@
-﻿import { useMemo } from 'react'
+﻿import { useMemo, useState, useEffect } from 'react'
 import { DataTable, Pagination, type Column } from '@/components/shared/data-table'
 import { FormModal, FormField } from '@/components/shared/form-modal'
-import { Search, Plus, Loader2 } from 'lucide-react'
+import { Search, Plus, Loader2, LayoutTemplate, X, Check } from 'lucide-react'
 import { useRoles } from '@/hooks/core/use-roles'
 import type { Rol, Permiso } from '@/hooks/core/use-roles'
+import { fetchRoleTemplates, applyRoleTemplate, type RoleTemplate } from '@/services/core/roles-service'
+
+function PlantillasModal({ onClose, onApplied }: { onClose: () => void; onApplied: () => Promise<void> }) {
+  const [templates, setTemplates] = useState<RoleTemplate[]>([])
+  const [loading, setLoading] = useState(true)
+  const [applyingKey, setApplyingKey] = useState<string | null>(null)
+  const [appliedKeys, setAppliedKeys] = useState<Set<string>>(new Set())
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchRoleTemplates()
+      .then(setTemplates)
+      .catch(() => setError('No se pudieron cargar las plantillas'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function handleApply(key: string) {
+    setApplyingKey(key); setError(null)
+    try {
+      await applyRoleTemplate(key)
+      setAppliedKeys(prev => new Set(prev).add(key))
+      await onApplied()
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } }
+      setError(err?.response?.data?.message ?? 'No se pudo aplicar la plantilla')
+    } finally { setApplyingKey(null) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-lg">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <h2 className="text-[15px] font-semibold text-foreground flex items-center gap-2">
+            <LayoutTemplate className="w-4 h-4 text-primary" /> Plantillas de rol
+          </h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted"><X className="w-4 h-4 text-muted-foreground" /></button>
+        </div>
+
+        <div className="px-5 py-4 max-h-[400px] overflow-y-auto">
+          <p className="text-[12px] text-muted-foreground mb-3">
+            Roles típicos para el giro de tu empresa, listos para usar. Puedes editarlos o borrarlos después.
+          </p>
+
+          {loading ? (
+            <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
+          ) : templates.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground text-[13px]">
+              No hay plantillas para el giro de tu empresa todavía.
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {templates.map(t => {
+                const applied = appliedKeys.has(t.key)
+                return (
+                  <div key={t.key} className="flex items-center gap-3 px-3.5 py-3 border border-border rounded-xl">
+                    <span style={{ background: t.color }} className="w-3 h-3 rounded-full inline-block shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] font-semibold text-foreground">{t.name}</div>
+                      <div className="text-[11px] text-muted-foreground mt-0.5">{t.description}</div>
+                      <div className="text-[10px] text-muted-foreground mt-0.5">{t.permissionCount} permisos</div>
+                    </div>
+                    <button
+                      onClick={() => handleApply(t.key)}
+                      disabled={applyingKey === t.key || applied}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-[12px] font-semibold hover:opacity-90 disabled:opacity-60 cursor-pointer shrink-0"
+                    >
+                      {applyingKey === t.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : applied ? <><Check className="w-3.5 h-3.5" /> Aplicada</>
+                        : 'Aplicar'}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {error && <div className="mt-3 text-[12px] text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export function Roles() {
   const {
@@ -14,6 +97,8 @@ export function Roles() {
     handleSave, handleOpenNew, handleCloseModal,
     handleOpenEdit, handleCloseEdit, handleUpdate, handleDelete, loadAll,
   } = useRoles()
+
+  const [showPlantillas, setShowPlantillas] = useState(false)
 
   // js-combine-iterations: single pass
   const stats = useMemo(() => {
@@ -113,9 +198,14 @@ export function Roles() {
                 className="border-none bg-transparent outline-none text-xs text-foreground w-[180px]" />
             </div>
           </div>
-          <button onClick={handleOpenNew} className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground border-none rounded-lg text-xs font-semibold cursor-pointer">
-            <Plus className="w-3.5 h-3.5" /> Nuevo Rol
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => setShowPlantillas(true)} className="flex items-center gap-1.5 px-3.5 py-1.5 border border-border rounded-lg bg-card text-xs font-semibold text-foreground hover:bg-muted/50 cursor-pointer">
+              <LayoutTemplate className="w-3.5 h-3.5" /> Plantillas
+            </button>
+            <button onClick={handleOpenNew} className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground border-none rounded-lg text-xs font-semibold cursor-pointer">
+              <Plus className="w-3.5 h-3.5" /> Nuevo Rol
+            </button>
+          </div>
         </div>
         <DataTable columns={columns} rows={pageData} onRowClick={setSelected} />
         <Pagination page={page} total={filtered.length} perPage={8} onChange={setPage} />
@@ -283,6 +373,10 @@ export function Roles() {
           </button>
         </div>
       </FormModal>
+
+      {showPlantillas && (
+        <PlantillasModal onClose={() => setShowPlantillas(false)} onApplied={loadAll} />
+      )}
     </div>
   )
 }

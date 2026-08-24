@@ -14,7 +14,9 @@ import { PlatformJwtStrategy } from './strategies/platform-jwt.strategy';
       useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('jwt.platformSecret') as string,
         signOptions: {
-          expiresIn: (configService.get<string>('jwt.expiresIn') || '7d') as `${number}${'s'|'m'|'h'|'d'|'w'}`,
+          // Ver auth.module.ts: jwt.config.ts ya garantiza un valor, este
+          // segundo fallback era muerto y discrepaba en silencio del real.
+          expiresIn: configService.get<string>('jwt.expiresIn') as `${number}${'s'|'m'|'h'|'d'|'w'}`,
         },
       }),
     }),

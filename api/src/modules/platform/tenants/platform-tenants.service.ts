@@ -16,6 +16,7 @@ import {
 } from './dto/update-tenant.dto';
 import { PlatformTenantsQueryDto } from './dto/platform-tenants-query.dto';
 import { ALL_PERMISSIONS } from '../../core/permissions/permissions.constants';
+import { getTemplatesForVertical } from '../../core/roles/role-templates.constants';
 import {
   VERTICAL_DEFAULT_FEATURES,
   VERTICAL_DEFAULT_POS_MODE,
@@ -207,6 +208,25 @@ export class PlatformTenantsService {
           tenantId: tenant.id,
         },
       });
+
+      // 7b. Roles típicos del vertical — ver role-templates.constants.ts.
+      const permByKey = new Map(permissions.map((p) => [p.key, p.id]));
+      for (const template of getTemplatesForVertical(vertical)) {
+        const permissionIds = template.permissionKeys
+          .map((k) => permByKey.get(k))
+          .filter((id): id is string => id !== undefined);
+
+        await tx.role.create({
+          data: {
+            tenantId: tenant.id,
+            name: template.name,
+            description: template.description,
+            color: template.color,
+            isSystem: false,
+            permissions: { create: permissionIds.map((permissionId) => ({ permissionId })) },
+          },
+        });
+      }
 
       return { tenant, branch, adminUser };
     });

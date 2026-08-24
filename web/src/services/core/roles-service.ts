@@ -102,3 +102,21 @@ export async function fetchPermisosFlat(): Promise<Permiso[]> {
   const { data } = await api.get<Permiso[]>('/permissions/flat')
   return data
 }
+
+export interface RoleTemplate {
+  key: string
+  name: string
+  description: string
+  color: string
+  permissionCount: number
+}
+
+export async function fetchRoleTemplates(): Promise<RoleTemplate[]> {
+  const { data } = await api.get<RoleTemplate[]>('/roles/templates')
+  return data
+}
+
+export async function applyRoleTemplate(key: string): Promise<Rol> {
+  const { data } = await api.post<ApiRole>(`/roles/templates/${key}/apply`)
+  return mapRole(data)
+}

@@ -5,6 +5,7 @@
   Body,
   Patch,
   Param,
+  Query,
   Delete,
   Put,
 } from '@nestjs/common';
@@ -13,6 +14,7 @@ import { RolesService } from './roles.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { AssignPermissionsDto } from './dto/assign-permissions.dto';
+import { ListTemplatesDto } from './dto/list-templates.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
 
 @ApiTags('Roles')
@@ -20,6 +22,23 @@ import { RequirePermissions } from '../../../common/decorators/require-permissio
 @Controller('roles')
 export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
+
+  // Declaradas antes de `:id` a propósito: NestJS matchea las rutas de un
+  // controller en el orden en que se declaran, y `GET /roles/:id` capturaría
+  // `GET /roles/templates` (con id="templates") si fuera declarada primero.
+  @Get('templates')
+  @RequirePermissions('roles:view')
+  @ApiOperation({ summary: 'Plantillas de rol disponibles para el vertical del tenant' })
+  listTemplates(@Query() query: ListTemplatesDto) {
+    return this.rolesService.listTemplates(query.vertical);
+  }
+
+  @Post('templates/:key/apply')
+  @RequirePermissions('roles:create')
+  @ApiOperation({ summary: 'Crea un rol nuevo a partir de una plantilla' })
+  applyTemplate(@Param('key') key: string) {
+    return this.rolesService.applyTemplate(key);
+  }
 
   @Get()
   @RequirePermissions('roles:view')

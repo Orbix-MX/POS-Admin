@@ -9,8 +9,10 @@ import { TenantContextService } from '../../../common/context/tenant-context.ser
 import { PermissionCacheService } from '../../../common/cache/permission-cache.service';
 import { AuditService } from '../../../common/services/audit.service';
 import { EffectivePermissionsService } from '../../../common/services/effective-permissions.service';
+import { BusinessVertical } from '@prisma/client';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
+import { getTemplatesForVertical, getTemplateByKey } from './role-templates.constants';
 
 @Injectable()
 export class RolesService {
@@ -21,6 +23,71 @@ export class RolesService {
     private readonly audit: AuditService,
     private readonly effectivePermissions: EffectivePermissionsService,
   ) {}
+
+  /**
+   * Plantillas de rol para el vertical dado (o el del tenant actual si se
+   * omite) — biblioteca de solo lectura, ver `role-templates.constants.ts`.
+   * No crea nada; eso lo hace `applyTemplate`, y solo cuando el tenant lo pide.
+   */
+  async listTemplates(vertical?: BusinessVertical) {
+    const tenantId = this.tenantContext.requireTenantId();
+    const effectiveVertical =
+      vertical ??
+      (await this.prisma.tenant.findUniqueOrThrow({
+        where: { id: tenantId },
+        select: { businessVertical: true },
+      })).businessVertical;
+
+    return getTemplatesForVertical(effectiveVertical).map((t) => ({
+      key: t.key,
+      name: t.name,
+      description: t.description,
+      color: t.color,
+      permissionCount: t.permissionKeys.length,
+    }));
+  }
+
+  /**
+   * Crea un rol nuevo a partir de una plantilla. Rechaza si el tenant ya tiene
+   * un rol con ese nombre en vez de sobreescribirlo — pudo haberlo
+   * personalizado ya, y aplicar la plantilla no debe borrarle ese trabajo.
+   */
+  async applyTemplate(templateKey: string) {
+    const tenantId = this.tenantContext.requireTenantId();
+    const template = getTemplateByKey(templateKey);
+    if (!template) throw new NotFoundException(`Plantilla "${templateKey}" no encontrada`);
+
+    const existing = await this.prisma.role.findUnique({
+      where: { tenantId_name: { tenantId, name: template.name } },
+    });
+    if (existing) {
+      throw new ConflictException(`Ya existe un rol llamado "${template.name}" en esta empresa.`);
+    }
+
+    const permissions = await this.prisma.permission.findMany({
+      where: { key: { in: template.permissionKeys } },
+    });
+
+    const role = await this.prisma.role.create({
+      data: {
+        tenantId,
+        name: template.name,
+        description: template.description,
+        color: template.color,
+        isSystem: false,
+        permissions: { create: permissions.map((p) => ({ permissionId: p.id })) },
+      },
+    });
+
+    await this.audit.log({
+      action: 'ROLE_CREATE',
+      entityType: 'Role',
+      entityId: role.id,
+      after: { name: role.name, fromTemplate: templateKey },
+    });
+
+    return this.findOne(role.id);
+  }
 
   async findAll() {
     const tenantId = this.tenantContext.requireTenantId();

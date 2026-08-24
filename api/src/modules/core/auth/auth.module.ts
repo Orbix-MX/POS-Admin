@@ -29,7 +29,10 @@ import { APP_GUARD } from '@nestjs/core';
       useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('jwt.secret') as string,
         signOptions: {
-          expiresIn: (configService.get<string>('jwt.expiresIn') || '7d') as `${number}${'s'|'m'|'h'|'d'|'w'}`,
+          // `jwt.config.ts` ya garantiza un valor (default 1d si falta la env
+          // var) — el `|| '7d'` que había aquí era un segundo fallback muerto,
+          // nunca alcanzable, que además discrepaba en silencio del default real.
+          expiresIn: configService.get<string>('jwt.expiresIn') as `${number}${'s'|'m'|'h'|'d'|'w'}`,
         },
       }),
     }),
