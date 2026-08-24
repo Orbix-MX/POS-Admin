@@ -37,6 +37,8 @@ import { GoogleOAuthGuard } from './guards/google-oauth.guard';
 import type { GoogleProfile } from './strategies/google.strategy';
 import { OAuthTicketService } from './services/oauth-ticket.service';
 import { GoogleLinkTicketService } from './services/google-link-ticket.service';
+import { MfaService } from './services/mfa.service';
+import { MfaVerifyDto, MfaCodeDto } from './dto/mfa.dto';
 import { PasswordResetService } from './services/password-reset.service';
 import { Public } from '../../../common/decorators/public.decorator';
 import { AllowInvalidLicense } from '../../../common/decorators/allow-invalid-license.decorator';
@@ -65,6 +67,7 @@ export class AuthController {
     private authService: AuthService,
     private oauthTickets: OAuthTicketService,
     private googleLinkTickets: GoogleLinkTicketService,
+    private mfa: MfaService,
     private passwordReset: PasswordResetService,
     private config: ConfigService,
   ) {}
@@ -85,6 +88,42 @@ export class AuthController {
   @ApiOperation({ summary: 'Login — returns preliminary JWT + available tenants' })
   async login(@Body() loginDto: LoginDto): Promise<AuthResponseDto> {
     return this.authService.login(loginDto);
+  }
+
+  // ── MFA (TOTP, opcional por usuario) ─────────────────────────────────────────
+
+  @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('mfa/verify')
+  @ApiOperation({ summary: 'Segundo paso del login: canjea el ticket de MFA + código por la sesión' })
+  async verifyMfa(@Body() dto: MfaVerifyDto): Promise<AuthResponseDto> {
+    return this.authService.completeMfaLogin(dto.mfaTicket, dto.code);
+  }
+
+  @NoPermissionsRequired()
+  @Post('mfa/setup')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Genera un secreto TOTP nuevo (sin activar MFA todavía)' })
+  async setupMfa(@CurrentUser() user: AuthUser): Promise<{ secret: string; otpauthUrl: string }> {
+    return this.mfa.startSetup(user.id, user.email);
+  }
+
+  @NoPermissionsRequired()
+  @Post('mfa/confirm')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Confirma el setup con el primer código y activa MFA' })
+  async confirmMfa(@CurrentUser() user: AuthUser, @Body() dto: MfaCodeDto): Promise<{ backupCodes: string[] }> {
+    return this.mfa.confirmSetup(user.id, dto.code);
+  }
+
+  @NoPermissionsRequired()
+  @Post('mfa/disable')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Desactiva MFA — requiere un código válido' })
+  async disableMfa(@CurrentUser() user: AuthUser, @Body() dto: MfaCodeDto): Promise<{ message: string }> {
+    await this.mfa.disable(user.id, dto.code);
+    return { message: 'MFA desactivado' };
   }
 
   // ── Reseteo de contraseña ────────────────────────────────────────────────────

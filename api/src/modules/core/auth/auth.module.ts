@@ -10,6 +10,7 @@ import { TokenBlacklistService } from './services/token-blacklist.service';
 import { RefreshTokenService } from './services/refresh-token.service';
 import { OAuthTicketService } from './services/oauth-ticket.service';
 import { GoogleLinkTicketService } from './services/google-link-ticket.service';
+import { MfaService } from './services/mfa.service';
 import { PasswordResetService } from './services/password-reset.service';
 import { EmailModule } from '../email/email.module';
 import { GoogleOAuthGuard } from './guards/google-oauth.guard';
@@ -41,6 +42,7 @@ import { APP_GUARD } from '@nestjs/core';
     RefreshTokenService,
     OAuthTicketService,
     GoogleLinkTicketService,
+    MfaService,
     PasswordResetService,
     GoogleOAuthGuard,
     // La estrategia de Google solo se registra si hay credenciales: sin ellas

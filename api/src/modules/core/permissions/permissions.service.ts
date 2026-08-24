@@ -45,10 +45,14 @@ export class PermissionsService implements OnModuleInit {
   }
 
   /**
-   * The two full-access system role names seen across this codebase's history:
-   * `TenantsService.onboard` names it "Owner", `prisma/seed.ts` names its
-   * tenant-scoped catch-all "Super Admin" ("Full access to everything"). Both are
-   * meant to always carry every permission.
+   * El rol de fábrica de cada tenant se llama "Owner" en todos los caminos de
+   * creación (`TenantsService.onboard`, `PlatformTenantsService`, `seed.ts`) —
+   * antes `seed.ts`/`PlatformTenantsService` lo llamaban "Super Admin", mismo
+   * texto que `UserRole.SUPER_ADMIN` (el enum de plataforma), lo que confundía
+   * "empleado de Orbix con bypass total" con "rol de fábrica de un tenant".
+   * Se dejó "Super Admin" aquí como red de seguridad para tenants creados
+   * antes de la migración de backfill (`20260824_rename_super_admin_role_to_owner`);
+   * sin filas pendientes, este nombre deja de aparecer nunca.
    */
   private static readonly FULL_ACCESS_ROLE_NAMES = ['Owner', 'Super Admin'];
 

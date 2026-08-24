@@ -8,6 +8,7 @@ import { Topbar, MODULE_META } from '@/components/shared/topbar'
 import { PlatformLayout } from '@/components/platform/platform-layout'
 import { Login } from '@/pages/login'
 import { OAuthCallback } from '@/pages/oauth-callback'
+import { MfaChallenge } from '@/pages/mfa-challenge'
 import { SelectTenant } from '@/pages/select-tenant'
 import { SelectBranch } from '@/pages/select-branch'
 import { Dashboard } from '@/pages/dashboard'
@@ -221,7 +222,7 @@ function ComandaGate() {
 }
 
 function TenantAuthGate() {
-  const { isAuthenticated, availableTenants, capabilitiesLoaded, needsBranchSelection, availableBranches, loading, error, init, tenantSuspended, setTenantSuspended } = useAuthStore()
+  const { isAuthenticated, availableTenants, mfaTicket, capabilitiesLoaded, needsBranchSelection, availableBranches, loading, error, init, tenantSuspended, setTenantSuspended } = useAuthStore()
   const location = useLocation()
 
   // Se captura una sola vez, al montar: `OAuthCallback` limpia la URL a `/` en
@@ -230,12 +231,13 @@ function TenantAuthGate() {
   // pathname en vivo, saltaría a <Login/> a medio canje.
   const isOAuthCallback = useRef(location.pathname === '/auth/callback')
 
-  // El canje termina en uno de tres estados: sesión completa (isAuthenticated),
-  // varios tenants a elegir (availableTenants) o error. Con cualquiera de los
-  // tres se apaga el latch — si solo mirara `isAuthenticated`, una cuenta con
-  // más de un tenant se quedaría en este spinner para siempre, porque ese
-  // caso deja `isAuthenticated` en `false` a propósito hasta elegir tenant.
-  if (isOAuthCallback.current && !loading && (isAuthenticated || availableTenants || error)) {
+  // El canje termina en uno de cuatro estados: sesión completa
+  // (isAuthenticated), varios tenants a elegir (availableTenants), falta el
+  // código MFA (mfaTicket), o error. Con cualquiera de los cuatro se apaga el
+  // latch — si solo mirara `isAuthenticated`, una cuenta con más de un tenant
+  // (o con MFA activo) se quedaría en este spinner para siempre, porque esos
+  // casos dejan `isAuthenticated` en `false` a propósito hasta el paso siguiente.
+  if (isOAuthCallback.current && !loading && (isAuthenticated || availableTenants || mfaTicket || error)) {
     isOAuthCallback.current = false
   }
 
@@ -249,6 +251,7 @@ function TenantAuthGate() {
 
   if (tenantSuspended) { document.title = `Empresa suspendida | ${APP_SUFFIX}`; return <TenantSuspended /> }
   if (!isAuthenticated && isOAuthCallback.current) return <OAuthCallback />
+  if (!isAuthenticated && mfaTicket) { document.title = `Verificación | ${APP_SUFFIX}`; return <MfaChallenge /> }
   if (!isAuthenticated && !availableTenants) { document.title = `Iniciar sesión | ${APP_SUFFIX}`; return <Login /> }
   if (!isAuthenticated && availableTenants) { document.title = APP_SUFFIX; return <SelectTenant /> }
   if (!capabilitiesLoaded || availableBranches === null) return (

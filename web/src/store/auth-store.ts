@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import {
   login as loginApi,
   exchangeOAuthTicket,
+  verifyMfaCode,
   logout as logoutApi,
   selectTenant as selectTenantApi,
   selectBranch as selectBranchApi,
@@ -26,6 +27,9 @@ interface AuthState {
   isAuthenticated: boolean
   loading: boolean
   error: string | null
+  // Segundo paso del login cuando el usuario tiene MFA activo: contraseña u
+  // OAuth ya se validaron, falta el código de 6 dígitos.
+  mfaTicket: string | null
   plan: string | null
   enabledModules: string[]
   permissions: string[]
@@ -47,6 +51,8 @@ interface AuthState {
   init: () => Promise<void>
   login: (email: string, password: string) => Promise<void>
   loginWithOAuthTicket: (ticket: string) => Promise<void>
+  verifyMfa: (code: string) => Promise<void>
+  cancelMfa: () => void
   confirmTenant: (slug: string) => Promise<void>
   confirmBranch: (branchId: string) => Promise<void>
   logout: () => Promise<void>
@@ -65,7 +71,18 @@ async function applySession(
   set: (partial: Partial<AuthState>) => void,
   session: LoginResponse,
 ) {
-  const { accessToken, refreshToken, user, availableTenants } = session
+  // Contraseña/Google ya se validaron, pero falta el código MFA: no hay nada
+  // más que aplicar todavía — ni access token, ni tenants — hasta que
+  // `verifyMfa` complete el canje.
+  if (session.mfaRequired) {
+    set({ mfaTicket: session.mfaTicket ?? null, loading: false })
+    return
+  }
+
+  // Sin `mfaRequired`, el contrato del API garantiza estos cuatro campos.
+  const { accessToken, refreshToken, user, availableTenants } = session as Required<
+    Pick<LoginResponse, 'accessToken' | 'user' | 'availableTenants'>
+  > & LoginResponse
 
   // Se guarda antes de ramificar: el refresh token no depende del tenant, y con
   // varias empresas la selección puede tardar más que el access token en vencer.
@@ -139,6 +156,7 @@ async function loadBranchesAndAutoSelect(
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   tempToken: null,
+  mfaTicket: null,
   availableTenants: null,
   isAuthenticated: !!getAccessToken(),
   loading: false,
@@ -222,6 +240,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
+  /** Completa el login con el código MFA — segundo paso, tras `login`/`loginWithOAuthTicket`. */
+  verifyMfa: async (code) => {
+    const { mfaTicket } = get()
+    if (!mfaTicket) return
+    set({ loading: true, error: null })
+    try {
+      const session = await verifyMfaCode(mfaTicket, code)
+      set({ mfaTicket: null })
+      await applySession(set, session)
+    } catch (e: unknown) {
+      const data = (e as { response?: { data?: { message?: string } } })?.response?.data
+      set({ error: data?.message ?? 'Código incorrecto', loading: false })
+    }
+  },
+
+  /** Vuelve a la pantalla de login sin completar el segundo paso. */
+  cancelMfa: () => set({ mfaTicket: null, error: null }),
+
   confirmTenant: async (slug) => {
     const { tempToken } = get()
     if (!tempToken) return
@@ -278,6 +314,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       isAuthenticated: false,
       user: null,
       tempToken: null,
+      mfaTicket: null,
       availableTenants: null,
       error: null,
       plan: null,

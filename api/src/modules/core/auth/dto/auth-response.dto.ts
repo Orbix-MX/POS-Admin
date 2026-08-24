@@ -12,6 +12,7 @@ export class UserResponseDto {
   @ApiProperty() createdAt: Date;
   @ApiProperty() googleLinked: boolean;
   @ApiProperty() hasPassword: boolean;
+  @ApiProperty() mfaEnabled: boolean;
 }
 
 export class TenantSummaryDto {
@@ -23,12 +24,20 @@ export class TenantSummaryDto {
 }
 
 export class AuthResponseDto {
-  @ApiProperty() accessToken: string;
+  // Ausentes cuando `mfaRequired` es true: ese caso corta el login antes de
+  // emitir cualquier token, hasta que `POST /auth/mfa/verify` confirme el
+  // código — ver AuthService.completeLogin.
+  @ApiPropertyOptional() accessToken?: string;
   @ApiPropertyOptional({ description: 'Opaque rotating refresh token (mobile clients).' })
   refreshToken?: string;
-  @ApiProperty({ type: UserResponseDto }) user: UserResponseDto;
+  @ApiPropertyOptional({ type: UserResponseDto }) user?: UserResponseDto;
   @ApiPropertyOptional({ type: TenantSummaryDto }) tenant?: TenantSummaryDto;
   @ApiPropertyOptional({ type: [TenantSummaryDto] }) availableTenants?: TenantSummaryDto[];
+
+  @ApiPropertyOptional({ description: 'true cuando falta el código MFA para completar el login' })
+  mfaRequired?: boolean;
+  @ApiPropertyOptional({ description: 'Ticket de un solo uso para POST /auth/mfa/verify' })
+  mfaTicket?: string;
 }
 
 export class RefreshResponseDto {

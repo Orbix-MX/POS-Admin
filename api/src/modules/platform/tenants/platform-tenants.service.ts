@@ -185,11 +185,11 @@ export class PlatformTenantsService {
         data: { ownerUserId: adminUser.id },
       });
 
-      // 6. Create Super Admin role with all permissions for this tenant
-      const superAdminRole = await tx.role.create({
+      // 6. Create Owner role with all permissions for this tenant
+      const ownerRole = await tx.role.create({
         data: {
           tenantId: tenant.id,
-          name: 'Super Admin',
+          name: 'Owner',
           description: 'Full access to everything',
           isSystem: true,
           color: '#ef4444',
@@ -199,11 +199,11 @@ export class PlatformTenantsService {
         },
       });
 
-      // 7. Assign Super Admin role to admin user
+      // 7. Assign Owner role to admin user
       await tx.userRoleAssignment.create({
         data: {
           userId: adminUser.id,
-          roleId: superAdminRole.id,
+          roleId: ownerRole.id,
           tenantId: tenant.id,
         },
       });

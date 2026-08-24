@@ -48,6 +48,7 @@ export interface AuthUser {
   createdAt: string
   googleLinked: boolean
   hasPassword: boolean
+  mfaEnabled: boolean
 }
 
 export interface Tenant {
@@ -59,11 +60,14 @@ export interface Tenant {
 }
 
 export interface LoginResponse {
-  accessToken: string
+  // Ausentes cuando `mfaRequired` es true — ver AuthService.completeLogin en el API.
+  accessToken?: string
   /** Token opaco rotativo. Solo lo devuelven /auth/login y /auth/oauth/exchange. */
   refreshToken?: string
-  user: AuthUser
-  availableTenants: Tenant[]
+  user?: AuthUser
+  availableTenants?: Tenant[]
+  mfaRequired?: boolean
+  mfaTicket?: string
 }
 
 export interface SelectTenantResponse {
@@ -173,6 +177,26 @@ export async function exchangeOAuthTicket(ticket: string): Promise<LoginResponse
 
 export async function login(email: string, password: string): Promise<LoginResponse> {
   const { data } = await api.post<LoginResponse>('/auth/login', { email, password })
+  return data
+}
+
+export async function verifyMfaCode(mfaTicket: string, code: string): Promise<LoginResponse> {
+  const { data } = await api.post<LoginResponse>('/auth/mfa/verify', { mfaTicket, code })
+  return data
+}
+
+export async function startMfaSetup(): Promise<{ secret: string; otpauthUrl: string }> {
+  const { data } = await api.post<{ secret: string; otpauthUrl: string }>('/auth/mfa/setup')
+  return data
+}
+
+export async function confirmMfaSetup(code: string): Promise<{ backupCodes: string[] }> {
+  const { data } = await api.post<{ backupCodes: string[] }>('/auth/mfa/confirm', { code })
+  return data
+}
+
+export async function disableMfa(code: string): Promise<{ message: string }> {
+  const { data } = await api.post<{ message: string }>('/auth/mfa/disable', { code })
   return data
 }
 

@@ -498,13 +498,15 @@ async function main() {
       .filter((id): id is string => id !== undefined);
   }
 
-  // Super Admin role — all permissions (tenant-scoped)
-  const superAdminRole = await prisma.role.upsert({
-    where: { tenantId_name: { tenantId: tenant.id, name: 'Super Admin' } },
+  // Owner role — all permissions (tenant-scoped). Antes se llamaba "Super
+  // Admin" aquí pero "Owner" en TenantsService.onboard — mismo rol de fábrica,
+  // dos nombres según por dónde se creara el tenant. Ver PermissionsService.
+  const ownerRole = await prisma.role.upsert({
+    where: { tenantId_name: { tenantId: tenant.id, name: 'Owner' } },
     update: { description: 'Full access to everything', isSystem: true, color: '#ef4444' },
     create: {
       tenantId: tenant.id,
-      name: 'Super Admin',
+      name: 'Owner',
       description: 'Full access to everything',
       isSystem: true,
       color: '#ef4444',
@@ -512,14 +514,14 @@ async function main() {
   });
 
   // Delete and recreate permissions for system roles to keep them in sync
-  await prisma.rolePermission.deleteMany({ where: { roleId: superAdminRole.id } });
+  await prisma.rolePermission.deleteMany({ where: { roleId: ownerRole.id } });
   if (allPermissions.length > 0) {
     await prisma.rolePermission.createMany({
-      data: allPermissions.map((p) => ({ roleId: superAdminRole.id, permissionId: p.id })),
+      data: allPermissions.map((p) => ({ roleId: ownerRole.id, permissionId: p.id })),
       skipDuplicates: true,
     });
   }
-  console.log('✅ Created/updated Super Admin role');
+  console.log('✅ Created/updated Owner role');
 
   // Admin role — all except roles:delete and users:delete
   const adminExcluded = new Set(['roles:delete', 'users:delete']);

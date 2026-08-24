@@ -16,6 +16,7 @@ import { TokenBlacklistService } from './services/token-blacklist.service';
 import { RefreshTokenService } from './services/refresh-token.service';
 import { OAuthTicketService } from './services/oauth-ticket.service';
 import { GoogleLinkTicketService } from './services/google-link-ticket.service';
+import { MfaService } from './services/mfa.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import {
@@ -54,6 +55,7 @@ export class AuthService {
     private refreshTokens: RefreshTokenService,
     private oauthTickets: OAuthTicketService,
     private googleLinkTickets: GoogleLinkTicketService,
+    private mfa: MfaService,
     private planLimits: PlanLimitsService,
     private licenseService: LicenseService,
   ) {}
@@ -117,6 +119,33 @@ export class AuthService {
       });
     }
 
+    return this.completeLogin(user);
+  }
+
+  /**
+   * Punto único donde un login (contraseña u OAuth) decide si ya puede emitir
+   * la sesión o si primero hace falta el código MFA. Sin este corte común,
+   * cada camino de login tendría que acordarse por su cuenta de revisar
+   * `mfaEnabled` — y bastaría con olvidarlo en uno para dejar un bypass.
+   */
+  private async completeLogin(
+    user: { id: string; email: string; status: string; mfaEnabled: boolean; tenantMemberships: unknown },
+  ): Promise<AuthResponseDto> {
+    if (user.mfaEnabled) {
+      const mfaTicket = await this.mfa.issueChallenge(user.id);
+      return { mfaRequired: true, mfaTicket };
+    }
+    return this.buildSession(user);
+  }
+
+  /** Segundo paso del login con MFA: canjea el ticket + código por la sesión real. */
+  async completeMfaLogin(mfaTicket: string, code: string): Promise<AuthResponseDto> {
+    const userId = await this.mfa.verifyChallenge(mfaTicket, code);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { tenantMemberships: { include: { tenant: true } } },
+    });
+    if (!user) throw new UnauthorizedException('User not found');
     return this.buildSession(user);
   }
 
@@ -330,7 +359,7 @@ export class AuthService {
     // Fuera de la transacción: es limpieza, y su fallo no debe tirar el canje.
     void this.oauthTickets.purgeExpired();
 
-    return this.buildSession(user);
+    return this.completeLogin(user);
   }
 
   async logout(token: string, refreshToken?: string): Promise<void> {
@@ -768,6 +797,7 @@ export class AuthService {
       createdAt: user.createdAt,
       googleLinked: Boolean(user.googleId),
       hasPassword: Boolean(user.password),
+      mfaEnabled: Boolean(user.mfaEnabled),
     };
   }
 
