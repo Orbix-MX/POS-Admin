@@ -95,7 +95,6 @@ describe('UsersService', () => {
         password: 'password123',
         firstName: 'Test',
         lastName: 'User',
-        role: 'STAFF' as const,
       };
 
       const mockUser = {
@@ -126,7 +125,6 @@ describe('UsersService', () => {
         password: 'Password1234',
         firstName: 'Test',
         lastName: 'User',
-        role: 'STAFF' as const,
       };
 
       // La cuenta existe y ya es miembro de este tenant.

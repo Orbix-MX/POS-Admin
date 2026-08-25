@@ -87,7 +87,7 @@ export class UsersService {
         password: hashedPassword,
         firstName: createUserDto.firstName,
         lastName: createUserDto.lastName,
-        role: createUserDto.role,
+        // `role` (UserRole) ya no lo fija el DTO — ver la nota en CreateUserDto.
         // Global account stays ACTIVE; per-tenant access is the membership.
         status: 'ACTIVE',
       },

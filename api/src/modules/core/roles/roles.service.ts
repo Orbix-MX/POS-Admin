@@ -64,6 +64,12 @@ export class RolesService {
       throw new ConflictException(`Ya existe un rol llamado "${template.name}" en esta empresa.`);
     }
 
+    // Igual que en `create`/`setPermissions`: una plantilla no es una excepción
+    // al control de escalación — trae permisos fijos del catálogo, pero
+    // aplicarla sigue siendo "yo, con `roles:create`, le doy permisos a un rol
+    // nuevo", y eso lo cubre la misma regla.
+    await this.effectivePermissions.assertActorCanGrant(template.permissionKeys);
+
     const permissions = await this.prisma.permission.findMany({
       where: { key: { in: template.permissionKeys } },
     });
@@ -123,6 +129,14 @@ export class RolesService {
       where: { tenantId_name: { tenantId, name: dto.name } },
     });
     if (existing) throw new ConflictException(`Role with name "${dto.name}" already exists`);
+
+    if (dto.permissionIds && dto.permissionIds.length > 0) {
+      const permissions = await this.prisma.permission.findMany({
+        where: { id: { in: dto.permissionIds } },
+        select: { key: true },
+      });
+      await this.effectivePermissions.assertActorCanGrant(permissions.map((p) => p.key));
+    }
 
     const role = await this.prisma.role.create({
       data: {
@@ -200,6 +214,19 @@ export class RolesService {
 
     if (role.isSystem && permissionIds.length === 0) {
       throw new BadRequestException('Cannot remove all permissions from a system role');
+    }
+
+    // El actor no puede otorgar un permiso que él mismo no tiene — sin esto,
+    // cualquiera con `roles:edit` se añade a sí mismo (o a su propio rol)
+    // cualquier permiso del catálogo, saltándose por completo el fail-closed
+    // de PermissionsGuard. Mismo control que ya protege setRoles/setPermissions
+    // de usuario (UsersService); aquí no estaba conectado.
+    if (permissionIds.length > 0) {
+      const permissions = await this.prisma.permission.findMany({
+        where: { id: { in: permissionIds } },
+        select: { key: true },
+      });
+      await this.effectivePermissions.assertActorCanGrant(permissions.map((p) => p.key));
     }
 
     // Snapshot before overwriting: this is the entry that explains, afterwards,

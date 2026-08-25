@@ -23,13 +23,18 @@ function buildService(overrides: { isSystem?: boolean } = {}) {
       update: jest.fn().mockResolvedValue(role),
     },
     rolePermission: { deleteMany: jest.fn(), createMany: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+    permission: { findMany: jest.fn().mockResolvedValue([]) },
     $transaction: jest.fn().mockResolvedValue([]),
   };
 
   const permissionCache = { invalidateUser: jest.fn(), invalidateTenant: jest.fn() };
   const audit = { log: jest.fn() };
-  // Siempre queda un administrador salvo que un test diga lo contrario.
-  const effectivePermissions = { countAdmins: jest.fn().mockResolvedValue(1) };
+  // Siempre queda un administrador y el actor puede otorgar cualquier
+  // permiso, salvo que un test diga lo contrario.
+  const effectivePermissions = {
+    countAdmins: jest.fn().mockResolvedValue(1),
+    assertActorCanGrant: jest.fn().mockResolvedValue(undefined),
+  };
 
   const service = new RolesService(
     prisma as never,
@@ -96,6 +101,27 @@ describe('RolesService — auditoría', () => {
     expect(audit.log).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'ROLE_DELETE', entityId: ROLE }),
     );
+  });
+});
+
+describe('RolesService — H-01: no se puede otorgar un permiso que el actor no posee', () => {
+  it('setPermissions rechaza si assertActorCanGrant lanza', async () => {
+    const { service, effectivePermissions } = buildService();
+    effectivePermissions.assertActorCanGrant = jest
+      .fn()
+      .mockRejectedValue(new Error('No puedes otorgar permisos que tú no posees'));
+
+    await expect(service.setPermissions(ROLE, ['perm-que-no-tengo'])).rejects.toThrow(
+      'No puedes otorgar permisos que tú no posees',
+    );
+  });
+
+  it('setPermissions no llama assertActorCanGrant si el array queda vacío', async () => {
+    const { service, effectivePermissions } = buildService();
+
+    await service.setPermissions(ROLE, []);
+
+    expect(effectivePermissions.assertActorCanGrant).not.toHaveBeenCalled();
   });
 });
 
