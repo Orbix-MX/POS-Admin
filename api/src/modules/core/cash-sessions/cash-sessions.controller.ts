@@ -44,6 +44,10 @@ export class CashSessionsController {
   @Post('active/withdraw-supplies')
   // Sacar efectivo es más sensible que cerrar caja; antes bastaba pos:access (CASH-008).
   @RequirePermissions('pos.cash:withdraw')
+  // Body trae authEmail/authPassword de un administrador (verifyAuthorizer) —
+  // mismo motivo de throttle que verify-auth/close-authorized.
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @ApiOperation({ summary: 'Retiro de efectivo para compra de insumos (requiere autorización admin)' })
   withdrawForSupplies(@Body() dto: WithdrawForSuppliesDto) {
     return this.cashSessionsService.withdrawForSupplies(dto);

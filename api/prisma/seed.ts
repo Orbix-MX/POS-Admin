@@ -10,6 +10,18 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
+  // Este seed crea cuentas de demo con contraseñas triviales y conocidas
+  // (`admin123`, `owner123`, `plus123`) y una de ellas con `role: 'SUPER_ADMIN'`
+  // — control total de la plataforma con una credencial de diccionario. No
+  // hay guardia hoy, a diferencia de `PrismaService.cleanDatabase()`, que sí
+  // la tiene. Correrlo contra producción, aunque sea una vez sin querer,
+  // deja esas cuentas ahí para siempre hasta que alguien las borre a mano.
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'prisma/seed.ts crea usuarios de demo con contraseñas triviales — no se ejecuta con NODE_ENV=production.',
+    );
+  }
+
   console.log('🌱 Seeding database...');
 
   // ============= Platform Super Admin =============

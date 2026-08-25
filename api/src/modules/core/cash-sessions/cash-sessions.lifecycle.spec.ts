@@ -224,7 +224,7 @@ describe('closeWithAuth — un autorizador inválido no desloguea al operador', 
       user: {
       // `resolveCashAuthorizer` mira el rol del usuario actual: SUPER_ADMIN
       // salta el RBAC, así que estas suites no necesitan PIN ni permisos.
-      findUnique: jest.fn().mockResolvedValue({ role: 'SUPER_ADMIN' }), findFirst: jest.fn().mockResolvedValue(user) },
+      findUnique: jest.fn().mockResolvedValue({ role: 'SUPER_ADMIN' }), findFirst: jest.fn().mockResolvedValue(user), update: jest.fn() },
       tenantMembership: { findFirst: jest.fn().mockResolvedValue(null) },
       cashSession: { updateMany: jest.fn(), update: jest.fn(), findFirst: jest.fn(), findFirstOrThrow: jest.fn() },
     };
@@ -251,8 +251,14 @@ describe('closeWithAuth — un autorizador inválido no desloguea al operador', 
   });
 
   it('autorizador de otra organización → 403', async () => {
-    // Usuario válido, hash que no coincide: igual debe ser 403.
-    const { service } = buildAuth({ id: 'u-2', password: '$2b$10$invalidhashinvalidhashinvalidhashinvalidhashinvalidhas' });
+    // Usuario válido y activo, hash que no coincide: igual debe ser 403.
+    const { service } = buildAuth({
+      id: 'u-2',
+      status: 'ACTIVE',
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+      password: '$2b$10$invalidhashinvalidhashinvalidhashinvalidhashinvalidhas',
+    });
 
     await expect(service.closeWithAuth(SESSION, dto as never)).rejects.toThrow(ForbiddenException);
   });
@@ -272,8 +278,14 @@ describe('closeWithAuth — permiso dedicado para autorizar', () => {
       user: {
       // `resolveCashAuthorizer` mira el rol del usuario actual: SUPER_ADMIN
       // salta el RBAC, así que estas suites no necesitan PIN ni permisos.
-      findUnique: jest.fn().mockResolvedValue({ role: 'SUPER_ADMIN' }), findFirst: jest.fn().mockResolvedValue({ id: 'admin-1', role: 'STAFF', password: hash, email: 'jefe@x.com' }) },
-      tenantMembership: { findFirst: jest.fn().mockResolvedValue({ id: 'm-1' }) },
+      findUnique: jest.fn().mockResolvedValue({ role: 'SUPER_ADMIN' }),
+      findFirst: jest.fn().mockResolvedValue({
+        id: 'admin-1', role: 'STAFF', password: hash, email: 'jefe@x.com',
+        status: 'ACTIVE', failedLoginAttempts: 0, lockedUntil: null,
+      }),
+      update: jest.fn(),
+      },
+      tenantMembership: { findFirst: jest.fn().mockResolvedValue({ id: 'm-1', status: 'ACTIVE' }) },
       userRoleAssignment: {
         findMany: jest.fn().mockResolvedValue([
           { role: { permissions: permissionKeys.map((k) => ({ permission: { key: k } })) } },
@@ -311,5 +323,99 @@ describe('closeWithAuth — permiso dedicado para autorizar', () => {
     await expect(service.closeWithAuth(SESSION, dto as never)).rejects.not.toThrow(
       /no tiene permiso para autorizar/i,
     );
+  });
+});
+
+/**
+ * H-03 — el autorizador (email+password) ahora respeta el mismo bloqueo por
+ * cuenta que el login normal, y nunca lo sirve un usuario suspendido o con
+ * membresía inactiva. Antes ninguno de los tres se comprobaba aquí.
+ */
+describe('closeWithAuth — H-03: cuenta y membresía del autorizador', () => {
+  function buildAuthorizer(userOverrides: Record<string, unknown>, membership: unknown = { id: 'm-1', status: 'ACTIVE' }) {
+    const hash = require('bcrypt').hashSync('secreta', 4);
+    const userUpdate = jest.fn();
+    const prisma = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ role: 'SUPER_ADMIN' }),
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'admin-1', role: 'STAFF', email: 'jefe@x.com', password: hash,
+          status: 'ACTIVE', failedLoginAttempts: 0, lockedUntil: null,
+          ...userOverrides,
+        }),
+        update: userUpdate,
+      },
+      tenantMembership: { findFirst: jest.fn().mockResolvedValue(membership) },
+      userRoleAssignment: {
+        findMany: jest.fn().mockResolvedValue([
+          { role: { permissions: [{ permission: { key: 'pos.cash:authorize' } }] } },
+        ]),
+      },
+      userPermissionGrant: { findMany: jest.fn().mockResolvedValue([]) },
+      cashSession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }), findFirst: jest.fn().mockResolvedValue(null), update: jest.fn(), findFirstOrThrow: jest.fn() },
+    };
+    const service = new CashSessionsService(
+      prisma as never,
+      { requireTenantId: () => TENANT, getBranchId: () => null } as never,
+      { getUserId: () => 'user-1' } as never,
+      { log: jest.fn() } as never,
+      { assertCanOpenCashSession: jest.fn(), getCashSessionCapacity: jest.fn() } as never,
+      { get: () => 'test-secret' } as never,
+    );
+    return { service, userUpdate };
+  }
+
+  const dtoBase = { cashCounted: 100, authEmail: 'jefe@x.com' };
+
+  it('un autorizador SUSPENDED se rechaza aunque la contraseña sea correcta', async () => {
+    const { service } = buildAuthorizer({ status: 'SUSPENDED' });
+
+    await expect(
+      service.closeWithAuth(SESSION, { ...dtoBase, authPassword: 'secreta' } as never),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('una membresía inactiva se rechaza', async () => {
+    const { service } = buildAuthorizer({}, { id: 'm-1', status: 'REMOVED' });
+
+    await expect(
+      service.closeWithAuth(SESSION, { ...dtoBase, authPassword: 'secreta' } as never),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('un autorizador ya bloqueado se rechaza sin llegar a comparar la contraseña', async () => {
+    const { service, userUpdate } = buildAuthorizer({
+      lockedUntil: new Date(Date.now() + 10 * 60_000),
+    });
+
+    await expect(
+      service.closeWithAuth(SESSION, { ...dtoBase, authPassword: 'secreta' } as never),
+    ).rejects.toThrow(ForbiddenException);
+    // No hay motivo para tocar la fila si el bloqueo ya cortó antes.
+    expect(userUpdate).not.toHaveBeenCalled();
+  });
+
+  it('una contraseña incorrecta cuenta el intento contra la cuenta del autorizador', async () => {
+    const { service, userUpdate } = buildAuthorizer({});
+
+    await expect(
+      service.closeWithAuth(SESSION, { ...dtoBase, authPassword: 'incorrecta' } as never),
+    ).rejects.toThrow(ForbiddenException);
+
+    expect(userUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ failedLoginAttempts: 1 }) }),
+    );
+  });
+
+  it('al quinto intento fallido, la cuenta del autorizador queda bloqueada', async () => {
+    const { service, userUpdate } = buildAuthorizer({ failedLoginAttempts: 4 });
+
+    await expect(
+      service.closeWithAuth(SESSION, { ...dtoBase, authPassword: 'incorrecta' } as never),
+    ).rejects.toThrow(ForbiddenException);
+
+    const data = userUpdate.mock.calls[0][0].data;
+    expect(data.failedLoginAttempts).toBe(5);
+    expect(data.lockedUntil).toBeInstanceOf(Date);
   });
 });

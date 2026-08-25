@@ -16,9 +16,18 @@ export class PrismaService
     const pool = new Pool({ connectionString });
     const adapter = new PrismaPg(pool);
 
+    // El canal `query` imprime cada sentencia CON SUS PARÁMETROS: hashes de
+    // contraseña, tokenHash de refresh/reset/OAuth/MFA, pinHash de
+    // empleados, mfaSecretEnc, correos, direcciones, totales de venta. En
+    // producción eso es un volcado continuo de datos sensibles a cualquier
+    // destino de logs (proveedor de hosting, agregador, un dev con acceso de
+    // lectura). Sin condicionar por entorno, cualquier query lo filtraba.
     super({
       adapter,
-      log: ['query', 'info', 'warn', 'error'],
+      log:
+        process.env.NODE_ENV === 'production'
+          ? ['warn', 'error']
+          : ['query', 'info', 'warn', 'error'],
     });
   }
 

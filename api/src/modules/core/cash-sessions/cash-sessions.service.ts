@@ -32,6 +32,13 @@ const OPEN_SESSION_UNIQUE_INDEX = 'cash_sessions_one_open_per_register_key';
 // Prevents timing oracle that would reveal which emails exist in the system.
 const TIMING_SAFE_DUMMY_HASH = '$2b$10$abcdefghijklmnopqrstuuQfTkF.n8cXD.5EGovU1qWDzd3tpjRCC';
 
+// Mismos valores que AuthService.LOCKOUT_* — duplicados a propósito en vez de
+// importar AuthService aquí (evita acoplar cash-sessions al módulo de auth
+// por tres constantes). Si se tocan allá, tocar también aquí.
+const AUTHORIZER_LOCKOUT_THRESHOLD = 5;
+const AUTHORIZER_LOCKOUT_BASE_MINUTES = 5;
+const AUTHORIZER_LOCKOUT_MAX_MINUTES = 60;
+
 type MovementLike = {
   type: string;
   paymentMethod: string;
@@ -476,24 +483,7 @@ export class CashSessionsService {
 
   async verifyCloseAuth(dto: import('./dto/verify-auth.dto').VerifyAuthDto) {
     const tenantId = this.tenantContext.requireTenantId();
-
-    const user = await this.prisma.user.findFirst({ where: { email: dto.authEmail } });
-    // Always run bcrypt regardless of whether user exists — prevents timing oracle
-    const passwordValid = await bcrypt.compare(dto.authPassword, user?.password ?? TIMING_SAFE_DUMMY_HASH);
-    if (!user || !passwordValid) throw new ForbiddenException('Credenciales del autorizador incorrectas');
-
-    const membership = await this.prisma.tenantMembership.findFirst({
-      where: { userId: user.id, tenantId },
-    });
-    if (!membership) throw new ForbiddenException('El usuario autorizador no pertenece a esta organización');
-
-    if (user.role !== 'SUPER_ADMIN') {
-      const perms = await this.getEffectivePermissions(user.id, tenantId);
-      if (!perms.includes('pos.cash:close')) {
-        throw new ForbiddenException('El usuario no tiene permiso para cerrar caja');
-      }
-    }
-
+    const user = await this.verifyAuthorizer(tenantId, dto.authEmail, dto.authPassword, 'pos.cash:close');
     return { email: user.email };
   }
 
@@ -501,40 +491,26 @@ export class CashSessionsService {
     const tenantId = this.tenantContext.requireTenantId();
     const currentUserId = this.auditContext.getUserId();
 
-    // Validate authorizer credentials
-    const adminUser = await this.prisma.user.findFirst({
-      where: { email: dto.authEmail },
-    });
-    // Always run bcrypt regardless of whether user exists — prevents timing oracle
-    const passwordValid = await bcrypt.compare(dto.authPassword, adminUser?.password ?? TIMING_SAFE_DUMMY_HASH);
-    if (!adminUser || !passwordValid) throw new ForbiddenException('Credenciales del autorizador incorrectas');
-
-    // Ensure authorizer belongs to the same tenant
-    const membership = await this.prisma.tenantMembership.findFirst({
-      where: { userId: adminUser.id, tenantId },
-    });
-    if (!membership) throw new ForbiddenException('El usuario autorizador no pertenece a esta organización');
-
     // Autorizar un descuadre exige su propio permiso, no el de cerrar: quien
     // opera la caja normalmente no debería poder firmar sus propias diferencias.
     // SUPER_ADMIN lo omite.
-    if (adminUser.role !== 'SUPER_ADMIN') {
-      const adminPerms = await this.getEffectivePermissions(adminUser.id, tenantId);
-      if (!adminPerms.includes('pos.cash:authorize')) {
-        throw new ForbiddenException(
-          'El usuario autorizador no tiene permiso para autorizar cortes descuadrados',
-        );
-      }
-    }
+    const adminUser = await this.verifyAuthorizer(tenantId, dto.authEmail, dto.authPassword, 'pos.cash:authorize');
 
     // Mismo cierre atómico que `close()`, más el autorizador.
     return this.closeSessionAtomically(id, tenantId, currentUserId, dto, adminUser.id);
   }
 
   /**
-   * Verifica credenciales de un autorizador (admin): email + password + que
-   * pertenezca al tenant y tenga el permiso requerido (SUPER_ADMIN lo omite).
-   * Devuelve el usuario autorizador.
+   * Verifica credenciales de un autorizador (admin): email + password + cuenta
+   * y membresía activas + que tenga el permiso requerido (SUPER_ADMIN lo
+   * omite). Devuelve el usuario autorizador.
+   *
+   * Punto único para `verifyCloseAuth`, `closeWithAuth` y `withdrawForSupplies`
+   * — antes cada uno repetía la comprobación de contraseña sin ningún límite
+   * de intentos: un cajero podía iterar la contraseña del gerente contra estos
+   * endpoints sin que la cuenta atacada se bloqueara jamás (el lockout de
+   * `AuthService.login` es por cuenta, pero solo corría en el login normal).
+   * Aquí se aplica el mismo bloqueo, con las mismas constantes.
    *
    * Los fallos se reportan como 403 y no como 401 a propósito: un 401 significa
    * "tu propia sesión no es válida" y el interceptor del frontend responde
@@ -547,20 +523,31 @@ export class CashSessionsService {
     authPassword: string,
     requiredPermission: string,
   ) {
+    const GENERIC_ERROR = 'Credenciales del autorizador incorrectas';
     const user = await this.prisma.user.findFirst({ where: { email: authEmail } });
-    if (!user) throw new ForbiddenException('Credenciales del autorizador incorrectas');
 
-    // Un autorizador que entra solo con Google no tiene contraseña local, así que
-    // no puede autorizar por este camino. Mismo mensaje genérico que el resto.
-    if (!user.password) throw new ForbiddenException('Credenciales del autorizador incorrectas');
+    // Siempre corre bcrypt, exista o no la cuenta — evita el oráculo de timing
+    // que revelaría qué correos son autorizadores válidos.
+    const passwordValid = await bcrypt.compare(authPassword, user?.password ?? TIMING_SAFE_DUMMY_HASH);
 
-    const passwordValid = await bcrypt.compare(authPassword, user.password);
-    if (!passwordValid) throw new ForbiddenException('Credenciales del autorizador incorrectas');
+    if (!user) throw new ForbiddenException(GENERIC_ERROR);
+    // Suspendido, o autorizador que solo entra por Google (sin password local):
+    // mismo mensaje genérico que el resto, no distinguible desde afuera.
+    if (user.status !== 'ACTIVE' || !user.password) throw new ForbiddenException(GENERIC_ERROR);
+
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      throw new ForbiddenException(GENERIC_ERROR);
+    }
+
+    if (!passwordValid) {
+      await this.registerAuthorizerFailure(user.id, user.failedLoginAttempts);
+      throw new ForbiddenException(GENERIC_ERROR);
+    }
 
     const membership = await this.prisma.tenantMembership.findFirst({
       where: { userId: user.id, tenantId },
     });
-    if (!membership) {
+    if (!membership || membership.status !== 'ACTIVE') {
       throw new ForbiddenException('El usuario autorizador no pertenece a esta organización');
     }
 
@@ -571,7 +558,37 @@ export class CashSessionsService {
       }
     }
 
+    // Autorizó bien: limpia cualquier rastro de intentos fallidos previos.
+    if (user.failedLoginAttempts > 0 || user.lockedUntil) {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { failedLoginAttempts: 0, lockedUntil: null },
+      });
+    }
+
     return user;
+  }
+
+  /** Mismo backoff exponencial que `AuthService.registerFailedLogin`, aplicado a la cuenta del autorizador. */
+  private async registerAuthorizerFailure(userId: string, previousAttempts: number): Promise<void> {
+    const attempts = previousAttempts + 1;
+
+    const lockMinutes =
+      attempts >= AUTHORIZER_LOCKOUT_THRESHOLD
+        ? Math.min(
+            AUTHORIZER_LOCKOUT_BASE_MINUTES *
+              2 ** Math.floor((attempts - AUTHORIZER_LOCKOUT_THRESHOLD) / AUTHORIZER_LOCKOUT_THRESHOLD),
+            AUTHORIZER_LOCKOUT_MAX_MINUTES,
+          )
+        : 0;
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        failedLoginAttempts: attempts,
+        ...(lockMinutes > 0 ? { lockedUntil: new Date(Date.now() + lockMinutes * 60_000) } : {}),
+      },
+    });
   }
 
   /**
