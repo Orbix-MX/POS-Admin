@@ -4,7 +4,7 @@ import { AuditContextService } from '../../../common/context/audit-context.servi
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { PaginatedResponse } from '../../../common/dto/pagination.dto';
 import { QueryOrdersDto } from './dto/query-orders.dto';
-import { Order, OrderStatus, Coupon, PaymentStatus } from '@prisma/client';
+import { Order, OrderStatus, Coupon } from '@prisma/client';
 import { CouponsService } from '../coupons/coupons.service';
 import { AuditService } from '../../../common/services/audit.service';
 import { assertSessionOpen, requireOpenSession } from '../../../common/helpers/cash-session.helper';
@@ -19,6 +19,7 @@ import {
   convertMoney,
 } from '../../../common/utils/money.util';
 import { InventoryConsumptionEngine } from '../inventory/inventory-consumption.engine';
+import { EffectivePermissionsService } from '../../../common/services/effective-permissions.service';
 
 @Injectable()
 export class OrdersService {
@@ -29,6 +30,7 @@ export class OrdersService {
     private couponsService: CouponsService,
     private audit: AuditService,
     private inventory: InventoryConsumptionEngine,
+    private effectivePermissions: EffectivePermissionsService,
   ) { }
 
   async create(dto: CreateOrderDto): Promise<Order> {
@@ -101,6 +103,35 @@ export class OrdersService {
     const serviceMap = new Map(catalogServices.map((s) => [s.id, s]));
 
     const productMap = new Map(products.map((p) => [p.id, p]));
+
+    // El precio de línea es del cliente (`item.price`) con la única
+    // restricción `@Min(0)` — nunca se comparaba contra el catálogo. Cobrar
+    // lo que el cajero quiera es el fraude de POS más clásico (H-05): se
+    // exige el precio de catálogo salvo que el actor tenga
+    // `orders:price-override`, y cada venta que sí lo use queda en
+    // AuditLog. El descuento (`item.discount`) sigue sin tope a propósito —
+    // es el mecanismo normal para bajar el precio, distinto de mentir sobre
+    // cuál es.
+    const priceOverrides: { productId: string; catalogPrice: number; chargedPrice: number }[] = [];
+    for (const item of productItems) {
+      const product = productMap.get(item.productId!);
+      if (!product) continue;
+      const catalogPrice = Number(product.price);
+      if (Math.abs(item.price - catalogPrice) > 0.01) {
+        priceOverrides.push({ productId: product.id, catalogPrice, chargedPrice: item.price });
+      }
+    }
+    if (priceOverrides.length > 0) {
+      const canOverride = await this.effectivePermissions.actorHas('orders:price-override');
+      if (!canOverride) {
+        const [first] = priceOverrides;
+        const product = productMap.get(first.productId)!;
+        throw new BadRequestException(
+          `El precio de "${product.name}" ($${first.chargedPrice}) no coincide con el de catálogo ($${first.catalogPrice}). ` +
+            'Ajusta el precio del producto o pide autorización para cobrar un precio distinto.',
+        );
+      }
+    }
 
     // Tenant default tax rate (percent) from settings JSON; product.taxRate overrides per item
     const tenantRow = await this.prisma.tenant.findUnique({
@@ -220,17 +251,41 @@ export class OrdersService {
     const exchangeRate = Number(activeSessionForTc.exchangeRateUsdMxn);
     const hasUsdPayment = (dto.payments?.some((p) => p.currency === 'USD') ?? false) || dto.changeCurrency === 'USD';
 
-    // Compute how much is being paid now (non-credit methods)
+    const isCredit =
+      dto.paymentMethod === 'CREDITO' ||
+      (dto.payments?.some((p) => p.method === 'CREDITO') ?? false);
+
+    // Cuánto se paga ahora, en MXN (moneda base) — convierte cada pago en USD
+    // con el tipo de cambio de la sesión antes de sumar. Antes se sumaban
+    // montos crudos de monedas distintas sin convertir.
     const paidNow = dto.payments?.length
-      ? dto.payments.filter((p) => p.method !== 'CREDITO').reduce((s, p) => s + Number(p.amount), 0)
+      ? sumMoney(
+          dto.payments
+            .filter((p) => p.method !== 'CREDITO')
+            .map((p) => (p.currency === 'USD' ? convertMoney(p.amount, exchangeRate) : roundMoney(p.amount))),
+        )
       : dto.paymentMethod !== 'CREDITO' ? total : 0;
 
-    // For layaway orders, compute payment status server-side
+    // H-05: el cliente no puede declarar una venta como pagada cobrando menos
+    // del total. Layaway y crédito son los únicos casos donde un saldo
+    // pendiente es intencional (van a CxC); fuera de esos dos, lo pagado
+    // debe cuadrar con el total o se rechaza la venta completa, en vez de
+    // aceptarla con el libro descuadrado y el inventario ya descontado.
+    if (dto.payments?.length && !dto.isLayaway && !isCredit && Math.abs(paidNow - total) > 0.01) {
+      throw new BadRequestException(
+        `El monto pagado ($${paidNow.toFixed(2)}) no coincide con el total de la venta ($${total.toFixed(2)}).`,
+      );
+    }
+
+    // `paymentStatus` ya no lo decide el cliente (dto.paymentStatus se
+    // ignora) para layaway y crédito, que ya se derivaban server-side; y para
+    // el resto, la reconciliación de arriba garantiza que si se llegó hasta
+    // aquí es porque ya se pagó el total completo.
     let initialPaymentStatus: string;
-    if (dto.isLayaway) {
+    if (dto.isLayaway || isCredit) {
       initialPaymentStatus = paidNow >= total ? 'PAID' : paidNow > 0 ? 'PARTIALLY_PAID' : 'PENDING';
     } else {
-      initialPaymentStatus = (dto.paymentStatus ?? PaymentStatus.PENDING);
+      initialPaymentStatus = 'PAID';
     }
 
     const order = await this.prisma.$transaction(async (tx) => {
@@ -376,10 +431,7 @@ export class OrdersService {
       }
 
       // Auto-create CxC for credit orders and layaway with remaining balance
-      const isCredit =
-        dto.paymentMethod === 'CREDITO' ||
-        (dto.payments?.some((p) => p.method === 'CREDITO') ?? false);
-
+      // (`isCredit` ya se calculó arriba, antes de la reconciliación pago↔total).
       const remainingBalance = Math.max(0, total - paidNow);
 
       if (isCredit && customerId && remainingBalance > 0) {
@@ -475,6 +527,15 @@ export class OrdersService {
         },
       });
     });
+
+    if (priceOverrides.length > 0) {
+      await this.audit.log({
+        action: 'ORDER_PRICE_OVERRIDE',
+        entityType: 'Order',
+        entityId: order!.id,
+        after: { orderNumber, overrides: priceOverrides },
+      });
+    }
 
     return order!;
   }

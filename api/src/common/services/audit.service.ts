@@ -8,6 +8,10 @@ export type AuditAction =
   | 'ORDER_CANCEL'
   | 'ORDER_RETURN'
   | 'ORDER_REFUND'
+  // H-05: una venta con precio de línea distinto al de catálogo requiere
+  // `orders:price-override` y queda aquí — sin esto, cobrar de más o de
+  // menos que el precio listado no dejaba rastro.
+  | 'ORDER_PRICE_OVERRIDE'
   | 'INVENTORY_ADJUST'
   | 'PRICE_CHANGE'
   | 'USER_STATUS_CHANGE'

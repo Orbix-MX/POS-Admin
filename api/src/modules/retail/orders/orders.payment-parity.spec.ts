@@ -74,6 +74,7 @@ function runCreate(payments: Split[]) {
     { validateCoupon: jest.fn(), incrementUsage: jest.fn() } as never,
     { log: jest.fn() } as never,
     { consume, restore: jest.fn(), validate: jest.fn() } as never,
+    { actorHas: jest.fn().mockResolvedValue(false) } as never,
   );
 
   const total = payments.reduce((s, p) => s + (p.currency === 'USD' ? p.amount * 20 : p.amount), 0);
@@ -121,6 +122,7 @@ function runAddPayment(payments: Split[]) {
     { validateCoupon: jest.fn(), incrementUsage: jest.fn() } as never,
     { log: jest.fn() } as never,
     { consume: jest.fn(), restore: jest.fn(), validate: jest.fn() } as never,
+    { actorHas: jest.fn().mockResolvedValue(false) } as never,
   );
   return { run: service.addPayment('order-1', { payments }), paymentCreate, cashMovementCreate };
 }

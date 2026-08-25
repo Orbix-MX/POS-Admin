@@ -71,6 +71,7 @@ function buildService() {
     { getAutoApplicableCoupons: jest.fn() } as never,
     { log: jest.fn() } as never,
     inventory as never,
+    { actorHas: jest.fn().mockResolvedValue(false) } as never,
   );
 
   return { service, prisma, tx, restore, orderRefundItemCreate, orderRefundCreate };

@@ -89,6 +89,7 @@ function buildReverseService(opts: ReverseOpts = {}) {
     { getAutoApplicableCoupons: jest.fn() } as never,
     { log: jest.fn() } as never,
     inventory as never,
+    { actorHas: jest.fn().mockResolvedValue(false) } as never,
   );
 
   return { service, restore, cashMovementCreate };
@@ -179,6 +180,7 @@ function buildCreateService(prismaOverrides: Record<string, unknown>) {
     { getAutoApplicableCoupons: jest.fn(), validateCoupon: jest.fn() } as never,
     { log: jest.fn() } as never,
     { consume: jest.fn(), restore: jest.fn(), validate: jest.fn() } as never,
+    { actorHas: jest.fn().mockResolvedValue(false) } as never,
   );
 
   return { service, transaction };

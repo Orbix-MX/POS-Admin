@@ -7,6 +7,7 @@
   IsNumber,
   IsBoolean,
   Min,
+  Max,
   IsNotEmpty,
   MaxLength,
   IsEnum,
@@ -83,10 +84,14 @@ export class CreateOrderItemDto {
   @MaxLength(500)
   description?: string;
 
-  @ApiProperty({ minimum: 1 })
+  // Tope arbitrario pero generoso: ninguna venta de mostrador real llega a
+  // 10,000 unidades de un mismo item. Sin techo, `quantity` sin `@Max` dejaba
+  // vaciar el inventario de un producto ajeno en una sola línea (ver C-01).
+  @ApiProperty({ minimum: 1, maximum: 10_000 })
   @Type(() => Number)
   @IsNumber()
   @Min(1)
+  @Max(10_000)
   quantity: number;
 
   @ApiProperty({ minimum: 0, description: 'Precio unitario' })

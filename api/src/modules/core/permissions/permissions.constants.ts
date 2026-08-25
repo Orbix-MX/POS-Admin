@@ -35,6 +35,7 @@ export const ALL_PERMISSIONS: PermissionDef[] = [
   { key: 'orders:view', name: 'Ver ventas', module: 'orders', action: 'view' },
   { key: 'orders:create', name: 'Crear ventas', module: 'orders', action: 'create' },
   { key: 'orders:edit', name: 'Editar ventas', module: 'orders', action: 'edit' },
+  { key: 'orders:price-override', name: 'Cobrar precio distinto al de catálogo', description: 'Permite vender un item a un precio distinto al del catálogo. Cada venta con precio distinto queda en la bitácora de auditoría.', module: 'orders', action: 'price-override' },
   // refunds
   { key: 'refunds:create', name: 'Crear reembolsos', description: 'Procesar reembolsos de ventas y apartados', module: 'refunds', action: 'create' },
   { key: 'refunds:partial', name: 'Reembolsos parciales', description: 'Procesar devoluciones por monto menor al total cobrado', module: 'refunds', action: 'partial' },

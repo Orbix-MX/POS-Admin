@@ -7,6 +7,7 @@ import { AuditContextService } from '../../../common/context/audit-context.servi
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { AuditService } from '../../../common/services/audit.service';
 import { InventoryConsumptionEngine } from '../inventory/inventory-consumption.engine';
+import { EffectivePermissionsService } from '../../../common/services/effective-permissions.service';
 
 describe('OrdersService', () => {
   let service: OrdersService;
@@ -51,6 +52,12 @@ describe('OrdersService', () => {
         {
           provide: InventoryConsumptionEngine,
           useValue: { consume: jest.fn(), restore: jest.fn(), validate: jest.fn() },
+        },
+        {
+          provide: EffectivePermissionsService,
+          // Por defecto nadie tiene el override de precio en estos tests —
+          // los que sí lo necesiten lo sobrescriben con mockResolvedValueOnce.
+          useValue: { actorHas: jest.fn().mockResolvedValue(false) },
         },
       ],
     }).compile();

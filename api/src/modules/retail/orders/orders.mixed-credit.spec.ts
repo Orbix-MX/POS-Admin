@@ -64,6 +64,7 @@ function build() {
     { validateCoupon: jest.fn(), incrementUsage: jest.fn(), getAutoApplicableCoupons: jest.fn() } as never,
     { log: jest.fn() } as never,
     { consume, restore: jest.fn(), validate: jest.fn() } as never,
+    { actorHas: jest.fn().mockResolvedValue(false) } as never,
   );
 
   return { service, arCreate, orderCreate, paymentCreate, cashMovementCreate, consume };
