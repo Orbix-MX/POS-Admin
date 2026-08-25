@@ -19,6 +19,7 @@
     "android": {
       "package": "com.orbix.mobile",
       "edgeToEdgeEnabled": true,
+      "allowBackup": false,
       "adaptiveIcon": {
         "backgroundColor": "#0A0E1A",
         "foregroundImage": "./assets/images/icon.png"
@@ -46,6 +47,15 @@
         "expo-notifications",
         {
           "color": "#2563C9"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
         }
       ],
       "./plugins/withImmersiveMode.js"
