@@ -112,6 +112,10 @@ export class PasswordResetService {
           // intentos fallidos.
           failedLoginAttempts: 0,
           lockedUntil: null,
+          // H-06: sin esto, un access token ya emitido —el de quien tomó la
+          // cuenta, si de eso se trataba este reseteo— seguía sirviendo hasta
+          // su propio `exp` pese a que la contraseña ya cambió.
+          tokensValidFrom: new Date(),
         },
       }),
       this.prisma.passwordResetToken.update({

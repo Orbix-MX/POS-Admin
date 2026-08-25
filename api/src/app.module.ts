@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
-import { ThrottlerModule } from '@nestjs/throttler';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_INTERCEPTOR, APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConfigModule } from './config/config.module';
@@ -114,6 +114,15 @@ import { AiModule } from './ai/ai.module';
     {
       provide: APP_INTERCEPTOR,
       useClass: AuditContextInterceptor,
+    },
+    // M-04: antes solo auth/devices/staff tenían throttle — reportes,
+    // búsquedas, exportaciones y el resto del CRUD no tenían ningún límite.
+    // Un `@Throttle(...)` por ruta sigue pisando este default (es el
+    // comportamiento normal de @nestjs/throttler, no algo que haya que
+    // desactivar a mano en las rutas que ya lo declaraban explícito).
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
     },
   ],
 })

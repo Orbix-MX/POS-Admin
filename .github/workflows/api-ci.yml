@@ -1,0 +1,57 @@
+name: API CI
+
+# M-07 de la auditoría de seguridad (docs/audits/AUDITORIA-SEGURIDAD-ORBIX-2026-08-24.md):
+# no había ningún CI en el repo, así que "authorization-coverage.spec.ts" (o
+# cualquier otra regresión) podía romperse sin que nadie se enterara hasta
+# producción.
+#
+# `lint` y `audit` corren en modo informativo (continue-on-error): el repo
+# hoy tiene ~44 errores de lint preexistentes y 110 vulnerabilidades conocidas
+# (mayoría en tooling de build) sin limpiar todavía — bloquear el merge con
+# eso ahora tumbaría CI en el primer PR de cualquiera, no solo en el que
+# introduzca un problema nuevo. `typecheck` y `test` sí bloquean: ambos están
+# limpios hoy.
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.22.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # Workspace completo: la API depende de @orbix/types (workspace:*).
+      - name: Install dependencies
+        working-directory: .
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm exec tsc --noEmit
+
+      - name: Test
+        run: pnpm run test
+
+      - name: Lint (informativo — ver nota arriba)
+        run: pnpm exec eslint "src/**/*.ts"
+        continue-on-error: true
+
+      - name: Dependency audit (informativo — ver nota arriba)
+        working-directory: .
+        run: pnpm audit --audit-level=high
+        continue-on-error: true

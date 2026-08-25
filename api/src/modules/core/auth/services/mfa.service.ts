@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { authenticator } from 'otplib';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
@@ -18,6 +18,11 @@ const BACKUP_CODE_COUNT = 8;
  */
 @Injectable()
 export class MfaService {
+  // M-06: activar/desactivar MFA cambia la postura de seguridad de la
+  // cuenta — sin rastro, un atacante que ya tiene la contraseña podría
+  // desactivarlo en silencio y nadie se enteraría.
+  private readonly securityLog = new Logger('AuthSecurity');
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
@@ -95,6 +100,7 @@ export class MfaService {
       }),
     ]);
 
+    this.securityLog.log(`MFA activado: userId=${userId}`);
     return { backupCodes: rawCodes };
   }
 
@@ -120,6 +126,7 @@ export class MfaService {
       }),
       this.prisma.mfaBackupCode.deleteMany({ where: { userId } }),
     ]);
+    this.securityLog.warn(`MFA desactivado: userId=${userId}`);
   }
 
   /** TOTP válido, o backup code válido (lo marca usado). */

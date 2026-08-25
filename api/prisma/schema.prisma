@@ -280,6 +280,14 @@ model User {
   failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
   lockedUntil         DateTime? @map("locked_until")
 
+  // H-06: el access token no tenía forma de invalidarse antes de su propio
+  // `exp` — cambiar la contraseña solo revocaba refresh tokens
+  // (`RefreshTokenService.revokeAllForUser`), así que un access token ya
+  // emitido seguía sirviendo hasta 24h después de que su dueño perdiera el
+  // control de la cuenta. `JwtStrategy` rechaza cualquier token con
+  // `iat` anterior a esta marca.
+  tokensValidFrom DateTime? @map("tokens_valid_from")
+
   // ── MFA (TOTP, opcional por usuario) ───────────────────────────────────────
   // El secreto va cifrado (AES-256-GCM, ver MfaService) porque a diferencia de
   // una contraseña no se puede hashear: hay que poder leerlo de vuelta para

@@ -13,6 +13,19 @@ async function bootstrap() {
   // Disable Express ETag to prevent stale 304 responses on multi-tenant data
   app.getHttpAdapter().getInstance().set('etag', false);
 
+  // M-04: sin esto, detrás de un proxy (Cloudflare/nginx — ver CORS abajo)
+  // `req.ip` es la IP DEL PROXY, no la del cliente. El throttle de login
+  // (5/min) terminaba compartido entre TODOS los usuarios de la plataforma:
+  // a la vez una negación de servicio autoinfligida y un límite sin valor
+  // defensivo. `TRUST_PROXY` permite forzarlo explícito en cualquier
+  // dirección; sin fijarlo, se asume que solo producción está detrás de proxy.
+  const trustProxy = process.env.TRUST_PROXY
+    ? process.env.TRUST_PROXY === 'true' || process.env.TRUST_PROXY === '1'
+    : process.env.NODE_ENV === 'production';
+  if (trustProxy) {
+    app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  }
+
   // Security headers — relax CSP for Swagger UI inline scripts
   app.use(
     helmet({

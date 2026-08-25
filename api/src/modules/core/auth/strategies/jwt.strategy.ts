@@ -21,6 +21,8 @@ export interface JwtPayload {
   /** Token kind. 'enroll' = exchange-only. 'operator' = device employee session. */
   typ?: 'enroll' | 'operator';
   exp?: number;
+  /** Issued-at, en segundos — lo agrega `JwtService.sign()` automáticamente. */
+  iat?: number;
 }
 
 @Injectable()
@@ -43,6 +45,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Invalid token type');
     }
 
+    // H-06: este chequeo vivía DESPUÉS del early-return de 'operator', así
+    // que un token de operador revocado (dispositivo perdido, empleado dado
+    // de baja) seguía sirviendo hasta su propio `exp` (12h) sin importar la
+    // blacklist. Se sube aquí para que aplique a cualquier tipo de token.
+    if (payload.jti && this.tokenBlacklist.isRevoked(payload.jti)) {
+      throw new UnauthorizedException('Token has been revoked');
+    }
+
     // Operator tokens (device PIN session) carry employee identity, not user identity.
     if (payload.typ === 'operator') {
       return {
@@ -56,16 +66,21 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       };
     }
 
-    if (payload.jti && this.tokenBlacklist.isRevoked(payload.jti)) {
-      throw new UnauthorizedException('Token has been revoked');
-    }
-
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
     });
 
     if (!user || user.status !== 'ACTIVE') {
       throw new UnauthorizedException('User not found or inactive');
+    }
+
+    // H-06: cambiar/resetear la contraseña revocaba refresh tokens pero no el
+    // access token ya emitido, que seguía sirviendo hasta su propio `exp`
+    // (hasta 24h con el default). `tokensValidFrom` marca "nada emitido antes
+    // de este instante sirve" — se compara en segundos porque `iat` viene en
+    // segundos (estándar JWT), no milisegundos.
+    if (user.tokensValidFrom && payload.iat && payload.iat < Math.floor(user.tokensValidFrom.getTime() / 1000)) {
+      throw new UnauthorizedException('Token has been revoked');
     }
 
     if (payload.tenantId) {

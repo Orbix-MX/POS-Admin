@@ -4,8 +4,9 @@ import {
   ArgumentsHost,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 
 @Catch(HttpException)
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -31,6 +32,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
+  // M-06: antes un 500 no dejaba ningún rastro — este filtro reemplaza al
+  // logger por defecto de Nest, así que sin este `Logger.error` explícito
+  // los errores de servidor eran invisibles hasta que alguien los reportaba.
+  private readonly logger = new Logger('UnhandledException');
+
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
@@ -44,6 +50,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
       exception instanceof HttpException
         ? exception.message
         : 'Internal server error';
+
+    if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
+      const request = ctx.getRequest<Request>();
+      this.logger.error(
+        `${request?.method ?? '?'} ${request?.originalUrl ?? '?'} → ${status}`,
+        exception instanceof Error ? exception.stack : String(exception),
+      );
+    }
 
     response.status(status).json({
       success: false,

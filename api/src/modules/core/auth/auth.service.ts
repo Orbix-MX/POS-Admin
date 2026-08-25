@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   UnauthorizedException,
   ConflictException,
   BadRequestException,
@@ -47,6 +48,13 @@ export class AuthService {
   /** Techo del bloqueo: pasado este punto no crece más. */
   static readonly LOCKOUT_MAX_MINUTES = 60;
 
+  // M-06: `AuditLog` es tenant-scoped (`tenantId` obligatorio en el schema) y
+  // un login vive ANTES de seleccionar tenant — no hay a quién atribuírselo
+  // ahí. Estos eventos van a un logger estructurado aparte en vez de forzar
+  // esa tabla a aceptar filas sin tenant. Sin esto, ningún ataque de este
+  // informe (fuerza bruta, robo de sesión, MFA/Google) dejaba rastro alguno.
+  private readonly securityLog = new Logger('AuthSecurity');
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
@@ -91,24 +99,34 @@ export class AuthService {
       },
     });
 
-    if (!user) throw new UnauthorizedException('Invalid credentials');
+    if (!user) {
+      this.securityLog.warn(`login fallido — correo no existe: ${loginDto.email}`);
+      throw new UnauthorizedException('Invalid credentials');
+    }
 
     // Cuenta creada por OAuth: no hay hash contra el que comparar. Se responde
     // igual que ante credenciales inválidas para no revelar qué correos existen
     // ni con qué proveedor entran.
-    if (!user.password) throw new UnauthorizedException('Invalid credentials');
+    if (!user.password) {
+      this.securityLog.warn(`login fallido — cuenta sin password local (solo Google): userId=${user.id}`);
+      throw new UnauthorizedException('Invalid credentials');
+    }
 
     // El throttling del controlador es por IP y no frena un ataque lento
     // repartido entre muchas; esto acota los intentos por CUENTA.
     if (user.lockedUntil && user.lockedUntil > new Date()) {
+      this.securityLog.warn(`login rechazado — cuenta bloqueada hasta ${user.lockedUntil.toISOString()}: userId=${user.id}`);
       throw new UnauthorizedException('Invalid credentials');
     }
 
     const valid = await PasswordUtil.compare(loginDto.password, user.password);
     if (!valid) {
+      this.securityLog.warn(`login fallido — password incorrecta: userId=${user.id}`);
       await this.registerFailedLogin(user.id, user.failedLoginAttempts);
       throw new UnauthorizedException('Invalid credentials');
     }
+
+    this.securityLog.log(`login exitoso: userId=${user.id}`);
 
     // Entrar bien limpia el contador: un usuario que se equivoca a ratos y
     // acierta nunca acumula hasta el bloqueo.
@@ -172,6 +190,10 @@ export class AuthService {
             AuthService.LOCKOUT_MAX_MINUTES,
           )
         : 0;
+
+    if (lockMinutes > 0) {
+      this.securityLog.warn(`cuenta bloqueada ${lockMinutes} min tras ${attempts} intentos fallidos: userId=${userId}`);
+    }
 
     await this.prisma.user.update({
       where: { id: userId },
@@ -333,6 +355,7 @@ export class AuthService {
       where: { id: targetUserId },
       data: { googleId: profile.googleId, avatarUrl: profile.avatarUrl },
     });
+    this.securityLog.log(`cuenta de Google vinculada: userId=${targetUserId}`);
     return targetUserId;
   }
 
@@ -820,6 +843,7 @@ export class AuthService {
     }
 
     await this.prisma.user.update({ where: { id: userId }, data: { googleId: null } });
+    this.securityLog.log(`cuenta de Google desvinculada: userId=${userId}`);
   }
 
   /**
@@ -840,11 +864,16 @@ export class AuthService {
     }
 
     const hashed = await PasswordUtil.hash(newPassword);
-    await this.prisma.user.update({ where: { id: userId }, data: { password: hashed } });
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password: hashed, tokensValidFrom: new Date() },
+    });
 
     // Igual que el reseteo por correo: cambiar la contraseña cierra cualquier
-    // otra sesión activa con la anterior.
+    // otra sesión activa con la anterior — refresh tokens explícitamente, y
+    // access tokens ya emitidos vía `tokensValidFrom` (H-06).
     await this.refreshTokens.revokeAllForUser(userId);
+    this.securityLog.log(`contraseña cambiada desde sesión activa: userId=${userId}`);
   }
 
   private mapMembership(m: MembershipWithTenant): TenantSummaryDto {
