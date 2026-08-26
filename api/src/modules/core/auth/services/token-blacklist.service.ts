@@ -33,13 +33,31 @@ export class TokenBlacklistService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  isRevoked(jti: string): boolean {
-    const expiresAt = this.cache.get(jti);
-    if (expiresAt === undefined) return false;
-    if (Date.now() > expiresAt) {
-      this.cache.delete(jti);
-      return false;
+  /**
+   * H-06 (re-auditoría): antes solo miraba el `Map` en memoria — con más de
+   * una instancia del API, un `POST /auth/logout` en la instancia A no
+   * revocaba nada en la B hasta que esa instancia se reiniciara y recargara
+   * `onModuleInit`. Ahora, si no está en caché, consulta la fila en BD (que
+   * `revoke()` ya escribe siempre) antes de decidir — y la sube a caché para
+   * no repetir la consulta en la siguiente request con el mismo `jti`.
+   */
+  async isRevoked(jti: string): Promise<boolean> {
+    const cached = this.cache.get(jti);
+    if (cached !== undefined) {
+      if (Date.now() > cached) {
+        this.cache.delete(jti);
+        return false;
+      }
+      return true;
     }
+
+    const row = await this.prisma.revokedToken.findUnique({
+      where: { jti },
+      select: { expiresAt: true },
+    });
+    if (!row || row.expiresAt <= new Date()) return false;
+
+    this.cache.set(jti, row.expiresAt.getTime());
     return true;
   }
 

@@ -109,9 +109,7 @@ export class OrdersService {
     // lo que el cajero quiera es el fraude de POS más clásico (H-05): se
     // exige el precio de catálogo salvo que el actor tenga
     // `orders:price-override`, y cada venta que sí lo use queda en
-    // AuditLog. El descuento (`item.discount`) sigue sin tope a propósito —
-    // es el mecanismo normal para bajar el precio, distinto de mentir sobre
-    // cuál es.
+    // AuditLog.
     const priceOverrides: { productId: string; catalogPrice: number; chargedPrice: number }[] = [];
     for (const item of productItems) {
       const product = productMap.get(item.productId!);
@@ -129,6 +127,30 @@ export class OrdersService {
         throw new BadRequestException(
           `El precio de "${product.name}" ($${first.chargedPrice}) no coincide con el de catálogo ($${first.catalogPrice}). ` +
             'Ajusta el precio del producto o pide autorización para cobrar un precio distinto.',
+        );
+      }
+    }
+
+    // H-05 (re-auditoría): `item.discount` se dejó libre a propósito la
+    // primera vez ("es el mecanismo normal para bajar el precio"), pero eso
+    // es exactamente el hueco: sin tope ni permiso, un descuento manual lleva
+    // el total a $0 igual que un precio manipulado — mismo fraude, otra
+    // puerta. Cualquier descuento (>0) exige `orders:discount-override` y
+    // queda auditado, igual que el precio.
+    const discountOverrides: { label: string; discount: number }[] = [];
+    for (const item of dto.items) {
+      const discount = roundMoney(item.discount ?? 0);
+      if (discount > 0) {
+        const label = item.productId ? (productMap.get(item.productId)?.name ?? item.productId) : (item.name ?? 'item');
+        discountOverrides.push({ label, discount });
+      }
+    }
+    if (discountOverrides.length > 0) {
+      const canDiscount = await this.effectivePermissions.actorHas('orders:discount-override');
+      if (!canDiscount) {
+        const [first] = discountOverrides;
+        throw new BadRequestException(
+          `"${first.label}" tiene un descuento manual de $${first.discount}. Pide autorización para aplicar descuentos.`,
         );
       }
     }
@@ -534,6 +556,14 @@ export class OrdersService {
         entityType: 'Order',
         entityId: order!.id,
         after: { orderNumber, overrides: priceOverrides },
+      });
+    }
+    if (discountOverrides.length > 0) {
+      await this.audit.log({
+        action: 'ORDER_DISCOUNT_OVERRIDE',
+        entityType: 'Order',
+        entityId: order!.id,
+        after: { orderNumber, overrides: discountOverrides },
       });
     }
 

@@ -450,7 +450,7 @@ export class AuthService {
     if (payload.typ !== 'enroll' || !payload.jti || !payload.tenantId) {
       throw new UnauthorizedException('Invalid enrollment code');
     }
-    if (this.tokenBlacklist.isRevoked(payload.jti)) {
+    if (await this.tokenBlacklist.isRevoked(payload.jti)) {
       throw new UnauthorizedException('Enrollment code already used');
     }
     if (payload.exp) await this.tokenBlacklist.revoke(payload.jti, payload.exp * 1000);

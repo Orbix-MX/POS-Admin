@@ -12,6 +12,9 @@ export type AuditAction =
   // `orders:price-override` y queda aquí — sin esto, cobrar de más o de
   // menos que el precio listado no dejaba rastro.
   | 'ORDER_PRICE_OVERRIDE'
+  // H-05 (re-auditoría): un descuento manual sin tope llevaba el total a $0
+  // igual que un precio manipulado — mismo control, permiso dedicado.
+  | 'ORDER_DISCOUNT_OVERRIDE'
   | 'INVENTORY_ADJUST'
   | 'PRICE_CHANGE'
   | 'USER_STATUS_CHANGE'

@@ -49,7 +49,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // que un token de operador revocado (dispositivo perdido, empleado dado
     // de baja) seguía sirviendo hasta su propio `exp` (12h) sin importar la
     // blacklist. Se sube aquí para que aplique a cualquier tipo de token.
-    if (payload.jti && this.tokenBlacklist.isRevoked(payload.jti)) {
+    if (payload.jti && (await this.tokenBlacklist.isRevoked(payload.jti))) {
       throw new UnauthorizedException('Token has been revoked');
     }
 
