@@ -197,6 +197,10 @@ export const es = {
         title: 'Datos de la tienda',
         description: 'Información y datos comerciales',
       },
+      security: {
+        title: 'Seguridad',
+        description: 'Verificación en dos pasos e inicio de sesión',
+      },
       products: {
         title: 'Productos',
         description: 'Categorías, productos y opciones de catálogo',
@@ -260,6 +264,36 @@ export const es = {
     removeLogo: 'Eliminar logo',
     logoUpdated: 'Logo actualizado',
     storeUpdated: 'Datos de la tienda actualizados',
+    security: {
+      sectionAccount: 'Cuenta',
+      mfaTitle: 'Verificación en dos pasos',
+      mfaDescriptionOn: 'Activada — se pide un código además de tu contraseña.',
+      mfaDescriptionOff: 'Añade un código de tu app de autenticación al iniciar sesión.',
+      enable: 'Activar',
+      disable: 'Desactivar',
+      setup: {
+        title: 'Activar verificación en dos pasos',
+        scanTitle: 'Escanea el código QR',
+        scanDescription: 'Usa Google Authenticator, Authy u otra app compatible con TOTP.',
+        secretLabel: 'O ingresa este código manualmente',
+        codeLabel: 'Código de la app',
+        codePlaceholder: '123456',
+        confirm: 'Confirmar y activar',
+        backupCodesTitle: 'Guarda tus códigos de respaldo',
+        backupCodesDescription: 'Úsalos si pierdes acceso a tu app de autenticación. Cada uno funciona una sola vez.',
+        copyBackupCodes: 'Copiar códigos',
+        copied: 'Códigos copiados',
+        done: 'Listo',
+        error: 'No se pudo iniciar la configuración de MFA.',
+      },
+      disableModal: {
+        title: '¿Desactivar verificación en dos pasos?',
+        description: 'Ingresa un código válido para confirmar.',
+        confirm: 'Desactivar',
+      },
+      mfaEnabled: 'Verificación en dos pasos activada',
+      mfaDisabled: 'Verificación en dos pasos desactivada',
+    },
   },
 
   customers: {

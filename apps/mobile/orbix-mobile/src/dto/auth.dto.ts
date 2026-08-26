@@ -53,6 +53,9 @@ export interface UserResponseDto {
   role: UserRole;
   status: UserStatus;
   createdAt: string;
+  googleLinked: boolean;
+  hasPassword: boolean;
+  mfaEnabled: boolean;
 }
 
 export interface TenantSummaryDto {
@@ -88,6 +91,26 @@ export interface AuthResponseDto {
 /** `POST /auth/mfa/verify` — second step of login when `mfaRequired` came back true. */
 export interface MfaVerifyRequestDto {
   mfaTicket: string;
+  code: string;
+}
+
+/** `POST /auth/mfa/setup` — authenticated; generates a new TOTP secret, not yet active. */
+export interface MfaSetupResponseDto {
+  secret: string;
+  otpauthUrl: string;
+}
+
+/** `POST /auth/mfa/confirm` — activates MFA once the first code checks out. */
+export interface MfaConfirmRequestDto {
+  code: string;
+}
+
+export interface MfaConfirmResponseDto {
+  backupCodes: string[];
+}
+
+/** `POST /auth/mfa/disable` — requires a valid TOTP/backup code. */
+export interface MfaDisableRequestDto {
   code: string;
 }
 

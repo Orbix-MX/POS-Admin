@@ -18,6 +18,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { BackButton, OrbixScaffold, OrbixText, SettingsRow, SettingsSection } from '@/components';
 import { SETTINGS_CATEGORIES, type SettingsCategory, type SettingsCategoryKey } from '@/features/settings/categories';
 import { GeneralPanel } from '@/features/settings/panels/general-panel';
+import { SecurityPanel } from '@/features/settings/panels/security-panel';
 import { StorePanel } from '@/features/settings/panels/store-panel';
 import { useIsTablet } from '@/hooks/use-responsive';
 import { useTheme } from '@/hooks/use-theme';
@@ -25,6 +26,7 @@ import { useTheme } from '@/hooks/use-theme';
 const PANELS: Partial<Record<SettingsCategoryKey, ComponentType>> = {
   general: GeneralPanel,
   store: StorePanel,
+  security: SecurityPanel,
 };
 
 function CategoryList({
@@ -95,7 +97,9 @@ export default function SettingsIndexScreen() {
         <CategoryList
           showChevron
           onSelect={(category) => {
-            if (category.route) router.push(category.route);
+            // Cast: `/(app)/settings/security` isn't in expo-router's generated
+            // types yet in this sandbox (broken Expo CLI, see route-guard.tsx).
+            if (category.route) router.push(category.route as never);
           }}
         />
       </OrbixScaffold>

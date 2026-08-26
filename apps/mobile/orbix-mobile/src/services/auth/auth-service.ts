@@ -4,6 +4,7 @@
  *
  * Deliberately framework-free — `AuthProvider` is a thin React shell over this.
  */
+import type { MfaConfirmResponseDto, MfaSetupResponseDto } from '@/dto/auth.dto';
 import type { GoogleSignInRequestDto } from '@/dto/onboarding.dto';
 import type { Session, TenantSummary } from '@/models/session';
 import {
@@ -110,6 +111,21 @@ export const authService = {
     const session = sessionFromAuthResult(result);
     sessionStorage.saveSession(session);
     return session;
+  },
+
+  /** `POST /auth/mfa/setup` — generates a new TOTP secret; not active until `confirmMfa`. */
+  async setupMfa(): Promise<MfaSetupResponseDto> {
+    return authRepository.setupMfa();
+  },
+
+  /** Confirms setup with the first code and returns fresh backup codes. */
+  async confirmMfa(code: string): Promise<MfaConfirmResponseDto> {
+    return authRepository.confirmMfa(code);
+  },
+
+  /** Requires a valid TOTP/backup code — the API re-checks it server-side either way. */
+  async disableMfa(code: string): Promise<void> {
+    await authRepository.disableMfa(code);
   },
 
   /**

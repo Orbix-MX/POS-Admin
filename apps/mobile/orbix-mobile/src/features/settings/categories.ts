@@ -24,6 +24,7 @@ import {
   PlugIcon,
   PrinterIcon,
   SettingsIcon,
+  ShieldIcon,
   StoreIcon,
   UsersIcon,
   WalletIcon,
@@ -34,6 +35,7 @@ import type { ThemeColors } from '@/theme/types';
 export type SettingsCategoryKey =
   | 'general'
   | 'store'
+  | 'security'
   | 'products'
   | 'cash'
   | 'payments'
@@ -57,12 +59,13 @@ export interface SettingsCategory {
   tintBg: keyof ThemeColors;
   tintFg: keyof ThemeColors;
   /** Phone push target; only categories with a built panel have one. */
-  route?: '/(app)/settings/general' | '/(app)/settings/store';
+  route?: '/(app)/settings/general' | '/(app)/settings/store' | '/(app)/settings/security';
 }
 
 export const SETTINGS_CATEGORIES: SettingsCategory[] = [
   { key: 'general', Icon: SettingsIcon, status: 'live', route: '/(app)/settings/general', tintBg: 'brandBlue50', tintFg: 'brandBlue600' },
   { key: 'store', Icon: StoreIcon, status: 'live', route: '/(app)/settings/store', tintBg: 'successBg', tintFg: 'successFg' },
+  { key: 'security', Icon: ShieldIcon, status: 'live', route: '/(app)/settings/security', tintBg: 'infoBg', tintFg: 'infoFg' },
   { key: 'products', Icon: PackageIcon, status: 'soon', tintBg: 'warningBg', tintFg: 'warningFg' },
   { key: 'cash', Icon: ChartIcon, status: 'soon', tintBg: 'infoBg', tintFg: 'infoFg' },
   { key: 'payments', Icon: WalletIcon, status: 'soon', tintBg: 'muted', tintFg: 'accentPurple' },

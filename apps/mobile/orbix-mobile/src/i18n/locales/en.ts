@@ -195,6 +195,10 @@ export const en: TranslationSchema = {
         title: 'Store details',
         description: 'Business info and details',
       },
+      security: {
+        title: 'Security',
+        description: 'Two-factor verification and sign-in',
+      },
       products: {
         title: 'Products',
         description: 'Categories, products and catalog options',
@@ -258,6 +262,36 @@ export const en: TranslationSchema = {
     removeLogo: 'Remove logo',
     logoUpdated: 'Logo updated',
     storeUpdated: 'Store details updated',
+    security: {
+      sectionAccount: 'Account',
+      mfaTitle: 'Two-factor verification',
+      mfaDescriptionOn: 'Enabled — a code is required in addition to your password.',
+      mfaDescriptionOff: 'Add a code from your authenticator app when signing in.',
+      enable: 'Enable',
+      disable: 'Disable',
+      setup: {
+        title: 'Enable two-factor verification',
+        scanTitle: 'Scan the QR code',
+        scanDescription: 'Use Google Authenticator, Authy or another TOTP-compatible app.',
+        secretLabel: 'Or enter this code manually',
+        codeLabel: 'Code from the app',
+        codePlaceholder: '123456',
+        confirm: 'Confirm and enable',
+        backupCodesTitle: 'Save your backup codes',
+        backupCodesDescription: 'Use them if you lose access to your authenticator app. Each one works once.',
+        copyBackupCodes: 'Copy codes',
+        copied: 'Codes copied',
+        done: 'Done',
+        error: 'Could not start MFA setup.',
+      },
+      disableModal: {
+        title: 'Disable two-factor verification?',
+        description: 'Enter a valid code to confirm.',
+        confirm: 'Disable',
+      },
+      mfaEnabled: 'Two-factor verification enabled',
+      mfaDisabled: 'Two-factor verification disabled',
+    },
   },
 
   customers: {

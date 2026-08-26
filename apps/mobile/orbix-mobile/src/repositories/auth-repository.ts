@@ -9,6 +9,8 @@ import type {
   AuthResponseDto,
   CapabilitiesResponseDto,
   LoginRequestDto,
+  MfaConfirmResponseDto,
+  MfaSetupResponseDto,
   ProfileResponseDto,
   RefreshResponseDto,
   RegisterRequestDto,
@@ -31,6 +33,9 @@ function toAuthUser(dto: UserResponseDto): AuthUser {
     lastName: dto.lastName,
     fullName: `${dto.firstName} ${dto.lastName}`.trim(),
     role: dto.role,
+    googleLinked: dto.googleLinked,
+    hasPassword: dto.hasPassword,
+    mfaEnabled: dto.mfaEnabled,
   };
 }
 
@@ -163,6 +168,21 @@ export const authRepository = {
       throw new Error('El servidor volvió a pedir MFA después de verificarlo.');
     }
     return outcome;
+  },
+
+  /** `POST /auth/mfa/setup` — genera un secreto TOTP nuevo, aún no activo. */
+  async setupMfa(): Promise<MfaSetupResponseDto> {
+    return http.post<MfaSetupResponseDto>('/auth/mfa/setup');
+  },
+
+  /** `POST /auth/mfa/confirm` — confirma el setup con el primer código y activa MFA. */
+  async confirmMfa(code: string): Promise<MfaConfirmResponseDto> {
+    return http.post<MfaConfirmResponseDto>('/auth/mfa/confirm', { code });
+  },
+
+  /** `POST /auth/mfa/disable` — requiere un código válido. */
+  async disableMfa(code: string): Promise<void> {
+    await http.post('/auth/mfa/disable', { code });
   },
 
   async refresh(refreshToken: string): Promise<{ accessToken: string; refreshToken: string }> {

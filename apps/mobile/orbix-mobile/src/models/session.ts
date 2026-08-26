@@ -22,6 +22,9 @@ export interface AuthUser {
   /** `firstName lastName`, pre-joined for display. */
   fullName: string;
   role: UserRole;
+  googleLinked: boolean;
+  hasPassword: boolean;
+  mfaEnabled: boolean;
 }
 
 export interface TenantSummary {

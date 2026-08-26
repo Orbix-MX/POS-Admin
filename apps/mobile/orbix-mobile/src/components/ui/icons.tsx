@@ -381,6 +381,20 @@ export const PercentIcon = memo(function PercentIcon({ size = 14, color, strokeW
   );
 });
 
+export const ShieldIcon = memo(function ShieldIcon({ size = 14, color, strokeWidth = 2 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"
+        stroke={color}
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+});
+
 export const PrinterIcon = memo(function PrinterIcon({ size = 14, color, strokeWidth = 2 }: IconProps) {
   const stroke = { stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
   return (

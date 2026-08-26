@@ -195,6 +195,10 @@ export const pt: TranslationSchema = {
         title: 'Dados da loja',
         description: 'Informações e dados comerciais',
       },
+      security: {
+        title: 'Segurança',
+        description: 'Verificação em duas etapas e login',
+      },
       products: {
         title: 'Produtos',
         description: 'Categorias, produtos e opções de catálogo',
@@ -258,6 +262,36 @@ export const pt: TranslationSchema = {
     removeLogo: 'Remover logo',
     logoUpdated: 'Logo atualizado',
     storeUpdated: 'Dados da loja atualizados',
+    security: {
+      sectionAccount: 'Conta',
+      mfaTitle: 'Verificação em duas etapas',
+      mfaDescriptionOn: 'Ativada — um código é exigido além da sua senha.',
+      mfaDescriptionOff: 'Adicione um código do seu app autenticador ao entrar.',
+      enable: 'Ativar',
+      disable: 'Desativar',
+      setup: {
+        title: 'Ativar verificação em duas etapas',
+        scanTitle: 'Escaneie o código QR',
+        scanDescription: 'Use Google Authenticator, Authy ou outro app compatível com TOTP.',
+        secretLabel: 'Ou digite este código manualmente',
+        codeLabel: 'Código do app',
+        codePlaceholder: '123456',
+        confirm: 'Confirmar e ativar',
+        backupCodesTitle: 'Guarde seus códigos de backup',
+        backupCodesDescription: 'Use-os se perder acesso ao seu app autenticador. Cada um funciona uma vez.',
+        copyBackupCodes: 'Copiar códigos',
+        copied: 'Códigos copiados',
+        done: 'Concluído',
+        error: 'Não foi possível iniciar a configuração de MFA.',
+      },
+      disableModal: {
+        title: 'Desativar verificação em duas etapas?',
+        description: 'Digite um código válido para confirmar.',
+        confirm: 'Desativar',
+      },
+      mfaEnabled: 'Verificação em duas etapas ativada',
+      mfaDisabled: 'Verificação em duas etapas desativada',
+    },
   },
 
   customers: {
