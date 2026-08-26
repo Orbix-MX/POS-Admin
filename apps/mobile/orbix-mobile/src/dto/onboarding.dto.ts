@@ -8,7 +8,7 @@
  * faking a response — see `src/repositories/onboarding-repository.ts`.
  *
  * Gap summary:
- *   • `POST /auth/google`            — no OAuth provider wired in NestJS.
+ *   • `POST /auth/google`            — implementado, ver `auth-repository.ts`.
  *   • `POST /auth/phone/send-code`   — no SMS provider configured.
  *   • `POST /auth/phone/verify-code` — idem.
  *   • `POST /tenants/onboarding`     — `POST /tenants` exists but is guarded by
@@ -24,13 +24,10 @@ import type { AuthResponseDto, TenantSummaryDto } from './auth.dto';
 /* ── Google OAuth ────────────────────────────────────────────────────────── */
 
 /**
- * TODO(backend): `POST /api/auth/google` — public, throttled like `/auth/login`.
- *
- * The app performs the PKCE dance with Google via `expo-auth-session` and sends
- * the resulting authorization code (preferred) or id_token to the API. The API
- * must verify it against the Google client IDs, then create-or-link the `User`
- * and return the same `AuthResponseDto` as `/auth/login` so the client keeps a
- * single session path.
+ * `POST /auth/google` — implemented (Fase 1 de auth móvil, 2026-08). Público,
+ * throttled igual que `/auth/login`. Ver `src/repositories/auth-repository.ts`
+ * (`authRepository.googleSignIn`) — vive ahí, no en este repositorio, porque
+ * es un camino de sesión más, igual que login/MFA.
  */
 export interface GoogleSignInRequestDto {
   /** Authorization code from the PKCE flow. Preferred over `idToken`. */
@@ -42,9 +39,11 @@ export interface GoogleSignInRequestDto {
   /** Fallback for platforms where only an id_token is available. */
   idToken?: string;
   platform: 'ios' | 'android' | 'web';
+  /** Presente solo al "vincular" desde una sesión activa — ver Fase 4. */
+  linkTicket?: string;
 }
 
-/** Response is identical to `/auth/login` — reuse the same session handling. */
+/** Same shape as `/auth/login` — including the `mfaRequired` branch. */
 export type GoogleSignInResponseDto = AuthResponseDto;
 
 /* ── Phone verification (OTP) ────────────────────────────────────────────── */

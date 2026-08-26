@@ -15,6 +15,7 @@ import {
   type ReactNode,
 } from 'react';
 
+import type { GoogleSignInRequestDto } from '@/dto/onboarding.dto';
 import type { AuthStatus, Session, TenantSummary } from '@/models/session';
 import { authTokenStore } from '@/services/api';
 import { authService } from '@/services/auth/auth-service';
@@ -27,7 +28,13 @@ export interface AuthContextValue {
   /** True once a tenant is selected — i.e. the JWT carries `tenantId`. */
   hasTenant: boolean;
   register: (input: RegisterInput) => Promise<Session>;
-  login: (email: string, password: string) => Promise<Session>;
+  /** `null` means the account has MFA on — `status` flips to `'mfa-pending'`; call `verifyMfa` next. */
+  login: (email: string, password: string) => Promise<Session | null>;
+  loginWithGoogle: (request: GoogleSignInRequestDto) => Promise<Session | null>;
+  /** Completes the login started by `login`/`loginWithGoogle` once MFA kicked in. */
+  verifyMfa: (code: string) => Promise<Session>;
+  /** Backs out of the MFA challenge — back to `sign-in`, no session created. */
+  cancelMfa: () => void;
   logout: () => Promise<void>;
   selectTenant: (tenant: TenantSummary) => Promise<Session>;
   selectBranch: (branchId: string) => Promise<Session>;
@@ -41,6 +48,7 @@ export const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [session, setSession] = useState<Session | null>(null);
+  const [mfaTicket, setMfaTicket] = useState<string | null>(null);
 
   // Guards against a late `restore()` resolving after a logout raced it.
   const restoreToken = useRef(0);
@@ -76,14 +84,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    const next = await authService.login(email, password);
-    setSession(next);
+    const outcome = await authService.login(email, password);
+    if ('mfaRequired' in outcome) {
+      setMfaTicket(outcome.mfaTicket);
+      setStatus('mfa-pending');
+      return null;
+    }
+    setSession(outcome);
     setStatus('authenticated');
-    return next;
+    return outcome;
+  }, []);
+
+  const loginWithGoogle = useCallback(async (request: GoogleSignInRequestDto) => {
+    const outcome = await authService.loginWithGoogle(request);
+    if ('mfaRequired' in outcome) {
+      setMfaTicket(outcome.mfaTicket);
+      setStatus('mfa-pending');
+      return null;
+    }
+    setSession(outcome);
+    setStatus('authenticated');
+    return outcome;
+  }, []);
+
+  const verifyMfa = useCallback(
+    async (code: string) => {
+      if (!mfaTicket) throw new Error('No hay un desafío de MFA pendiente.');
+      const next = await authService.verifyMfa(mfaTicket, code);
+      setMfaTicket(null);
+      setSession(next);
+      setStatus('authenticated');
+      return next;
+    },
+    [mfaTicket],
+  );
+
+  const cancelMfa = useCallback(() => {
+    setMfaTicket(null);
+    setStatus('unauthenticated');
   }, []);
 
   const logout = useCallback(async () => {
     restoreToken.current++;
+    setMfaTicket(null);
     await authService.logout();
     setSession(null);
     setStatus('unauthenticated');
@@ -128,13 +171,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       hasTenant: Boolean(session?.tenant),
       register,
       login,
+      loginWithGoogle,
+      verifyMfa,
+      cancelMfa,
       logout,
       selectTenant,
       selectBranch,
       applySession,
       refresh,
     }),
-    [status, session, register, login, logout, selectTenant, selectBranch, applySession, refresh],
+    [
+      status,
+      session,
+      register,
+      login,
+      loginWithGoogle,
+      verifyMfa,
+      cancelMfa,
+      logout,
+      selectTenant,
+      selectBranch,
+      applySession,
+      refresh,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

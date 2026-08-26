@@ -4,8 +4,14 @@
  *
  * Deliberately framework-free — `AuthProvider` is a thin React shell over this.
  */
+import type { GoogleSignInRequestDto } from '@/dto/onboarding.dto';
 import type { Session, TenantSummary } from '@/models/session';
-import { authRepository, type AuthResult, type RegisterInput } from '@/repositories/auth-repository';
+import {
+  authRepository,
+  type AuthResult,
+  type MfaRequiredResult,
+  type RegisterInput,
+} from '@/repositories/auth-repository';
 import { authTokenStore, setRefreshHandler } from '@/services/api';
 import { secureStorage } from '@/services/storage/secure-storage';
 
@@ -77,8 +83,29 @@ export const authService = {
     return session;
   },
 
-  async login(email: string, password: string): Promise<Session> {
-    const result = await authRepository.login({ email, password });
+  async login(email: string, password: string): Promise<Session | MfaRequiredResult> {
+    const outcome = await authRepository.login({ email, password });
+    return authService.applyLoginOutcome(outcome);
+  },
+
+  /** `request` comes from `useGoogleAuth` once the PKCE dance with Google finished. */
+  async loginWithGoogle(request: GoogleSignInRequestDto): Promise<Session | MfaRequiredResult> {
+    const outcome = await authRepository.googleSignIn(request);
+    return authService.applyLoginOutcome(outcome);
+  },
+
+  /** Shared by `login` and `loginWithGoogle` — same session-vs-MFA branch either way. */
+  async applyLoginOutcome(outcome: AuthResult | MfaRequiredResult): Promise<Session | MfaRequiredResult> {
+    if ('mfaRequired' in outcome) return outcome;
+    await persistTokens(outcome.accessToken, outcome.refreshToken);
+    const session = sessionFromAuthResult(outcome);
+    sessionStorage.saveSession(session);
+    return session;
+  },
+
+  /** Second step of login when `mfaRequired` came back true. */
+  async verifyMfa(mfaTicket: string, code: string): Promise<Session> {
+    const result = await authRepository.verifyMfa(mfaTicket, code);
     await persistTokens(result.accessToken, result.refreshToken);
     const session = sessionFromAuthResult(result);
     sessionStorage.saveSession(session);

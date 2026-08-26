@@ -41,5 +41,14 @@ export function buildSignInSchema(t: TFunction) {
   });
 }
 
+export function buildMfaChallengeSchema(t: TFunction) {
+  return z.object({
+    // 6 dígitos de TOTP o un backup code de 10 — no se valida el formato más
+    // estricto aquí, el servidor es quien realmente sabe cuál es cuál.
+    code: z.string().trim().min(6, t('validation.codeRequired')).max(10),
+  });
+}
+
 export type SignUpValues = z.infer<ReturnType<typeof buildSignUpSchema>>;
 export type SignInValues = z.infer<ReturnType<typeof buildSignInSchema>>;
+export type MfaChallengeValues = z.infer<ReturnType<typeof buildMfaChallengeSchema>>;

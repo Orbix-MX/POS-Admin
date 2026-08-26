@@ -9,8 +9,6 @@
 import type {
   CreateTenantOnboardingRequestDto,
   CreateTenantOnboardingResponseDto,
-  GoogleSignInRequestDto,
-  GoogleSignInResponseDto,
   SendPhoneCodeRequestDto,
   SendPhoneCodeResponseDto,
   VerifyPhoneCodeRequestDto,
@@ -20,24 +18,11 @@ import { http, NotImplementedError } from '@/services/api';
 
 /** Flip to `true` per endpoint as the backend ships them. */
 export const ONBOARDING_ENDPOINTS_AVAILABLE = {
-  googleSignIn: false,
   phoneVerification: false,
   tenantOnboarding: true,
 } as const;
 
 export const onboardingRepository = {
-  /**
-   * TODO(backend): `POST /api/auth/google`.
-   * Contract: {@link GoogleSignInRequestDto} → {@link GoogleSignInResponseDto}
-   * (identical to `/auth/login`, so the session handling is already written).
-   */
-  async signInWithGoogle(_request: GoogleSignInRequestDto): Promise<GoogleSignInResponseDto> {
-    throw new NotImplementedError(
-      'POST /auth/google',
-      'the API has no OAuth provider configured. See src/dto/onboarding.dto.ts for the expected contract.',
-    );
-    // return http.post<GoogleSignInResponseDto>('/auth/google', _request);
-  },
 
   /**
    * TODO(backend): `POST /api/auth/phone/send-code` (Bearer).

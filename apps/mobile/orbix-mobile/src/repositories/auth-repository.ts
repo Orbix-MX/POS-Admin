@@ -17,6 +17,7 @@ import type {
   UserResponseDto,
   TenantSummaryDto,
 } from '@/dto/auth.dto';
+import type { GoogleSignInRequestDto } from '@/dto/onboarding.dto';
 import type { AuthUser, Session, TenantCapabilities, TenantSummary } from '@/models/session';
 import { http } from '@/services/api';
 
@@ -69,7 +70,8 @@ export interface AuthResult {
   availableTenants: TenantSummary[];
 }
 
-function toAuthResult(dto: AuthResponseDto): AuthResult {
+/** `dto.user`/`dto.accessToken` are guaranteed present once `mfaRequired` has been ruled out. */
+function toAuthResult(dto: AuthResponseDto & { accessToken: string; user: UserResponseDto }): AuthResult {
   return {
     accessToken: dto.accessToken,
     refreshToken: dto.refreshToken ?? null,
@@ -77,6 +79,26 @@ function toAuthResult(dto: AuthResponseDto): AuthResult {
     tenant: dto.tenant ? toTenantSummary(dto.tenant) : undefined,
     availableTenants: (dto.availableTenants ?? []).map(toTenantSummary),
   };
+}
+
+/** The API cuts a login (password or Google) short here when the account has MFA on. */
+export interface MfaRequiredResult {
+  mfaRequired: true;
+  mfaTicket: string;
+}
+
+export type LoginOutcome = AuthResult | MfaRequiredResult;
+
+/** Narrows the wire shape once, so every login path shares the same branch. */
+function toLoginOutcome(dto: AuthResponseDto): LoginOutcome {
+  if (dto.mfaRequired) {
+    if (!dto.mfaTicket) throw new Error('API respondió mfaRequired sin mfaTicket.');
+    return { mfaRequired: true, mfaTicket: dto.mfaTicket };
+  }
+  if (!dto.accessToken || !dto.user) {
+    throw new Error('Respuesta de login incompleta: falta accessToken o user.');
+  }
+  return toAuthResult(dto as AuthResponseDto & { accessToken: string; user: UserResponseDto });
 }
 
 export interface SelectTenantResult {
@@ -111,15 +133,36 @@ export const authRepository = {
       firstName,
       lastName,
     };
-    return toAuthResult(await http.post<AuthResponseDto>('/auth/register', body));
+    const outcome = toLoginOutcome(await http.post<AuthResponseDto>('/auth/register', body));
+    if ('mfaRequired' in outcome) {
+      // No debería pasar — una cuenta recién creada no tiene MFA activo.
+      throw new Error('El servidor pidió MFA en un registro nuevo.');
+    }
+    return outcome;
   },
 
-  async login(input: LoginRequestDto): Promise<AuthResult> {
+  async login(input: LoginRequestDto): Promise<LoginOutcome> {
     const body: LoginRequestDto = {
       email: input.email.trim().toLowerCase(),
       password: input.password,
     };
-    return toAuthResult(await http.post<AuthResponseDto>('/auth/login', body));
+    return toLoginOutcome(await http.post<AuthResponseDto>('/auth/login', body));
+  },
+
+  /** `POST /auth/google` — PKCE, ver `src/dto/onboarding.dto.ts` para el contrato completo. */
+  async googleSignIn(request: GoogleSignInRequestDto): Promise<LoginOutcome> {
+    return toLoginOutcome(await http.post<AuthResponseDto>('/auth/google', request));
+  },
+
+  /** Segundo paso del login cuando `mfaRequired` vino en `true`. */
+  async verifyMfa(mfaTicket: string, code: string): Promise<AuthResult> {
+    const dto = await http.post<AuthResponseDto>('/auth/mfa/verify', { mfaTicket, code });
+    const outcome = toLoginOutcome(dto);
+    if ('mfaRequired' in outcome) {
+      // No debería pasar — el servidor no vuelve a pedir MFA tras verificarlo.
+      throw new Error('El servidor volvió a pedir MFA después de verificarlo.');
+    }
+    return outcome;
   },
 
   async refresh(refreshToken: string): Promise<{ accessToken: string; refreshToken: string }> {

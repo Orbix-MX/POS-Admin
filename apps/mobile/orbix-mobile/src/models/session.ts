@@ -64,4 +64,5 @@ export interface Session {
 export type AuthStatus =
   | 'loading' // reading tokens from the keychain
   | 'unauthenticated'
+  | 'mfa-pending' // password/Google already checked out; waiting on the TOTP code
   | 'authenticated'; // token valid; `session.tenant` may still be undefined

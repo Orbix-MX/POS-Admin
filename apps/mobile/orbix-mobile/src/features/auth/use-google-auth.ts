@@ -1,13 +1,11 @@
 /**
  * Google sign-in via `expo-auth-session` (PKCE, authorization-code flow).
  *
- * The client side is fully implemented: it builds the request from the env
- * client IDs, opens the browser, and hands the authorization code to the API.
- *
- * ⚠️ The exchange endpoint `POST /api/auth/google` does not exist yet, so the
- * final step throws `NotImplementedError`. Nothing here is mocked — the flow is
- * wired end to end and starts working the moment the backend lands. See
- * `src/dto/onboarding.dto.ts` for the contract the server must honour.
+ * Fully wired end to end: builds the request from the env client IDs, opens
+ * the browser, and hands the authorization code to `POST /auth/google` via
+ * `useAuth().loginWithGoogle`. When the account has MFA on, that call returns
+ * `null` and `RouteGuard` takes over (status flips to `'mfa-pending'`) — see
+ * `src/dto/onboarding.dto.ts` for the wire contract.
  */
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
@@ -16,7 +14,7 @@ import { Platform } from 'react-native';
 
 import { env, isGoogleAuthConfigured } from '@/constants/env';
 import type { GoogleSignInRequestDto } from '@/dto/onboarding.dto';
-import { onboardingRepository } from '@/repositories/onboarding-repository';
+import { useAuth } from '@/hooks/use-auth';
 
 // Required so the auth popup closes itself after the redirect on web/Expo Go.
 WebBrowser.maybeCompleteAuthSession();
@@ -49,6 +47,7 @@ export interface UseGoogleAuthResult {
 }
 
 export function useGoogleAuth(onSuccess?: () => void): UseGoogleAuthResult {
+  const { loginWithGoogle } = useAuth();
   const clientId = resolveClientId();
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -78,17 +77,22 @@ export function useGoogleAuth(onSuccess?: () => void): UseGoogleAuthResult {
     setIsPending(true);
     setError(null);
 
-    onboardingRepository
-      .signInWithGoogle({
-        code,
-        codeVerifier: request.codeVerifier,
-        redirectUri,
-        platform: resolvePlatform(),
+    const body: GoogleSignInRequestDto = {
+      code,
+      codeVerifier: request.codeVerifier,
+      redirectUri,
+      platform: resolvePlatform(),
+    };
+
+    loginWithGoogle(body)
+      // `null` means MFA kicked in — `RouteGuard` already redirected off this
+      // screen by the time this resolves, nothing left to do here.
+      .then((session) => {
+        if (session) onSuccess?.();
       })
-      .then(() => onSuccess?.())
       .catch(setError)
       .finally(() => setIsPending(false));
-  }, [response, request, redirectUri, onSuccess]);
+  }, [response, request, redirectUri, onSuccess, loginWithGoogle]);
 
   const signIn = useCallback(async () => {
     setError(null);

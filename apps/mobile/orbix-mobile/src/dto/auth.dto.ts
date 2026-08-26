@@ -63,15 +63,32 @@ export interface TenantSummaryDto {
   plan: TenantPlan;
 }
 
-/** `POST /auth/register` and `POST /auth/login`. */
+/**
+ * `POST /auth/register`, `POST /auth/login`, `POST /auth/google` and
+ * `POST /auth/mfa/verify` all answer with this shape.
+ *
+ * `accessToken`/`user` are absent exactly when `mfaRequired` is `true` — the
+ * caller has a correct password (or Google identity) but the session isn't
+ * minted yet until `POST /auth/mfa/verify` clears the second factor.
+ */
 export interface AuthResponseDto {
-  accessToken: string;
+  accessToken?: string;
   /** Opaque rotating refresh token — only issued to mobile clients. */
   refreshToken?: string;
-  user: UserResponseDto;
+  user?: UserResponseDto;
   /** Present when the user resolves to exactly one tenant. */
   tenant?: TenantSummaryDto;
   availableTenants?: TenantSummaryDto[];
+  /** `true` when a second factor is still needed — see `MfaVerifyRequestDto`. */
+  mfaRequired?: boolean;
+  /** One-time ticket to send back with the code to `POST /auth/mfa/verify`. */
+  mfaTicket?: string;
+}
+
+/** `POST /auth/mfa/verify` — second step of login when `mfaRequired` came back true. */
+export interface MfaVerifyRequestDto {
+  mfaTicket: string;
+  code: string;
 }
 
 export interface RefreshResponseDto {

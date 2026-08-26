@@ -35,8 +35,24 @@ export function useSignIn() {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
 
-  return useMutation<Session, unknown, SignInValues>({
+  // `null` means the account has MFA on — `RouteGuard` reacts to the status
+  // flip and shows the challenge screen; there is no session to cache yet.
+  return useMutation<Session | null, unknown, SignInValues>({
     mutationFn: (values) => login(values.email, values.password),
+    onSuccess: (result) => {
+      if (result) queryClient.clear();
+    },
+    meta: { errorMessage: (error: unknown) => toUserMessage(error, t) },
+  });
+}
+
+export function useVerifyMfa() {
+  const { verifyMfa } = useAuth();
+  const queryClient = useQueryClient();
+  const { t } = useTranslation();
+
+  return useMutation<Session, unknown, string>({
+    mutationFn: (code) => verifyMfa(code),
     onSuccess: () => {
       queryClient.clear();
     },
