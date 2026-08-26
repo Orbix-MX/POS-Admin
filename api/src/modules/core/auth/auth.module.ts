@@ -10,6 +10,7 @@ import { TokenBlacklistService } from './services/token-blacklist.service';
 import { RefreshTokenService } from './services/refresh-token.service';
 import { OAuthTicketService } from './services/oauth-ticket.service';
 import { GoogleLinkTicketService } from './services/google-link-ticket.service';
+import { GoogleMobileAuthService } from './services/google-mobile-auth.service';
 import { MfaService } from './services/mfa.service';
 import { PasswordResetService } from './services/password-reset.service';
 import { EmailModule } from '../email/email.module';
@@ -45,6 +46,7 @@ import { APP_GUARD } from '@nestjs/core';
     RefreshTokenService,
     OAuthTicketService,
     GoogleLinkTicketService,
+    GoogleMobileAuthService,
     MfaService,
     PasswordResetService,
     GoogleOAuthGuard,

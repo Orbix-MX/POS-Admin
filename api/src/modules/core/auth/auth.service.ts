@@ -168,6 +168,29 @@ export class AuthService {
   }
 
   /**
+   * `POST /auth/google` (mobile, PKCE) — a diferencia del flujo de redirect
+   * de la web, aquí no hay navegador de por medio: el perfil de Google ya
+   * viene verificado (`GoogleMobileAuthService`) y la sesión se arma en la
+   * misma respuesta, sin ticket intermedio. `linkTicket` presente = la app
+   * pidió "vincular" desde una sesión activa, igual que la web.
+   */
+  async googleMobileSignIn(
+    profile: { googleId: string; email: string; emailVerified: boolean; firstName: string; lastName: string; avatarUrl?: string },
+    linkTicket?: string,
+  ): Promise<AuthResponseDto> {
+    const userId = linkTicket
+      ? await this.linkGoogleIdentity(linkTicket, profile)
+      : await this.resolveGoogleIdentity(profile);
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { tenantMemberships: { include: { tenant: true } } },
+    });
+    if (!user) throw new UnauthorizedException('User not found');
+    return linkTicket ? this.buildSession(user) : this.completeLogin(user);
+  }
+
+  /**
    * Cuenta el intento fallido y bloquea la cuenta al llegar al umbral.
    *
    * El bloqueo es temporal y crece con cada tanda de fallos, de modo que un

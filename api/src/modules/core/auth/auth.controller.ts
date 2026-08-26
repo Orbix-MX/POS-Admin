@@ -35,6 +35,8 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { GoogleOAuthGuard } from './guards/google-oauth.guard';
 import type { GoogleProfile } from './strategies/google.strategy';
+import { GoogleMobileAuthService } from './services/google-mobile-auth.service';
+import { GoogleMobileSignInDto } from './dto/google-mobile-signin.dto';
 import { OAuthTicketService } from './services/oauth-ticket.service';
 import { GoogleLinkTicketService } from './services/google-link-ticket.service';
 import { MfaService } from './services/mfa.service';
@@ -67,6 +69,7 @@ export class AuthController {
     private authService: AuthService,
     private oauthTickets: OAuthTicketService,
     private googleLinkTickets: GoogleLinkTicketService,
+    private googleMobileAuth: GoogleMobileAuthService,
     private mfa: MfaService,
     private passwordReset: PasswordResetService,
     private config: ConfigService,
@@ -186,6 +189,22 @@ export class AuthController {
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : '';
     await this.authService.logout(token, dto?.refreshToken);
     return { message: 'Logged out successfully' };
+  }
+
+  // ── Google OAuth (app móvil, PKCE directo — sin redirect) ──────────────────
+  //
+  // orbix-mobile hace el PKCE con expo-auth-session y manda el `code`
+  // resultante aquí en el mismo request; no hay navegador ni ticket
+  // intermedio que capturar como en el flujo web de abajo.
+
+  @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('google')
+  @ApiOperation({ summary: 'Login/registro con Google desde la app móvil (PKCE)' })
+  async googleMobileSignIn(@Body() dto: GoogleMobileSignInDto): Promise<AuthResponseDto> {
+    const profile = await this.googleMobileAuth.verify(dto);
+    return this.authService.googleMobileSignIn(profile, dto.linkTicket);
   }
 
   // ── Google OAuth (authorization code + redirect) ───────────────────────────

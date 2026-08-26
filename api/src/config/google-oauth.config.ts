@@ -24,6 +24,17 @@ export default registerAs('googleOAuth', () => {
     .map((o) => o.trim().replace(/\/$/, ''))
     .filter(Boolean);
 
+  // Clientes OAuth de la app móvil (Expo/orbix-mobile) — PKCE, un client_id
+  // "público" por plataforma (iOS/Android no llevan secreto; el de tipo Web
+  // sí, aunque el intercambio use PKCE, por cómo Google trata ese tipo de
+  // cliente). Independientes del client de la web de administración de
+  // arriba: cada uno se registra en Google Cloud Console con su propio
+  // package name / bundle id / redirect URI.
+  const mobileIosClientId = process.env.GOOGLE_MOBILE_IOS_CLIENT_ID?.trim();
+  const mobileAndroidClientId = process.env.GOOGLE_MOBILE_ANDROID_CLIENT_ID?.trim();
+  const mobileWebClientId = process.env.GOOGLE_MOBILE_WEB_CLIENT_ID?.trim();
+  const mobileWebClientSecret = process.env.GOOGLE_MOBILE_WEB_CLIENT_SECRET?.trim();
+
   return {
     enabled: Boolean(clientId && clientSecret),
     clientId: clientId ?? '',
@@ -34,5 +45,13 @@ export default registerAs('googleOAuth', () => {
     defaultRedirect: allowedRedirects[0] ?? 'http://localhost:5173',
     /** Vida del ticket de un solo uso que el frontend canjea por la sesión. */
     ticketTtlSeconds: Number(process.env.OAUTH_TICKET_TTL_SECONDS) || 120,
+    mobile: {
+      clientIds: {
+        ios: mobileIosClientId,
+        android: mobileAndroidClientId,
+        web: mobileWebClientId,
+      },
+      webClientSecret: mobileWebClientSecret,
+    },
   };
 });
