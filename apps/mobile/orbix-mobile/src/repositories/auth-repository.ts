@@ -8,6 +8,7 @@
 import type {
   AuthResponseDto,
   CapabilitiesResponseDto,
+  GoogleLinkStartResponseDto,
   LoginRequestDto,
   MfaConfirmResponseDto,
   MfaSetupResponseDto,
@@ -157,6 +158,21 @@ export const authRepository = {
   /** `POST /auth/google` — PKCE, ver `src/dto/onboarding.dto.ts` para el contrato completo. */
   async googleSignIn(request: GoogleSignInRequestDto): Promise<LoginOutcome> {
     return toLoginOutcome(await http.post<AuthResponseDto>('/auth/google', request));
+  },
+
+  /** `POST /auth/google/link-start` — emite el ticket para vincular Google a la sesión actual. */
+  async startGoogleLink(): Promise<GoogleLinkStartResponseDto> {
+    return http.post<GoogleLinkStartResponseDto>('/auth/google/link-start');
+  },
+
+  /** `DELETE /auth/google` — desvincula la cuenta de Google del usuario actual. */
+  async unlinkGoogle(): Promise<void> {
+    await http.delete('/auth/google');
+  },
+
+  /** `POST /auth/forgot-password` — misma respuesta exista o no el correo. */
+  async requestPasswordReset(email: string): Promise<void> {
+    await http.post('/auth/forgot-password', { email: email.trim().toLowerCase() });
   },
 
   /** Segundo paso del login cuando `mfaRequired` vino en `true`. */

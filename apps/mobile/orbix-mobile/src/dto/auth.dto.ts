@@ -114,6 +114,16 @@ export interface MfaDisableRequestDto {
   code: string;
 }
 
+/** `POST /auth/google/link-start` — authenticated; ticket for `POST /auth/google` (`linkTicket`). */
+export interface GoogleLinkStartResponseDto {
+  token: string;
+}
+
+/** `POST /auth/forgot-password` — public; same response whether or not the email exists. */
+export interface ForgotPasswordRequestDto {
+  email: string;
+}
+
 export interface RefreshResponseDto {
   accessToken: string;
   refreshToken: string;

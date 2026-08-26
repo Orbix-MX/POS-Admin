@@ -49,6 +49,17 @@ export function buildMfaChallengeSchema(t: TFunction) {
   });
 }
 
+export function buildForgotPasswordSchema(t: TFunction) {
+  return z.object({
+    email: z
+      .string()
+      .trim()
+      .min(1, t('validation.emailRequired'))
+      .pipe(z.email(t('validation.emailInvalid'))),
+  });
+}
+
 export type SignUpValues = z.infer<ReturnType<typeof buildSignUpSchema>>;
 export type SignInValues = z.infer<ReturnType<typeof buildSignInSchema>>;
 export type MfaChallengeValues = z.infer<ReturnType<typeof buildMfaChallengeSchema>>;
+export type ForgotPasswordValues = z.infer<ReturnType<typeof buildForgotPasswordSchema>>;

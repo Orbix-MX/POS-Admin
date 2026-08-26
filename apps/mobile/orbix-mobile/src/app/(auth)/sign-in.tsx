@@ -117,6 +117,19 @@ export default function SignInScreen() {
         />
       </FieldGroup>
 
+      <Pressable
+        // Cast: new route not yet in expo-router's generated types (broken
+        // Expo CLI in this sandbox) — see route-guard.tsx for the same note.
+        onPress={() => router.push('/(auth)/forgot-password' as never)}
+        hitSlop={8}
+        accessibilityRole="link"
+        accessibilityLabel={t('auth.signIn.forgotPassword')}
+      >
+        <OrbixText size="sm" weight="medium" tone="primary">
+          {t('auth.signIn.forgotPassword')}
+        </OrbixText>
+      </Pressable>
+
       <OrbixButton
         label={t('auth.signIn.submit')}
         onPress={handleSubmit(onSubmit)}

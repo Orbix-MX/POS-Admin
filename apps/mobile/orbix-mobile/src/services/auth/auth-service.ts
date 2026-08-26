@@ -95,6 +95,38 @@ export const authService = {
     return authService.applyLoginOutcome(outcome);
   },
 
+  /** `POST /auth/google/link-start` — ticket for the PKCE round trip that follows. */
+  async startGoogleLink(): Promise<string> {
+    const { token } = await authRepository.startGoogleLink();
+    return token;
+  },
+
+  /**
+   * `request` carries the `linkTicket` from `startGoogleLink` — the API skips
+   * `mfaRequired` on this path (the caller is already authenticated), so the
+   * result is always a full session with `user.googleLinked` now `true`.
+   */
+  async linkGoogleAccount(request: GoogleSignInRequestDto): Promise<Session> {
+    const outcome = await authRepository.googleSignIn(request);
+    if ('mfaRequired' in outcome) {
+      throw new Error('El servidor pidió MFA al vincular Google — no debería pasar.');
+    }
+    await persistTokens(outcome.accessToken, outcome.refreshToken);
+    const session = sessionFromAuthResult(outcome);
+    sessionStorage.saveSession(session);
+    return session;
+  },
+
+  /** `DELETE /auth/google`. */
+  async unlinkGoogle(): Promise<void> {
+    await authRepository.unlinkGoogle();
+  },
+
+  /** `POST /auth/forgot-password` — always resolves; the API never reveals whether the email exists. */
+  async requestPasswordReset(email: string): Promise<void> {
+    await authRepository.requestPasswordReset(email);
+  },
+
   /** Shared by `login` and `loginWithGoogle` — same session-vs-MFA branch either way. */
   async applyLoginOutcome(outcome: AuthResult | MfaRequiredResult): Promise<Session | MfaRequiredResult> {
     if ('mfaRequired' in outcome) return outcome;

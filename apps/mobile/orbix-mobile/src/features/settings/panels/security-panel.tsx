@@ -24,8 +24,10 @@ import {
   SettingsSection,
   toast,
 } from '@/components';
-import { ShieldIcon } from '@/components/ui/icons';
+import { GoogleGlyph, ShieldIcon } from '@/components/ui/icons';
 import { buildMfaChallengeSchema, type MfaChallengeValues as CodeValues } from '@/features/auth/schemas';
+import { useRequestPasswordReset, useUnlinkGoogle } from '@/features/settings/use-account';
+import { useGoogleLink } from '@/features/settings/use-google-link';
 import { useConfirmMfa, useDisableMfa, useSetupMfa } from '@/features/settings/use-mfa';
 import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
@@ -225,6 +227,40 @@ function MfaDisableModal({ onClose, onDisabled }: { onClose: () => void; onDisab
   );
 }
 
+/** Confirms unlinking with a code-free dialog — unlinking itself needs no second factor. */
+function UnlinkGoogleModal({ onClose, onUnlinked }: { onClose: () => void; onUnlinked: () => void }) {
+  const { t } = useTranslation();
+  const unlinkGoogle = useUnlinkGoogle();
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const onConfirm = useCallback(() => {
+    setFormError(null);
+    unlinkGoogle.mutate(undefined, {
+      onSuccess: () => {
+        onUnlinked();
+        onClose();
+      },
+      onError: (error) => setFormError(toUserMessage(error, t)),
+    });
+  }, [onClose, onUnlinked, t, unlinkGoogle]);
+
+  return (
+    <OrbixModal
+      visible
+      title={t('settings.security.google.unlinkConfirmTitle')}
+      description={t('settings.security.google.unlinkConfirmDescription')}
+      confirmLabel={t('settings.security.google.unlinkConfirm')}
+      cancelLabel={t('common.cancel')}
+      destructive
+      loading={unlinkGoogle.isPending}
+      onConfirm={onConfirm}
+      onDismiss={onClose}
+    >
+      <InlineError message={formError} />
+    </OrbixModal>
+  );
+}
+
 export function SecurityPanel() {
   const theme = useTheme();
   const { t } = useTranslation();
@@ -232,8 +268,37 @@ export function SecurityPanel() {
 
   const [showSetup, setShowSetup] = useState(false);
   const [showDisable, setShowDisable] = useState(false);
+  const [showUnlinkGoogle, setShowUnlinkGoogle] = useState(false);
 
   const mfaEnabled = session?.user.mfaEnabled ?? false;
+  const googleLinked = session?.user.googleLinked ?? false;
+  const hasPassword = session?.user.hasPassword ?? true;
+  const email = session?.user.email ?? '';
+
+  const googleLink = useGoogleLink(() => {
+    toast.success(t('settings.security.google.linked'));
+  });
+  const requestPasswordReset = useRequestPasswordReset();
+
+  const onPressGoogleRow = useCallback(() => {
+    if (googleLinked) {
+      if (!hasPassword) {
+        toast.info(t('settings.security.google.unlinkDisabledHint'));
+        return;
+      }
+      setShowUnlinkGoogle(true);
+      return;
+    }
+    void googleLink.link();
+  }, [googleLink, googleLinked, hasPassword, t]);
+
+  const onPressPasswordRow = useCallback(() => {
+    if (!email) return;
+    requestPasswordReset.mutate(email, {
+      onSuccess: () => toast.success(t('settings.security.password.sent', { email })),
+      onError: (error) => toast.error(toUserMessage(error, t)),
+    });
+  }, [email, requestPasswordReset, t]);
 
   return (
     <View style={{ gap: theme.spacing.xl }}>
@@ -245,8 +310,32 @@ export function SecurityPanel() {
           description={
             mfaEnabled ? t('settings.security.mfaDescriptionOn') : t('settings.security.mfaDescriptionOff')
           }
-          isLast
           onPress={() => (mfaEnabled ? setShowDisable(true) : setShowSetup(true))}
+        />
+        <SettingsRow
+          icon={<GoogleGlyph size={16} />}
+          iconTint={theme.colors.muted}
+          title={t('settings.security.google.title')}
+          description={
+            googleLinked
+              ? t('settings.security.google.linkedTo', { email })
+              : t('settings.security.google.notLinked')
+          }
+          disabled={googleLink.isPending || requestPasswordReset.isPending}
+          onPress={onPressGoogleRow}
+        />
+        <SettingsRow
+          icon={<ShieldIcon size={16} color={theme.colors.mutedForeground} />}
+          iconTint={theme.colors.muted}
+          title={hasPassword ? t('settings.security.password.title') : t('settings.security.password.titleNoPassword')}
+          description={
+            hasPassword
+              ? t('settings.security.password.description')
+              : t('settings.security.password.descriptionNoPassword')
+          }
+          isLast
+          disabled={requestPasswordReset.isPending}
+          onPress={onPressPasswordRow}
         />
       </SettingsSection>
 
@@ -266,6 +355,16 @@ export function SecurityPanel() {
           onDisabled={() => {
             void refresh();
             toast.success(t('settings.security.mfaDisabled'));
+          }}
+        />
+      ) : null}
+
+      {showUnlinkGoogle ? (
+        <UnlinkGoogleModal
+          onClose={() => setShowUnlinkGoogle(false)}
+          onUnlinked={() => {
+            void refresh();
+            toast.success(t('settings.security.google.unlinked'));
           }}
         />
       ) : null}
