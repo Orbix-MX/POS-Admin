@@ -117,6 +117,57 @@ Para verificar qué quedó embebido en el bundle:
 grep -o "apierp.orbixmx.com[a-z/]*" android/app/build/generated/assets/createBundleReleaseJsAndAssets/index.android.bundle
 ```
 
+## Estado conocido: la app compila pero no arranca en runtime (pendiente)
+
+El APK compila y se instala sin problema, pero al día de escribir esto **crashea al
+arrancar** en el emulador. La causa raíz es *módulos duplicados en el bundle* — el
+proyecto es un workspace pnpm con `node-linker=hoisted`, y varios paquetes con estado a
+nivel de módulo (Contexts de React, registro de native modules) existen físicamente
+tanto en `apps/mobile/orbix-mobile/node_modules/` como en la raíz del monorepo. Cuando
+Metro bundlea DOS copias distintas del mismo paquete, cualquier código que dependa de
+que ambos import sites vean la *misma* instancia se rompe: un componente nativo se
+registra en una copia y se lee desde la otra, o un Context Provider vive en una copia
+mientras el hook consumidor lee de la otra.
+
+Esto se manifestó como una cadena de crashes distintos, cada uno resuelto revela el
+siguiente:
+
+1. `Cannot find native module 'ExpoClipboard'` — versión de `expo-clipboard` mal
+   resuelta (`^57.0.1` en vez de `~8.0.8`). **Arreglado** con `expo install --fix`.
+2. `Cannot read property 'useMemoCache'/'useState' of null` en `RootLayout` — dos
+   instancias de `react` en el bundle. **Arreglado** quitando la copia local de
+   `react`/`react-dom` (aunque reaparece con cada `pnpm install`; el fix real de fondo
+   es el de Metro más abajo).
+3. `View config getter callback for component 'RNGestureHandlerRootView' must be a
+   function` — dos instancias de `react-native-gesture-handler`. **Intentos fallidos**:
+   reordenar `nodeModulesPaths` en `metro.config.js` (insuficiente), downgrade a
+   `~2.24.0` (no compila contra RN 0.81.5 — API de `ShadowNode` distinta). **Arreglado**
+   con `config.resolver.disableHierarchicalLookup = true` + `nodeModulesPaths` apuntando
+   solo a la raíz del workspace (ver `metro.config.js`, ya en el repo).
+4. `useLinkPreviewContext must be used within a LinkPreviewContextProvider` — mismo
+   patrón, esta vez con `expo-router`. Resuelto por el mismo fix del punto 3 (bajó el
+   bundle de 3678 a 2244 módulos).
+5. **Sin resolver todavía**: `TypeError: undefined is not a function` dentro del propio
+   sistema de rutas de expo-router (`loadRoute` → `metroContext` → `metroRequire`,
+   trace completo en el historial de la sesión). Aparece justo después del fix del
+   punto 3-4, así que es la siguiente capa de la misma cebolla — probablemente una ruta
+   específica cuyo módulo no resuelve bien (candidato: `expo-clipboard` de nuevo, o
+   alguna otra copia duplicada que el fix de `disableHierarchicalLookup` no cubre).
+
+**Para retomar**: `metro.config.js` ya tiene el fix real (`disableHierarchicalLookup:
+true`, `nodeModulesPaths: [workspaceRoot]`) — no deshacerlo. `app.json` también quedó
+con `experiments.reactCompiler: false` — se desactivó como prueba antes de encontrar el
+fix real de Metro, y el React Compiler probablemente NO era la causa (el problema
+siempre fue duplicación de módulos). Vale la pena reactivarlo (`true`) una vez resuelto
+el punto 5, para confirmar si sigue funcionando bien con el compiler encendido. El siguiente paso es
+identificar qué ruta/módulo específico dispara el punto 5: reproducir el build
+(`rm -rf android/app/build/generated/assets/createBundleReleaseJsAndAssets android/app/build/intermediates/sourcemaps`
++ `./gradlew assembleRelease --no-daemon`, nativo ya queda cacheado así que tarda
+~2 min), instalar (`adb install -r ...`), lanzar, y leer el stack completo con
+`adb logcat -d | grep -E "<pid>.*(ReactNativeJS|AndroidRuntime)"` — el número de línea
+del bundle (`index.android.bundle:1:XXXXX`) más un `console.log` de diagnóstico en el
+`_layout.tsx` raíz debería acotar la ruta culpable rápido.
+
 ## Nota sobre Expo CLI
 
 El comando `assembleRelease` de Gradle **no depende del CLI de Expo** (`expo`/`npx expo`) —
