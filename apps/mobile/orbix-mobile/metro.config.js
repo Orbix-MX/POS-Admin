@@ -26,12 +26,27 @@ const config = getDefaultConfig(projectRoot);
 // the source; those overrides would now do the opposite of what's needed,
 // since project-local symlinks are the ONLY place a package's own
 // dependencies resolve from in this mode.
+//
 // `.npmrc`'s `virtual-store-dir` points pnpm's real (symlinked-to) package
 // store outside the repo entirely (`C:/ps`, kept short to dodge Windows'
-// 260-char path limit inside native modules' own `.cxx` build dirs — see
-// build.gradle). Metro computes module paths relative to its watched
+// 260-char path limit — hit not just by the app's own native build but by
+// EVERY native module's own `.cxx` dir under node_modules, e.g.
+// react-native-worklets, expo-modules-core; a `subst` drive letter was
+// tried instead and rejected — CMake/Java resolve subst drives back to
+// their real underlying path, so it doesn't shorten anything actually
+// used by the build). Metro computes module paths relative to its watched
 // folders, so that real location has to be watched too, or resolving the
 // bundle's own entry point (a symlink into that store) breaks.
+//
+// KNOWN LIMITATION: with the store outside workspaceRoot's tree, Metro's
+// dev-server bundle serializer (live reload via `expo start` / `expo run
+// :android` debug) breaks — it computes "url-server" source paths relative
+// to the workspace root and mishandles the ones that have to escape it
+// (drops the leading `..` segments, resolving to a bogus path). This does
+// NOT affect the release flow (`export:embed`, i.e. `assembleRelease` /
+// `expo run:android --variant release`), which uses a different serializer
+// and is the supported way to test JS changes on this machine until that
+// Metro bug is understood. See docs/build-android-release.md.
 config.watchFolders = [workspaceRoot, 'C:/ps'];
 
 module.exports = withNativeWind(config, { input: './src/styles/global.css' });

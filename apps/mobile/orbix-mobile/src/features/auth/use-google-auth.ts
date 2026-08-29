@@ -52,8 +52,18 @@ export function useGoogleAuth(onSuccess?: () => void): UseGoogleAuthResult {
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
+  // Google's Android/iOS OAuth client types only accept a redirect scheme
+  // derived from the app's own package name / bundle id (reverse-DNS) —
+  // a generic scheme like `orbix://` is rejected ("doesn't comply with
+  // OAuth 2.0 policy", Error 400: invalid_request) since any app could
+  // register it. The app's main `orbix://` scheme (used for regular deep
+  // links) stays untouched; this one is Google-flow-only. Registered
+  // alongside it in app.json's `scheme` array.
   const redirectUri = useMemo(
-    () => AuthSession.makeRedirectUri({ scheme: 'orbix', path: 'auth/google' }),
+    () =>
+      Platform.OS === 'web'
+        ? AuthSession.makeRedirectUri({ scheme: 'orbix', path: 'auth/google' })
+        : AuthSession.makeRedirectUri({ scheme: 'com.orbix.mobile', path: 'oauth2redirect' }),
     [],
   );
 

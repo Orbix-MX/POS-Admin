@@ -24,6 +24,10 @@ expo-env.d.ts
 .env.development.local
 .env.production.local
 
+# Screenshots and diagnostic dumps taken while debugging on the emulator
+# (adb screencap, uiautomator dump, gradle traces) — scratch, never commit.
+.debug-captures/
+
 # macOS
 .DS_Store
 
