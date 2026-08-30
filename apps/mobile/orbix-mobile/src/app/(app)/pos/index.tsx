@@ -8,13 +8,13 @@
  * category chips, a two-up product grid, a floating gradient cart bar and a
  * three-stage checkout sheet.
  */
-import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, View } from 'react-native';
 
 import {
-  BackButton,
+  AppDrawer,
+  DrawerButton,
   OrbixButton,
   OrbixInput,
   OrbixScaffold,
@@ -180,12 +180,12 @@ function OpenCashSessionPanel() {
 
 export default function PosScreen() {
   const theme = useTheme();
-  const router = useRouter();
   const { t } = useTranslation();
   const { session } = useAuth();
   const { can } = usePermissions();
   useCurrencyFormatVersion();
 
+  const [drawerVisible, setDrawerVisible] = useState(false);
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -396,7 +396,10 @@ export default function PosScreen() {
   return (
     <OrbixScaffold background="wash" contentStyle={{ gap: theme.spacing.md }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md }}>
-        <BackButton onPress={() => router.back()} accessibilityLabel={t('a11y.back')} />
+        {/* Ventas es una pantalla raíz, no un detalle: no hay nada detrás a lo
+            que volver, así que el hueco del header lo ocupa el acceso al
+            drawer, igual que en Inicio. */}
+        <DrawerButton onPress={() => setDrawerVisible(true)} accessibilityLabel={t('drawer.title')} />
         <View style={{ flex: 1 }}>
           <OrbixText size="xs" weight="semibold" tone="mutedForeground">
             {(cashSession ? t('pos.cashOpen') : t('pos.title')).toUpperCase()}
@@ -406,6 +409,7 @@ export default function PosScreen() {
           </OrbixText>
         </View>
       </View>
+      <AppDrawer visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
 
       {showLoading ? (
         <View style={{ gap: theme.spacing.sm }}>

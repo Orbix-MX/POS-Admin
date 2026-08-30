@@ -8,7 +8,7 @@
  * to routes. Inicio, Inventario (products), Ventas, Clientes and Configuración
  * are the live destinations.
  */
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, ScrollView, View, type GestureResponderEvent } from 'react-native';
@@ -160,6 +160,10 @@ function AppDrawerComponent({ visible, onClose }: AppDrawerProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  // El drawer ya no se abre solo desde Inicio: la fila activa y el destino de
+  // "Inicio" se derivan de la ruta actual en vez de darse por supuestos.
+  const pathname = usePathname();
+  const onHome = pathname === '/';
   const { t } = useTranslation();
   const { session, refresh } = useAuth();
   const { can } = usePermissions();
@@ -338,7 +342,12 @@ function AppDrawerComponent({ visible, onClose }: AppDrawerProps) {
             contentContainerStyle={{ padding: theme.spacing.sm, paddingTop: theme.spacing.md, gap: 2 }}
             showsVerticalScrollIndicator={false}
           >
-            <DrawerRow Icon={HomeIcon} label={t('drawer.home')} active onPress={onClose} />
+            <DrawerRow
+              Icon={HomeIcon}
+              label={t('drawer.home')}
+              active={onHome}
+              onPress={onHome ? onClose : () => { onClose(); router.replace('/(app)'); }}
+            />
 
             <OrbixText
               size="xs"
@@ -360,6 +369,9 @@ function AppDrawerComponent({ visible, onClose }: AppDrawerProps) {
                 key={key}
                 Icon={Icon}
                 label={t(`drawer.modules.${labelKey}`)}
+                // Los grupos de expo-router no aparecen en el pathname, así que
+                // `/(app)/pos` se compara como `/pos`.
+                active={route ? pathname.startsWith(route.replace('/(app)', '')) : false}
                 disabled={!route}
                 trailing={route ? undefined : t('drawer.comingSoon')}
                 onPress={route ? () => { onClose(); router.push(route); } : undefined}

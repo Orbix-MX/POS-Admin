@@ -27,6 +27,7 @@ export { OrbixToast, toast, toastConfig } from './ui/orbix-toast';
 export { OrbixSwitch } from './ui/orbix-switch';
 
 export { AppDrawer } from './navigation/app-drawer';
+export { DrawerButton } from './navigation/drawer-button';
 
 export { SettingsRow } from './settings/settings-row';
 export { SettingsSection } from './settings/settings-section';
