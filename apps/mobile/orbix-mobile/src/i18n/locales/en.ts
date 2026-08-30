@@ -394,6 +394,8 @@ export const en: TranslationSchema = {
     sectionCategory: 'Category',
     sectionInventory: 'Inventory',
     sectionVisibility: 'Status & visibility',
+    serviceInventoryHint: 'Services don\'t track inventory directly. Only the sale is recorded.',
+    nonSimpleInventoryHint: 'This product type doesn\'t carry its own stock.',
     fields: {
       type: 'Product type',
       sku: 'SKU',

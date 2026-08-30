@@ -116,6 +116,7 @@ export default function EditProductScreen() {
         submitting={update.isPending}
         serverError={update.error ? toUserMessage(update.error, t) : null}
         onSubmit={handleSubmit}
+        isEditing
       />
 
       <OrbixModal

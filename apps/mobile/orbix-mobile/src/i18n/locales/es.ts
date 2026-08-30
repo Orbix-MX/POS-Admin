@@ -396,6 +396,8 @@ export const es = {
     sectionCategory: 'Categoría',
     sectionInventory: 'Inventario',
     sectionVisibility: 'Estado y visibilidad',
+    serviceInventoryHint: 'Los servicios no manejan inventario directo. Solo se registra la venta.',
+    nonSimpleInventoryHint: 'Este tipo de producto no maneja stock propio.',
     fields: {
       type: 'Tipo de producto',
       sku: 'SKU',

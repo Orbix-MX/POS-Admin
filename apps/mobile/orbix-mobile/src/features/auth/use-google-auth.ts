@@ -1,11 +1,24 @@
 /**
- * Google sign-in via `expo-auth-session` (PKCE, authorization-code flow).
+ * Google sign-in.
  *
- * Fully wired end to end: builds the request from the env client IDs, opens
- * the browser, and hands the authorization code to `POST /auth/google` via
- * `useAuth().loginWithGoogle`. When the account has MFA on, that call returns
- * `null` and `RouteGuard` takes over (status flips to `'mfa-pending'`) — see
- * `src/dto/onboarding.dto.ts` for the wire contract.
+ * Native (Android/iOS): `@react-native-google-signin/google-signin`, which
+ * wraps Android's Credential Manager / iOS's native Google Sign-In SDK. No
+ * redirect URI involved — Google deprecated custom URI scheme redirects for
+ * Android/iOS OAuth clients (Error 400: invalid_request, "doesn't comply
+ * with OAuth 2.0 policy" even with "Enable custom URI scheme" checked on a
+ * freshly-created client; see git history on this file for that dead end).
+ * The SDK hands back an `id_token` whose `aud` is always the "Web"-type
+ * client passed as `webClientId` — Android/iOS client types can't issue
+ * id_tokens themselves, they only authorize which app (by package+SHA-1 /
+ * bundle id) may request one from the paired Web client. That's why
+ * `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` matters here even on Android, and why
+ * the backend verifies against `googleOAuth.mobile.clientIds.web` (falling
+ * back to the admin's own Web client) instead of the per-platform id for
+ * this flow — see `GoogleMobileAuthService.serverClientId`.
+ *
+ * Web: unchanged, still `expo-auth-session`'s PKCE redirect flow — the
+ * custom-scheme restriction is Android/iOS-only, and there's no native SDK
+ * to reach for on web anyway.
  */
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
@@ -25,13 +38,6 @@ const DISCOVERY: AuthSession.DiscoveryDocument = {
   revocationEndpoint: 'https://oauth2.googleapis.com/revoke',
 };
 
-/** Picks the client ID registered for the current platform. */
-function resolveClientId(): string | undefined {
-  if (Platform.OS === 'ios') return env.google.iosClientId ?? env.google.clientId;
-  if (Platform.OS === 'android') return env.google.androidClientId ?? env.google.clientId;
-  return env.google.webClientId ?? env.google.clientId;
-}
-
 function resolvePlatform(): GoogleSignInRequestDto['platform'] {
   if (Platform.OS === 'ios') return 'ios';
   if (Platform.OS === 'android') return 'android';
@@ -46,26 +52,60 @@ export interface UseGoogleAuthResult {
   error: unknown;
 }
 
-export function useGoogleAuth(onSuccess?: () => void): UseGoogleAuthResult {
+function useGoogleAuthNative(onSuccess?: () => void): UseGoogleAuthResult {
   const { loginWithGoogle } = useAuth();
-  const clientId = resolveClientId();
+  const [isPending, setIsPending] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [configured, setConfigured] = useState(false);
+
+  useEffect(() => {
+    if (!env.google.webClientId) return;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- lazy: keep this out of the web bundle
+    const { GoogleSignin } = require('@react-native-google-signin/google-signin');
+    GoogleSignin.configure({ webClientId: env.google.webClientId });
+    setConfigured(true);
+  }, []);
+
+  const signIn = useCallback(async () => {
+    setError(null);
+    setIsPending(true);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { GoogleSignin, isSuccessResponse } = require('@react-native-google-signin/google-signin');
+      await GoogleSignin.hasPlayServices();
+      const response = await GoogleSignin.signIn();
+      if (!isSuccessResponse(response)) return; // user cancelled
+
+      const idToken: string | null = response.data.idToken;
+      if (!idToken) throw new Error('Google no devolvió un id_token');
+
+      const body: GoogleSignInRequestDto = { idToken, platform: resolvePlatform() };
+      const session = await loginWithGoogle(body);
+      // `null` means MFA kicked in — `RouteGuard` already redirected off this
+      // screen by the time this resolves, nothing left to do here.
+      if (session) onSuccess?.();
+    } catch (err) {
+      setError(err);
+    } finally {
+      setIsPending(false);
+    }
+  }, [loginWithGoogle, onSuccess]);
+
+  return {
+    available: isGoogleAuthConfigured && Boolean(env.google.webClientId) && configured,
+    isPending,
+    signIn,
+    error,
+  };
+}
+
+function useGoogleAuthWeb(onSuccess?: () => void): UseGoogleAuthResult {
+  const { loginWithGoogle } = useAuth();
+  const clientId = env.google.webClientId ?? env.google.clientId;
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
-  // Google's Android/iOS OAuth client types only accept a redirect scheme
-  // derived from the app's own package name / bundle id (reverse-DNS) —
-  // a generic scheme like `orbix://` is rejected ("doesn't comply with
-  // OAuth 2.0 policy", Error 400: invalid_request) since any app could
-  // register it. The app's main `orbix://` scheme (used for regular deep
-  // links) stays untouched; this one is Google-flow-only. Registered
-  // alongside it in app.json's `scheme` array.
-  const redirectUri = useMemo(
-    () =>
-      Platform.OS === 'web'
-        ? AuthSession.makeRedirectUri({ scheme: 'orbix', path: 'auth/google' })
-        : AuthSession.makeRedirectUri({ scheme: 'com.orbix.mobile', path: 'oauth2redirect' }),
-    [],
-  );
+  const redirectUri = useMemo(() => AuthSession.makeRedirectUri({ scheme: 'orbix', path: 'auth/google' }), []);
 
   const [request, response, promptAsync] = AuthSession.useAuthRequest(
     {
@@ -87,16 +127,9 @@ export function useGoogleAuth(onSuccess?: () => void): UseGoogleAuthResult {
     setIsPending(true);
     setError(null);
 
-    const body: GoogleSignInRequestDto = {
-      code,
-      codeVerifier: request.codeVerifier,
-      redirectUri,
-      platform: resolvePlatform(),
-    };
+    const body: GoogleSignInRequestDto = { code, codeVerifier: request.codeVerifier, redirectUri, platform: 'web' };
 
     loginWithGoogle(body)
-      // `null` means MFA kicked in — `RouteGuard` already redirected off this
-      // screen by the time this resolves, nothing left to do here.
       .then((session) => {
         if (session) onSuccess?.();
       })
@@ -115,4 +148,12 @@ export function useGoogleAuth(onSuccess?: () => void): UseGoogleAuthResult {
     signIn,
     error,
   };
+}
+
+export function useGoogleAuth(onSuccess?: () => void): UseGoogleAuthResult {
+  // Hook choice is branched on a build-time constant (Platform.OS never
+  // changes at runtime), not a value that can change between renders — the
+  // rules-of-hooks conditional-hook-call concern doesn't apply here.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  return Platform.OS === 'web' ? useGoogleAuthWeb(onSuccess) : useGoogleAuthNative(onSuccess);
 }

@@ -59,6 +59,16 @@ export const palette = {
   washMid: '#E8F3F6',
   washEnd: '#ECF3F3',
 
+  /**
+   * Paradas del degradado `wash` en oscuro, en el mismo orden que las claras.
+   * Comparten el tono 250 del resto del esquema oscuro (las claras tiran a
+   * cian) y se quedan por debajo de `darkCard` en luminosidad, para que las
+   * tarjetas sigan levantándose del fondo en la parte alta de la pantalla.
+   */
+  darkWashStart: '#050e19', // oklch(0.16 0.028 250)
+  darkWashMid: '#050a11', // oklch(0.142 0.018 250)
+  darkWashEnd: '#050709', // oklch(0.125 0.008 250)
+
   /** Dark scheme. */
   darkBackground: '#040609', // oklch(0.12 0.01 250)
   darkForeground: '#eceff2', // oklch(0.95 0.005 250)
@@ -219,7 +229,7 @@ export const darkGradients: ThemeGradients = {
     angle: 180,
   },
   wash: {
-    colors: ['#05080f', '#0b0714', '#12060e'],
+    colors: [palette.darkWashStart, palette.darkWashMid, palette.darkWashEnd],
     locations: [0, 0.55, 1],
     angle: 160,
   },

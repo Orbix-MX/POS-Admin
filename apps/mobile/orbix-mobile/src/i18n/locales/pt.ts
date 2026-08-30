@@ -394,6 +394,8 @@ export const pt: TranslationSchema = {
     sectionCategory: 'Categoria',
     sectionInventory: 'Estoque',
     sectionVisibility: 'Status e visibilidade',
+    serviceInventoryHint: 'Serviços não controlam estoque diretamente. Apenas a venda é registrada.',
+    nonSimpleInventoryHint: 'Este tipo de produto não tem estoque próprio.',
     fields: {
       type: 'Tipo de produto',
       sku: 'SKU',

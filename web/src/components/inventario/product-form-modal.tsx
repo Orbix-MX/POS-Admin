@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useMemo, type Dispatch, type SetStateAction } from 'react'
+import { useRef, useState, useEffect, useMemo, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import { FormField } from '@/components/shared/form-modal'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -11,7 +11,7 @@ import { fetchSupplies, type Supply } from '@/services/retail/supplies-service'
 import { fetchAllProducts } from '@/services/retail/product-service'
 import { useTenantFeatures } from '@/hooks/use-tenant-features'
 import { useAuthStore } from '@/store/auth-store'
-import { Trash2, Plus } from 'lucide-react'
+import { Trash2, Plus, Tag, CircleDollarSign, Boxes, Megaphone, ImageIcon, Check, ChevronLeft, ChevronRight } from 'lucide-react'
 
 export interface ProductFormModalProps {
   open: boolean
@@ -645,6 +645,72 @@ function FeaturesEditor({
   )
 }
 
+// ── Wizard step rail ─────────────────────────────────────────────────────────
+// Pasos libres (no bloqueados): esto es un formulario de edición, no un
+// onboarding — el usuario puede saltar a cualquier paso y guardar desde
+// cualquiera. El punto ámbar solo señala "falta algo aquí", nunca bloquea.
+
+interface WizardStep {
+  id: string
+  label: string
+  hint: string
+  icon: typeof Tag
+  incomplete?: boolean
+}
+
+function StepRail({
+  steps,
+  activeStep,
+  onSelect,
+}: {
+  steps: WizardStep[]
+  activeStep: number
+  onSelect: (idx: number) => void
+}) {
+  return (
+    <nav className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible px-1 md:px-0 -mx-1 md:mx-0 pb-0.5 md:pb-0">
+      {steps.map((step, idx) => {
+        const isActive = idx === activeStep
+        const Icon = step.icon
+        return (
+          <button
+            key={step.id}
+            type="button"
+            onClick={() => onSelect(idx)}
+            className={`group relative flex items-center gap-2.5 shrink-0 md:w-full text-left px-3 py-2.5 rounded-lg transition-colors cursor-pointer ${
+              isActive
+                ? 'bg-primary/10 text-primary'
+                : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+            }`}
+          >
+            <span
+              className={`flex items-center justify-center w-7 h-7 rounded-md shrink-0 transition-colors ${
+                isActive ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground/70'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+            </span>
+            <span className="min-w-0 hidden sm:block">
+              <span className="block text-[12.5px] font-semibold leading-tight whitespace-nowrap md:whitespace-normal">
+                {step.label}
+              </span>
+              <span className="hidden md:block text-[10.5px] text-muted-foreground/70 leading-tight mt-0.5">
+                {step.hint}
+              </span>
+            </span>
+            {step.incomplete && (
+              <span
+                className="absolute top-1.5 right-1.5 md:static md:ml-auto w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"
+                title="Falta información en este paso"
+              />
+            )}
+          </button>
+        )
+      })}
+    </nav>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function ProductFormModal({
@@ -687,6 +753,62 @@ export function ProductFormModal({
       }),
     [productType, hasBusinessFeature, enabledModules],
   )
+
+  // ── Wizard ──────────────────────────────────────────────────────────────
+  // Reinicia siempre en "General" al abrir — evita quedarse en un paso
+  // intermedio de una edición anterior cuando se abre un producto distinto.
+  const [activeStep, setActiveStep] = useState(0)
+  useEffect(() => {
+    if (open) setActiveStep(0)
+  }, [open, editingId])
+
+  const structureLabel = showRecipe ? 'Receta' : showCombo ? 'Combo' : productType === 'SERVICE' ? 'Servicio' : 'Inventario'
+
+  const steps: WizardStep[] = useMemo(
+    () => [
+      {
+        id: 'general',
+        label: 'General',
+        hint: 'Tipo, nombre y categoría',
+        icon: Tag,
+        incomplete: !form.name?.trim(),
+      },
+      {
+        id: 'precios',
+        label: 'Precios',
+        hint: 'Venta, costo e impuesto',
+        icon: CircleDollarSign,
+        incomplete: !(Number(form.price) > 0),
+      },
+      {
+        id: 'estructura',
+        label: structureLabel,
+        hint: showRecipe ? 'Ingredientes y costo' : showCombo ? 'Productos incluidos' : 'Existencia y variantes',
+        icon: Boxes,
+        incomplete: showRecipe
+          ? (form.recipe?.items?.length ?? 0) === 0
+          : showCombo
+            ? (form.comboItems?.length ?? 0) === 0
+            : false,
+      },
+      {
+        id: 'publicacion',
+        label: 'Publicación y SEO',
+        hint: 'Tienda en línea, ficha técnica',
+        icon: Megaphone,
+      },
+      {
+        id: 'imagen',
+        label: 'Imagen',
+        hint: editingId ? 'Foto del producto' : 'Disponible al guardar',
+        icon: ImageIcon,
+      },
+    ],
+    [form.name, form.price, form.recipe, form.comboItems, showRecipe, showCombo, structureLabel, editingId],
+  )
+
+  const isLastStep = activeStep === steps.length - 1
+  const isFirstStep = activeStep === 0
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -753,316 +875,357 @@ export function ProductFormModal({
     }
   }
 
-  return (
-    <>
-      <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-        <DialogContent className="sm:max-w-[940px] w-[95vw] max-h-[90vh] flex flex-col overflow-hidden p-0 gap-0">
-          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border shrink-0">
-            <DialogTitle>{editingId ? 'Editar Producto' : 'Nuevo Producto'}</DialogTitle>
-          </DialogHeader>
+  // ── Contenido de cada paso ────────────────────────────────────────────────
 
-          {/* Body: formulario (scroll) | imagen (fija). En móvil se apila. */}
-          <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden">
+  let stepContent: ReactNode
 
-            {/* Columna imagen — order-2 (derecha desktop / abajo móvil), fija mientras el form hace scroll */}
-            <div className="order-2 w-full md:w-[32%] md:shrink-0 md:overflow-y-auto border-t md:border-t-0 md:border-l border-border bg-muted/10 px-5 py-5">
-              <label className="block text-xs font-semibold text-muted-foreground mb-2">Imagen del producto</label>
-
-          {editingId ? (
-            <div className="space-y-2">
-              <div
-                className="relative w-full rounded-xl overflow-hidden border border-border bg-muted/20"
-                style={{ aspectRatio: '16/9' }}
-                onMouseEnter={() => setHovered(true)}
-                onMouseLeave={() => setHovered(false)}
-              >
-                {primaryImage ? (
-                  <>
-                    <img
-                      src={primaryImage.url}
-                      alt={primaryImage.altText ?? form.name}
-                      loading="lazy"
-                      className="w-full h-full object-contain"
-                      style={{ background: 'var(--muted)' }}
-                    />
-                    <div
-                      className="absolute inset-0 flex flex-col items-center justify-center gap-2 transition-opacity duration-200"
-                      style={{
-                        background: 'rgba(0,0,0,0.52)',
-                        opacity: hovered && !uploading ? 1 : 0,
-                        pointerEvents: hovered && !uploading ? 'auto' : 'none',
-                        backdropFilter: 'blur(2px)',
-                      }}
-                    >
-                      <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => setViewerOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-medium transition-colors border border-white/20">
-                          <IconEye /> Ver
-                        </button>
-                        <button type="button" onClick={handleDownload} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-medium transition-colors border border-white/20">
-                          <IconDownload /> Descargar
-                        </button>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => fileInputRef.current?.click()} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-medium transition-colors border border-white/20">
-                          <IconRefresh /> Reemplazar
-                        </button>
-                        <button type="button" onClick={handleRemoveImage} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-destructive/70 hover:bg-destructive/90 text-white text-xs font-medium transition-colors border border-destructive/40">
-                          <IconTrash /> Eliminar
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <button type="button" disabled={uploading} onClick={() => fileInputRef.current?.click()} className="w-full h-full flex flex-col items-center justify-center gap-3 text-center cursor-pointer group disabled:cursor-not-allowed">
-                    <div className="w-14 h-14 rounded-2xl bg-muted/60 border-2 border-dashed border-border group-hover:border-primary/50 group-hover:bg-primary/5 flex items-center justify-center transition-colors duration-200">
-                      <IconImage />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">Subir imagen</p>
-                      <p className="text-[11px] text-muted-foreground/60 mt-0.5">PNG, JPG, WebP · máx 5 MB</p>
-                    </div>
-                  </button>
-                )}
-                {uploading && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-background/70 backdrop-blur-sm rounded-xl">
-                    <div className="flex flex-col items-center gap-2">
-                      <IconSpinner />
-                      <span className="text-xs text-muted-foreground">{primaryImage ? 'Procesando...' : 'Subiendo...'}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-              {primaryImage && !uploading && (
-                <button type="button" onClick={() => fileInputRef.current?.click()} className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg bg-card text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors cursor-pointer">
-                  <IconUpload /> Reemplazar imagen
-                </button>
-              )}
-              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleFileChange} />
-            </div>
-          ) : (
-            <div className="w-full rounded-xl border border-dashed border-border bg-muted/10 flex items-center justify-center gap-3 py-5 px-4" style={{ aspectRatio: '16/9' }}>
-              <IconImage />
-              <div>
-                <p className="text-sm text-muted-foreground font-medium">Imagen disponible al guardar</p>
-                <p className="text-[11px] text-muted-foreground/60 mt-0.5">Guarda el producto primero para subir imagen</p>
-              </div>
-            </div>
-          )}
-
-          {uploadError && <p className="text-xs text-destructive mt-1.5">{uploadError}</p>}
-            </div>
-            {/* /Columna imagen */}
-
-            {/* Columna formulario — order-1 (izquierda desktop / arriba móvil), scroll independiente */}
-            <div className="order-1 w-full md:w-[68%] md:overflow-y-auto px-6 py-5">
-              <div className="grid grid-cols-2 gap-x-4">
-                {/* Tipo de producto */}
-          <div className="col-span-2 mb-3.5">
-            <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Tipo de producto</label>
-            <Select value={productType} onValueChange={(v) => setForm((p) => ({ ...p, type: v as Product['type'] }))}>
-              <SelectTrigger size="sm" className="w-full">
-                <SelectValue>{PRODUCT_TYPE_OPTIONS.find((o) => o.value === productType)?.label ?? productType}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {availableTypeOptions.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {!editingId && (
-            <FormField label="SKU" value={form.sku} onChange={v => setForm(p => ({ ...p, sku: v }))} />
-          )}
-          <div className={`mb-3.5${editingId ? ' col-span-2' : ''}`}>
-            <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Categoría</label>
-            <select
-              value={form.categoryId}
-              onChange={e => setForm(p => ({ ...p, categoryId: e.target.value }))}
-              className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
-            >
-              <option value="">— Sin categoría —</option>
-              {categories.map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+  if (steps[activeStep].id === 'general') {
+    stepContent = (
+      <div className="grid grid-cols-2 gap-x-4">
+        <div className="col-span-2 mb-3.5">
+          <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Tipo de producto</label>
+          <Select value={productType} onValueChange={(v) => setForm((p) => ({ ...p, type: v as Product['type'] }))}>
+            <SelectTrigger size="sm" className="w-full">
+              <SelectValue>{PRODUCT_TYPE_OPTIONS.find((o) => o.value === productType)?.label ?? productType}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {availableTypeOptions.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
               ))}
-            </select>
-          </div>
-          <div className="col-span-2">
-            <FormField label="Nombre" value={form.name} onChange={v => setForm(p => ({ ...p, name: v }))} />
-          </div>
-          <div className="col-span-2">
-            <FormField label="Descripción" value={form.description} onChange={v => setForm(p => ({ ...p, description: v }))} />
-          </div>
-          <FormField label="Precio" type="number" value={form.price.toString()} onChange={v => setForm(p => ({ ...p, price: Number(v) || 0 }))} />
-          <FormField label="Precio Compare" type="number" value={Number(form.comparePrice).toString()} onChange={v => setForm(p => ({ ...p, comparePrice: Number(v) || 0 }))} />
-          <FormField label="Costo" type="number" value={Number(form.costPrice).toString()} onChange={v => setForm(p => ({ ...p, costPrice: Number(v) || 0 }))} />
-          <div className="mb-3.5">
-            <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Estado</label>
-            <Select value={form.status} onValueChange={v => setForm(p => ({ ...p, status: v as 'DRAFT' | 'ACTIVE' | 'ARCHIVED' }))}>
-              <SelectTrigger size="sm" className="w-full">
-                <SelectValue>{STATUS_OPTIONS.find(o => o.value === form.status)?.label ?? form.status}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {STATUS_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
+            </SelectContent>
+          </Select>
+        </div>
 
-          {/* E-commerce */}
-          <div className="col-span-2 flex items-center gap-2 mb-3.5">
-            <input
-              type="checkbox"
-              id="isEcommerce"
-              checked={form.isEcommerce}
-              onChange={e => setForm(p => ({ ...p, isEcommerce: e.target.checked }))}
-            />
-            <label htmlFor="isEcommerce" className="text-xs text-muted-foreground cursor-pointer">
-              ¿Publicar este producto en la tienda en línea (e-commerce)?
-            </label>
-          </div>
+        {!editingId && (
+          <FormField label="SKU" value={form.sku} onChange={v => setForm(p => ({ ...p, sku: v }))} />
+        )}
+        <div className={`mb-3.5${editingId ? ' col-span-2' : ''}`}>
+          <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Categoría</label>
+          <select
+            value={form.categoryId}
+            onChange={e => setForm(p => ({ ...p, categoryId: e.target.value }))}
+            className="w-full px-2.5 py-2 border border-border rounded-lg text-[13px] text-foreground bg-card outline-none focus:border-primary"
+          >
+            <option value="">— Sin categoría —</option>
+            {categories.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="col-span-2">
+          <FormField label="Nombre" value={form.name} onChange={v => setForm(p => ({ ...p, name: v }))} />
+        </div>
+        <div className="col-span-2">
+          <FormField label="Descripción" value={form.description} onChange={v => setForm(p => ({ ...p, description: v }))} />
+        </div>
+        <div className="mb-3.5">
+          <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Estado</label>
+          <Select value={form.status} onValueChange={v => setForm(p => ({ ...p, status: v as 'DRAFT' | 'ACTIVE' | 'ARCHIVED' }))}>
+            <SelectTrigger size="sm" className="w-full">
+              <SelectValue>{STATUS_OPTIONS.find(o => o.value === form.status)?.label ?? form.status}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        {!editingId && (
+          <FormField label="Slug" value={form.slug} onChange={v => setForm(p => ({ ...p, slug: v }))} />
+        )}
+      </div>
+    )
+  } else if (steps[activeStep].id === 'precios') {
+    stepContent = (
+      <div className="grid grid-cols-2 gap-x-4">
+        <FormField label="Precio" type="number" value={form.price.toString()} onChange={v => setForm(p => ({ ...p, price: Number(v) || 0 }))} />
+        <FormField label="Precio Compare" type="number" value={Number(form.comparePrice).toString()} onChange={v => setForm(p => ({ ...p, comparePrice: Number(v) || 0 }))} />
+        <FormField label="Costo" type="number" value={Number(form.costPrice).toString()} onChange={v => setForm(p => ({ ...p, costPrice: Number(v) || 0 }))} />
+        <div className="mb-3.5">
+          <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Código Impuesto</label>
+          <Select
+            value={form.taxCode}
+            onValueChange={v => setForm(p => ({
+              ...p,
+              taxCode: v ?? p.taxCode,
+              taxRate: (v ? TAX_RATE_MAP[v] : undefined) ?? p.taxRate,
+            }))}
+          >
+            <SelectTrigger size="sm" className="w-full">
+              <SelectValue>{TAX_CODES.find(t => t.value === form.taxCode)?.label ?? form.taxCode}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {TAX_CODES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
 
-          {/* Las variantes ya no son exclusivas de e-commerce: cualquier producto
-              con inventario puede venderse en varias presentaciones. */}
-          {showStock && (
+        {/* Análisis de precio — visible siempre que haya costo y precio, no
+            solo en receta: también ayuda en SIMPLE/COMBO a ver el margen. */}
+        {Number(form.costPrice) > 0 && Number(form.price) > 0 && (() => {
+          const costVal = Number(form.costPrice)
+          const priceVal = Number(form.price)
+          const margin = ((priceVal - costVal) / costVal) * 100
+          return (
+            <div className="col-span-2 mt-1 rounded-lg border border-border bg-muted/20 p-3">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2.5">
+                Análisis de precio
+              </div>
+              <div className="flex items-center justify-around gap-2">
+                <div className="text-center">
+                  <div className="text-[10px] text-muted-foreground mb-0.5">Costo</div>
+                  <div className="text-[13px] font-semibold">
+                    {costVal.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}
+                  </div>
+                </div>
+                <span className="text-muted-foreground text-[11px]">→</span>
+                <div className="text-center">
+                  <div className="text-[10px] text-muted-foreground mb-0.5">Precio venta</div>
+                  <div className="text-[13px] font-semibold">
+                    {priceVal.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}
+                  </div>
+                </div>
+                <span className="text-muted-foreground text-[11px]">→</span>
+                <div className="text-center">
+                  <div className="text-[10px] text-muted-foreground mb-0.5">Margen</div>
+                  <div className={`text-[15px] font-bold ${margin >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                    {margin >= 0 ? '+' : ''}{margin.toFixed(1)}%
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
+      </div>
+    )
+  } else if (steps[activeStep].id === 'estructura') {
+    stepContent = (
+      <div className="grid grid-cols-2 gap-x-4">
+        {productType === 'SERVICE' && (
+          <div className="col-span-2 mb-3.5 p-3 rounded-lg bg-muted/30 border border-border">
+            <p className="text-xs text-muted-foreground">
+              Los servicios no manejan inventario directo. Solo se registra la venta.
+            </p>
+          </div>
+        )}
+
+        {(productType === 'RECIPE' || productType === 'COMBO') && (
+          <div className="col-span-2 mb-3.5 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
+            <p className="text-xs text-blue-700 dark:text-blue-300">
+              {productType === 'RECIPE'
+                ? 'Este producto consume insumos al venderse. No maneja stock propio.'
+                : 'El combo agrupa productos vendibles. No maneja stock propio.'}
+            </p>
+          </div>
+        )}
+
+        {showRecipe && (
+          <RecipeEditor
+            items={form.recipe?.items ?? []}
+            onChange={(items) =>
+              setForm((p) => ({ ...p, recipe: { ...(p.recipe ?? { id: '', notes: undefined }), items } }))
+            }
+            onCostChange={(cost) => setForm((p) => ({ ...p, costPrice: cost }))}
+          />
+        )}
+
+        {showCombo && (
+          <ComboEditor
+            items={form.comboItems ?? []}
+            currentProductId={editingId}
+            onChange={(items) => setForm((p) => ({ ...p, comboItems: items }))}
+            onCostChange={(cost) => setForm((p) => ({ ...p, costPrice: cost }))}
+          />
+        )}
+
+        {/* Stock — solo para SIMPLE. Es la existencia del producto "sin
+            variante"; las variantes con nombre llevan la suya abajo. */}
+        {showStock && (
+          <>
+            <FormField label="Stock" type="number" value={Number(form.stock).toString()} onChange={v => setForm(p => ({ ...p, stock: Number(v) || 0 }))} />
+            <FormField label="Stock Mínimo" type="number" value={form.lowStockAlert.toString()} onChange={v => setForm(p => ({ ...p, lowStockAlert: Number(v) || 0 }))} />
+            <div className="col-span-2 flex items-center gap-2 mb-3.5">
+              <input type="checkbox" id="trackInv" checked={form.trackInventory} onChange={e => setForm(p => ({ ...p, trackInventory: e.target.checked }))} />
+              <label htmlFor="trackInv" className="text-xs text-muted-foreground cursor-pointer">Rastrear inventario</label>
+            </div>
+            {/* Las variantes ya no son exclusivas de e-commerce: cualquier
+                producto con inventario puede venderse en varias presentaciones. */}
             <VariantsEditor
               items={form.variants ?? []}
               onChange={(items) => setForm(p => ({ ...p, variants: items }))}
             />
-          )}
-
-          <FeaturesEditor
-            items={form.features ?? []}
-            onChange={(items) => setForm(p => ({ ...p, features: items }))}
+          </>
+        )}
+      </div>
+    )
+  } else if (steps[activeStep].id === 'publicacion') {
+    stepContent = (
+      <div className="grid grid-cols-2 gap-x-4">
+        <div className="col-span-2 flex items-center gap-2 mb-3.5">
+          <input
+            type="checkbox"
+            id="isEcommerce"
+            checked={form.isEcommerce}
+            onChange={e => setForm(p => ({ ...p, isEcommerce: e.target.checked }))}
           />
+          <label htmlFor="isEcommerce" className="text-xs text-muted-foreground cursor-pointer">
+            ¿Publicar este producto en la tienda en línea (e-commerce)?
+          </label>
+        </div>
 
-          {/* Stock — solo para SIMPLE. Este campo es la existencia del producto
-              "sin variante"; las variantes con nombre llevan la suya arriba. */}
-          {showStock && (
-            <>
-              <FormField label="Stock" type="number" value={Number(form.stock).toString()} onChange={v => setForm(p => ({ ...p, stock: Number(v) || 0 }))} />
-              <FormField label="Stock Mínimo" type="number" value={form.lowStockAlert.toString()} onChange={v => setForm(p => ({ ...p, lowStockAlert: Number(v) || 0 }))} />
-              <div className="col-span-2 flex items-center gap-2 mb-3.5">
-                <input type="checkbox" id="trackInv" checked={form.trackInventory} onChange={e => setForm(p => ({ ...p, trackInventory: e.target.checked }))} />
-                <label htmlFor="trackInv" className="text-xs text-muted-foreground cursor-pointer">Rastrear inventario</label>
-              </div>
-            </>
-          )}
+        <div className="col-span-2">
+          <FormField label="Meta Title" value={form.metaTitle} onChange={v => setForm(p => ({ ...p, metaTitle: v }))} />
+        </div>
+        <div className="col-span-2">
+          <FormField label="Meta Description" value={form.metaDescription} onChange={v => setForm(p => ({ ...p, metaDescription: v }))} />
+        </div>
 
-          {/* SERVICE hint */}
-          {productType === 'SERVICE' && (
-            <div className="col-span-2 mb-3.5 p-3 rounded-lg bg-muted/30 border border-border">
-              <p className="text-xs text-muted-foreground">
-                Los servicios no manejan inventario directo. Solo se registra la venta.
-              </p>
-            </div>
-          )}
-
-          {/* RECIPE / COMBO hint for non-SIMPLE */}
-          {(productType === 'RECIPE' || productType === 'COMBO') && (
-            <div className="col-span-2 mb-3.5 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
-              <p className="text-xs text-blue-700 dark:text-blue-300">
-                {productType === 'RECIPE'
-                  ? 'Este producto consume insumos al venderse. No maneja stock propio.'
-                  : 'El combo agrupa productos vendibles. No maneja stock propio.'}
-              </p>
-            </div>
-          )}
-
-          {/* Recipe items editor */}
-          {showRecipe && (
-            <>
-              <RecipeEditor
-                items={form.recipe?.items ?? []}
-                onChange={(items) =>
-                  setForm((p) => ({ ...p, recipe: { ...(p.recipe ?? { id: '', notes: undefined }), items } }))
-                }
-                onCostChange={(cost) => setForm((p) => ({ ...p, costPrice: cost }))}
-              />
-              {/* Price / margin analysis */}
-              {Number(form.costPrice) > 0 && Number(form.price) > 0 && (() => {
-                const costVal = Number(form.costPrice)
-                const priceVal = Number(form.price)
-                const margin = ((priceVal - costVal) / costVal) * 100
-                return (
-                  <div className="col-span-2 mb-3.5 rounded-lg border border-border bg-muted/20 p-3">
-                    <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2.5">
-                      Análisis de precio
+        <FeaturesEditor
+          items={form.features ?? []}
+          onChange={(items) => setForm(p => ({ ...p, features: items }))}
+        />
+      </div>
+    )
+  } else {
+    // 'imagen'
+    stepContent = (
+      <div className="max-w-sm mx-auto">
+        {editingId ? (
+          <div className="space-y-2">
+            <div
+              className="relative w-full rounded-xl overflow-hidden border border-border bg-muted/20"
+              style={{ aspectRatio: '16/9' }}
+              onMouseEnter={() => setHovered(true)}
+              onMouseLeave={() => setHovered(false)}
+            >
+              {primaryImage ? (
+                <>
+                  <img
+                    src={primaryImage.url}
+                    alt={primaryImage.altText ?? form.name}
+                    loading="lazy"
+                    className="w-full h-full object-contain"
+                    style={{ background: 'var(--muted)' }}
+                  />
+                  <div
+                    className="absolute inset-0 flex flex-col items-center justify-center gap-2 transition-opacity duration-200"
+                    style={{
+                      background: 'rgba(0,0,0,0.52)',
+                      opacity: hovered && !uploading ? 1 : 0,
+                      pointerEvents: hovered && !uploading ? 'auto' : 'none',
+                      backdropFilter: 'blur(2px)',
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => setViewerOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-medium transition-colors border border-white/20">
+                        <IconEye /> Ver
+                      </button>
+                      <button type="button" onClick={handleDownload} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-medium transition-colors border border-white/20">
+                        <IconDownload /> Descargar
+                      </button>
                     </div>
-                    <div className="flex items-center justify-around gap-2">
-                      <div className="text-center">
-                        <div className="text-[10px] text-muted-foreground mb-0.5">Costo receta</div>
-                        <div className="text-[13px] font-semibold">
-                          {costVal.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}
-                        </div>
-                      </div>
-                      <span className="text-muted-foreground text-[11px]">→</span>
-                      <div className="text-center">
-                        <div className="text-[10px] text-muted-foreground mb-0.5">Precio venta</div>
-                        <div className="text-[13px] font-semibold">
-                          {priceVal.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}
-                        </div>
-                      </div>
-                      <span className="text-muted-foreground text-[11px]">→</span>
-                      <div className="text-center">
-                        <div className="text-[10px] text-muted-foreground mb-0.5">Margen</div>
-                        <div className={`text-[15px] font-bold ${margin >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                          {margin >= 0 ? '+' : ''}{margin.toFixed(1)}%
-                        </div>
-                      </div>
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => fileInputRef.current?.click()} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-medium transition-colors border border-white/20">
+                        <IconRefresh /> Reemplazar
+                      </button>
+                      <button type="button" onClick={handleRemoveImage} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-destructive/70 hover:bg-destructive/90 text-white text-xs font-medium transition-colors border border-destructive/40">
+                        <IconTrash /> Eliminar
+                      </button>
                     </div>
                   </div>
-                )
-              })()}
-            </>
-          )}
-
-          {/* Combo items editor */}
-          {showCombo && (
-            <ComboEditor
-              items={form.comboItems ?? []}
-              currentProductId={editingId}
-              onChange={(items) => setForm((p) => ({ ...p, comboItems: items }))}
-              onCostChange={(cost) => setForm((p) => ({ ...p, costPrice: cost }))}
-            />
-          )}
-
-          {!editingId && (
-            <FormField label="Slug" value={form.slug} onChange={v => setForm(p => ({ ...p, slug: v }))} />
-          )}
-          <div className="mb-3.5">
-            <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Código Impuesto</label>
-            <Select
-              value={form.taxCode}
-              onValueChange={v => setForm(p => ({
-                ...p,
-                taxCode: v ?? p.taxCode,
-                taxRate: (v ? TAX_RATE_MAP[v] : undefined) ?? p.taxRate,
-              }))}
-            >
-              <SelectTrigger size="sm" className="w-full">
-                <SelectValue>{TAX_CODES.find(t => t.value === form.taxCode)?.label ?? form.taxCode}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {TAX_CODES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="col-span-2">
-            <FormField label="Meta Title" value={form.metaTitle} onChange={v => setForm(p => ({ ...p, metaTitle: v }))} />
-          </div>
-          <div className="col-span-2">
-            <FormField label="Meta Description" value={form.metaDescription} onChange={v => setForm(p => ({ ...p, metaDescription: v }))} />
-          </div>
-              </div>
+                </>
+              ) : (
+                <button type="button" disabled={uploading} onClick={() => fileInputRef.current?.click()} className="w-full h-full flex flex-col items-center justify-center gap-3 text-center cursor-pointer group disabled:cursor-not-allowed">
+                  <div className="w-14 h-14 rounded-2xl bg-muted/60 border-2 border-dashed border-border group-hover:border-primary/50 group-hover:bg-primary/5 flex items-center justify-center transition-colors duration-200">
+                    <IconImage />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">Subir imagen</p>
+                    <p className="text-[11px] text-muted-foreground/60 mt-0.5">PNG, JPG, WebP · máx 5 MB</p>
+                  </div>
+                </button>
+              )}
+              {uploading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-background/70 backdrop-blur-sm rounded-xl">
+                  <div className="flex flex-col items-center gap-2">
+                    <IconSpinner />
+                    <span className="text-xs text-muted-foreground">{primaryImage ? 'Procesando...' : 'Subiendo...'}</span>
+                  </div>
+                </div>
+              )}
             </div>
-            {/* /Columna formulario */}
+            {primaryImage && !uploading && (
+              <button type="button" onClick={() => fileInputRef.current?.click()} className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg bg-card text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors cursor-pointer">
+                <IconUpload /> Reemplazar imagen
+              </button>
+            )}
+            <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleFileChange} />
+          </div>
+        ) : (
+          <div className="w-full rounded-xl border border-dashed border-border bg-muted/10 flex flex-col items-center justify-center gap-3 py-10 px-4 text-center" style={{ aspectRatio: '16/9' }}>
+            <IconImage />
+            <div>
+              <p className="text-sm text-muted-foreground font-medium">Imagen disponible al guardar</p>
+              <p className="text-[11px] text-muted-foreground/60 mt-0.5">Guarda el producto primero para subir imagen</p>
+            </div>
+          </div>
+        )}
+        {uploadError && <p className="text-xs text-destructive mt-1.5">{uploadError}</p>}
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+        <DialogContent className="sm:max-w-[880px] w-[95vw] max-h-[90vh] flex flex-col overflow-hidden p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border shrink-0">
+            <DialogTitle>{editingId ? 'Editar Producto' : 'Nuevo Producto'}</DialogTitle>
+            {editingId && form.name && (
+              <p className="text-xs text-muted-foreground -mt-1">{form.name}</p>
+            )}
+          </DialogHeader>
+
+          {/* Body: rail de pasos | contenido del paso activo. En móvil, el rail
+              se vuelve una fila de chips horizontal arriba del contenido. */}
+          <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden">
+            <div className="order-1 w-full md:w-[220px] md:shrink-0 border-b md:border-b-0 md:border-r border-border bg-muted/10 px-2 py-2.5 md:px-3 md:py-4">
+              <StepRail steps={steps} activeStep={activeStep} onSelect={setActiveStep} />
+            </div>
+
+            <div className="order-2 flex-1 min-w-0 md:overflow-y-auto px-6 py-5">
+              {stepContent}
+            </div>
           </div>
           {/* /Body */}
 
-          {/* Footer fijo */}
-          <div className="flex gap-2.5 justify-end px-6 py-4 border-t border-border shrink-0 bg-card">
+          {/* Footer fijo — navegación del wizard + acciones. Guardar y
+              Cancelar quedan disponibles siempre: nada obliga a recorrer
+              todos los pasos para guardar una edición puntual. */}
+          <div className="flex items-center gap-2.5 px-6 py-4 border-t border-border shrink-0 bg-card">
+            <button
+              type="button"
+              onClick={() => setActiveStep(s => Math.max(0, s - 1))}
+              disabled={isFirstStep}
+              className="flex items-center gap-1 px-3 py-2 border border-border rounded-lg bg-card text-[13px] text-muted-foreground cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed hover:text-foreground transition-colors"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" /> Anterior
+            </button>
+            {!isLastStep && (
+              <button
+                type="button"
+                onClick={() => setActiveStep(s => Math.min(steps.length - 1, s + 1))}
+                className="flex items-center gap-1 px-3 py-2 border border-border rounded-lg bg-card text-[13px] text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
+              >
+                Siguiente <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+
+            <span className="flex-1" />
+
             <button type="button" onClick={onClose} className="px-4.5 py-2 border border-border rounded-lg bg-card text-[13px] cursor-pointer text-muted-foreground">Cancelar</button>
-            <button type="button" onClick={onSave} className="px-4.5 py-2 bg-primary text-primary-foreground border-none rounded-lg text-[13px] font-semibold cursor-pointer">Guardar</button>
+            <button type="button" onClick={onSave} className="flex items-center gap-1.5 px-4.5 py-2 bg-primary text-primary-foreground border-none rounded-lg text-[13px] font-semibold cursor-pointer">
+              <Check className="w-3.5 h-3.5" /> Guardar
+            </button>
           </div>
         </DialogContent>
       </Dialog>

@@ -5,8 +5,9 @@
  * Every screen renders inside one, which is what keeps the 60 px top padding of
  * the prototype consistent without each screen re-deriving it from insets.
  */
+import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
-import type { ReactNode } from 'react';
+import { useContext, type ReactNode } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -51,10 +52,17 @@ export function OrbixScaffold({
 }: OrbixScaffoldProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  // Dentro del navegador de pestañas la barra ya ocupa el área segura inferior,
+  // y el contenido de la pantalla termina por encima de ella. Sumar
+  // `insets.bottom` ahí deja un hueco fantasma del alto del notch. Se lee por
+  // contexto y no con `useBottomTabBarHeight()` porque ese hook revienta fuera
+  // de un tab navigator, y este scaffold también lo usan auth y el wizard.
+  const insideTabs = (useContext(BottomTabBarHeightContext) ?? 0) > 0;
 
   const paddingHorizontal = horizontalPadding ?? theme.spacing['2xl'];
   const paddingTop = insets.top + topPadding;
-  const paddingBottom = (bottomPadding ?? theme.spacing['3xl']) + insets.bottom;
+  const paddingBottom =
+    (bottomPadding ?? theme.spacing['3xl']) + (insideTabs ? 0 : insets.bottom);
 
   const inner: StyleProp<ViewStyle> = [
     { paddingHorizontal, paddingTop, paddingBottom },
