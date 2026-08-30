@@ -46,10 +46,14 @@ export const palette = {
   secondaryLight: '#e8f3ff', // oklch(0.96 0.04 250)
   destructiveLight: '#e40016', // oklch(0.577 0.245 27.325)
 
-  /** Light-theme wash stops — color-mix(in oklch, <brand> N%, white). */
-  washBlue: '#DDF0F7',
-  washPurple: '#E8F3F6',
-  washPink: '#ECF3F3',
+  /**
+   * Paradas del degradado `wash`, en orden. Se nombran por posición y no por
+   * tono a propósito: son lo primero que se recolorea, y unos nombres de color
+   * quedan mintiendo en cuanto la paleta cambia.
+   */
+  washStart: '#DDF0F7',
+  washMid: '#E8F3F6',
+  washEnd: '#ECF3F3',
 
   /** Dark scheme. */
   darkBackground: '#040609', // oklch(0.12 0.01 250)
@@ -180,9 +184,9 @@ export const lightGradients: ThemeGradients = {
     locations: [0, 0.6, 1],
     angle: 135,
   },
-  // linear-gradient(160deg, mix(blue 10% white), mix(purple 10% white) 55%, mix(pink 8% white))
+  // Fondo de Inicio, Ventas, el selector de empresa, el onboarding y el wizard.
   wash: {
-    colors: [palette.washBlue, palette.washPurple, palette.washPink],
+    colors: [palette.washStart, palette.washMid, palette.washEnd],
     locations: [0, 0.55, 1],
     angle: 160,
   },

@@ -75,6 +75,24 @@ virtual-store-dir=C:/ps
 compañeros en Mac/Linux — ahí el límite de 260 caracteres no existe y pnpm usa su
 ubicación default sin problema.
 
+#### Consecuencia en el dev server de Metro (ya resuelta en `metro.config.js`)
+
+Sacar el store del árbol del repo rompe el dev server: `expo start` y
+`expo run:android` en debug devuelven **404** al pedir el bundle, con un
+`UnableToResolveError` sobre `./ps/expo-router@…/entry`. Expo genera el nombre del
+módulo de entrada relativo al *serverRoot* —por defecto el workspace root—, y como el
+store queda fuera de ese árbol, la ruta pierde los `..` iniciales:
+`../../../ps/…` se convierte en `./ps/…`, que no existe.
+
+`metro.config.js` lo cubre poniendo el serverRoot en la raíz del volumen, de modo que
+contenga a la vez el proyecto y el store y la ruta no tenga que salirse. Si mueves el
+store a otra unidad o cambias `virtual-store-dir`, ajusta ahí la constante `pnpmStore`.
+
+Ese serverRoot delimita lo que el dev server puede direccionar por URL, y Metro escucha
+en `0.0.0.0`. En una red que no controles, arranca con `expo start --host localhost`
+(y `adb reverse tcp:8081 tcp:8081` para un dispositivo físico; el emulador llega solo
+por `10.0.2.2`).
+
 ## Gotcha de Windows: rutas largas (nativo)
 
 Con el repo en una ruta larga, el codegen de C++ de algunos módulos
