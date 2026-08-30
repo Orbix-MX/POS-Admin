@@ -96,7 +96,7 @@ export default function ProductsListScreen() {
   );
 
   return (
-    <OrbixScaffold background="surface" contentStyle={{ gap: theme.spacing.lg }}>
+    <OrbixScaffold contentStyle={{ gap: theme.spacing.lg }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md }}>
         <BackButton onPress={() => router.back()} accessibilityLabel={t('a11y.back')} />
         <OrbixText size="xl" weight="bold" style={{ flex: 1 }} accessibilityRole="header">

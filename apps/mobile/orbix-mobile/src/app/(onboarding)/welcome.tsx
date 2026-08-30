@@ -63,7 +63,7 @@ export default function WelcomeScreen() {
   const horizontalPadding = theme.spacing['2xl'];
 
   return (
-    <OrbixScaffold background="wash" horizontalPadding={0} topPadding={theme.spacing.md}>
+    <OrbixScaffold horizontalPadding={0} topPadding={theme.spacing.md}>
       <View style={{ paddingHorizontal: horizontalPadding, alignItems: 'flex-end' }}>
         <Pressable
           onPress={finish}

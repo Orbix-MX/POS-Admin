@@ -33,7 +33,7 @@ export default function NewCustomerScreen() {
   }
 
   return (
-    <OrbixScaffold background="surface" scrollable contentStyle={{ gap: theme.spacing.xl }}>
+    <OrbixScaffold scrollable contentStyle={{ gap: theme.spacing.xl }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md }}>
         <BackButton onPress={() => router.back()} accessibilityLabel={t('a11y.back')} />
         <OrbixText size="xl" weight="bold" accessibilityRole="header">

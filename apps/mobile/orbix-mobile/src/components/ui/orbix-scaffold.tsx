@@ -22,7 +22,11 @@ import { useTheme } from '@/hooks/use-theme';
 
 export interface OrbixScaffoldProps {
   children: ReactNode;
-  /** `wash` reproduces `--grad-wash`; `splash` is the dark hero canvas. */
+  /**
+   * `wash` es el fondo de la app y el valor por defecto. `surface` deja el
+   * color plano de `--background` para una pantalla que necesite un lienzo
+   * neutro, y `splash` es el lienzo oscuro del arranque.
+   */
   background?: 'surface' | 'wash' | 'splash';
   scrollable?: boolean;
   /** Horizontal padding; the prototype uses 24 px on every screen. */
@@ -37,7 +41,7 @@ export interface OrbixScaffoldProps {
 
 export function OrbixScaffold({
   children,
-  background = 'surface',
+  background = 'wash',
   scrollable = false,
   horizontalPadding,
   topPadding = 0,

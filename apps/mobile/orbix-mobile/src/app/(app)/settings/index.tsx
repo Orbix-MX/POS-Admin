@@ -92,7 +92,7 @@ export default function SettingsIndexScreen() {
 
   if (!isTablet) {
     return (
-      <OrbixScaffold background="surface" scrollable contentStyle={{ gap: theme.spacing.xl }}>
+      <OrbixScaffold scrollable contentStyle={{ gap: theme.spacing.xl }}>
         {header}
         <CategoryList
           showChevron
@@ -107,7 +107,7 @@ export default function SettingsIndexScreen() {
   }
 
   return (
-    <OrbixScaffold background="surface" contentStyle={{ gap: theme.spacing.xl }}>
+    <OrbixScaffold contentStyle={{ gap: theme.spacing.xl }}>
       {header}
       <View style={{ flex: 1, flexDirection: 'row', gap: theme.spacing.xl }}>
         <ScrollView style={{ width: 320, flexGrow: 0 }} showsVerticalScrollIndicator={false}>

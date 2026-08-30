@@ -394,7 +394,7 @@ export default function PosScreen() {
   const canSell = can('orders:create');
 
   return (
-    <OrbixScaffold background="wash" contentStyle={{ gap: theme.spacing.md }}>
+    <OrbixScaffold contentStyle={{ gap: theme.spacing.md }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md }}>
         {/* Ventas es una pantalla raíz, no un detalle: no hay nada detrás a lo
             que volver, así que el hueco del header lo ocupa el acceso al

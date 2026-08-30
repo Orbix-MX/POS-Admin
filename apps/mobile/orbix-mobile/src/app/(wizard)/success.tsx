@@ -55,7 +55,7 @@ export default function WizardSuccessScreen() {
   }, [createTenant, reset, refresh, router, t]);
 
   return (
-    <OrbixScaffold background="wash" horizontalPadding={theme.spacing['4xl']}>
+    <OrbixScaffold horizontalPadding={theme.spacing['4xl']}>
       <Confetti />
 
       <View

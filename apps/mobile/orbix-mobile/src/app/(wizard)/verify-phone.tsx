@@ -144,7 +144,6 @@ export default function VerifyPhoneScreen() {
 
   return (
     <OrbixScaffold
-      background="wash"
       scrollable
       topPadding={theme.spacing.md}
       contentStyle={{ gap: theme.spacing.xl }}

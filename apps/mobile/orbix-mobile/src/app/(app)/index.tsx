@@ -75,7 +75,7 @@ export default function HomeScreen() {
   }, [session?.capabilities?.businessVertical, session?.tenant?.plan]);
 
   return (
-    <OrbixScaffold background="wash" scrollable contentStyle={{ gap: theme.spacing.xl }}>
+    <OrbixScaffold scrollable contentStyle={{ gap: theme.spacing.xl }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md }}>
         <OrbixAvatar name={session?.user.fullName ?? 'Orbix'} size={44} />
         <View style={{ flex: 1, gap: 2 }}>

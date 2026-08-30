@@ -55,7 +55,7 @@ export default function SelectTenantScreen() {
   const tenants = session?.availableTenants ?? [];
 
   return (
-    <OrbixScaffold background="wash" contentStyle={{ gap: theme.spacing.xl }}>
+    <OrbixScaffold contentStyle={{ gap: theme.spacing.xl }}>
       <View style={{ gap: theme.spacing.xs }}>
         <OrbixText size="2xl" weight="bold" accessibilityRole="header">
           {t('tenant.selectTitle')}
