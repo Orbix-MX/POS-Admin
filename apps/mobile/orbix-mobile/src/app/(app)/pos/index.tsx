@@ -426,6 +426,7 @@ export default function PosScreen() {
             placeholder={t('pos.searchPlaceholder')}
             autoCapitalize="none"
             autoCorrect={false}
+            borderRadius={theme.radius.full}
             leftAdornment={<SearchIcon size={15} color={theme.colors.mutedForeground} />}
           />
 

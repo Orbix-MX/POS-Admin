@@ -34,6 +34,8 @@ export interface OrbixInputProps extends Omit<TextInputProps, 'style'> {
   rightAdornment?: React.ReactNode;
   containerStyle?: StyleProp<ViewStyle>;
   height?: number;
+  /** Radio del campo; `radius.full` lo deja en pastilla. */
+  borderRadius?: number;
 }
 
 export const OrbixInput = forwardRef<TextInput, OrbixInputProps>(function OrbixInput(
@@ -43,6 +45,7 @@ export const OrbixInput = forwardRef<TextInput, OrbixInputProps>(function OrbixI
     rightAdornment,
     containerStyle,
     height = 44,
+    borderRadius,
     onFocus,
     onBlur,
     editable = true,
@@ -51,6 +54,7 @@ export const OrbixInput = forwardRef<TextInput, OrbixInputProps>(function OrbixI
   ref,
 ) {
   const theme = useTheme();
+  const radius = borderRadius ?? theme.radius.lg;
   const focus = useSharedValue(0);
   const error = useDerivedValue(() => withTiming(hasError ? 1 : 0, { duration: 150 }), [hasError]);
 
@@ -96,7 +100,7 @@ export const OrbixInput = forwardRef<TextInput, OrbixInputProps>(function OrbixI
             left: -3,
             right: -3,
             bottom: -3,
-            borderRadius: theme.radius.lg + 3,
+            borderRadius: radius + 3,
             backgroundColor: theme.colors.ring,
           },
           ringStyle,
@@ -110,7 +114,7 @@ export const OrbixInput = forwardRef<TextInput, OrbixInputProps>(function OrbixI
             alignItems: 'center',
             height,
             borderWidth: 1,
-            borderRadius: theme.radius.lg,
+            borderRadius: radius,
             backgroundColor: editable ? theme.colors.card : theme.colors.muted,
             paddingHorizontal: theme.spacing.md,
           },
