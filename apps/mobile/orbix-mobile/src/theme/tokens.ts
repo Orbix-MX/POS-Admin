@@ -47,9 +47,9 @@ export const palette = {
   destructiveLight: '#e40016', // oklch(0.577 0.245 27.325)
 
   /** Light-theme wash stops — color-mix(in oklch, <brand> N%, white). */
-  washBlue: '#e6f0fb',
-  washPurple: '#f6ecfb',
-  washPink: '#fff3f7',
+  washBlue: '#DDF0F7',
+  washPurple: '#E8F3F6',
+  washPink: '#ECF3F3',
 
   /** Dark scheme. */
   darkBackground: '#040609', // oklch(0.12 0.01 250)
