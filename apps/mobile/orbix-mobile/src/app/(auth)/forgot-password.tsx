@@ -10,7 +10,7 @@ import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
-import { BackButton, FieldGroup, InlineError, OrbixButton, OrbixScaffold, OrbixText, OrbixTextField } from '@/components';
+import { AuthScreen, BackButton, FieldGroup, InlineError, OrbixButton, OrbixText, OrbixTextField } from '@/components';
 import { buildForgotPasswordSchema, type ForgotPasswordValues } from '@/features/auth/schemas';
 import { useRequestPasswordReset } from '@/features/settings/use-account';
 import { useTheme } from '@/hooks/use-theme';
@@ -46,20 +46,14 @@ export default function ForgotPasswordScreen() {
   );
 
   return (
-    <OrbixScaffold
-      scrollable
-      topPadding={theme.spacing['4xl']}
-      contentStyle={{ gap: theme.spacing.xl + 2 }}
+    <AuthScreen
+      leading={<BackButton onPress={() => router.back()} accessibilityLabel={t('a11y.back')} />}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md }}>
-        <BackButton onPress={() => router.back()} accessibilityLabel={t('a11y.back')} />
-      </View>
-
-      <View style={{ gap: theme.spacing.xs }}>
-        <OrbixText size="2xl" weight="bold" accessibilityRole="header">
+      <View style={{ gap: theme.spacing.sm }}>
+        <OrbixText size="3xl" weight="medium" align="center" accessibilityRole="header">
           {t('auth.forgotPassword.title')}
         </OrbixText>
-        <OrbixText size="base" tone="mutedForeground">
+        <OrbixText size="md" tone="mutedForeground" align="center">
           {t('auth.forgotPassword.subtitle')}
         </OrbixText>
       </View>
@@ -107,6 +101,6 @@ export default function ForgotPasswordScreen() {
           {t('auth.forgotPassword.backToSignIn')}
         </OrbixText>
       </Pressable>
-    </OrbixScaffold>
+    </AuthScreen>
   );
 }

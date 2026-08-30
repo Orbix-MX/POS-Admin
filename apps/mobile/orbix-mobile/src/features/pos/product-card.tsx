@@ -6,9 +6,10 @@
  * counter device where the operator taps fast and imprecisely.
  */
 import { memo, useCallback } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, View, type GestureResponderEvent } from 'react-native';
 
 import { OrbixGradient, OrbixText } from '@/components';
+import { Ripple, useRipple } from '@/components/animations/ripple';
 import { PackageIcon, PlusIcon } from '@/components/ui/icons';
 import { useTheme } from '@/hooks/use-theme';
 import type { Product } from '@/repositories/products-repository';
@@ -25,6 +26,7 @@ interface ProductCardProps {
 
 function ProductCardComponent({ product, quantity, onAdd, labels }: ProductCardProps) {
   const theme = useTheme();
+  const ripple = useRipple();
 
   const inCart = quantity > 0;
   const outOfStock = product.trackInventory && product.stock <= 0;
@@ -35,6 +37,14 @@ function ProductCardComponent({ product, quantity, onAdd, labels }: ProductCardP
     if (!outOfStock) onAdd(product);
   }, [onAdd, outOfStock, product]);
 
+  const handlePressIn = useCallback(
+    (event: GestureResponderEvent) => {
+      if (outOfStock) return;
+      ripple.trigger(event.nativeEvent.locationX, event.nativeEvent.locationY);
+    },
+    [outOfStock, ripple],
+  );
+
   const subtitle = outOfStock
     ? labels.outOfStock
     : product.trackInventory
@@ -44,11 +54,16 @@ function ProductCardComponent({ product, quantity, onAdd, labels }: ProductCardP
   return (
     <Pressable
       onPress={handleAdd}
+      onPressIn={handlePressIn}
       disabled={outOfStock}
       accessibilityRole="button"
       accessibilityLabel={`${product.name}, ${formatCurrency(product.price)}`}
       accessibilityState={{ disabled: outOfStock }}
-      style={({ pressed }) => ({
+      // Objeto estático + `Ripple`, no la forma `style={({pressed}) => …}`:
+      // con nativewind + React Compiler esa forma descarta el estilo en
+      // silencio (ver `google-button.tsx`), y aquí se llevaba por delante el
+      // fondo, el borde y el radio de la tarjeta.
+      style={{
         flex: 1,
         gap: 9,
         padding: 10,
@@ -56,8 +71,9 @@ function ProductCardComponent({ product, quantity, onAdd, labels }: ProductCardP
         backgroundColor: theme.colors.card,
         borderWidth: 1,
         borderColor: inCart ? theme.colors.accentPurple : theme.colors.border,
-        opacity: outOfStock ? 0.5 : pressed ? 0.9 : 1,
-      })}
+        opacity: outOfStock ? 0.5 : 1,
+        overflow: 'hidden',
+      }}
     >
       <View
         style={{
@@ -155,6 +171,10 @@ function ProductCardComponent({ product, quantity, onAdd, labels }: ProductCardP
           </View>
         )}
       </View>
+
+      {outOfStock ? null : (
+        <Ripple {...ripple} color={theme.colors.primary} borderRadius={theme.radius.xl} />
+      )}
     </Pressable>
   );
 }

@@ -3,10 +3,18 @@
  *
  * Renders nothing when no client ID is configured, so a checkout without
  * credentials shows a clean sign-in screen instead of a button that cannot work.
+ *
+ * Style is a static object + `Ripple` overlay, not `Pressable`'s function-style
+ * prop (`style={({pressed}) => ({...})}`) — on this project's current
+ * RN/React Compiler combination that function form silently drops the computed
+ * style (`flexDirection`, border and background included), which collapsed this
+ * button into an unstyled stacked column. `SettingsRow` and `SettingsOptionRow`
+ * hit the same thing and were fixed the same way.
  */
-import { memo } from 'react';
-import { Pressable, View } from 'react-native';
+import { memo, useCallback } from 'react';
+import { Pressable, View, type GestureResponderEvent } from 'react-native';
 
+import { Ripple, useRipple } from '@/components/animations/ripple';
 import { GoogleGlyph } from '@/components/ui/icons';
 import { OrbixSpinner } from '@/components/ui/orbix-loading';
 import { OrbixText } from '@/components/ui/orbix-text';
@@ -21,17 +29,27 @@ export interface GoogleButtonProps {
 
 function GoogleButtonComponent({ label, onPress, loading = false, visible = true }: GoogleButtonProps) {
   const theme = useTheme();
+  const ripple = useRipple();
+
+  const handlePressIn = useCallback(
+    (event: GestureResponderEvent) => {
+      if (loading) return;
+      ripple.trigger(event.nativeEvent.locationX, event.nativeEvent.locationY);
+    },
+    [loading, ripple],
+  );
 
   if (!visible) return null;
 
   return (
     <Pressable
       onPress={loading ? undefined : onPress}
+      onPressIn={handlePressIn}
       disabled={loading}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ busy: loading, disabled: loading }}
-      style={({ pressed }) => ({
+      style={{
         height: 44,
         flexDirection: 'row',
         alignItems: 'center',
@@ -40,14 +58,16 @@ function GoogleButtonComponent({ label, onPress, loading = false, visible = true
         borderRadius: theme.radius.lg,
         borderWidth: 1,
         borderColor: theme.colors.border,
-        backgroundColor: pressed ? theme.colors.muted : theme.colors.card,
+        backgroundColor: theme.colors.card,
         opacity: loading ? 0.6 : 1,
-      })}
+        overflow: 'hidden',
+      }}
     >
       {loading ? <OrbixSpinner size={16} /> : <GoogleGlyph size={18} />}
       <OrbixText size="md" weight="medium">
         {label}
       </OrbixText>
+      {loading ? null : <Ripple {...ripple} color={theme.colors.primary} borderRadius={theme.radius.lg} />}
     </Pressable>
   );
 }

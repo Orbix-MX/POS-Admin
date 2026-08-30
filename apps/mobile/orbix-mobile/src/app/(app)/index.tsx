@@ -25,6 +25,7 @@ import {
   PackageIcon,
   UsersIcon,
 } from '@/components';
+import { Ripple, useRipple } from '@/components/animations/ripple';
 import { useDashboardStats } from '@/features/common/use-dashboard-stats';
 import { getHomeScreenPref, type HomeScreenPref } from '@/features/settings/use-settings-prefs';
 import { useAuth } from '@/hooks/use-auth';
@@ -45,6 +46,7 @@ const HOME_SCREEN_ROUTES: Record<Exclude<HomeScreenPref, 'inicio'>, { route: '/(
 
 export default function HomeScreen() {
   const theme = useTheme();
+  const menuRipple = useRipple();
   const router = useRouter();
   const { t } = useTranslation();
   const { session } = useAuth();
@@ -91,19 +93,26 @@ export default function HomeScreen() {
         </View>
         <Pressable
           onPress={() => setDrawerVisible(true)}
+          onPressIn={(event) =>
+            menuRipple.trigger(event.nativeEvent.locationX, event.nativeEvent.locationY)
+          }
           accessibilityRole="button"
           accessibilityLabel={t('drawer.title')}
           hitSlop={8}
-          style={({ pressed }) => ({
+          // Objeto estático + `Ripple`: la forma `style={({pressed}) => …}` se
+          // descarta con nativewind + React Compiler (ver `google-button.tsx`).
+          style={{
             width: 40,
             height: 40,
             borderRadius: theme.radius.full,
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: pressed ? theme.colors.border : theme.colors.muted,
-          })}
+            backgroundColor: theme.colors.muted,
+            overflow: 'hidden',
+          }}
         >
           <MenuIcon size={20} color={theme.colors.foreground} />
+          <Ripple {...menuRipple} color={theme.colors.primary} borderRadius={theme.radius.full} />
         </Pressable>
       </View>
       <AppDrawer visible={drawerVisible} onClose={() => setDrawerVisible(false)} />

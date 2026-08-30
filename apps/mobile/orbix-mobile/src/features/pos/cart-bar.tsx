@@ -51,7 +51,10 @@ function CartBarComponent({ countLabel, totalLabel, chargeLabel, disabled, onPre
         accessibilityRole="button"
         accessibilityLabel={`${chargeLabel}, ${countLabel}, ${totalLabel}`}
         accessibilityState={{ disabled: Boolean(disabled) }}
-        style={({ pressed }) => ({ opacity: disabled ? 0.5 : pressed ? 0.92 : 1 })}
+        // Objeto estático, no `style={({pressed}) => …}`: con nativewind +
+        // React Compiler esa forma se descarta entera (ver `google-button.tsx`),
+        // así que ni el 50% de `disabled` llegaba a aplicarse.
+        style={{ opacity: disabled ? 0.5 : 1 }}
       >
         <OrbixGradient
           variant="primary"

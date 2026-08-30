@@ -1,8 +1,9 @@
 /**
  * Account creation — `POST /api/auth/register`.
  *
- * Matches the prototype's sign-up screen field for field. The password toggle
- * is a text button inside the input, as in the design, rather than an eye icon.
+ * Twin of the sign-in screen: same floating `AuthScreen` panel and section
+ * order, with the name field added and the password toggle rendered as a text
+ * button inside the input (the DS choice, not an eye icon).
  */
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'expo-router';
@@ -12,12 +13,12 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, View, type TextInput } from 'react-native';
 
 import {
+  AuthScreen,
   BackButton,
   FieldGroup,
   GoogleButton,
   InlineError,
   OrbixButton,
-  OrbixScaffold,
   OrbixText,
   OrbixTextField,
   OrDivider,
@@ -68,19 +69,30 @@ export default function SignUpScreen() {
   }, [google, t]);
 
   return (
-    <OrbixScaffold scrollable topPadding={theme.spacing.md} contentStyle={{ gap: theme.spacing.xl + 2 }}>
-      <BackButton onPress={() => router.back()} accessibilityLabel={t('a11y.back')} />
-
-      <View style={{ gap: theme.spacing.xs }}>
-        <OrbixText size="2xl" weight="bold" accessibilityRole="header">
+    <AuthScreen
+      leading={<BackButton onPress={() => router.back()} accessibilityLabel={t('a11y.back')} />}
+    >
+      <View style={{ gap: theme.spacing.sm }}>
+        <OrbixText size="3xl" weight="medium" align="center" accessibilityRole="header">
           {t('auth.signUp.title')}
         </OrbixText>
-        <OrbixText size="base" tone="mutedForeground">
+        <OrbixText size="md" tone="mutedForeground" align="center">
           {t('auth.signUp.subtitle')}
         </OrbixText>
       </View>
 
       <InlineError message={formError ?? (google.error ? toUserMessage(google.error, t) : null)} />
+
+      {google.available ? (
+        <>
+          <GoogleButton
+            label={t('auth.google.button')}
+            onPress={onGooglePress}
+            loading={google.isPending}
+          />
+          <OrDivider label={t('common.or')} />
+        </>
+      ) : null}
 
       <FieldGroup>
         <OrbixTextField
@@ -142,17 +154,6 @@ export default function SignUpScreen() {
         loading={signUp.isPending}
       />
 
-      {google.available ? (
-        <>
-          <OrDivider label={t('common.or')} />
-          <GoogleButton
-            label={t('auth.google.button')}
-            onPress={onGooglePress}
-            loading={google.isPending}
-          />
-        </>
-      ) : null}
-
       <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 4 }}>
         <OrbixText size="sm" tone="mutedForeground">
           {t('auth.signUp.haveAccount')}
@@ -168,6 +169,6 @@ export default function SignUpScreen() {
           </OrbixText>
         </Pressable>
       </View>
-    </OrbixScaffold>
+    </AuthScreen>
   );
 }

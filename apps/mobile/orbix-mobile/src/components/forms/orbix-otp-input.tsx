@@ -50,8 +50,21 @@ function OrbixOtpInputComponent({
     [value, length],
   );
 
+  // Fires once per distinct complete value, not on every render where the
+  // value happens to be complete. `onComplete` is routinely rebuilt by callers
+  // (a react-query mutation object in the deps of their `useCallback` is enough
+  // to change its identity every render), and without this latch that turns the
+  // effect into an infinite submit → render → submit loop.
+  const lastCompleted = useRef<string | null>(null);
+
   useEffect(() => {
-    if (value.length === length) onComplete?.(value);
+    if (value.length !== length) {
+      lastCompleted.current = null;
+      return;
+    }
+    if (lastCompleted.current === value) return;
+    lastCompleted.current = value;
+    onComplete?.(value);
   }, [value, length, onComplete]);
 
   const setDigit = useCallback(

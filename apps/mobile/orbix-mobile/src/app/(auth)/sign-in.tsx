@@ -3,6 +3,10 @@
  *
  * The API answers with a preliminary JWT plus `availableTenants[]`; picking the
  * tenant is a separate step handled by `RouteGuard` once the session lands.
+ *
+ * Layout follows the reference composition: brand → header → social → divider →
+ * form → primary CTA → register prompt, all inside the floating `AuthScreen`
+ * panel.
  */
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'expo-router';
@@ -12,11 +16,11 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, View, type TextInput } from 'react-native';
 
 import {
+  AuthScreen,
   FieldGroup,
   GoogleButton,
   InlineError,
   OrbixButton,
-  OrbixScaffold,
   OrbixText,
   OrbixTextField,
   OrDivider,
@@ -58,21 +62,28 @@ export default function SignInScreen() {
   );
 
   return (
-    <OrbixScaffold
-      scrollable
-      topPadding={theme.spacing['4xl']}
-      contentStyle={{ gap: theme.spacing.xl + 2 }}
-    >
-      <View style={{ gap: theme.spacing.xs }}>
-        <OrbixText size="2xl" weight="bold" accessibilityRole="header">
+    <AuthScreen>
+      <View style={{ gap: theme.spacing.sm }}>
+        <OrbixText size="3xl" weight="medium" align="center" accessibilityRole="header">
           {t('auth.signIn.title')}
         </OrbixText>
-        <OrbixText size="base" tone="mutedForeground">
+        <OrbixText size="md" tone="mutedForeground" align="center">
           {t('auth.signIn.subtitle')}
         </OrbixText>
       </View>
 
       <InlineError message={formError ?? (google.error ? toUserMessage(google.error, t) : null)} />
+
+      {google.available ? (
+        <>
+          <GoogleButton
+            label={t('auth.google.button')}
+            onPress={() => void google.signIn()}
+            loading={google.isPending}
+          />
+          <OrDivider label={t('common.or')} />
+        </>
+      ) : null}
 
       <FieldGroup>
         <OrbixTextField
@@ -122,6 +133,7 @@ export default function SignInScreen() {
         // Expo CLI in this sandbox) — see route-guard.tsx for the same note.
         onPress={() => router.push('/(auth)/forgot-password' as never)}
         hitSlop={8}
+        style={{ alignSelf: 'flex-end', marginTop: -theme.spacing.sm }}
         accessibilityRole="link"
         accessibilityLabel={t('auth.signIn.forgotPassword')}
       >
@@ -135,17 +147,6 @@ export default function SignInScreen() {
         onPress={handleSubmit(onSubmit)}
         loading={signIn.isPending}
       />
-
-      {google.available ? (
-        <>
-          <OrDivider label={t('common.or')} />
-          <GoogleButton
-            label={t('auth.google.button')}
-            onPress={() => void google.signIn()}
-            loading={google.isPending}
-          />
-        </>
-      ) : null}
 
       <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 4 }}>
         <OrbixText size="sm" tone="mutedForeground">
@@ -162,6 +163,6 @@ export default function SignInScreen() {
           </OrbixText>
         </Pressable>
       </View>
-    </OrbixScaffold>
+    </AuthScreen>
   );
 }

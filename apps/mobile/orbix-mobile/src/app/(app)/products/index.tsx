@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { FlatList, Pressable, RefreshControl, View } from 'react-native';
 
 import { BackButton, OrbixInput, OrbixScaffold, OrbixSkeleton, OrbixText } from '@/components';
+import { Ripple, useRipple } from '@/components/animations/ripple';
 import { PackageIcon, PlusIcon, SearchIcon } from '@/components/ui/icons';
 import { useProducts } from '@/features/products/use-products';
 import { useCurrencyFormatVersion } from '@/hooks/use-currency-format-version';
@@ -30,6 +31,7 @@ const formatCurrency = currencyFormatStore.format;
 
 export default function ProductsListScreen() {
   const theme = useTheme();
+  const createRipple = useRipple();
   const router = useRouter();
   const { t } = useTranslation();
   const { can } = usePermissions();
@@ -49,17 +51,22 @@ export default function ProductsListScreen() {
   const renderRow = ({ item }: { item: Product }) => (
     <Pressable
       onPress={() => router.push({ pathname: '/(app)/products/[id]', params: { id: item.id } })}
-      style={({ pressed }) => ({
+      // Objeto estático, no `style={({pressed}) => …}`: con nativewind +
+      // React Compiler esa forma se descarta entera y la fila perdía layout,
+      // fondo y borde (ver `google-button.tsx`). `renderItem` se invoca como
+      // función, no como componente, así que aquí no caben hooks para un
+      // `Ripple`; el feedback se queda en el resaltado nativo de la lista.
+      style={{
         flexDirection: 'row',
         alignItems: 'center',
         gap: theme.spacing.md,
         paddingVertical: theme.spacing.md,
         paddingHorizontal: theme.spacing.md,
         borderRadius: theme.radius.lg,
-        backgroundColor: pressed ? theme.colors.muted : theme.colors.card,
+        backgroundColor: theme.colors.card,
         borderWidth: 1,
         borderColor: theme.colors.border,
-      })}
+      }}
     >
       <View
         style={{
@@ -101,16 +108,22 @@ export default function ProductsListScreen() {
             accessibilityRole="button"
             accessibilityLabel={t('products.create')}
             hitSlop={8}
-            style={({ pressed }) => ({
+            onPressIn={(event) =>
+              createRipple.trigger(event.nativeEvent.locationX, event.nativeEvent.locationY)
+            }
+            // Objeto estático + `Ripple`, por el mismo motivo que la fila.
+            style={{
               width: 40,
               height: 40,
               borderRadius: theme.radius.full,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: pressed ? theme.colors.brandBlue600 : theme.colors.primary,
-            })}
+              backgroundColor: theme.colors.primary,
+              overflow: 'hidden',
+            }}
           >
             <PlusIcon size={18} color={theme.colors.primaryForeground} />
+            <Ripple {...createRipple} color={theme.colors.onDark} borderRadius={theme.radius.full} />
           </Pressable>
         ) : null}
       </View>

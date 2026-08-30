@@ -17,6 +17,7 @@ export { OrbixText, type TextTone } from './ui/orbix-text';
 export { OrbixInput } from './ui/orbix-input';
 export { OrbixGradient, angleToPoints } from './ui/orbix-gradient';
 export { OrbixScaffold } from './ui/orbix-scaffold';
+export { AuthScreen } from './auth/auth-screen';
 export { OrbixLoading, OrbixSkeleton, OrbixSpinner } from './ui/orbix-loading';
 export { OrbixStepper, OrbixDots } from './ui/orbix-stepper';
 export { OrbixModal } from './ui/orbix-modal';
