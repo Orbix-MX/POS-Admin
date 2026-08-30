@@ -25,7 +25,9 @@ expo-env.d.ts
 .env.production.local
 
 # Screenshots and diagnostic dumps taken while debugging on the emulator
-# (adb screencap, uiautomator dump, gradle traces) — scratch, never commit.
+# (adb screencap, uiautomator dump), plus the build and dev-server logs those
+# sessions leave behind, under `logs/`. Scratch, never commit — dump them here
+# instead of at the package root so the working tree stays readable.
 .debug-captures/
 
 # macOS
