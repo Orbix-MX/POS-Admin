@@ -38,15 +38,30 @@ const config = getDefaultConfig(projectRoot);
 // folders, so that real location has to be watched too, or resolving the
 // bundle's own entry point (a symlink into that store) breaks.
 //
-// KNOWN LIMITATION: with the store outside workspaceRoot's tree, Metro's
-// dev-server bundle serializer (live reload via `expo start` / `expo run
-// :android` debug) breaks — it computes "url-server" source paths relative
-// to the workspace root and mishandles the ones that have to escape it
-// (drops the leading `..` segments, resolving to a bogus path). This does
-// NOT affect the release flow (`export:embed`, i.e. `assembleRelease` /
-// `expo run:android --variant release`), which uses a different serializer
-// and is the supported way to test JS changes on this machine until that
-// Metro bug is understood. See docs/build-android-release.md.
-config.watchFolders = [workspaceRoot, 'C:/ps'];
+// El store real de pnpm (ver `virtual-store-dir` más arriba). Metro tiene que
+// vigilarlo Y poder direccionarlo por URL, de ahí las dos constantes de abajo.
+const pnpmStore = 'C:/ps';
+
+config.watchFolders = [workspaceRoot, pnpmStore];
+
+// Sin esto, el dev server devuelve 404 al pedir el bundle: Expo genera el
+// nombre del módulo de entrada relativo al serverRoot —que por defecto es el
+// workspace root— y al tener que escapar de ese árbol para llegar al store,
+// pierde los `..` iniciales. `../../../ps/expo-router@…/entry` se queda en
+// `./ps/expo-router@…/entry`, que no existe, y Metro no resuelve la entrada.
+// Bastó con que el serverRoot contenga a la vez el proyecto y el store: la
+// ruta deja de tener que salirse y ya no hay `..` que perder. El flujo release
+// (`export:embed`) nunca se vio afectado porque usa otro serializer.
+//
+// La raíz común de `C:/Repos/…` y `C:/ps` es la del volumen. Mover el store a
+// algo más profundo permitiría estrecharla, pero la ruta más larga bajo él ya
+// mide 357 caracteres: alargarla es pedir que vuelvan los fallos de build
+// nativo que motivaron sacarlo del repo.
+//
+// OJO: el serverRoot delimita lo que el dev server puede direccionar, y Metro
+// escucha en 0.0.0.0. En una red que no controles, arranca con
+// `expo start --host localhost` (+ `adb reverse tcp:8081 tcp:8081` para un
+// dispositivo físico; el emulador llega solo por 10.0.2.2).
+config.server = { ...config.server, unstable_serverRoot: path.parse(pnpmStore).root };
 
 module.exports = withNativeWind(config, { input: './src/styles/global.css' });
