@@ -36,6 +36,7 @@ function mergeGradients(
     wash: override.wash ?? base.wash,
     splash: override.splash ?? base.splash,
     progress: override.progress ?? base.progress,
+    productTile: override.productTile ?? base.productTile,
   };
 }
 

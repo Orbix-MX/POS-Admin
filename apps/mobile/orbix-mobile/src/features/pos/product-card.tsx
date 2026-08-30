@@ -6,7 +6,7 @@
  * counter device where the operator taps fast and imprecisely.
  */
 import { memo, useCallback } from 'react';
-import { Pressable, View, type GestureResponderEvent } from 'react-native';
+import { Pressable, StyleSheet, View, type GestureResponderEvent } from 'react-native';
 
 import { OrbixGradient, OrbixText } from '@/components';
 import { Ripple, useRipple } from '@/components/animations/ripple';
@@ -27,6 +27,7 @@ interface ProductCardProps {
 function ProductCardComponent({ product, quantity, onAdd, labels }: ProductCardProps) {
   const theme = useTheme();
   const ripple = useRipple();
+  const tile = theme.gradients.productTile;
 
   const inCart = quantity > 0;
   const outOfStock = product.trackInventory && product.stock <= 0;
@@ -63,18 +64,30 @@ function ProductCardComponent({ product, quantity, onAdd, labels }: ProductCardP
       // con nativewind + React Compiler esa forma descarta el estilo en
       // silencio (ver `google-button.tsx`), y aquí se llevaba por delante el
       // fondo, el borde y el radio de la tarjeta.
-      style={{
-        flex: 1,
-        gap: 9,
-        padding: 10,
-        borderRadius: theme.radius.xl,
-        backgroundColor: theme.colors.card,
-        borderWidth: 1,
-        borderColor: inCart ? theme.colors.accentPurple : theme.colors.border,
-        opacity: outOfStock ? 0.5 : 1,
-        overflow: 'hidden',
-      }}
+      //
+      // El `backgroundColor` es la parada superior del gradiente, no
+      // decoración: Android no dibuja la sombra de `elevation` en una vista sin
+      // fondo propio, y el gradiente va en una capa hija.
+      style={[
+        {
+          flex: 1,
+          gap: 9,
+          padding: 10,
+          borderRadius: theme.radius.xl,
+          backgroundColor: tile.colors[0],
+          borderWidth: 1,
+          borderColor: inCart ? theme.colors.accentPurple : theme.colors.border,
+          opacity: outOfStock ? 0.5 : 1,
+          overflow: 'hidden',
+        },
+        theme.shadows.sm,
+      ]}
     >
+      <OrbixGradient
+        gradient={tile}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
       <View
         style={{
           position: 'relative',

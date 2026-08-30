@@ -79,6 +79,13 @@ export interface ThemeGradients {
   splash: ThemeGradient;
   /** Loading bar gradient (blue → teal). */
   progress: ThemeGradient;
+  /**
+   * Superficie de las tarjetas de producto del POS: un tinte vertical muy
+   * suave que las despega del fondo `wash` sin competir con él. Rol propio y
+   * no `card` porque `card` sigue siendo la superficie plana y neutra del
+   * resto de la app.
+   */
+  productTile: ThemeGradient;
 }
 
 export interface ThemeSpacing {

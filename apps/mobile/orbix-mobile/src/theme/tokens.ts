@@ -40,8 +40,8 @@ export const palette = {
   neutral900: '#080c0f', // oklch(0.15 0.01 250)
 
   /** Prototype-local accents that drive `--grad-primary`. */
-  accentPurple: '#a439c9', // oklch(0.56 0.22 316)
-  accentPink: '#ed5c9e', // oklch(0.68 0.19 355)
+  accentPurple: '#00627F',// '#a439c9', // oklch(0.56 0.22 316)
+  accentPink: '#045A70',// '#ed5c9e', // oklch(0.68 0.19 355)
 
   secondaryLight: '#e8f3ff', // oklch(0.96 0.04 250)
   destructiveLight: '#e40016', // oklch(0.577 0.245 27.325)
@@ -51,6 +51,10 @@ export const palette = {
    * tono a propósito: son lo primero que se recolorea, y unos nombres de color
    * quedan mintiendo en cuanto la paleta cambia.
    */
+  /** Paradas de `productTile`, de arriba a abajo. */
+  productTileTop: '#FDFFFF',
+  productTileBottom: '#E3F9FF',
+
   washStart: '#DDF0F7',
   washMid: '#E8F3F6',
   washEnd: '#ECF3F3',
@@ -199,10 +203,21 @@ export const lightGradients: ThemeGradients = {
     colors: [palette.brandBlue500, palette.brandTeal400],
     angle: 90,
   },
+  // 180° = de arriba abajo.
+  productTile: {
+    colors: [palette.productTileTop, palette.productTileBottom],
+    angle: 180,
+  },
 };
 
 export const darkGradients: ThemeGradients = {
   ...lightGradients,
+  // Plano sobre el canvas oscuro: el tinte claro de la versión light dejaría el
+  // texto de la tarjeta sin contraste.
+  productTile: {
+    colors: [palette.darkCard, palette.darkCard],
+    angle: 180,
+  },
   wash: {
     colors: ['#05080f', '#0b0714', '#12060e'],
     locations: [0, 0.55, 1],
