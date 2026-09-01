@@ -4,3 +4,21 @@ packages:
   - "packages/*"
   - "apps/*"
   - "apps/**"
+
+# pnpm 10 ya no lee el campo `pnpm` de package.json: la allowlist de scripts de
+# build de dependencias vive aquí. Sin esto, pnpm los bloquea en silencio y
+# avisa con "Ignored build scripts" en cada install.
+onlyBuiltDependencies:
+  - "@nestjs/core"
+  - "@prisma/engines"
+  - "@scarf/scarf"
+  - bcrypt
+  - esbuild
+  - msw
+  - prisma
+  - puppeteer
+  - react-native-nitro-modules
+  - unrs-resolver
+
+ignoredBuiltDependencies:
+  - sharp

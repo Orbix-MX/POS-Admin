@@ -10,13 +10,26 @@ tokens (`oklch`) fueron portados a sRGB con mapeo de gamut real en
 ## Empezar
 
 ```bash
-pnpm install                     # desde la raíz del monorepo
-cp .env.example .env             # y rellena lo que necesites
-pnpm --filter @orbix/mobile dev  # o: pnpm dev:mobile desde la raíz
+pnpm install       # desde la raíz del monorepo
+pnpm dev:server    # la API, en :3001
+pnpm dev:mobile    # Metro  (o: pnpm --filter @orbix/mobile dev)
 ```
 
-La API debe estar corriendo (`pnpm dev:server`, `http://localhost:3001/api`).
-En dispositivo físico, cambia `EXPO_PUBLIC_API_URL` a la IP de tu máquina.
+No hace falta ningún `.env` para arrancar. La app deduce la URL de la API del
+propio dev server: `hostUri` es la dirección con la que tu dispositivo alcanzó a
+Metro, así que ya es enrutable desde él, y solo se le cambia el puerto por el
+`3001` de la API. Funciona igual en un teléfono físico, en el emulador de
+Android y en web, sin escribir ninguna IP a mano.
+
+Dos casos donde sí tienes que intervenir:
+
+- **`expo start --host localhost`** — Expo solo hace `adb reverse` del puerto de
+  Metro. Añade `adb reverse tcp:3001 tcp:3001`.
+- **API en otra máquina** — fija `EXPO_PUBLIC_API_URL` en un `.env`, que siempre
+  tiene prioridad sobre lo deducido.
+
+Copia `.env.example` a `.env` solo si necesitas Google Sign-In o cambiar algún
+default.
 
 ```bash
 pnpm --filter @orbix/mobile typecheck   # tsc --noEmit
@@ -36,7 +49,7 @@ backend.
 
 | Variable | Obligatoria | Nota |
 |---|---|---|
-| `EXPO_PUBLIC_API_URL` | sí | Incluye el prefijo `/api` |
+| `EXPO_PUBLIC_API_URL` | no | Incluye el prefijo `/api`. Sin ella se deduce del dev server; obligatoria en un build de release |
 | `EXPO_PUBLIC_API_TIMEOUT` | no | Default 15000 ms |
 | `EXPO_PUBLIC_DEFAULT_LOCALE` | no | `es` \| `en` \| `pt` |
 | `EXPO_PUBLIC_GOOGLE_CLIENT_ID` | no | Sin ninguno, el botón de Google no se muestra |
@@ -104,9 +117,8 @@ catálogo de tipos de negocio y branding del tenant. Lo que sí funciona contra 
 API real: registro, login, refresh, logout, perfil, selección de empresa y
 sucursal, capacidades del plan y los KPIs de inicio (`GET /dashboard/stats`).
 
-## Relación con `apps/mobile/orbix-app`
+## Relación con el POS
 
-Son dos apps distintas y ninguna depende de la otra. `orbix-app` es el POS de
-terminal (activación por QR, login por PIN, cola de sincronización offline);
-`orbix-mobile` es el cliente de onboarding y gestión. La intención es
-consolidarlas más adelante.
+`apps/mobile/orbix-app` —el POS de terminal, con activación por QR, login por
+PIN y cola de sincronización offline— se eliminó del repo en `cec732b`. Hoy
+`orbix-mobile` es la única app móvil; el POS vive en `apps/pos-web`.

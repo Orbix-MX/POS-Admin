@@ -4,7 +4,7 @@
   "packageManager": "pnpm@10.22.0",
   "scripts": {
     "dev": "turbo run dev --filter=@orbix/api --filter=@orbix/web",
-    "dev:mobile": "turbo run dev --filter=@orbix/app",
+    "dev:mobile": "turbo run dev --filter=@orbix/mobile",
     "dev:server": "turbo run dev --filter=@orbix/api",
     "dev:web": "turbo run dev --filter=@orbix/api --filter=@orbix/web",
     "dev:pos": "turbo run dev --filter=@orbix/api --filter=@orbix/pos-web",
@@ -14,22 +14,5 @@
   },
   "devDependencies": {
     "turbo": "^2.0.0"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@nestjs/core",
-      "@prisma/engines",
-      "@scarf/scarf",
-      "bcrypt",
-      "esbuild",
-      "msw",
-      "prisma",
-      "puppeteer",
-      "react-native-nitro-modules",
-      "unrs-resolver"
-    ],
-    "ignoredBuiltDependencies": [
-      "sharp"
-    ]
   }
 }

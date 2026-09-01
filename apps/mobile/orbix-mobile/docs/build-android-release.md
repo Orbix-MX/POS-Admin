@@ -60,33 +60,41 @@ su única copia real vía symlink, que es justo lo que evita la duplicación.
 
 En Windows, la ruta real de cada paquete bajo `node_modules/.pnpm/<pkg>@<hash>/...`
 puede superar el límite de 260 caracteres que usa `ninja` al compilar módulos nativos
-grandes (`react-native-nitro-modules` en particular). El fix es acortar dónde vive ese
-store, pero **no puede ir en el `.npmrc` del repo** — es una ruta absoluta de Windows
-(`C:/...`) que rompe `pnpm install` por completo en Mac/Linux.
+grandes (`react-native-nitro-modules` en particular).
 
-Cada quien que compile en Windows debe agregarlo a su **`.npmrc` global** (`~/.npmrc`,
-no el del proyecto):
+**El fix está en el `.npmrc` versionado y no hay que hacer nada:**
 
 ```
-virtual-store-dir=C:/ps
+virtual-store-dir-max-length=40
 ```
 
-(la ruta puede ser cualquiera corta; `C:/ps` es la que se usó y probó). Esto no afecta a
-compañeros en Mac/Linux — ahí el límite de 260 caracteres no existe y pnpm usa su
-ubicación default sin problema.
+Acorta el `<pkg>@<hash>` de cada carpeta del store (default 120), que es de donde salen
+los caracteres de más. Es portable: no contiene rutas absolutas, así que no rompe en
+Mac/Linux, donde además el límite ni existe.
 
-#### Consecuencia en el dev server de Metro (ya resuelta en `metro.config.js`)
+> **No uses `virtual-store-dir=C:/ps`.** Una versión anterior de esta guía pedía
+> añadirlo al `~/.npmrc` global. **Es incompatible con este repo** y falla en el acto:
+> los `public-hoist-pattern` de arriba elevan Babel, `@expo/*` y Metro al
+> `node_modules` del repo, pero un store fuera del árbol no lo tiene en su cadena de
+> resolución de Node (`C:\ps\pkg@x\node_modules` → `C:\ps\node_modules` →
+> `C:\node_modules`, nunca `<repo>\node_modules`). Reventaba con
+> `Cannot find module 'metro-runtime/package.json'` y, al sortear ese,
+> `Cannot find module '@babel/types'`. Los dos ajustes vinieron de ramas divergentes y
+> nunca convivieron.
 
-Sacar el store del árbol del repo rompe el dev server: `expo start` y
+#### Consecuencia en el dev server de Metro (cubierta en `metro.config.js`)
+
+Sacar el store del árbol del repo rompe además el dev server: `expo start` y
 `expo run:android` en debug devuelven **404** al pedir el bundle, con un
 `UnableToResolveError` sobre `./ps/expo-router@…/entry`. Expo genera el nombre del
 módulo de entrada relativo al *serverRoot* —por defecto el workspace root—, y como el
 store queda fuera de ese árbol, la ruta pierde los `..` iniciales:
 `../../../ps/…` se convierte en `./ps/…`, que no existe.
 
-`metro.config.js` lo cubre poniendo el serverRoot en la raíz del volumen, de modo que
-contenga a la vez el proyecto y el store y la ruta no tenga que salirse. Si mueves el
-store a otra unidad o cambias `virtual-store-dir`, ajusta ahí la constante `pnpmStore`.
+`metro.config.js` deduce solo dónde está el store (del `realpath` de una dependencia
+cualquiera) y, únicamente si cae fuera del repo, mueve el serverRoot al ancestro común
+de ambos. Con la config versionada el store queda dentro y no se toca nada. No hay
+ninguna ruta que mantener a mano en ese archivo.
 
 Ese serverRoot delimita lo que el dev server puede direccionar por URL, y Metro escucha
 en `0.0.0.0`. En una red que no controles, arranca con `expo start --host localhost`

@@ -1,6 +1,7 @@
 // Learn more: https://docs.expo.dev/guides/monorepos/
 const { getDefaultConfig } = require('expo/metro-config');
 const { withNativeWind } = require('nativewind/metro');
+const fs = require('node:fs');
 const path = require('node:path');
 
 const projectRoot = __dirname;
@@ -27,41 +28,73 @@ const config = getDefaultConfig(projectRoot);
 // since project-local symlinks are the ONLY place a package's own
 // dependencies resolve from in this mode.
 //
-// `.npmrc`'s `virtual-store-dir` points pnpm's real (symlinked-to) package
-// store outside the repo entirely (`C:/ps`, kept short to dodge Windows'
-// 260-char path limit — hit not just by the app's own native build but by
-// EVERY native module's own `.cxx` dir under node_modules, e.g.
-// react-native-worklets, expo-modules-core; a `subst` drive letter was
-// tried instead and rejected — CMake/Java resolve subst drives back to
-// their real underlying path, so it doesn't shorten anything actually
-// used by the build). Metro computes module paths relative to its watched
-// folders, so that real location has to be watched too, or resolving the
-// bundle's own entry point (a symlink into that store) breaks.
-//
-// El store real de pnpm (ver `virtual-store-dir` más arriba). Metro tiene que
-// vigilarlo Y poder direccionarlo por URL, de ahí las dos constantes de abajo.
-const pnpmStore = 'C:/ps';
+// Dónde vive REALMENTE el store de pnpm. Normalmente es
+// `<workspaceRoot>/node_modules/.pnpm`, pero un `.npmrc` global con
+// `virtual-store-dir` puede sacarlo del árbol del repo (en Windows se usó para
+// esquivar el límite de 260 chars). No se hardcodea: se deduce del realpath de
+// cualquier dependencia instalada, que siempre es
+// `<store>/<pkg>@<hash>/node_modules/<pkg>`. Así funciona igual en Windows,
+// macOS y Linux, y no hay que tocar este archivo si alguien mueve su store.
+function resolvePnpmStore() {
+  try {
+    const real = fs.realpathSync(require.resolve('expo/package.json'));
+    // <store>/<pkg>@<hash>/node_modules/<pkg>/package.json → <store>
+    const store = path.resolve(real, '../../../..');
+    return path.basename(store) === '.pnpm' || !isInside(workspaceRoot, store) ? store : null;
+  } catch {
+    return null; // linker no-pnpm (npm/yarn planos): `workspaceRoot` ya lo cubre
+  }
+}
 
-config.watchFolders = [workspaceRoot, pnpmStore];
+function isInside(parent, child) {
+  const rel = path.relative(parent, child);
+  return Boolean(rel) && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
 
-// Sin esto, el dev server devuelve 404 al pedir el bundle: Expo genera el
-// nombre del módulo de entrada relativo al serverRoot —que por defecto es el
-// workspace root— y al tener que escapar de ese árbol para llegar al store,
-// pierde los `..` iniciales. `../../../ps/expo-router@…/entry` se queda en
-// `./ps/expo-router@…/entry`, que no existe, y Metro no resuelve la entrada.
-// Bastó con que el serverRoot contenga a la vez el proyecto y el store: la
-// ruta deja de tener que salirse y ya no hay `..` que perder. El flujo release
-// (`export:embed`) nunca se vio afectado porque usa otro serializer.
+const pnpmStore = resolvePnpmStore();
+
+// Metro sigue los symlinks hasta su ruta real, así que el store tiene que estar
+// vigilado o no resuelve ni su propio entry point. Si cae dentro de
+// `workspaceRoot` ya está cubierto y añadirlo solo duplicaría el escaneo.
+const externalStore = pnpmStore && !isInside(workspaceRoot, pnpmStore) ? pnpmStore : null;
+
+config.watchFolders = externalStore ? [workspaceRoot, externalStore] : [workspaceRoot];
+
+// Solo hace falta con el store fuera del árbol. Sin esto el dev server devuelve
+// 404 al pedir el bundle: Expo genera el nombre del módulo de entrada relativo
+// al serverRoot —por defecto el workspace root— y al tener que escapar de ese
+// árbol para llegar al store pierde los `..` iniciales.
+// `../../../ps/expo-router@…/entry` se queda en `./ps/expo-router@…/entry`, que
+// no existe, y Metro no resuelve la entrada. Basta con que el serverRoot
+// contenga a la vez el proyecto y el store: la ruta deja de tener que salirse.
+// El flujo release (`export:embed`) nunca se vio afectado porque usa otro
+// serializer.
 //
-// La raíz común de `C:/Repos/…` y `C:/ps` es la del volumen. Mover el store a
-// algo más profundo permitiría estrecharla, pero la ruta más larga bajo él ya
-// mide 357 caracteres: alargarla es pedir que vuelvan los fallos de build
-// nativo que motivaron sacarlo del repo.
+// Se usa el ancestro común REAL de ambos, no la raíz del volumen: el serverRoot
+// delimita lo que el dev server puede direccionar por URL y Metro escucha en
+// 0.0.0.0, así que cuanto más estrecho, mejor. En una red que no controles,
+// arranca además con `expo start --host localhost` (+
+// `adb reverse tcp:8081 tcp:8081` para un dispositivo físico; el emulador llega
+// solo por 10.0.2.2).
 //
-// OJO: el serverRoot delimita lo que el dev server puede direccionar, y Metro
-// escucha en 0.0.0.0. En una red que no controles, arranca con
-// `expo start --host localhost` (+ `adb reverse tcp:8081 tcp:8081` para un
-// dispositivo físico; el emulador llega solo por 10.0.2.2).
-config.server = { ...config.server, unstable_serverRoot: path.parse(pnpmStore).root };
+// Con el store dentro del repo no hay nada de lo que escapar y se deja el
+// serverRoot por defecto.
+if (externalStore) {
+  config.server = {
+    ...config.server,
+    unstable_serverRoot: commonAncestor(workspaceRoot, externalStore),
+  };
+}
+
+function commonAncestor(a, b) {
+  const segsA = path.resolve(a).split(path.sep);
+  const segsB = path.resolve(b).split(path.sep);
+  const shared = [];
+  for (let i = 0; i < Math.min(segsA.length, segsB.length); i += 1) {
+    if (segsA[i].toLowerCase() !== segsB[i].toLowerCase()) break;
+    shared.push(segsA[i]);
+  }
+  return shared.join(path.sep) + path.sep;
+}
 
 module.exports = withNativeWind(config, { input: './src/styles/global.css' });

@@ -8,6 +8,7 @@
  * Validation runs once at module load. A missing required variable fails loudly
  * at startup instead of surfacing as a confusing network error later.
  */
+import Constants from 'expo-constants';
 import { z } from 'zod';
 
 const envSchema = z.object({
@@ -30,8 +31,40 @@ function optional(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+/** Puerto del backend NestJS en desarrollo (ver `api/.env`). */
+const DEV_API_PORT = 3001;
+
+/**
+ * Deduce la URL de la API en desarrollo a partir de dónde está Metro.
+ *
+ * `hostUri` es el `host:puerto` que anuncia el dev server, y la API corre en la
+ * misma máquina: reutilizar ese host cambiando el puerto evita que cada quien
+ * tenga que escribir su IP a mano en un `.env`. Con el modo por defecto
+ * (`--lan`) es la IP LAN de la máquina, alcanzable tanto desde un teléfono en
+ * la misma Wi-Fi como desde el emulador de Android.
+ *
+ * Excepción: con `expo start --host localhost`, `hostUri` es `localhost` y
+ * Expo solo hace `adb reverse` del puerto de Metro. Ahí hace falta también
+ * `adb reverse tcp:3001 tcp:3001`, o fijar `EXPO_PUBLIC_API_URL`.
+ *
+ * Devuelve `undefined` en release (no hay dev server) y ante cualquier formato
+ * inesperado; en ambos casos manda `EXPO_PUBLIC_API_URL`.
+ */
+function apiUrlFromDevServer(): string | undefined {
+  if (!__DEV__) return undefined;
+
+  const hostUri = Constants.expoConfig?.hostUri;
+  const host = optional(hostUri)?.split('/')[0]?.split(':')[0];
+  if (!host) return undefined;
+
+  return `http://${host}:${DEV_API_PORT}/api`;
+}
+
 const raw = {
-  apiUrl: optional(process.env.EXPO_PUBLIC_API_URL) ?? 'http://localhost:3001/api',
+  apiUrl:
+    optional(process.env.EXPO_PUBLIC_API_URL) ??
+    apiUrlFromDevServer() ??
+    `http://localhost:${DEV_API_PORT}/api`,
   apiTimeout: optional(process.env.EXPO_PUBLIC_API_TIMEOUT) ?? 15_000,
   defaultLocale: optional(process.env.EXPO_PUBLIC_DEFAULT_LOCALE) ?? 'es',
   google: {
