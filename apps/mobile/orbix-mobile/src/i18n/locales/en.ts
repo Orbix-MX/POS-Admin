@@ -396,6 +396,16 @@ export const en: TranslationSchema = {
     sectionVisibility: 'Status & visibility',
     serviceInventoryHint: 'Services don\'t track inventory directly. Only the sale is recorded.',
     nonSimpleInventoryHint: 'This product type doesn\'t carry its own stock.',
+    image: {
+      label: 'Product photo',
+      upload: 'Upload photo',
+      replace: 'Change photo',
+      remove: 'Remove photo',
+      none: 'No photo',
+      updated: 'Photo updated',
+      removed: 'Photo removed',
+      tooLarge: 'The image is over 5 MB.',
+    },
     fields: {
       type: 'Product type',
       sku: 'SKU',

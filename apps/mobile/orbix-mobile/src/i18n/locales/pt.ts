@@ -396,6 +396,16 @@ export const pt: TranslationSchema = {
     sectionVisibility: 'Status e visibilidade',
     serviceInventoryHint: 'Serviços não controlam estoque diretamente. Apenas a venda é registrada.',
     nonSimpleInventoryHint: 'Este tipo de produto não tem estoque próprio.',
+    image: {
+      label: 'Foto do produto',
+      upload: 'Enviar foto',
+      replace: 'Alterar foto',
+      remove: 'Remover foto',
+      none: 'Sem foto',
+      updated: 'Foto atualizada',
+      removed: 'Foto removida',
+      tooLarge: 'A imagem passa de 5 MB.',
+    },
     fields: {
       type: 'Tipo de produto',
       sku: 'SKU',

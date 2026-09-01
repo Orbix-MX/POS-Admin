@@ -14,6 +14,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { usePermissions } from '@/hooks/use-permissions';
 import { tenantRepository } from '@/repositories/tenant-repository';
 import { queryKeys } from '@/services/query/query-keys';
+import { pickImageFromLibrary } from '@/utils/pick-image';
 
 export function useTenantInfo() {
   const { session } = useAuth();
@@ -96,22 +97,7 @@ export function useUpdateTenantSettings() {
   });
 }
 
-/**
- * Wraps `expo-image-picker`'s permission + launch dance behind one call, so
- * the screen only deals with "got an asset or didn't" — never the permission
- * state machine.
- */
-export async function pickLogoImage(): Promise<ImagePicker.ImagePickerAsset | null> {
-  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!permission.granted) return null;
-
-  const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Images,
-    allowsEditing: true,
-    aspect: [1, 1],
-    quality: 0.85,
-  });
-
-  if (result.canceled || result.assets.length === 0) return null;
-  return result.assets[0] ?? null;
+/** Logo cuadrado; el selector en sí vive en `utils/pick-image.ts`. */
+export function pickLogoImage(): Promise<ImagePicker.ImagePickerAsset | null> {
+  return pickImageFromLibrary({ aspect: [1, 1] });
 }

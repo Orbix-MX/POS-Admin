@@ -6,7 +6,7 @@
  */
 import type { MfaConfirmResponseDto, MfaSetupResponseDto } from '@/dto/auth.dto';
 import type { GoogleSignInRequestDto } from '@/dto/onboarding.dto';
-import type { Session, TenantSummary } from '@/models/session';
+import type { Session, TenantCapabilities, TenantSummary } from '@/models/session';
 import {
   authRepository,
   type AuthResult,
@@ -18,6 +18,10 @@ import { secureStorage } from '@/services/storage/secure-storage';
 
 import { sessionStorage } from './session-storage';
 
+/**
+ * Sesión recién autenticada, todavía sin tenant elegido: `permissions` y
+ * `roles` van vacíos a propósito —son por tenant— y los llena `selectTenant`.
+ */
 function sessionFromAuthResult(result: AuthResult): Session {
   return {
     user: result.user,
@@ -26,6 +30,24 @@ function sessionFromAuthResult(result: AuthResult): Session {
     permissions: [],
     roles: [],
   };
+}
+
+/**
+ * `GET /auth/me` no devuelve capabilities — solo las emite
+ * `PATCH /auth/select-tenant` —, así que un `restore()` las dejaba fuera de la
+ * sesión: el arranque en frío y el `refresh()` que el drawer dispara al abrirse
+ * borraban `businessFeatures` y `businessVertical`, y el alta por wizard nunca
+ * llegaba a tenerlas. Se reusan las de la caché mientras siga siendo el mismo
+ * tenant y solo se piden al servidor cuando faltan.
+ */
+async function resolveCapabilities(
+  profile: Session,
+  cached: Session | null,
+): Promise<TenantCapabilities | undefined> {
+  if (!profile.tenant) return undefined;
+  const reusable = cached?.tenant?.id === profile.tenant.id ? cached?.capabilities : undefined;
+  if (reusable) return reusable;
+  return authRepository.getCapabilities().catch(() => undefined);
 }
 
 async function persistTokens(accessToken: string, refreshToken: string | null): Promise<void> {
@@ -66,13 +88,18 @@ export const authService = {
     if (!tokens) return null;
 
     authTokenStore.set(tokens);
+    const cached = sessionStorage.getSession();
 
     try {
-      const session = await authRepository.getProfile();
+      const profile = await authRepository.getProfile();
+      const session: Session = {
+        ...profile,
+        capabilities: await resolveCapabilities(profile, cached),
+      };
       sessionStorage.saveSession(session);
       return session;
     } catch {
-      return sessionStorage.getSession();
+      return cached;
     }
   },
 
@@ -169,10 +196,19 @@ export const authService = {
     await secureStorage.setAccessToken(result.accessToken);
     authTokenStore.set({ accessToken: result.accessToken });
 
+    // Los permisos son por tenant, así que el login no puede traerlos: la
+    // sesión llega aquí con `permissions: []`. Sin este perfil la primera
+    // pantalla tras el login se dibuja sin módulos —la barra de pestañas y el
+    // drawer se filtran por permiso— y solo se poblaba cuando algo llamaba a
+    // `restore()`, es decir al abrir el drawer.
+    const profile = await authRepository.getProfile().catch(() => null);
+
     const next: Session = {
       ...session,
       tenant: result.tenant,
       capabilities: result.capabilities,
+      permissions: profile?.permissions ?? session.permissions,
+      roles: profile?.roles ?? session.roles,
     };
     sessionStorage.saveSession(next);
     sessionStorage.saveActiveContext({ tenantSlug: result.tenant.slug });

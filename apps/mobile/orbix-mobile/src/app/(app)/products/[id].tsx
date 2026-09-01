@@ -6,10 +6,12 @@ import { Pressable, View } from 'react-native';
 import { BackButton, OrbixLoading, OrbixModal, OrbixScaffold, OrbixText, toast } from '@/components';
 import { TrashIcon } from '@/components/ui/icons';
 import { ProductForm } from '@/features/products/product-form';
+import { ProductImageField } from '@/features/products/product-image-field';
 import { toUpdateRequest, type ProductFormValues } from '@/features/products/product-schemas';
 import { useDeleteProduct, useUpdateProduct } from '@/features/products/use-product-mutations';
 import { useCategories, useProduct } from '@/features/products/use-products';
 import { useAuth } from '@/hooks/use-auth';
+import { usePermissions } from '@/hooks/use-permissions';
 import { useTheme } from '@/hooks/use-theme';
 import { toUserMessage } from '@/utils/error-message';
 import { ProductType } from '@/types/api';
@@ -24,6 +26,7 @@ export default function EditProductScreen() {
   const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { session } = useAuth();
+  const { can } = usePermissions();
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const { data: product, isLoading } = useProduct(id);
@@ -104,6 +107,12 @@ export default function EditProductScreen() {
           <TrashIcon size={16} color={theme.colors.dangerFg} />
         </Pressable>
       </View>
+
+      <ProductImageField
+        productId={id}
+        image={product?.primaryImage ?? null}
+        canEdit={can('products:edit')}
+      />
 
       <ProductForm
         defaultValues={defaultValues}

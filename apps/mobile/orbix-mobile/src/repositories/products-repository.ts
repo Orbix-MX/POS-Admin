@@ -4,9 +4,26 @@ import type {
   CreateProductRequest,
   PaginatedDto,
   ProductDto,
+  ProductImageDto,
   UpdateProductRequest,
 } from '@/dto/products.dto';
 import { http } from '@/services/api';
+
+export interface ProductImage {
+  id: string;
+  /** URL pública absoluta en R2 (Cloudflare); se usa tal cual como `source`. */
+  url: string;
+  altText: string | null;
+  isPrimary: boolean;
+  sortOrder: number;
+}
+
+/** Lo que `expo-image-picker` devuelve, reducido a lo que necesita el multipart. */
+export interface ImageAsset {
+  uri: string;
+  fileName?: string | null;
+  mimeType?: string | null;
+}
 
 export interface Product {
   id: string;
@@ -27,6 +44,14 @@ export interface Product {
   taxRate: number | null;
   taxCode: ProductDto['taxCode'];
   isEcommerce: boolean;
+  images: ProductImage[];
+  /**
+   * La imagen a pintar, ya resuelta: la primaria si existe, la primera si no.
+   * Se decide aquí —igual que en el web (`images.find(isPrimary) ?? images[0]`)—
+   * para que la lista, el detalle y la retícula del POS no repitan la regla.
+   * `null` cuando el producto no tiene ninguna: quien la use pinta su marcador.
+   */
+  primaryImage: ProductImage | null;
   createdAt: string;
 }
 
@@ -50,7 +75,28 @@ function toNumber(value: string | number | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function toImage(dto: ProductImageDto): ProductImage {
+  return {
+    id: dto.id,
+    url: dto.url,
+    altText: dto.altText ?? null,
+    isPrimary: dto.isPrimary,
+    sortOrder: dto.sortOrder,
+  };
+}
+
+/**
+ * Misma regla que el web (`images.find(isPrimary) ?? images[0]`). Exportada
+ * porque las mutaciones de imagen la reaplican al parchear la caché — si la
+ * regla viviera solo en `toDomain`, un producto recién editado y el mismo
+ * producto recién traído del API podrían mostrar imágenes distintas.
+ */
+export function resolvePrimaryImage(images: ProductImage[]): ProductImage | null {
+  return images.find((image) => image.isPrimary) ?? images[0] ?? null;
+}
+
 function toDomain(dto: ProductDto): Product {
+  const images = (dto.images ?? []).map(toImage);
   return {
     id: dto.id,
     sku: dto.sku,
@@ -70,6 +116,8 @@ function toDomain(dto: ProductDto): Product {
     taxRate: toNumber(dto.taxRate),
     taxCode: dto.taxCode,
     isEcommerce: dto.isEcommerce,
+    images,
+    primaryImage: resolvePrimaryImage(images),
     createdAt: dto.createdAt,
   };
 }
@@ -97,6 +145,34 @@ export const productsRepository = {
 
   async remove(id: string): Promise<void> {
     await http.delete(`/products/${id}`);
+  },
+
+  /**
+   * `POST /products/:id/image` — multipart, campo `file`, igual que el logo del
+   * tenant: `FormData` de RN acepta un `{ uri, name, type }` en lugar de un
+   * `Blob` y el adaptador de axios lo transmite desde disco.
+   *
+   * El servidor reescribe la imagen a WebP (max 1200 px de ancho) antes de
+   * subirla a R2, **reemplaza** la primaria anterior —borrando su objeto del
+   * bucket— y devuelve solo la imagen creada, no el producto. De ahí que quien
+   * llame tenga que refrescar el producto para verla reflejada.
+   */
+  async uploadImage(productId: string, asset: ImageAsset): Promise<ProductImage> {
+    const form = new FormData();
+    form.append('file', {
+      uri: asset.uri,
+      name: asset.fileName ?? 'product.jpg',
+      type: asset.mimeType ?? 'image/jpeg',
+    } as unknown as Blob);
+
+    const dto = await http.post<ProductImageDto>(`/products/${productId}/image`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return toImage(dto);
+  },
+
+  async removeImage(productId: string, imageId: string): Promise<void> {
+    await http.delete(`/products/${productId}/images/${imageId}`);
   },
 } as const;
 

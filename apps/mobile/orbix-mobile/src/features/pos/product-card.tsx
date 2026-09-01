@@ -5,6 +5,7 @@
  * visual anchor from the prototype, not the only hit target, which matters on a
  * counter device where the operator taps fast and imprecisely.
  */
+import { Image } from 'expo-image';
 import { memo, useCallback } from 'react';
 import { Pressable, StyleSheet, View, type GestureResponderEvent } from 'react-native';
 
@@ -96,9 +97,22 @@ function ProductCardComponent({ product, quantity, onAdd, labels }: ProductCardP
           backgroundColor: theme.colors.muted,
           alignItems: 'center',
           justifyContent: 'center',
+          overflow: 'hidden',
         }}
       >
-        <PackageIcon size={24} color={theme.colors.mutedForeground} />
+        {product.primaryImage ? (
+          // La foto viene de R2 y `expo-image` la cachea en disco: en un
+          // mostrador la misma retícula se repinta todo el día, y sin caché
+          // cada vuelta al POS volvería a bajar el catálogo completo.
+          <Image
+            source={{ uri: product.primaryImage.url }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            transition={120}
+          />
+        ) : (
+          <PackageIcon size={24} color={theme.colors.mutedForeground} />
+        )}
 
         {lowStock ? (
           <View

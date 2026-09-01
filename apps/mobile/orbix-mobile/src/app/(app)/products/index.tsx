@@ -4,6 +4,7 @@
  * carries the per-vertical distinction server-side, so this screen doesn't
  * branch on `businessVertical` itself.
  */
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -76,9 +77,21 @@ export default function ProductsListScreen() {
           backgroundColor: theme.colors.brandBlue50,
           alignItems: 'center',
           justifyContent: 'center',
+          overflow: 'hidden',
         }}
       >
-        <PackageIcon size={18} color={theme.colors.brandBlue600} />
+        {item.primaryImage ? (
+          // La miniatura sale de R2; `expo-image` la cachea en disco, así que
+          // desplazar la lista arriba y abajo no vuelve a descargarla.
+          <Image
+            source={{ uri: item.primaryImage.url }}
+            style={{ width: '100%', height: '100%' }}
+            contentFit="cover"
+            transition={120}
+          />
+        ) : (
+          <PackageIcon size={18} color={theme.colors.brandBlue600} />
+        )}
       </View>
       <View style={{ flex: 1, gap: 2 }}>
         <OrbixText size="sm" weight="semibold" numberOfLines={1}>{item.name}</OrbixText>

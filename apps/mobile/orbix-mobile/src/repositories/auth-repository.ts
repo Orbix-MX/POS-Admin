@@ -56,7 +56,11 @@ function toCapabilities(
 ): TenantCapabilities {
   return {
     plan: dto.plan,
-    enabledModules: dto.enabledModules,
+    // `/auth/me/capabilities` separa los módulos extra del tenant
+    // (`enabledModules`) de la lista ya resuelta con los del plan
+    // (`effectiveModules`); `select-tenant` solo devuelve la resuelta. La sesión
+    // guarda siempre la resuelta, o los dos caminos no significarían lo mismo.
+    enabledModules: 'effectiveModules' in dto ? dto.effectiveModules : dto.enabledModules,
     businessVertical: dto.businessVertical,
     businessProfile: dto.businessProfile,
     posOperationMode: dto.posOperationMode,

@@ -398,6 +398,16 @@ export const es = {
     sectionVisibility: 'Estado y visibilidad',
     serviceInventoryHint: 'Los servicios no manejan inventario directo. Solo se registra la venta.',
     nonSimpleInventoryHint: 'Este tipo de producto no maneja stock propio.',
+    image: {
+      label: 'Foto del producto',
+      upload: 'Subir foto',
+      replace: 'Cambiar foto',
+      remove: 'Quitar foto',
+      none: 'Sin foto',
+      updated: 'Foto actualizada',
+      removed: 'Foto eliminada',
+      tooLarge: 'La imagen supera los 5 MB.',
+    },
     fields: {
       type: 'Tipo de producto',
       sku: 'SKU',
