@@ -64,6 +64,7 @@ export function OrbixTabBar({ state, descriptors, navigation }: BottomTabBarProp
             padding: theme.spacing.xs + 2,
             borderRadius: theme.radius.full,
             backgroundColor: theme.colors.card,
+            marginBottom: theme.spacing.md,
           },
           theme.shadows.md,
         ]}
@@ -121,7 +122,14 @@ const TabItem = memo(function TabItem({
     [ripple],
   );
 
-  const tint = focused ? theme.colors.primaryForeground : theme.colors.mutedForeground;
+  // En oscuro el disco desaparece: `brandBlue50` es un tinte pensado para
+  // fondo claro y sobre `card` se lee como una pastilla casi blanca. Sin
+  // relleno, el icono es lo único que queda, así que sube a `foreground`;
+  // `mutedForeground` sobre la tarjeta oscura se queda por debajo de 3:1.
+  const isDark = theme.scheme === 'dark';
+  const inactiveBackground = isDark ? 'transparent' : theme.colors.brandBlue50;
+  const inactiveTint = isDark ? theme.colors.foreground : theme.colors.mutedForeground;
+  const tint = focused ? theme.colors.primaryForeground : inactiveTint;
 
   return (
     <Animated.View layout={TRANSITION} style={focused ? undefined : { flexShrink: 0 }}>
@@ -144,7 +152,7 @@ const TabItem = memo(function TabItem({
           width: focused ? undefined : ITEM_HEIGHT,
           paddingHorizontal: focused ? theme.spacing.lg : 0,
           borderRadius: theme.radius.full,
-          backgroundColor: focused ? theme.colors.primary : theme.colors.brandBlue50,
+          backgroundColor: focused ? theme.colors.primary : inactiveBackground,
           overflow: 'hidden',
         }}
       >

@@ -115,6 +115,12 @@ function CategoryChipsComponent({ categories, selectedId, onSelect }: CategoryCh
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
+      // Without an explicit `style`, RN gives this ScrollView `flexGrow: 1`
+      // by default — inside the screen's flex column it then competes for
+      // vertical space with the product FlatList below (which does set
+      // `flex: 1`), stretching this row's own box far past its content and
+      // pushing the grid down. `flexGrow: 0` pins it to its content height.
+      style={{ flexGrow: 0 }}
       contentContainerStyle={{ gap: 7, paddingBottom: 4 }}
     >
       {categories.map((chip) => (

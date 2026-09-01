@@ -30,7 +30,17 @@ export default function AppLayout() {
     <Tabs
       // La barra la dibuja el DS; el navegador solo aporta estado y navegación.
       tabBar={(props) => <OrbixTabBar {...props} />}
-      screenOptions={{ headerShown: false }}
+      screenOptions={{
+        headerShown: false,
+        // Sin esto, el navegador reserva una franja fija abajo para la tab
+        // bar y cada pantalla solo recibe el alto restante — su gradiente
+        // `wash` nunca llega al borde real, y el fondo propio del navegador
+        // (negro en tema oscuro) queda expuesto tanto ahí como alrededor de
+        // la píldora flotante. `position: 'absolute'` la saca del flujo para
+        // que flote SOBRE la pantalla en vez de empujarla hacia arriba.
+        tabBarStyle: { position: 'absolute', backgroundColor: 'transparent', elevation: 0, borderTopWidth: 0 },
+        sceneStyle: { backgroundColor: 'transparent' },
+      }}
     >
       <Tabs.Screen
         name="index"

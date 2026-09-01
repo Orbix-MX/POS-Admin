@@ -55,24 +55,28 @@ export const palette = {
   productTileTop: '#FDFFFF',
   productTileBottom: '#E3F9FF',
 
+  /** `productTile` en oscuro — plano, no comparte tono con `darkCard`. */
+  darkProductTile: '#2B2B2D',
+
   washStart: '#DDF0F7',
   washMid: '#E8F3F6',
   washEnd: '#ECF3F3',
 
   /**
    * Paradas del degradado `wash` en oscuro, en el mismo orden que las claras.
-   * Comparten el tono 250 del resto del esquema oscuro (las claras tiran a
-   * cian) y se quedan por debajo de `darkCard` en luminosidad, para que las
-   * tarjetas sigan levantándose del fondo en la parte alta de la pantalla.
+   * Gris neutro puro (sin tinte azul/cian) de arriba a abajo, para calzar con
+   * la referencia de diseño — arranca en un gris medio y cae a casi negro,
+   * quedando por debajo de `darkCard` en luminosidad en toda su extensión
+   * para que las tarjetas sigan levantándose del fondo.
    */
-  darkWashStart: '#050e19', // oklch(0.16 0.028 250)
-  darkWashMid: '#050a11', // oklch(0.142 0.018 250)
-  darkWashEnd: '#050709', // oklch(0.125 0.008 250)
+  darkWashStart: '#3a3a3d', // oklch(0.30 0 0)
+  darkWashMid: '#1c1c1e', // oklch(0.18 0 0)
+  darkWashEnd: '#0a0a0b', // oklch(0.10 0 0)
 
   /** Dark scheme. */
   darkBackground: '#040609', // oklch(0.12 0.01 250)
   darkForeground: '#eceff2', // oklch(0.95 0.005 250)
-  darkCard: '#0c1014', // oklch(0.17 0.01 250)
+  darkCard: '#2B2B2B',
   darkPrimary: '#0f92f7', // oklch(0.65 0.18 250)
   darkSecondary: '#011b35', // oklch(0.22 0.06 250)
   darkMuted: '#15191d', // oklch(0.21 0.01 250)
@@ -225,13 +229,17 @@ export const darkGradients: ThemeGradients = {
   // Plano sobre el canvas oscuro: el tinte claro de la versión light dejaría el
   // texto de la tarjeta sin contraste.
   productTile: {
-    colors: [palette.darkCard, palette.darkCard],
+    colors: [palette.darkProductTile, palette.darkProductTile],
     angle: 180,
   },
   wash: {
     colors: [palette.darkWashStart, palette.darkWashMid, palette.darkWashEnd],
     locations: [0, 0.55, 1],
-    angle: 160,
+    // 135°: claro arriba-izquierda → oscuro abajo-derecha (CSS mide en
+    // sentido horario desde "hacia arriba" — 90° apunta a la derecha, 180°
+    // hacia abajo, así que la diagonal top-left→bottom-right cae a medio
+    // camino entre esos dos, en 135°). Da el efecto mate con reflejo pedido.
+    angle: 135,
   },
 };
 

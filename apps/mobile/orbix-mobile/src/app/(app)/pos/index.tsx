@@ -448,7 +448,16 @@ export default function PosScreen() {
               columnWrapperStyle={{ gap: 11 }}
               ItemSeparatorComponent={() => <View style={{ height: 11 }} />}
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: cart.length ? 130 : theme.spacing.xl }}
+              // La rejilla se ancla arriba de forma explícita: sin `flex: 1` la
+              // lista se dimensiona por su contenido y queda a merced de cómo
+              // reparta el hueco la columna del scaffold, en vez de ocupar todo
+              // el espacio restante y empezar en su borde superior.
+              style={{ flex: 1 }}
+              contentContainerStyle={{
+                flexGrow: 1,
+                justifyContent: 'flex-start',
+                paddingBottom: cart.length ? 130 : theme.spacing.xl,
+              }}
               ListEmptyComponent={
                 <View style={{ alignItems: 'center', gap: 8, paddingVertical: 56, paddingHorizontal: 20 }}>
                   <SearchIcon size={38} color={theme.colors.mutedForeground} />
