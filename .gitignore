@@ -9,3 +9,6 @@ playwright-report
 .turbo
 *.log
 .vs/
+
+# Virtual store de pnpm (ver .npmrc: virtual-store-dir=.p)
+/.p/
