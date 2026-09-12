@@ -43,6 +43,41 @@ export async function requireOpenSession(
 }
 
 /**
+ * Devuelve la sesión sobre la que se puede **contar**, o lanza si no hay ninguna.
+ *
+ * Distinta de `requireOpenSession` a propósito: arquear es la única operación
+ * que debe funcionar con la caja congelada. `start-count` la pasa a
+ * `EN_ARQUEO` precisamente para que el efectivo no se mueva mientras se cuenta
+ * — exigir `ABIERTA` aquí hacía que congelar la caja bloqueara el conteo para
+ * el que se congeló, y el cajero veía "no hay caja abierta" con la caja
+ * abierta delante.
+ *
+ * Los dos estados son legítimos:
+ *   - `ABIERTA`    — arqueo de control sin parar la venta (cambio de turno).
+ *   - `EN_ARQUEO`  — el conteo formal, con la caja congelada.
+ *
+ * Mover dinero sigue exigiendo `ABIERTA`: un retiro o un gasto durante el
+ * arqueo invalidaría el recuento.
+ */
+export async function requireCountableSession(
+  client: CashSessionClient,
+  tenantId: string,
+  branchId: string | null,
+  message = 'No hay sesión de caja activa. Abre la caja antes de registrar un arqueo.',
+): Promise<OpenSessionRef> {
+  const session = await client.cashSession.findFirst({
+    where: {
+      tenantId,
+      branchId: branchId ?? undefined,
+      status: { in: ['ABIERTA', 'EN_ARQUEO'] },
+    },
+    select: { id: true },
+  });
+  if (!session) throw new BadRequestException(message);
+  return { id: session.id };
+}
+
+/**
  * Revalida, ya dentro de la transacción, que la sesión resuelta antes de abrirla
  * sigue abierta.
  *

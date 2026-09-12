@@ -65,14 +65,27 @@ function build({ status = 'ABIERTA', movements = [], opening = 1000, threshold }
       updateMany,
       update,
       findFirst: jest.fn().mockImplementation(({ where }: { where: { status?: unknown } }) => {
-        // Usado tanto para el diagnóstico del reclamo fallido como por
-        // requireOpenSession, que solo acepta ABIERTA.
-        if (where.status === 'ABIERTA' && state.status !== 'ABIERTA') return Promise.resolve(null);
+        // Fiel al filtro real, en sus dos formas: `requireOpenSession` pasa el
+        // string 'ABIERTA' y `requireCountableSession` pasa `{ in: [...] }`.
+        // Si el mock no distinguiera las dos, una regresión en el estado
+        // admitido pasaría desapercibida — que es justo lo que ocurrió con el
+        // arqueo (contar exigía ABIERTA con la caja ya en EN_ARQUEO).
+        const filter = where.status;
+        if (typeof filter === 'string' && state.status !== filter) return Promise.resolve(null);
+        if (
+          filter !== null &&
+          typeof filter === 'object' &&
+          'in' in filter &&
+          !(filter as { in: string[] }).in.includes(state.status)
+        ) {
+          return Promise.resolve(null);
+        }
         return Promise.resolve(sessionRow());
       }),
       findFirstOrThrow: jest.fn().mockImplementation(() => Promise.resolve(sessionRow())),
     },
     cashCount: { create: jest.fn().mockResolvedValue({ id: 'count-1' }) },
+    cashMovement: { create: jest.fn().mockResolvedValue({ id: 'mov-1', amount: 0 }) },
     tenant: {
       findUnique: jest.fn().mockResolvedValue({
         settings: threshold === undefined ? {} : { cashDifferenceThreshold: threshold },
@@ -122,6 +135,65 @@ describe('Ciclo de caja — arqueo (CASH-011)', () => {
     await expect(requireOpenSession(prisma as never, TENANT, null)).rejects.toThrow(
       BadRequestException,
     );
+  });
+
+  /**
+   * La regresión que motivó `requireCountableSession`.
+   *
+   * `start-count` congela la caja *para poder contarla*, y `createCount` exigía
+   * ABIERTA: congelar bloqueaba el conteo para el que se había congelado, y el
+   * cajero leía "no hay sesión de caja activa" con la caja abierta delante.
+   */
+  it('se puede arquear con la caja congelada — es para lo que se congela', async () => {
+    const { service, prisma } = build({ status: 'EN_ARQUEO', movements: [] });
+
+    await expect(service.createCount({ countedMxn: 1000 })).resolves.toEqual({ id: 'count-1' });
+    expect(prisma.cashCount.create).toHaveBeenCalled();
+  });
+
+  it('también se puede arquear sin congelar — control de turno con la caja abierta', async () => {
+    const { service, prisma } = build({ status: 'ABIERTA', movements: [] });
+
+    await service.createCount({ countedMxn: 1000 });
+    expect(prisma.cashCount.create).toHaveBeenCalled();
+  });
+
+  it('el arqueo registra la diferencia contra el esperado', async () => {
+    const { service, prisma } = build({
+      status: 'EN_ARQUEO',
+      opening: 1000,
+      movements: [{ type: 'SALE', paymentMethod: 'CASH', currency: 'MXN', amount: 200 }],
+    });
+
+    await service.createCount({ countedMxn: 1150 });
+
+    // Esperado 1200, contado 1150: faltan 50.
+    expect(prisma.cashCount.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ expectedMxn: 1200, countedMxn: 1150, differenceMxn: -50 }),
+      }),
+    );
+  });
+
+  it('no se puede arquear una caja cerrada', async () => {
+    const { service } = build({ status: 'CERRADA' });
+    await expect(service.createCount({ countedMxn: 1000 })).rejects.toThrow(BadRequestException);
+  });
+
+  /**
+   * El otro lado de la misma regla: contar sí, mover dinero no. Un retiro o un
+   * gasto durante el arqueo invalidaría el recuento que se está haciendo.
+   */
+  it('el dinero NO se mueve durante el arqueo', async () => {
+    const { service } = build({ status: 'EN_ARQUEO' });
+
+    await expect(
+      service.createManualMovement({ type: 'EXPENSE', amount: 100 }),
+    ).rejects.toThrow(BadRequestException);
+
+    await expect(
+      service.withdrawCash({ amount: 100, reason: 'Caja fuerte' }),
+    ).rejects.toThrow(BadRequestException);
   });
 
   it('resume devuelve la caja a operación: EN_ARQUEO → ABIERTA', async () => {

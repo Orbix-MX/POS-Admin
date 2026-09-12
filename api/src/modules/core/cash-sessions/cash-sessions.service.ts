@@ -17,7 +17,10 @@ import { WithdrawCashDto } from './dto/withdraw-cash.dto';
 import { CreateCashRegisterDto, UpdateCashRegisterDto } from './dto/cash-register.dto';
 import { roundMoney } from '../../../common/utils/money.util';
 import { convertToBaseUnit } from '../../../common/helpers/unit-conversion';
-import { requireOpenSession } from '../../../common/helpers/cash-session.helper';
+import {
+  requireCountableSession,
+  requireOpenSession,
+} from '../../../common/helpers/cash-session.helper';
 import { AuditService } from '../../../common/services/audit.service';
 import { PlanLimitsService } from '../../../common/services/plan-limits.service';
 
@@ -799,7 +802,10 @@ export class CashSessionsService {
     // había y de quién lo vio. Mismo permiso que el arqueo.
     await this.resolveCashAuthorizer(tenantId, 'pos.cash:count', dto.authorizerPin);
 
-    const active = await requireOpenSession(
+    // Contar es lo único que debe funcionar con la caja congelada: `start-count`
+    // la pasa a EN_ARQUEO justo para que el efectivo no se mueva durante el
+    // recuento. Exigir ABIERTA aquí bloqueaba el conteo para el que se congeló.
+    const active = await requireCountableSession(
       this.prisma,
       tenantId,
       branchId,
