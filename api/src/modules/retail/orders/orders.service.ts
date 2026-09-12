@@ -629,13 +629,28 @@ export class OrdersService {
 
   async findAll(query: QueryOrdersDto): Promise<PaginatedResponse<Order>> {
     const tenantId = this.tenantContext.requireTenantId();
-    const { skip, limit, page, customerId, status, orderOrigin } = query;
+    const { skip, limit, page, customerId, status, orderOrigin, branchId, dateFrom, dateTo } =
+      query;
+
+    // `gte`/`lt`: el desde es inclusivo y el hasta exclusivo, para que dos
+    // rangos consecutivos no cuenten dos veces la venta del limite. Los
+    // instantes llegan absolutos (ISO con zona) desde el cliente — calcular
+    // "hoy" aqui desfasaria el dia de un negocio fuera de UTC.
+    const createdAt =
+      dateFrom != null || dateTo != null
+        ? {
+            ...(dateFrom != null && { gte: new Date(dateFrom) }),
+            ...(dateTo != null && { lt: new Date(dateTo) }),
+          }
+        : undefined;
 
     const where: any = {
       tenantId,
       ...(customerId != null && { customerId }),
       ...(status != null && { status }),
       ...(orderOrigin != null && { orderOrigin }),
+      ...(branchId != null && { branchId }),
+      ...(createdAt != null && { createdAt }),
     };
 
     const [orders, total] = await Promise.all([
