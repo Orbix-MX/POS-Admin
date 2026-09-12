@@ -38,6 +38,16 @@ export const StorageKeys = {
   homeScreen: 'orbix.prefs.homeScreen',
   /** Sort order for the product grid on the POS sell screen. */
   posSortBy: 'orbix.prefs.posSortBy',
+  /**
+   * Caja física que opera **este dispositivo**.
+   *
+   * Va por dispositivo y no por usuario porque la caja pertenece al puesto: un
+   * relevo de turno entra en la misma terminal y continúa la misma sesión, sin
+   * cerrar ni volver a abrir. Sin esto, `GET /cash-sessions/active` tiene que
+   * adivinar cuál de las cajas vivas de la sucursal mirar, y con dos cajeros
+   * los cobros de uno acaban en el cajón del otro.
+   */
+  cashRegisterId: 'orbix.cash.registerId',
 } as const;
 
 export type SecureKey = (typeof SecureKeys)[keyof typeof SecureKeys];

@@ -27,6 +27,7 @@ import {
 } from '@/components';
 import { Ripple, useRipple } from '@/components/animations/ripple';
 import { useDashboardStats } from '@/features/common/use-dashboard-stats';
+import { useDayPulse } from '@/features/dashboard/use-day-pulse';
 import { getHomeScreenPref, type HomeScreenPref } from '@/features/settings/use-settings-prefs';
 import { useAuth } from '@/hooks/use-auth';
 import { useCurrencyFormatVersion } from '@/hooks/use-currency-format-version';
@@ -53,6 +54,7 @@ export default function HomeScreen() {
   const { can } = usePermissions();
 
   const { data, isLoading } = useDashboardStats();
+  const { pulse, isLoading: pulseLoading } = useDayPulse('today');
   const [drawerVisible, setDrawerVisible] = useState(false);
   useCurrencyFormatVersion();
 
@@ -117,24 +119,77 @@ export default function HomeScreen() {
       </View>
       <AppDrawer visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
 
+      {/* El pulso del día, antes que nada: es la pregunta con la que se abre la
+          app cada mañana. Las cifras del turno salen del `summary` que calcula
+          el servidor — ver `use-day-pulse.ts` para por qué no de /reports. */}
       <Animated.View entering={FadeInDown.duration(240)} style={{ gap: theme.spacing.md }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <OrbixText size="xs" weight="semibold" tone="mutedForeground" style={{ letterSpacing: 0.5 }}>
+            {t('home.today').toUpperCase()}
+          </OrbixText>
+          {pulse.shiftOpen ? (
+            <Pressable onPress={() => router.push('/(app)/caja')} accessibilityRole="button">
+              <OrbixText size="xs" weight="semibold" style={{ color: theme.colors.brandBlue600 }}>
+                {t('home.openCash')}
+              </OrbixText>
+            </Pressable>
+          ) : null}
+        </View>
+
         <View style={{ flexDirection: 'row', gap: theme.spacing.md }}>
           <KpiCard
-            label={t('home.kpiSales')}
-            value={formatCurrency(data?.totalRevenue ?? 0)}
-            loading={isLoading}
+            label={t('home.kpiSoldToday')}
+            value={pulse.shiftSales === null ? '—' : formatCurrency(pulse.shiftSales)}
+            loading={pulseLoading}
           />
+          <KpiCard
+            label={t('home.kpiTicketsToday')}
+            value={String(pulse.ticketCount)}
+            loading={pulseLoading}
+          />
+        </View>
+
+        {/* Efectivo y gastos solo existen mientras hay un turno abierto: sin
+            caja no son cero, es que no hay turno del que hablar. */}
+        {pulse.shiftOpen ? (
+          <View style={{ flexDirection: 'row', gap: theme.spacing.md }}>
+            <KpiCard
+              label={t('home.kpiExpectedCash')}
+              value={pulse.expectedCash === null ? '—' : formatCurrency(pulse.expectedCash)}
+              loading={pulseLoading}
+            />
+            <KpiCard
+              label={t('home.kpiExpensesToday')}
+              value={pulse.shiftExpenses === null ? '—' : formatCurrency(pulse.shiftExpenses)}
+              loading={pulseLoading}
+            />
+          </View>
+        ) : (
+          <OrbixCard style={{ gap: 4 }}>
+            <OrbixText size="sm" weight="semibold">{t('home.noShiftTitle')}</OrbixText>
+            <OrbixText size="sm" tone="mutedForeground">{t('home.noShiftHint')}</OrbixText>
+          </OrbixCard>
+        )}
+      </Animated.View>
+
+      {/* Acumulados del negocio. Siguen siendo útiles, pero por debajo de lo de
+          hoy: nadie abre la app para ver cuántos productos tiene dados de alta. */}
+      <Animated.View entering={FadeInDown.delay(80).duration(240)} style={{ gap: theme.spacing.sm }}>
+        <OrbixText size="xs" weight="semibold" tone="mutedForeground" style={{ letterSpacing: 0.5 }}>
+          {t('home.totals').toUpperCase()}
+        </OrbixText>
+        <View style={{ flexDirection: 'row', gap: theme.spacing.md }}>
           <KpiCard
             label={t('home.kpiCustomers')}
             value={String(data?.totalCustomers ?? 0)}
             loading={isLoading}
           />
+          <KpiCard
+            label={t('home.kpiProducts')}
+            value={String(data?.totalProducts ?? 0)}
+            loading={isLoading}
+          />
         </View>
-        <KpiCard
-          label={t('home.kpiProducts')}
-          value={String(data?.totalProducts ?? 0)}
-          loading={isLoading}
-        />
       </Animated.View>
 
       <View style={{ gap: theme.spacing.sm }}>

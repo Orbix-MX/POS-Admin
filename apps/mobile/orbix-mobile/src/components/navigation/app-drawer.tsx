@@ -52,14 +52,15 @@ const CLOSE_TIMING = { duration: 200, easing: Easing.in(Easing.cubic) } as const
 
 interface DrawerModule {
   key: string;
-  labelKey: 'ventas' | 'inventario' | 'clientes' | 'empleados' | 'reportes' | 'caja';
+  labelKey: 'ventas' | 'inventario' | 'clientes' | 'empleados' | 'reportes' | 'caja' | 'tickets';
   Icon: ComponentType<IconProps>;
   /** Live destination; undefined rows render as "Próx." placeholders. */
-  route?: '/(app)/products' | '/(app)/pos' | '/(app)/customers';
+  route?: '/(app)/products' | '/(app)/pos' | '/(app)/customers' | '/(app)/caja' | '/(app)/tickets';
 }
 
 const STATIC_MODULES: Omit<DrawerModule, 'route'>[] = [
   { key: 'ventas', labelKey: 'ventas', Icon: ShoppingBagIcon },
+  { key: 'tickets', labelKey: 'tickets', Icon: ChartIcon },
   { key: 'inventario', labelKey: 'inventario', Icon: PackageIcon },
   { key: 'clientes', labelKey: 'clientes', Icon: UsersIcon },
   { key: 'empleados', labelKey: 'empleados', Icon: UsersIcon },
@@ -176,14 +177,17 @@ function AppDrawerComponent({ visible, onClose }: AppDrawerProps) {
     if (visible) void refresh();
   }, [visible, refresh]);
 
-  // Inventario, Ventas and Clientes are wired to real screens; each gated on
-  // its own permission, not just presence in the list.
+  // Cada fila viva se habilita con su propio permiso, no por estar en la lista.
+  // Caja va por `cash:view` —ver es lo que hace la pantalla; abrir, mover y
+  // cortar tienen sus propios permisos y los resuelve cada acción.
   const drawerModules = useMemo<DrawerModule[]>(
     () =>
       STATIC_MODULES.map((mod) => {
         if (mod.key === 'inventario' && can('products:view')) return { ...mod, route: '/(app)/products' as const };
         if (mod.key === 'ventas' && can('orders:create')) return { ...mod, route: '/(app)/pos' as const };
         if (mod.key === 'clientes' && can('customers:view')) return { ...mod, route: '/(app)/customers' as const };
+        if (mod.key === 'caja' && can('cash:view')) return { ...mod, route: '/(app)/caja' as const };
+        if (mod.key === 'tickets' && can('orders:view')) return { ...mod, route: '/(app)/tickets' as const };
         return mod;
       }),
     [can],

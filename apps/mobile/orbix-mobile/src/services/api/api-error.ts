@@ -24,6 +24,13 @@ interface NestErrorBody {
   message?: string | string[];
   error?: string;
   statusCode?: number;
+  /**
+   * Código de dominio que algunos servicios mandan junto al mensaje —
+   * `throw new ForbiddenException({ code, message, ... })`. Nest serializa ese
+   * objeto tal cual, así que el código llega en el cuerpo y es lo único
+   * estable: el mensaje está localizado y puede cambiar.
+   */
+  code?: string;
 }
 
 export class ApiError extends Error {
@@ -31,13 +38,29 @@ export class ApiError extends Error {
   readonly status?: number;
   /** Field-level messages from `class-validator`, when the API sent an array. */
   readonly details: string[];
+  /**
+   * Código de dominio del servidor (`AUTHORIZATION_REQUIRED`,
+   * `AUTHORIZATION_INVALID`…), cuando lo manda.
+   *
+   * Es lo único sobre lo que se puede ramificar: el `kind` sale del status HTTP
+   * y no distingue "te falta permiso" de "pide el PIN de un supervisor", y el
+   * mensaje viene traducido y puede cambiar sin avisar.
+   */
+  readonly code?: string;
 
-  constructor(kind: ApiErrorKind, message: string, status?: number, details: string[] = []) {
+  constructor(
+    kind: ApiErrorKind,
+    message: string,
+    status?: number,
+    details: string[] = [],
+    code?: string,
+  ) {
     super(message);
     this.name = 'ApiError';
     this.kind = kind;
     this.status = status;
     this.details = details;
+    this.code = code;
   }
 
   /** True when retrying the exact same request could plausibly succeed. */
@@ -60,18 +83,21 @@ function kindForStatus(status: number): ApiErrorKind {
 function messageFromResponse(response: AxiosResponse<NestErrorBody>): {
   message: string;
   details: string[];
+  code?: string;
 } {
   const body = response.data;
+  const code = typeof body?.code === 'string' ? body.code : undefined;
+
   if (Array.isArray(body?.message)) {
-    return { message: body.message[0] ?? 'Request failed', details: body.message };
+    return { message: body.message[0] ?? 'Request failed', details: body.message, code };
   }
   if (typeof body?.message === 'string' && body.message) {
-    return { message: body.message, details: [] };
+    return { message: body.message, details: [], code };
   }
   if (typeof body?.error === 'string' && body.error) {
-    return { message: body.error, details: [] };
+    return { message: body.error, details: [], code };
   }
-  return { message: `Request failed with status ${response.status}`, details: [] };
+  return { message: `Request failed with status ${response.status}`, details: [], code };
 }
 
 /** Converts anything thrown by axios (or by us) into an `ApiError`. */
@@ -80,8 +106,16 @@ export function toApiError(error: unknown): ApiError {
 
   if (error instanceof AxiosError) {
     if (error.response) {
-      const { message, details } = messageFromResponse(error.response as AxiosResponse<NestErrorBody>);
-      return new ApiError(kindForStatus(error.response.status), message, error.response.status, details);
+      const { message, details, code } = messageFromResponse(
+        error.response as AxiosResponse<NestErrorBody>,
+      );
+      return new ApiError(
+        kindForStatus(error.response.status),
+        message,
+        error.response.status,
+        details,
+        code,
+      );
     }
     if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
       return new ApiError('timeout', 'The request took too long to complete.');

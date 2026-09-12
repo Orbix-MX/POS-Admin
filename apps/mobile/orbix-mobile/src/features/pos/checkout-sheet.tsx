@@ -14,7 +14,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-na
 import { AnimatedSuccessCheck, OrbixButton, OrbixGradient, OrbixInput, OrbixSpinner, OrbixText } from '@/components';
 import { MinusIcon, PackageIcon, PlusIcon } from '@/components/ui/icons';
 import { useTheme } from '@/hooks/use-theme';
-import type { Order } from '@/repositories/pos-repository';
+import type { Order } from '@/repositories/orders-repository';
 
 import { formatCurrency, type CartLine, type CartTotals } from './pos-totals';
 

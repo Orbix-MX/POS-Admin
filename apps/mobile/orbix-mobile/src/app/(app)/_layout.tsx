@@ -81,6 +81,11 @@ export default function AppLayout() {
         }}
       />
 
+      {/* Caja y select-tenant existen como rutas pero no como pestaña: se llega
+          a ellas desde el drawer y desde Inicio. Cinco pestañas ya son el
+          máximo legible a este ancho. */}
+      <Tabs.Screen name="caja" options={{ href: null }} />
+      <Tabs.Screen name="tickets" options={{ href: null }} />
       <Tabs.Screen name="select-tenant" options={{ href: null }} />
     </Tabs>
   );

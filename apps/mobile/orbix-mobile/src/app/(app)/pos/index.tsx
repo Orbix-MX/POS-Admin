@@ -8,21 +8,22 @@
  * category chips, a two-up product grid, a floating gradient cart bar and a
  * three-stage checkout sheet.
  */
+import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FlatList, View } from 'react-native';
+import { FlatList, Pressable, View } from 'react-native';
 
 import {
   AppDrawer,
   DrawerButton,
-  OrbixButton,
   OrbixInput,
   OrbixScaffold,
   OrbixSkeleton,
   OrbixText,
   toast,
 } from '@/components';
-import { CreditCardIcon, SearchIcon } from '@/components/ui/icons';
+import { SearchIcon } from '@/components/ui/icons';
+import { OpenCashSessionPanel } from '@/features/cash/open-session-panel';
 import { CartBar } from '@/features/pos/cart-bar';
 import { CategoryChips, type CategoryChip } from '@/features/pos/category-chips';
 import {
@@ -33,19 +34,14 @@ import {
 } from '@/features/pos/checkout-sheet';
 import { computeTotals, formatCurrency, type CartLine } from '@/features/pos/pos-totals';
 import { ProductCard } from '@/features/pos/product-card';
-import {
-  useActiveCashSession,
-  useCreateSaleOrder,
-  useOpenCashSession,
-  useSendReceipt,
-} from '@/features/pos/use-pos';
+import { useActiveCashSession, useCreateSaleOrder, useSendReceipt } from '@/features/pos/use-pos';
 import { useCategories, useProducts } from '@/features/products/use-products';
 import { usePosSortByPref } from '@/features/settings/use-settings-prefs';
 import { useAuth } from '@/hooks/use-auth';
 import { useCurrencyFormatVersion } from '@/hooks/use-currency-format-version';
 import { usePermissions } from '@/hooks/use-permissions';
 import { useTheme } from '@/hooks/use-theme';
-import type { Order } from '@/repositories/pos-repository';
+import type { Order } from '@/repositories/orders-repository';
 import type { Product } from '@/repositories/products-repository';
 import { toUserMessage } from '@/utils/error-message';
 
@@ -55,131 +51,9 @@ interface GridSpacer {
   spacer: true;
 }
 
-/** `''` → 0, so an untouched optional field never becomes NaN. */
-function parseAmount(value: string): number {
-  const parsed = Number(value.replace(',', '.'));
-  return Number.isFinite(parsed) ? parsed : NaN;
-}
-
-/**
- * Opening-cash-drawer gate, shown instead of the product picker until a session
- * exists. The drawer can be floated in both currencies: `openingAmountUsd` is
- * optional server-side, but `exchangeRateUsdMxn` is not — and it is frozen for
- * the whole session (closing computes `differenceUsd` against it), so it is
- * only demanded when dollars are actually being deposited.
- */
-function OpenCashSessionPanel() {
-  const theme = useTheme();
-  const { t } = useTranslation();
-  const [openingAmount, setOpeningAmount] = useState('');
-  const [openingAmountUsd, setOpeningAmountUsd] = useState('');
-  const [exchangeRate, setExchangeRate] = useState('');
-  const [validationError, setValidationError] = useState<string | null>(null);
-  const openSession = useOpenCashSession();
-
-  const usdAmount = openingAmountUsd.trim() ? parseAmount(openingAmountUsd) : 0;
-  const hasUsd = Number.isFinite(usdAmount) && usdAmount > 0;
-
-  const handleOpen = () => {
-    const amount = openingAmount.trim() ? parseAmount(openingAmount) : 0;
-    if (!Number.isFinite(amount) || amount < 0) return;
-    if (!Number.isFinite(usdAmount) || usdAmount < 0) return;
-
-    const rate = exchangeRate.trim() ? parseAmount(exchangeRate) : 0;
-    // The API requires a rate ≥ 0.01 always. With no dollars in the drawer it
-    // carries no meaning, so send the schema's neutral default instead of
-    // inventing a number that would later be reported as the session's FX rate.
-    if (hasUsd && (!Number.isFinite(rate) || rate < 0.01)) {
-      setValidationError(t('pos.exchangeRateRequired'));
-      return;
-    }
-    setValidationError(null);
-
-    openSession.mutate({
-      exchangeRateUsdMxn: Number.isFinite(rate) && rate >= 0.01 ? rate : 1,
-      openingAmount: amount,
-      ...(hasUsd ? { openingAmountUsd: usdAmount } : {}),
-    });
-  };
-
-  return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: theme.spacing.lg, paddingHorizontal: theme.spacing.xl }}>
-      <View
-        style={{
-          width: 64,
-          height: 64,
-          borderRadius: theme.radius.full,
-          backgroundColor: theme.colors.brandBlue50,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <CreditCardIcon size={26} color={theme.colors.brandBlue600} />
-      </View>
-      <View style={{ gap: 4, alignItems: 'center' }}>
-        <OrbixText size="lg" weight="bold">{t('pos.noCashSession')}</OrbixText>
-        <OrbixText size="sm" tone="mutedForeground" align="center">
-          {t('pos.noCashSessionHint')}
-        </OrbixText>
-      </View>
-
-      <View style={{ width: '100%', gap: theme.spacing.md }}>
-        <View style={{ flexDirection: 'row', gap: theme.spacing.sm }}>
-          <View style={{ flex: 1, gap: theme.spacing.xs }}>
-            <OrbixText size="xs" weight="semibold" tone="mutedForeground">
-              {t('pos.openingAmountMxn').toUpperCase()}
-            </OrbixText>
-            <OrbixInput
-              value={openingAmount}
-              onChangeText={setOpeningAmount}
-              placeholder="0.00"
-              keyboardType="decimal-pad"
-            />
-          </View>
-          <View style={{ flex: 1, gap: theme.spacing.xs }}>
-            <OrbixText size="xs" weight="semibold" tone="warningFg">
-              {t('pos.openingAmountUsd').toUpperCase()}
-            </OrbixText>
-            <OrbixInput
-              value={openingAmountUsd}
-              onChangeText={setOpeningAmountUsd}
-              placeholder="0.00"
-              keyboardType="decimal-pad"
-            />
-          </View>
-        </View>
-
-        {hasUsd ? (
-          <View style={{ gap: theme.spacing.xs }}>
-            <OrbixText size="xs" weight="semibold" tone="mutedForeground">
-              {t('pos.exchangeRate').toUpperCase()}
-            </OrbixText>
-            <OrbixInput
-              value={exchangeRate}
-              onChangeText={setExchangeRate}
-              placeholder="19.45"
-              keyboardType="decimal-pad"
-              hasError={Boolean(validationError)}
-            />
-            <OrbixText size="xs" tone="mutedForeground">{t('pos.exchangeRateHint')}</OrbixText>
-          </View>
-        ) : null}
-
-        {validationError ? (
-          <OrbixText size="xs" tone="dangerFg">{validationError}</OrbixText>
-        ) : null}
-        {openSession.error ? (
-          <OrbixText size="xs" tone="dangerFg">{toUserMessage(openSession.error, t)}</OrbixText>
-        ) : null}
-
-        <OrbixButton label={t('pos.openCashSession')} onPress={handleOpen} loading={openSession.isPending} />
-      </View>
-    </View>
-  );
-}
-
 export default function PosScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const { t } = useTranslation();
   const { session } = useAuth();
   const { can } = usePermissions();
@@ -408,6 +282,24 @@ export default function PosScreen() {
             {t('pos.newSale')}
           </OrbixText>
         </View>
+        {/* El efectivo esperado, no una etiqueta fija: es el dato que el cajero
+            necesita a mano durante todo el turno, y ya viaja en el `summary` de
+            la sesión. Toca para ir a Caja. */}
+        {cashSession?.summary ? (
+          <Pressable
+            onPress={() => router.push('/(app)/caja')}
+            accessibilityRole="button"
+            accessibilityLabel={t('cash.expectedCash')}
+            style={{ alignItems: 'flex-end' }}
+          >
+            <OrbixText size="xs" weight="semibold" tone="mutedForeground">
+              {t('cash.expectedCash').toUpperCase()}
+            </OrbixText>
+            <OrbixText size="base" weight="bold" style={{ fontVariant: ['tabular-nums'] }}>
+              {formatCurrency(cashSession.summary.expectedCash)}
+            </OrbixText>
+          </Pressable>
+        ) : null}
       </View>
       <AppDrawer visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
 

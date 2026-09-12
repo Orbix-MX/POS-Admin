@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '@/hooks/use-auth';
 import { customersRepository, type Customer } from '@/repositories/customers-repository';
+import { queryKeys } from '@/services/query/query-keys';
 import { toUserMessage } from '@/utils/error-message';
 
 import type { CreateCustomerRequest, UpdateCustomerRequest } from '@/dto/customers.dto';
@@ -15,7 +16,7 @@ export function useCreateCustomer() {
   return useMutation<Customer, unknown, CreateCustomerRequest>({
     mutationFn: (request) => customersRepository.create(request),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['customers', 'list', session?.tenant?.id] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.customers.lists(session?.tenant?.id) });
     },
     meta: { errorMessage: (error: unknown) => toUserMessage(error, t) },
   });
@@ -30,7 +31,7 @@ export function useUpdateCustomer(id: string) {
     mutationFn: (request) => customersRepository.update(id, request),
     onSuccess: (customer) => {
       queryClient.setQueryData(['customers', 'detail', session?.tenant?.id, id], customer);
-      void queryClient.invalidateQueries({ queryKey: ['customers', 'list', session?.tenant?.id] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.customers.lists(session?.tenant?.id) });
     },
     meta: { errorMessage: (error: unknown) => toUserMessage(error, t) },
   });
@@ -44,7 +45,7 @@ export function useDeleteCustomer() {
   return useMutation<void, unknown, string>({
     mutationFn: (id) => customersRepository.remove(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['customers', 'list', session?.tenant?.id] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.customers.lists(session?.tenant?.id) });
     },
     meta: { errorMessage: (error: unknown) => toUserMessage(error, t) },
   });

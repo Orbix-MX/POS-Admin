@@ -184,6 +184,34 @@ export const productsRepository = {
   },
 
   /**
+   * `PATCH /products/:id/stock` — ajusta la existencia del producto "sin
+   * variante" (la default) en la sucursal del token.
+   *
+   * `quantity` es un **delta con signo**, no la existencia final: `10` suma
+   * diez. El servidor deja su `InventoryMovement` de tipo `AJUSTE` y rechaza la
+   * salida si no hay suficiente, comprobándolo dentro de la transacción para
+   * que una venta concurrente no cuele el stock en negativo.
+   *
+   * Solo productos `SIMPLE` con `trackInventory`.
+   */
+  async adjustStock(id: string, quantity: number): Promise<Product> {
+    const dto = await http.patch<ProductDto>(`/products/${id}/stock`, { quantity });
+    return toDomain(dto);
+  },
+
+  /**
+   * `PATCH /products/:id/variants/:variantId/stock` — mismo delta, sobre una
+   * presentación concreta. Es la única forma de mover la existencia de una
+   * variante con nombre después de crearla.
+   */
+  async adjustVariantStock(id: string, variantId: string, quantity: number): Promise<Product> {
+    const dto = await http.patch<ProductDto>(`/products/${id}/variants/${variantId}/stock`, {
+      quantity,
+    });
+    return toDomain(dto);
+  },
+
+  /**
    * `POST /products/:id/image` — multipart, campo `file`, igual que el logo del
    * tenant: `FormData` de RN acepta un `{ uri, name, type }` en lugar de un
    * `Blob` y el adaptador de axios lo transmite desde disco.

@@ -21,6 +21,12 @@ export interface OrbixModalProps {
   cancelLabel?: string;
   destructive?: boolean;
   loading?: boolean;
+  /**
+   * Inhabilita el botón de confirmar sin cerrar el diálogo — para los que
+   * piden algo en `children` antes de poder seguir (un motivo obligatorio, por
+   * ejemplo). Cancelar sigue disponible siempre.
+   */
+  confirmDisabled?: boolean;
   onConfirm?: () => void;
   onDismiss: () => void;
 }
@@ -34,6 +40,7 @@ function OrbixModalComponent({
   cancelLabel,
   destructive = false,
   loading = false,
+  confirmDisabled = false,
   onConfirm,
   onDismiss,
 }: OrbixModalProps) {
@@ -123,6 +130,7 @@ function OrbixModalComponent({
                   size="sm"
                   fullWidth={false}
                   loading={loading}
+                  disabled={confirmDisabled}
                   onPress={onConfirm}
                 />
               ) : null}

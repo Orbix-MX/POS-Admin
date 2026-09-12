@@ -10,6 +10,7 @@ import {
   type Product,
   type ProductImage,
 } from '@/repositories/products-repository';
+import { queryKeys } from '@/services/query/query-keys';
 import { toUserMessage } from '@/utils/error-message';
 
 import type { CategoryDto, CreateCategoryRequest, CreateProductRequest, UpdateProductRequest } from '@/dto/products.dto';
@@ -22,7 +23,9 @@ export function useCreateProduct() {
   return useMutation<Product, unknown, CreateProductRequest>({
     mutationFn: (request) => productsRepository.create(request),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['products', 'list', session?.tenant?.id] });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.products.lists(session?.tenant?.id, session?.branchId),
+      });
     },
     meta: { errorMessage: (error: unknown) => toUserMessage(error, t) },
   });
@@ -36,8 +39,13 @@ export function useUpdateProduct(id: string) {
   return useMutation<Product, unknown, UpdateProductRequest>({
     mutationFn: (request) => productsRepository.update(id, request),
     onSuccess: (product) => {
-      queryClient.setQueryData(['products', 'detail', session?.tenant?.id, id], product);
-      void queryClient.invalidateQueries({ queryKey: ['products', 'list', session?.tenant?.id] });
+      queryClient.setQueryData(
+        queryKeys.products.detail(session?.tenant?.id, session?.branchId, id),
+        product,
+      );
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.products.lists(session?.tenant?.id, session?.branchId),
+      });
     },
     meta: { errorMessage: (error: unknown) => toUserMessage(error, t) },
   });
@@ -59,11 +67,13 @@ export function useUploadProductImage(productId: string) {
     mutationFn: (asset) => productsRepository.uploadImage(productId, asset),
     onSuccess: (image) => {
       queryClient.setQueryData(
-        ['products', 'detail', session?.tenant?.id, productId],
+        queryKeys.products.detail(session?.tenant?.id, session?.branchId, productId),
         (current: Product | undefined) =>
           current ? { ...current, images: [image], primaryImage: image } : current,
       );
-      void queryClient.invalidateQueries({ queryKey: ['products', 'list', session?.tenant?.id] });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.products.lists(session?.tenant?.id, session?.branchId),
+      });
     },
     meta: { errorMessage: (error: unknown) => toUserMessage(error, t) },
   });
@@ -78,14 +88,16 @@ export function useDeleteProductImage(productId: string) {
     mutationFn: (imageId) => productsRepository.removeImage(productId, imageId),
     onSuccess: (_result, imageId) => {
       queryClient.setQueryData(
-        ['products', 'detail', session?.tenant?.id, productId],
+        queryKeys.products.detail(session?.tenant?.id, session?.branchId, productId),
         (current: Product | undefined) => {
           if (!current) return current;
           const images = current.images.filter((image) => image.id !== imageId);
           return { ...current, images, primaryImage: resolvePrimaryImage(images) };
         },
       );
-      void queryClient.invalidateQueries({ queryKey: ['products', 'list', session?.tenant?.id] });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.products.lists(session?.tenant?.id, session?.branchId),
+      });
     },
     meta: { errorMessage: (error: unknown) => toUserMessage(error, t) },
   });
@@ -99,7 +111,7 @@ export function useCreateCategory() {
   return useMutation<CategoryDto, unknown, CreateCategoryRequest>({
     mutationFn: (request) => categoriesRepository.create(request),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['categories', 'list', session?.tenant?.id] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.categories.list(session?.tenant?.id) });
     },
     meta: { errorMessage: (error: unknown) => toUserMessage(error, t) },
   });
@@ -113,7 +125,9 @@ export function useDeleteProduct() {
   return useMutation<void, unknown, string>({
     mutationFn: (id) => productsRepository.remove(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['products', 'list', session?.tenant?.id] });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.products.lists(session?.tenant?.id, session?.branchId),
+      });
     },
     meta: { errorMessage: (error: unknown) => toUserMessage(error, t) },
   });

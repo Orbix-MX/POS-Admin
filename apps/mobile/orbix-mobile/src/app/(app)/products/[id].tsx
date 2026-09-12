@@ -1,10 +1,19 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
-import { BackButton, OrbixLoading, OrbixModal, OrbixScaffold, OrbixText, toast } from '@/components';
-import { TrashIcon } from '@/components/ui/icons';
+import {
+  BackButton,
+  OrbixLoading,
+  OrbixModal,
+  OrbixScaffold,
+  OrbixText,
+  toast,
+  type OrbixBottomSheetRef,
+} from '@/components';
+import { PackageIcon, TrashIcon } from '@/components/ui/icons';
+import { StockAdjustSheet } from '@/features/inventory/stock-adjust-sheet';
 import { ProductForm } from '@/features/products/product-form';
 import { ProductImageField } from '@/features/products/product-image-field';
 import { toUpdateRequest, type ProductFormValues } from '@/features/products/product-schemas';
@@ -28,6 +37,7 @@ export default function EditProductScreen() {
   const { session } = useAuth();
   const { can } = usePermissions();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const stockSheet = useRef<OrbixBottomSheetRef>(null);
 
   const { data: product, isLoading } = useProduct(id);
   const { data: categories } = useCategories();
@@ -119,6 +129,27 @@ export default function EditProductScreen() {
         >
           <TrashIcon size={16} color={theme.colors.dangerFg} />
         </Pressable>
+
+        {/* Ajustar existencia: la única forma de recibir mercancía desde el
+            móvil. El formulario no puede hacerlo — la API rechaza `stock` en el
+            PATCH, porque ahí no quedaría movimiento de inventario. */}
+        {can('products:edit') ? (
+          <Pressable
+            onPress={() => stockSheet.current?.expand()}
+            accessibilityRole="button"
+            accessibilityLabel={t('inventory.adjust.title')}
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: theme.radius.full,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: theme.colors.brandBlue50,
+            }}
+          >
+            <PackageIcon size={16} color={theme.colors.brandBlue600} />
+          </Pressable>
+        ) : null}
       </View>
 
       <ProductImageField
@@ -152,6 +183,8 @@ export default function EditProductScreen() {
         onConfirm={handleDelete}
         onDismiss={() => setConfirmDelete(false)}
       />
+
+      {product ? <StockAdjustSheet sheetRef={stockSheet} product={product} /> : null}
     </OrbixScaffold>
   );
 }

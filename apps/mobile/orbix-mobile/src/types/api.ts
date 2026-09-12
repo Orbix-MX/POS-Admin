@@ -109,3 +109,79 @@ export const CustomerType = {
   WHOLESALE: 'WHOLESALE',
 } as const;
 export type CustomerType = (typeof CustomerType)[keyof typeof CustomerType];
+
+/**
+ * Cuatro estados, no dos. `EN_ARQUEO` congela la caja para contarla y
+ * `PENDIENTE_REVISION` es donde queda un corte cuya diferencia superó el umbral
+ * del tenant: en ambos la sesión sigue viva —`GET /cash-sessions/active` la
+ * devuelve— pero no admite movimientos, que es cosa aparte del estado.
+ */
+export const CashSessionStatus = {
+  ABIERTA: 'ABIERTA',
+  EN_ARQUEO: 'EN_ARQUEO',
+  PENDIENTE_REVISION: 'PENDIENTE_REVISION',
+  CERRADA: 'CERRADA',
+} as const;
+export type CashSessionStatus = (typeof CashSessionStatus)[keyof typeof CashSessionStatus];
+
+/** `PARCIAL`: arqueo de control con la caja abierta. `FINAL`: el del cierre. */
+export const CashCountType = {
+  PARCIAL: 'PARCIAL',
+  FINAL: 'FINAL',
+} as const;
+export type CashCountType = (typeof CashCountType)[keyof typeof CashCountType];
+
+/**
+ * `WITHDRAWAL` y `REFUND` son tipos propios y no `EXPENSE`: un retiro es
+ * efectivo que cambia de lugar y una devolución es dinero que vuelve al
+ * cliente — ninguno de los dos es un gasto del negocio, y el corte los reporta
+ * en filas distintas.
+ */
+export const CashMovementType = {
+  SALE: 'SALE',
+  CXC_PAYMENT: 'CXC_PAYMENT',
+  SUPPLIER_PAYMENT: 'SUPPLIER_PAYMENT',
+  INCOME: 'INCOME',
+  EXPENSE: 'EXPENSE',
+  WITHDRAWAL: 'WITHDRAWAL',
+  REFUND: 'REFUND',
+} as const;
+export type CashMovementType = (typeof CashMovementType)[keyof typeof CashMovementType];
+
+export const OrderStatus = {
+  PENDING: 'PENDING',
+  LAYAWAY: 'LAYAWAY',
+  CONFIRMED: 'CONFIRMED',
+  PROCESSING: 'PROCESSING',
+  SHIPPED: 'SHIPPED',
+  DELIVERED: 'DELIVERED',
+  CANCELLED: 'CANCELLED',
+  REFUNDED: 'REFUNDED',
+} as const;
+export type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];
+
+export const PaymentStatus = {
+  PENDING: 'PENDING',
+  PARTIALLY_PAID: 'PARTIALLY_PAID',
+  PAID: 'PAID',
+  FAILED: 'FAILED',
+  REFUNDED: 'REFUNDED',
+  PARTIALLY_REFUNDED: 'PARTIALLY_REFUNDED',
+} as const;
+export type PaymentStatus = (typeof PaymentStatus)[keyof typeof PaymentStatus];
+
+export const OrderOrigin = {
+  RETAIL_POS: 'RETAIL_POS',
+  RESTAURANT_COMANDA: 'RESTAURANT_COMANDA',
+  DELIVERY: 'DELIVERY',
+  KIOSK: 'KIOSK',
+  ONLINE: 'ONLINE',
+} as const;
+export type OrderOrigin = (typeof OrderOrigin)[keyof typeof OrderOrigin];
+
+/** Divisas que maneja una sesión de caja. El fondo puede tener las dos. */
+export const CashCurrency = {
+  MXN: 'MXN',
+  USD: 'USD',
+} as const;
+export type CashCurrency = (typeof CashCurrency)[keyof typeof CashCurrency];

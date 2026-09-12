@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { useAuth } from '@/hooks/use-auth';
 import { usePermissions } from '@/hooks/use-permissions';
+import { queryKeys } from '@/services/query/query-keys';
 import { dashboardRepository } from '@/repositories/dashboard-repository';
 
 /**
@@ -16,7 +17,7 @@ export function useDashboardStats() {
   const { can } = usePermissions();
 
   return useQuery({
-    queryKey: ['dashboard', 'stats', session?.tenant?.id],
+    queryKey: queryKeys.dashboard.stats(session?.tenant?.id),
     queryFn: () => dashboardRepository.getStats(),
     enabled: Boolean(session?.tenant) && can('dashboard:view'),
     staleTime: 60 * 1000,

@@ -1,7 +1,9 @@
 /**
- * Shapes for `/branches`, `/cash-sessions` and `/orders` — the POS checkout
- * path. Decimal fields serialise as strings over JSON, same rationale as
- * `ProductDto`.
+ * `/branches`.
+ *
+ * Lo de caja vive en `cash.dto.ts` y lo de ventas en `orders.dto.ts`: los tres
+ * estaban aquí juntos cuando el POS era la única pantalla que los tocaba, y con
+ * el ciclo del día completo cada uno tiene ya su propio repositorio.
  */
 
 export interface BranchDto {
@@ -9,59 +11,4 @@ export interface BranchDto {
   name: string;
   code: string;
   isMain: boolean;
-}
-
-export interface CashSessionDto {
-  id: string;
-  status: 'ABIERTA' | 'CERRADA';
-  branchId: string | null;
-  openingAmount: string | number;
-  openingAmountUsd: string | number | null;
-  exchangeRateUsdMxn: string | number;
-  openedAt: string;
-}
-
-export interface OpenCashSessionRequest {
-  exchangeRateUsdMxn: number;
-  openingAmount: number;
-  openingAmountUsd?: number;
-  notes?: string;
-  branchId?: string;
-}
-
-export interface CreateOrderItemRequest {
-  itemType?: 'PRODUCT' | 'SERVICE';
-  productId?: string;
-  quantity: number;
-  price: number;
-}
-
-export interface CreateOrderPaymentSplit {
-  method: string;
-  currency?: 'MXN' | 'USD';
-  amount: number;
-  amountReceived?: number;
-  changeGiven?: number;
-}
-
-export interface CreateOrderRequest {
-  items: CreateOrderItemRequest[];
-  paymentMethod: string;
-  payments?: CreateOrderPaymentSplit[];
-  paymentStatus?: string;
-  status?: string;
-  changeAmount?: number;
-  changeCurrency?: 'MXN' | 'USD';
-}
-
-export interface OrderDto {
-  id: string;
-  orderNumber: string;
-  status: string;
-  paymentStatus: string;
-  subtotal: string | number;
-  tax: string | number;
-  discount: string | number;
-  total: string | number;
-  createdAt: string;
 }
