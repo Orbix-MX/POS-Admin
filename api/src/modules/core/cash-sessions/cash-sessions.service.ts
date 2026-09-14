@@ -48,7 +48,43 @@ type MovementLike = {
   currency: string;
   amount: any;
   amountMxnEquivalent?: any;
+  /**
+   * Quién lo registró. Opcional porque no todas las consultas traen la
+   * relación: `calculateExpectedCash` no la necesita y el cierre lee los
+   * movimientos dentro de la transacción, donde pedirla sería peso de más.
+   */
+  createdById?: string | null;
+  createdBy?: { id: string; firstName: string | null; lastName: string | null; email: string } | null;
 };
+
+/**
+ * Lo que movió una persona durante el turno.
+ *
+ * El corte nombraba solo a quien abrió y a quien cerró; con un relevo en medio,
+ * el operador intermedio no aparecía en ninguna parte y averiguar de quién era
+ * un faltante obligaba a recorrer los movimientos uno a uno.
+ */
+export interface CashUserBreakdown {
+  userId: string | null;
+  name: string;
+  sales: number;
+  cxc: number;
+  income: number;
+  expense: number;
+  withdrawal: number;
+  refund: number;
+  /** Efectivo neto que esta persona dejó en el cajón (solo CASH, en MXN). */
+  netCash: number;
+  movementsCount: number;
+}
+
+/** Include compartido por las consultas cuyo resultado alimenta `buildSummary`. */
+const MOVEMENTS_WITH_AUTHOR = {
+  orderBy: { createdAt: 'desc' },
+  include: {
+    createdBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+  },
+} as const;
 
 @Injectable()
 export class CashSessionsService {
@@ -371,7 +407,7 @@ export class CashSessionsService {
       include: {
         branch: { select: { id: true, name: true } },
         openedBy: { select: { id: true, email: true } },
-        movements: { orderBy: { createdAt: 'desc' } },
+        movements: MOVEMENTS_WITH_AUTHOR,
       },
     });
     if (!session) return null;
@@ -422,7 +458,7 @@ export class CashSessionsService {
         branch: { select: { id: true, name: true } },
         openedBy: { select: { id: true, email: true } },
         closedBy: { select: { id: true, email: true } },
-        movements: { orderBy: { createdAt: 'desc' } },
+        movements: MOVEMENTS_WITH_AUTHOR,
       },
     });
     if (!session) throw new NotFoundException('Sesión de caja no encontrada');
@@ -973,6 +1009,79 @@ export class CashSessionsService {
     return this.prisma.cashSession.findFirstOrThrow({ where: { id, tenantId } });
   }
 
+  /**
+   * Registra que este usuario tomó la caja abierta.
+   *
+   * Se llama al entrar a la app con una sesión viva, no al abrirla: el caso que
+   * motiva la bitácora es el **relevo de turno**, donde la caja ya estaba
+   * abierta por otra persona.
+   *
+   * Idempotente: si quien entra ya es el del tramo abierto, no crea otro. Una
+   * app que se reabre cinco veces en un turno no debe dejar cinco tramos
+   * idénticos.
+   */
+  async registerHandover(cashSessionId?: string) {
+    const tenantId = this.tenantContext.requireTenantId();
+    const userId = this.auditContext.getUserId() ?? null;
+    const branchId = this.tenantContext.getBranchId() ?? null;
+
+    // Sin sesión indicada, la viva de la sucursal. No se exige ABIERTA: entrar a
+    // una caja en arqueo o pendiente de revisión también es estar en ella.
+    const session = cashSessionId
+      ? await this.prisma.cashSession.findFirst({
+          where: { id: cashSessionId, tenantId },
+          select: { id: true },
+        })
+      : await this.prisma.cashSession.findFirst({
+          where: { tenantId, branchId: branchId ?? undefined, status: { not: 'CERRADA' } },
+          select: { id: true },
+        });
+
+    if (!session) throw new BadRequestException('No hay sesión de caja activa.');
+
+    const current = await this.prisma.cashSessionHandover.findFirst({
+      where: { tenantId, cashSessionId: session.id, leftAt: null },
+      orderBy: { enteredAt: 'desc' },
+    });
+
+    if (current && current.userId === userId) return current;
+
+    // El tramo anterior se cierra AQUÍ, con la entrada del siguiente. En un
+    // móvil no hay evento de salida fiable, así que no se finge tenerlo.
+    if (current) {
+      await this.prisma.cashSessionHandover.update({
+        where: { id: current.id },
+        data: { leftAt: new Date() },
+      });
+    }
+
+    const handover = await this.prisma.cashSessionHandover.create({
+      data: { tenantId, cashSessionId: session.id, userId },
+    });
+
+    await this.audit.log({
+      action: 'CASH_HANDOVER',
+      entityType: 'CashSessionHandover',
+      entityId: handover.id,
+      before: current ? { userId: current.userId } : undefined,
+      after: { userId, cashSessionId: session.id },
+    });
+
+    return handover;
+  }
+
+  /** Los tramos de custodia de una sesión, en orden de entrada. */
+  async listHandovers(sessionId: string) {
+    const tenantId = this.tenantContext.requireTenantId();
+    return this.prisma.cashSessionHandover.findMany({
+      where: { tenantId, cashSessionId: sessionId },
+      orderBy: { enteredAt: 'asc' },
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+    });
+  }
+
   /** Arqueos de una sesión, del más reciente al más antiguo. */
   async listCounts(sessionId: string) {
     const tenantId = this.tenantContext.requireTenantId();
@@ -1275,7 +1384,99 @@ export class CashSessionsService {
       expectedCash: expectedCashMxn,
       expectedCashUsd,
       totals,
+      byUser: this.buildUserBreakdown(movements),
       movementsCount: movements.length,
     };
   }
+
+  /**
+   * Qué movió cada persona durante el turno.
+   *
+   * Responde la pregunta del corte cuando no cuadra —«¿de quién es este
+   * faltante?»— sin obligar a recorrer el libro movimiento a movimiento.
+   *
+   * Solo ve a quien **movió dinero**: quien entró, consultó y no vendió no
+   * aparece aquí. Esa otra mitad es la bitácora de relevos, que registra
+   * presencia y no actividad.
+   *
+   * `netCash` es el efectivo en MXN que la persona dejó en el cajón: lo que
+   * metió menos lo que sacó. Es la cifra que se compara contra un descuadre, y
+   * por eso ignora tarjeta y transferencia —que no tocan el cajón— y el USD,
+   * que se cuenta y se descuadra por separado.
+   */
+  private buildUserBreakdown(movements: MovementLike[]): CashUserBreakdown[] {
+    const byUser = new Map<string, CashUserBreakdown>();
+
+    for (const m of movements) {
+      // `null` es un cubo propio, no un error: los movimientos de un usuario ya
+      // borrado llegan sin autor (la FK es SetNull) y su dinero sigue en la caja.
+      const key = m.createdById ?? '__sin_usuario__';
+
+      let entry = byUser.get(key);
+      if (!entry) {
+        entry = {
+          userId: m.createdById ?? null,
+          name: describeAuthor(m.createdBy),
+          sales: 0,
+          cxc: 0,
+          income: 0,
+          expense: 0,
+          withdrawal: 0,
+          refund: 0,
+          netCash: 0,
+          movementsCount: 0,
+        };
+        byUser.set(key, entry);
+      }
+
+      const amount = Number(m.amount);
+      const isUsd = (m.currency ?? 'MXN').toUpperCase() === 'USD';
+      const amountMxn = m.amountMxnEquivalent != null ? Number(m.amountMxnEquivalent) : amount;
+      // Importe comparable entre movimientos: el USD se cuenta por su
+      // equivalente para que los totales por persona sumen en una sola moneda.
+      const value = isUsd ? amountMxn : amount;
+
+      entry.movementsCount += 1;
+
+      switch (m.type) {
+        case 'SALE':            entry.sales += value; break;
+        case 'CXC_PAYMENT':     entry.cxc += value; break;
+        case 'INCOME':          entry.income += value; break;
+        case 'EXPENSE':         entry.expense += value; break;
+        case 'WITHDRAWAL':      entry.withdrawal += value; break;
+        case 'REFUND':          entry.refund += value; break;
+        case 'SUPPLIER_PAYMENT': entry.expense += value; break;
+      }
+
+      // El neto del cajón: solo efectivo en pesos, que es lo que se cuenta al
+      // arquear. Un cobro con tarjeta no deja billetes que puedan faltar.
+      if (!isUsd && m.paymentMethod?.toUpperCase() === 'CASH') {
+        if ((CASH_INCOME_TYPES as readonly string[]).includes(m.type)) entry.netCash += amount;
+        else if ((CASH_EXPENSE_TYPES as readonly string[]).includes(m.type)) entry.netCash -= amount;
+      }
+    }
+
+    return [...byUser.values()]
+      .map((entry) => ({
+        ...entry,
+        sales: roundMoney(entry.sales),
+        cxc: roundMoney(entry.cxc),
+        income: roundMoney(entry.income),
+        expense: roundMoney(entry.expense),
+        withdrawal: roundMoney(entry.withdrawal),
+        refund: roundMoney(entry.refund),
+        netCash: roundMoney(entry.netCash),
+      }))
+      // Quien más movió, primero: es por donde se empieza a buscar un faltante.
+      .sort((a, b) => b.movementsCount - a.movementsCount);
+  }
+}
+
+/** Nombre legible del autor, con el correo como respaldo. */
+function describeAuthor(
+  author: { firstName: string | null; lastName: string | null; email: string } | null | undefined,
+): string {
+  if (!author) return 'Sin usuario';
+  const full = `${author.firstName ?? ''} ${author.lastName ?? ''}`.trim();
+  return full || author.email;
 }

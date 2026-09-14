@@ -64,6 +64,13 @@
           }
         }
       ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Orbix usa la cámara para leer el código de barras de tus productos y cobrarlos sin teclear.",
+          "recordAudioAndroid": false
+        }
+      ],
       "./plugins/withImmersiveMode.js",
       "./plugins/withShortNativeBuildDir.js"
     ],

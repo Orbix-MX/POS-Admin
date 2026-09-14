@@ -17,6 +17,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { BackButton, OrbixScaffold, OrbixText, SettingsRow, SettingsSection } from '@/components';
 import { SETTINGS_CATEGORIES, type SettingsCategory, type SettingsCategoryKey } from '@/features/settings/categories';
+import { CashPanel } from '@/features/settings/panels/cash-panel';
 import { GeneralPanel } from '@/features/settings/panels/general-panel';
 import { SecurityPanel } from '@/features/settings/panels/security-panel';
 import { StorePanel } from '@/features/settings/panels/store-panel';
@@ -27,6 +28,7 @@ const PANELS: Partial<Record<SettingsCategoryKey, ComponentType>> = {
   general: GeneralPanel,
   store: StorePanel,
   security: SecurityPanel,
+  cash: CashPanel,
 };
 
 function CategoryList({

@@ -234,6 +234,20 @@ export const SearchIcon = memo(function SearchIcon({ size = 16, color, strokeWid
   );
 });
 
+export const ScanIcon = memo(function ScanIcon({ size = 18, color, strokeWidth = 2 }: IconProps) {
+  const stroke = { stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      {/* Las cuatro esquinas del visor, y la línea del láser en medio. */}
+      <Path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8" {...stroke} />
+      <Path d="M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8" {...stroke} />
+      <Path d="M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16" {...stroke} />
+      <Path d="M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16" {...stroke} />
+      <Line x1={4} y1={12} x2={20} y2={12} {...stroke} />
+    </Svg>
+  );
+});
+
 export const TrashIcon = memo(function TrashIcon({ size = 16, color, strokeWidth = 2 }: IconProps) {
   const stroke = { stroke: color, strokeWidth, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
   return (

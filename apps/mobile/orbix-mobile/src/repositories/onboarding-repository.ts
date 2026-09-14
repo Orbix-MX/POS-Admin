@@ -1,10 +1,15 @@
 /**
  * Repository for the self-service onboarding endpoints.
  *
- * `createTenant` is wired to a real backend endpoint. The rest still target
- * endpoints the Orbix API does not expose yet — each throws
- * `NotImplementedError` carrying the exact route the backend must add. The
- * full request/response contract is documented in `src/dto/onboarding.dto.ts`.
+ * Todos apuntan ya a endpoints reales. El contrato completo sigue documentado
+ * en `src/dto/onboarding.dto.ts`, que es donde se escribió antes de que el
+ * backend existiera.
+ *
+ * **La verificación por SMS depende de que haya proveedor contratado.** Sin él,
+ * el servidor responde 503 en producción y en desarrollo escribe el código en
+ * su propio log — nunca en la respuesta. Así que un 503 aquí no es un fallo del
+ * cliente: es la ausencia del proveedor, y el wizard deja continuar sin
+ * verificar.
  */
 import type {
   CreateTenantOnboardingRequestDto,
@@ -14,38 +19,35 @@ import type {
   VerifyPhoneCodeRequestDto,
   VerifyPhoneCodeResponseDto,
 } from '@/dto/onboarding.dto';
-import { http, NotImplementedError } from '@/services/api';
+import { http } from '@/services/api';
 
-/** Flip to `true` per endpoint as the backend ships them. */
+/** Se enciende por endpoint conforme el backend los publica. */
 export const ONBOARDING_ENDPOINTS_AVAILABLE = {
-  phoneVerification: false,
+  phoneVerification: true,
   tenantOnboarding: true,
 } as const;
 
 export const onboardingRepository = {
 
   /**
-   * TODO(backend): `POST /api/auth/phone/send-code` (Bearer).
-   * Contract: {@link SendPhoneCodeRequestDto} → {@link SendPhoneCodeResponseDto}
+   * `POST /api/auth/phone/send-code` (Bearer).
+   *
+   * El servidor impone un enfriamiento por usuario y un tope por número: el
+   * contador de 60 s que pinta la UI es una cortesía, no la defensa. Un 400 de
+   * «espera N segundos» es una respuesta esperable y hay que mostrarla, no
+   * tratarla como avería.
    */
-  async sendPhoneCode(_request: SendPhoneCodeRequestDto): Promise<SendPhoneCodeResponseDto> {
-    throw new NotImplementedError(
-      'POST /auth/phone/send-code',
-      'no SMS provider is wired into the API yet.',
-    );
-    // return http.post<SendPhoneCodeResponseDto>('/auth/phone/send-code', _request);
+  async sendPhoneCode(request: SendPhoneCodeRequestDto): Promise<SendPhoneCodeResponseDto> {
+    return http.post<SendPhoneCodeResponseDto>('/auth/phone/send-code', request);
   },
 
   /**
-   * TODO(backend): `POST /api/auth/phone/verify-code` (Bearer).
-   * Contract: {@link VerifyPhoneCodeRequestDto} → {@link VerifyPhoneCodeResponseDto}
+   * `POST /api/auth/phone/verify-code` (Bearer).
+   *
+   * Cinco intentos por código: al sexto hay que pedir uno nuevo.
    */
-  async verifyPhoneCode(_request: VerifyPhoneCodeRequestDto): Promise<VerifyPhoneCodeResponseDto> {
-    throw new NotImplementedError(
-      'POST /auth/phone/verify-code',
-      'no SMS provider is wired into the API yet.',
-    );
-    // return http.post<VerifyPhoneCodeResponseDto>('/auth/phone/verify-code', _request);
+  async verifyPhoneCode(request: VerifyPhoneCodeRequestDto): Promise<VerifyPhoneCodeResponseDto> {
+    return http.post<VerifyPhoneCodeResponseDto>('/auth/phone/verify-code', request);
   },
 
   /**

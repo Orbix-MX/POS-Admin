@@ -4,6 +4,7 @@ export { OrbixButton, type ButtonSize, type ButtonVariant } from './buttons/orbi
 export { BackButton } from './buttons/back-button';
 export { GoogleButton, OrDivider } from './buttons/google-button';
 export { InlineError } from './ui/inline-error';
+export { EmptyState } from './ui/empty-state';
 
 export { OrbixCard } from './cards/orbix-card';
 export { KpiCard } from './cards/kpi-card';

@@ -59,7 +59,11 @@ export interface SettingsCategory {
   tintBg: keyof ThemeColors;
   tintFg: keyof ThemeColors;
   /** Phone push target; only categories with a built panel have one. */
-  route?: '/(app)/settings/general' | '/(app)/settings/store' | '/(app)/settings/security';
+  route?:
+    | '/(app)/settings/general'
+    | '/(app)/settings/store'
+    | '/(app)/settings/security'
+    | '/(app)/settings/cash';
 }
 
 export const SETTINGS_CATEGORIES: SettingsCategory[] = [
@@ -67,7 +71,7 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
   { key: 'store', Icon: StoreIcon, status: 'live', route: '/(app)/settings/store', tintBg: 'successBg', tintFg: 'successFg' },
   { key: 'security', Icon: ShieldIcon, status: 'live', route: '/(app)/settings/security', tintBg: 'infoBg', tintFg: 'infoFg' },
   { key: 'products', Icon: PackageIcon, status: 'soon', tintBg: 'warningBg', tintFg: 'warningFg' },
-  { key: 'cash', Icon: ChartIcon, status: 'soon', tintBg: 'infoBg', tintFg: 'infoFg' },
+  { key: 'cash', Icon: ChartIcon, status: 'live', route: '/(app)/settings/cash', tintBg: 'infoBg', tintFg: 'infoFg' },
   { key: 'payments', Icon: WalletIcon, status: 'soon', tintBg: 'muted', tintFg: 'accentPurple' },
   { key: 'taxes', Icon: PercentIcon, status: 'soon', tintBg: 'muted', tintFg: 'accentPink' },
   { key: 'printing', Icon: PrinterIcon, status: 'soon', tintBg: 'neutralBg', tintFg: 'neutralFg' },

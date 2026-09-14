@@ -16,15 +16,17 @@ import { FlatList, Pressable, View } from 'react-native';
 import {
   AppDrawer,
   DrawerButton,
+  EmptyState,
   OrbixInput,
   OrbixScaffold,
   OrbixSkeleton,
   OrbixText,
   toast,
 } from '@/components';
-import { SearchIcon } from '@/components/ui/icons';
+import { ScanIcon, SearchIcon } from '@/components/ui/icons';
 import { OpenCashSessionPanel } from '@/features/cash/open-session-panel';
 import { CartBar } from '@/features/pos/cart-bar';
+import { BarcodeScannerSheet } from '@/features/scanner/barcode-scanner-sheet';
 import { CategoryChips, type CategoryChip } from '@/features/pos/category-chips';
 import {
   CheckoutSheet,
@@ -32,7 +34,7 @@ import {
   type PaymentOption,
   type PosPaymentMethod,
 } from '@/features/pos/checkout-sheet';
-import { computeTotals, formatCurrency, type CartLine } from '@/features/pos/pos-totals';
+import { cartLineKey, computeTotals, formatCurrency, type CartLine } from '@/features/pos/pos-totals';
 import { ProductCard } from '@/features/pos/product-card';
 import { useActiveCashSession, useCreateSaleOrder, useSendReceipt } from '@/features/pos/use-pos';
 import { useCategories, useProducts } from '@/features/products/use-products';
@@ -42,7 +44,7 @@ import { useCurrencyFormatVersion } from '@/hooks/use-currency-format-version';
 import { usePermissions } from '@/hooks/use-permissions';
 import { useTheme } from '@/hooks/use-theme';
 import type { Order } from '@/repositories/orders-repository';
-import type { Product } from '@/repositories/products-repository';
+import type { Product, ResolvedCode } from '@/repositories/products-repository';
 import { toUserMessage } from '@/utils/error-message';
 
 /** Invisible tile that pads an odd-length grid to a full final row. */
@@ -64,6 +66,7 @@ export default function PosScreen() {
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [checkoutVisible, setCheckoutVisible] = useState(false);
+  const [scannerVisible, setScannerVisible] = useState(false);
   const [stage, setStage] = useState<CheckoutStage>('cart');
   const [paymentMethod, setPaymentMethod] = useState<PosPaymentMethod>('CASH');
   const [amountReceived, setAmountReceived] = useState('');
@@ -121,29 +124,47 @@ export default function PosScreen() {
     [allProducts, categoryId],
   );
 
+  // El badge de la tarjeta es por PRODUCTO: la retícula no muestra
+  // presentaciones, así que dos líneas del mismo producto se suman ahí.
   const quantityByProduct = useMemo(() => {
     const map = new Map<string, number>();
-    for (const line of cart) map.set(line.productId, line.quantity);
+    for (const line of cart) map.set(line.productId, (map.get(line.productId) ?? 0) + line.quantity);
     return map;
   }, [cart]);
 
   const totals = useMemo(() => computeTotals(cart), [cart]);
 
-  const addToCart = useCallback((product: Product) => {
+  /**
+   * Mete una unidad al carrito.
+   *
+   * `variantId` null es "la default, que resuelve el servidor" — lo que produce
+   * tocar una tarjeta de la retícula, que muestra productos, no presentaciones.
+   * El escáner sí sabe cuál leyó y lo pasa; por eso la línea se identifica por
+   * `cartLineKey` y no por el id del producto.
+   */
+  const addLine = useCallback((product: Product, variantId: string | null) => {
+    const variant = variantId ? product.variants.find((v) => v.id === variantId) : undefined;
+    const key = cartLineKey({ productId: product.id, variantId: variant ? variantId : null });
+
     setCart((prev) => {
-      const existing = prev.find((l) => l.productId === product.id);
+      const existing = prev.find((l) => cartLineKey(l) === key);
       if (existing) {
-        return prev.map((l) => (l.productId === product.id ? { ...l, quantity: l.quantity + 1 } : l));
+        return prev.map((l) => (cartLineKey(l) === key ? { ...l, quantity: l.quantity + 1 } : l));
       }
       return [
         ...prev,
         {
           productId: product.id,
-          name: product.name,
-          sku: product.sku,
-          price: product.price,
+          // Solo si la presentación existe de verdad en lo que vino: un id que
+          // el producto no tiene haría que el servidor rechace la venta entera.
+          variantId: variant ? variantId : null,
+          name: variant ? `${product.name} · ${variant.name}` : product.name,
+          sku: variant?.sku || product.sku,
+          // El precio y la existencia son los de la presentación cuando la hay:
+          // cobrar el del producto padre por una talla concreta es cobrar mal.
+          price: variant?.price ?? product.price,
           quantity: 1,
-          stock: product.stock,
+          stock: variant?.stock ?? product.stock,
           trackInventory: product.trackInventory,
           taxRate: product.taxRate,
         },
@@ -151,8 +172,31 @@ export default function PosScreen() {
     });
   }, []);
 
-  const increment = useCallback((productId: string) => {
-    setCart((prev) => prev.map((l) => (l.productId === productId ? { ...l, quantity: l.quantity + 1 } : l)));
+  const addToCart = useCallback((product: Product) => addLine(product, null), [addLine]);
+
+  /**
+   * Un escaneo entra al carrito y devuelve el texto que confirma qué entró.
+   *
+   * `matchedBy === 'product.sku'` significa que casó el código del catálogo
+   * padre, no el de una etiqueta: ahí no hay presentación elegida y decide el
+   * servidor, igual que al tocar la tarjeta.
+   */
+  const addScanned = useCallback(
+    (hit: ResolvedCode) => {
+      const variantId = hit.matchedBy === 'product.sku' ? null : hit.variantId;
+      addLine(hit.product, variantId);
+
+      const variant = variantId ? hit.product.variants.find((v) => v.id === variantId) : undefined;
+      const label = variant ? `${hit.product.name} · ${variant.name}` : hit.product.name;
+      // Dos artículos con el mismo código: el servidor ya eligió el más
+      // antiguo, pero callarlo cobraría el equivocado sin que nadie se entere.
+      return hit.alternatives.length > 0 ? t('scanner.ambiguous', { name: label }) : label;
+    },
+    [addLine, t],
+  );
+
+  const increment = useCallback((lineKey: string) => {
+    setCart((prev) => prev.map((l) => (cartLineKey(l) === lineKey ? { ...l, quantity: l.quantity + 1 } : l)));
   }, []);
 
   /**
@@ -161,9 +205,9 @@ export default function PosScreen() {
    * which React may run more than once.
    */
   const decrement = useCallback(
-    (productId: string) => {
+    (lineKey: string) => {
       const next = cart
-        .map((l) => (l.productId === productId ? { ...l, quantity: l.quantity - 1 } : l))
+        .map((l) => (cartLineKey(l) === lineKey ? { ...l, quantity: l.quantity - 1 } : l))
         .filter((l) => l.quantity > 0);
       setCart(next);
       if (next.length === 0) setCheckoutVisible(false);
@@ -198,7 +242,15 @@ export default function PosScreen() {
     setStage('processing');
     createOrder.mutate(
       {
-        items: cart.map((l) => ({ productId: l.productId, quantity: l.quantity, price: l.price })),
+        items: cart.map((l) => ({
+          productId: l.productId,
+          // ADR-0030: la unidad vendible es la variante. Omitirla dejaba que el
+          // servidor resolviera la default, y el inventario por presentación no
+          // cuadraba con lo cobrado.
+          ...(l.variantId ? { variantId: l.variantId } : {}),
+          quantity: l.quantity,
+          price: l.price,
+        })),
         paymentMethod,
         paymentStatus: 'PAID',
         status: 'CONFIRMED',
@@ -312,15 +364,39 @@ export default function PosScreen() {
         <OpenCashSessionPanel />
       ) : (
         <>
-          <OrbixInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder={t('pos.searchPlaceholder')}
-            autoCapitalize="none"
-            autoCorrect={false}
-            borderRadius={theme.radius.full}
-            leftAdornment={<SearchIcon size={15} color={theme.colors.mutedForeground} />}
-          />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm }}>
+            <View style={{ flex: 1 }}>
+              <OrbixInput
+                value={search}
+                onChangeText={setSearch}
+                placeholder={t('pos.searchPlaceholder')}
+                autoCapitalize="none"
+                autoCorrect={false}
+                borderRadius={theme.radius.full}
+                leftAdornment={<SearchIcon size={15} color={theme.colors.mutedForeground} />}
+              />
+            </View>
+
+            {/* Junto al buscador, no escondido en un menú: escanear es la vía
+                rápida y teclear la de respaldo, no al revés. */}
+            <Pressable
+              onPress={() => setScannerVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel={t('scanner.open')}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: theme.radius.full,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: theme.colors.muted,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+              }}
+            >
+              <ScanIcon size={20} color={theme.colors.foreground} />
+            </Pressable>
+          </View>
 
           {categoryChips.length > 1 ? (
             <CategoryChips categories={categoryChips} selectedId={categoryId} onSelect={setCategoryId} />
@@ -351,13 +427,21 @@ export default function PosScreen() {
                 paddingBottom: cart.length ? 130 : theme.spacing.xl,
               }}
               ListEmptyComponent={
-                <View style={{ alignItems: 'center', gap: 8, paddingVertical: 56, paddingHorizontal: 20 }}>
-                  <SearchIcon size={38} color={theme.colors.mutedForeground} />
-                  <OrbixText size="base" weight="semibold">{t('pos.noResults')}</OrbixText>
-                  <OrbixText size="sm" tone="mutedForeground" align="center" style={{ maxWidth: 220 }}>
-                    {search ? t('pos.noResultsHint', { query: search }) : t('pos.noProducts')}
-                  </OrbixText>
-                </View>
+                /* Un POS sin catálogo es un callejón: el operador no puede
+                   vender y la pantalla no le dice cómo salir de ahí. */
+                <EmptyState
+                  Icon={SearchIcon}
+                  title={search ? t('pos.noResults') : t('pos.noProducts')}
+                  hint={search ? t('pos.noResultsHint', { query: search }) : t('pos.noProductsHint')}
+                  action={
+                    !search && can('products:create')
+                      ? {
+                          label: t('products.create'),
+                          onPress: () => router.push('/(app)/products/new'),
+                        }
+                      : undefined
+                  }
+                />
               }
             />
           )}
@@ -377,6 +461,23 @@ export default function PosScreen() {
           ) : null}
         </>
       )}
+
+      <BarcodeScannerSheet
+        visible={scannerVisible}
+        onClose={() => setScannerVisible(false)}
+        onResolved={addScanned}
+        onCreateMissing={
+          can('products:create')
+            ? (code) => {
+                setScannerVisible(false);
+                // El código viaja al alta para que no haya que teclearlo: es
+                // justo lo que se acaba de leer y lo que hará que el siguiente
+                // escaneo sí lo encuentre.
+                router.push({ pathname: '/(app)/products/new', params: { barcode: code } });
+              }
+            : undefined
+        }
+      />
 
       <CheckoutSheet
         visible={checkoutVisible}

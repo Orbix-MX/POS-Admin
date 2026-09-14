@@ -18,7 +18,8 @@ import {
 } from '@/components';
 import { MovementsList } from '@/features/cash/movements-list';
 import { SessionSummaryCard, StatusPill } from '@/features/cash/session-summary-card';
-import { useCashCounts } from '@/features/cash/use-cash-count';
+import { UserBreakdownCard } from '@/features/cash/user-breakdown-card';
+import { useCashCounts, useCashHandovers } from '@/features/cash/use-cash-count';
 import { useCashSession } from '@/features/cash/use-cash-session';
 import { useCurrencyFormatVersion } from '@/hooks/use-currency-format-version';
 import { useTheme } from '@/hooks/use-theme';
@@ -36,6 +37,7 @@ export default function CashSessionDetailScreen() {
 
   const { data: session, isLoading, error } = useCashSession(id);
   const { data: counts } = useCashCounts(id);
+  const { data: handovers } = useCashHandovers(id);
 
   const opened = session ? new Date(session.openedAt) : null;
   const closed = session?.closedAt ? new Date(session.closedAt) : null;
@@ -87,6 +89,20 @@ export default function CashSessionDetailScreen() {
               openedBy: t('cash.openedBy'),
               usdDrawer: t('cash.usdDrawer'),
               noMovements: t('cash.noMovements'),
+            }}
+          />
+
+          <UserBreakdownCard
+            summary={session.summary}
+            handovers={handovers ?? []}
+            labels={{
+              title: t('cash.byUser.title'),
+              handoversTitle: t('cash.byUser.handovers'),
+              sales: t('cash.sales'),
+              movements: t('cash.movements'),
+              netCash: t('cash.byUser.netCash'),
+              stillIn: t('cash.byUser.stillIn'),
+              noUsers: t('cash.byUser.none'),
             }}
           />
 

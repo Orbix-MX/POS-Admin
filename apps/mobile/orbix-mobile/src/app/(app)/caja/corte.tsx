@@ -31,7 +31,8 @@ import { AuthorizerPinSheet } from '@/features/cash/authorizer-pin-sheet';
 import { CountForm, EMPTY_COUNT, type CountValues } from '@/features/cash/count-form';
 import { parseAmount } from '@/features/cash/cash-schemas';
 import { SessionSummaryCard } from '@/features/cash/session-summary-card';
-import { useCloseCashSession } from '@/features/cash/use-cash-count';
+import { UserBreakdownCard } from '@/features/cash/user-breakdown-card';
+import { useCashHandovers, useCloseCashSession } from '@/features/cash/use-cash-count';
 import { useActiveCashSession } from '@/features/cash/use-cash-session';
 import { usePinAuthorization } from '@/features/cash/use-pin-authorization';
 import { useCurrencyFormatVersion } from '@/hooks/use-currency-format-version';
@@ -56,6 +57,7 @@ export default function CorteScreen() {
   useCurrencyFormatVersion();
 
   const { data: session, isLoading } = useActiveCashSession();
+  const { data: handovers } = useCashHandovers(session?.id);
 
   const [stage, setStage] = useState<Stage>('review');
   const [values, setValues] = useState<CountValues>(EMPTY_COUNT);
@@ -231,6 +233,22 @@ export default function CorteScreen() {
                 noMovements: t('cash.noMovements'),
               }}
             />
+            {/* Quién movió qué, antes de firmar el corte: si no cuadra, es lo
+                primero que hay que mirar. */}
+            <UserBreakdownCard
+              summary={session.summary}
+              handovers={handovers ?? []}
+              labels={{
+                title: t('cash.byUser.title'),
+                handoversTitle: t('cash.byUser.handovers'),
+                sales: t('cash.sales'),
+                movements: t('cash.movements'),
+                netCash: t('cash.byUser.netCash'),
+                stillIn: t('cash.byUser.stillIn'),
+                noUsers: t('cash.byUser.none'),
+              }}
+            />
+
             <OrbixButton label={t('cash.close.startCount')} onPress={() => setStage('count')} />
           </>
         ) : null}

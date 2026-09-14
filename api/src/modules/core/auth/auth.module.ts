@@ -13,6 +13,8 @@ import { GoogleLinkTicketService } from './services/google-link-ticket.service';
 import { GoogleMobileAuthService } from './services/google-mobile-auth.service';
 import { MfaService } from './services/mfa.service';
 import { PasswordResetService } from './services/password-reset.service';
+import { PhoneVerificationService } from './services/phone-verification.service';
+import { SmsSenderService } from './services/sms-sender.service';
 import { EmailModule } from '../email/email.module';
 import { GoogleOAuthGuard } from './guards/google-oauth.guard';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
@@ -49,6 +51,8 @@ import { APP_GUARD } from '@nestjs/core';
     GoogleMobileAuthService,
     MfaService,
     PasswordResetService,
+    PhoneVerificationService,
+    SmsSenderService,
     GoogleOAuthGuard,
     // La estrategia de Google solo se registra si hay credenciales: sin ellas
     // `passport-google-oauth20` lanza en el constructor y tumba el arranque del

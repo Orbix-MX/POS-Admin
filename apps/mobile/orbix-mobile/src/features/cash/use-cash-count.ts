@@ -94,3 +94,16 @@ export function useCashCounts(sessionId: string | undefined) {
     enabled: Boolean(session?.tenant) && Boolean(sessionId) && can('cash:view'),
   });
 }
+
+/** Quién estuvo en la caja durante la sesión, en orden de entrada. */
+export function useCashHandovers(sessionId: string | undefined) {
+  const { session } = useAuth();
+  const { can } = usePermissions();
+
+  return useQuery({
+    queryKey: queryKeys.cash.handovers(session?.tenant?.id, session?.branchId, sessionId),
+    queryFn: () => cashSessionsRepository.listHandovers(sessionId as string),
+    enabled: Boolean(session?.tenant) && Boolean(sessionId) && can('cash:view'),
+    staleTime: 30 * 1000,
+  });
+}

@@ -522,6 +522,36 @@ nuevas. Verificado que **fallan contra el código anterior** (2 de 5) y pasan co
 **Verificado:** `tsc --noEmit` ✅ · `jest` **703/703** en toda la API ✅ (sin regresiones) ·
 móvil 112/112 ✅.
 
+### Revisión de alcance: caja física y atribución por usuario (2026-09-12)
+
+Al revisar lo entregado salieron dos cosas que **cambian un pendiente y añaden otro**. Ninguna
+invalida lo construido; las dos se documentan en
+[`faltantes-app-comercial.md`](faltantes-app-comercial.md) §1 bis.
+
+**1. El «selector de caja física» estaba mal planteado.** La D5 es correcta —la caja pertenece al
+puesto y el dispositivo *es* el puesto—, así que pedir la caja en cada apertura sería fricción.
+Lo que falta no es elegir: es que el dispositivo pueda **declarar su caja una vez**
+(Configuración → Caja), porque hoy la adquiere por carrera contra `resolveCashRegister`, que toma
+la primera libre por orden alfabético. Eso hace que los nombres de los cajones se intercambien
+entre días, y que un dispositivo que pierde su binding —relevo de turno, app reinstalada— no
+alcance su propia sesión abierta.
+
+**Dato corregido:** `PLAN_CASH_SESSION_LIMITS` da **FREE: 2**, no 1. El comentario del código lo
+dice explícitamente: *«un mostrador con dos terminales»* es el caso normal, no un extra de pago.
+La cifra de «FREE 1» viene del vault (`Domain/Caja y cortes (Orbix).md`), **que está
+desactualizado respecto al código**. La ambigüedad de dos cajas existe desde el plan gratis, no
+desde PRO.
+
+**Ambas quedaron implementadas el mismo día** — ver `faltantes-app-comercial.md` §1 bis para el
+detalle y lo que quedó pendiente.
+
+**2. La sesión solo nombra a dos personas.** `openedById` y `closedById`. Cada movimiento sí lleva
+su `createdById` —verificado en `OrdersService.create`: orden, pagos, movimiento de caja y
+movimiento de inventario—, pero el corte no lo agrega, así que el operador de en medio de un turno
+con relevos no aparece. Se cierra con dos piezas: un `summary.byUser[]` derivado (casi todo
+backend, sin migración) y una bitácora de entradas a la caja (entidad nueva). Detalle y reparto en
+`faltantes-app-comercial.md` §1 bis.2.
+
 ---
 
 ## 5 bis. Estado final
@@ -545,6 +575,10 @@ móvil 112/112 ✅.
 - **B4** — idempotencia en `cancel` / `return` / `refund`.
 - **B5** — si el Pulso del día debe ser valor gratuito, mover `REPORTES` a FREE o crear un
   endpoint de resumen diario sin gate.
+- ~~**B6**~~ — `summary.byUser[]`. **Hecho** el 2026-09-12.
+- ~~**B7**~~ — `CashSessionHandover`. **Hecho** el 2026-09-12, migración
+  `20260912120000_cash_session_handover` aplicada con `db execute` + `migrate resolve`: el drift de
+  checksums impide `migrate dev` en este repo.
 
 **Deuda conocida, heredada del entorno:** `@testing-library/react-native` no funciona con
 `react@19.1.0` (la versión que fija Expo SDK 54), así que no hay pruebas de componente. Toda la

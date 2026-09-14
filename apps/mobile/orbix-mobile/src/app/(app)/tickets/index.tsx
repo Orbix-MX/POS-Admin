@@ -16,6 +16,7 @@ import { FlatList, Pressable, RefreshControl, View } from 'react-native';
 import {
   AppDrawer,
   DrawerButton,
+  EmptyState,
   OrbixCard,
   OrbixScaffold,
   OrbixSkeleton,
@@ -197,13 +198,19 @@ export default function TicketsScreen() {
             />
           }
           ListEmptyComponent={
-            <View style={{ alignItems: 'center', gap: 8, paddingVertical: 56, paddingHorizontal: 20 }}>
-              <ShoppingBagIcon size={38} color={theme.colors.mutedForeground} />
-              <OrbixText size="base" weight="semibold">{t('orders.empty')}</OrbixText>
-              <OrbixText size="sm" tone="mutedForeground" align="center" style={{ maxWidth: 240 }}>
-                {t('orders.emptyHint')}
-              </OrbixText>
-            </View>
+            /* El copy ya dice «en este periodo», así que sirve tanto para el
+               negocio nuevo como para un martes flojo; lo que faltaba era la
+               salida: desde aquí se va a cobrar. */
+            <EmptyState
+              Icon={ShoppingBagIcon}
+              title={t('orders.empty')}
+              hint={t('orders.emptyHint')}
+              action={
+                can('orders:create')
+                  ? { label: t('orders.emptyAction'), onPress: () => router.push('/(app)/pos') }
+                  : undefined
+              }
+            />
           }
         />
       )}

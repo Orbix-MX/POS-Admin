@@ -1,4 +1,4 @@
-import { Redirect, useRouter } from 'expo-router';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
@@ -24,6 +24,21 @@ export default function NewProductScreen() {
   const categoryOptions = useMemo(
     () => (categories ?? []).map((c) => ({ value: c.id, label: c.name })),
     [categories],
+  );
+
+  /**
+   * El código que traía el escáner del POS cuando no encontró nada.
+   *
+   * Llega por la ruta porque el alta vive en otra pantalla: sin esto, el
+   * operador que acaba de escanear tendría que leer trece dígitos de la
+   * etiqueta y teclearlos, que es exactamente el trabajo que el escáner venía a
+   * ahorrarle — y un dígito mal puesto rompe el escaneo de ese producto para
+   * siempre.
+   */
+  const { barcode } = useLocalSearchParams<{ barcode?: string }>();
+  const initialValues = useMemo<ProductFormValues>(
+    () => (barcode ? { ...EMPTY_PRODUCT_FORM, barcode } : EMPTY_PRODUCT_FORM),
+    [barcode],
   );
 
   const create = useCreateProduct();
@@ -52,7 +67,7 @@ export default function NewProductScreen() {
       </View>
 
       <ProductForm
-        defaultValues={EMPTY_PRODUCT_FORM}
+        defaultValues={initialValues}
         categoryOptions={categoryOptions}
         allowRecipeType={Boolean(session?.capabilities?.businessFeatures.enableRecipes)}
         skuEditable

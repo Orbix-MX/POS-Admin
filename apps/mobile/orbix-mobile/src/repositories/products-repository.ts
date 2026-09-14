@@ -1,11 +1,13 @@
 import type {
   CategoryDto,
+  CodeMatch,
   CreateCategoryRequest,
   CreateProductRequest,
   PaginatedDto,
   ProductDto,
   ProductImageDto,
   ProductVariantDto,
+  ResolvedCodeDto,
   UpdateProductRequest,
 } from '@/dto/products.dto';
 import { http } from '@/services/api';
@@ -74,6 +76,18 @@ export interface Product {
   /** Solo las que tienen nombre; vacío si el producto nunca se dividió. */
   variants: ProductVariant[];
   createdAt: string;
+}
+
+/**
+ * Un escaneo resuelto. `product` ya viene con el precio y la existencia de la
+ * sucursal en contexto, así que quien lo reciba puede cobrarlo sin otra
+ * consulta.
+ */
+export interface ResolvedCode {
+  product: Product;
+  variantId: string | null;
+  matchedBy: CodeMatch;
+  alternatives: ResolvedCodeDto['alternatives'];
 }
 
 export interface ProductListResult {
@@ -167,6 +181,26 @@ export const productsRepository = {
   async getById(id: string): Promise<Product> {
     const dto = await http.get<ProductDto>(`/products/${id}`);
     return toDomain(dto);
+  },
+
+  /**
+   * `GET /products/resolve?code=` — un escaneo a un artículo.
+   *
+   * No es `list({ search })`: la búsqueda de texto mira nombre, SKU y
+   * descripción, y **no cubre el código de barras**, que vive en la variante.
+   * Un código leído por la cámara no encontraría nada por esa vía.
+   *
+   * Lanza `ApiError` con 404 cuando el código no existe en la empresa — que es
+   * el caso que abre "crear producto con este código", no un error a tapar.
+   */
+  async resolveCode(code: string): Promise<ResolvedCode> {
+    const dto = await http.get<ResolvedCodeDto>('/products/resolve', { params: { code } });
+    return {
+      product: toDomain(dto.product),
+      variantId: dto.variantId,
+      matchedBy: dto.matchedBy,
+      alternatives: dto.alternatives,
+    };
   },
 
   async create(request: CreateProductRequest): Promise<Product> {

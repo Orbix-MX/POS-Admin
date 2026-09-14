@@ -127,6 +127,24 @@ export class CashSessionsController {
     return this.cashSessionsService.listCounts(id);
   }
 
+  // Sin @RequirePermissions: quien puede cobrar en la caja puede dejar
+  // constancia de que la tomó. Exigir `cash:manage` dejaría al cajero de relevo
+  // fuera de la bitácora, que es justo a quien hay que registrar.
+  @NoPermissionsRequired()
+  @Post('active/handover')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Registrar que este usuario tomó la caja abierta (relevo de turno)' })
+  registerHandover(@Body('cashSessionId') cashSessionId?: string) {
+    return this.cashSessionsService.registerHandover(cashSessionId);
+  }
+
+  @Get(':id/handovers')
+  @RequirePermissions('cash:view')
+  @ApiOperation({ summary: 'Quién estuvo en la caja durante la sesión' })
+  listHandovers(@Param('id') id: string) {
+    return this.cashSessionsService.listHandovers(id);
+  }
+
   @Get()
   @RequirePermissions('cash:view')
   @ApiOperation({ summary: 'Historial de sesiones de caja' })

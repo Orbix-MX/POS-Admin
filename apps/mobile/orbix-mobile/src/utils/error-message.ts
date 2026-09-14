@@ -59,6 +59,19 @@ export function isModuleNotEnabled(error: unknown): boolean {
   );
 }
 
+/**
+ * El servidor contestó, pero la función no está disponible ahora mismo.
+ *
+ * Distinto de un 500: un 503 es una ausencia declarada —una integración sin
+ * contratar, un servicio caído— y la pantalla puede seguir adelante sin ella.
+ * El caso que lo motiva es la verificación por SMS sin proveedor: el endpoint
+ * existe y responde, y la respuesta correcta es «esto hoy no se puede», no
+ * «algo salió mal».
+ */
+export function isServiceUnavailable(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 503;
+}
+
 export function toUserMessage(error: unknown, t: TFunction): string {
   if (error instanceof NotImplementedError) {
     return t('errors.notImplemented');

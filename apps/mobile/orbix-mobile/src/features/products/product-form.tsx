@@ -45,9 +45,10 @@ import {
   type OrbixBottomSheetRef,
   type SelectOption,
 } from '@/components';
-import { ChevronRightIcon, PlusIcon, TrashIcon } from '@/components/ui/icons';
+import { ChevronRightIcon, PlusIcon, ScanIcon, TrashIcon } from '@/components/ui/icons';
 import { OrbixGradient } from '@/components/ui/orbix-gradient';
 import { useCreateCategory } from '@/features/products/use-product-mutations';
+import { CodeCaptureSheet } from '@/features/scanner/code-capture-sheet';
 import { useAuth } from '@/hooks/use-auth';
 import { usePermissions } from '@/hooks/use-permissions';
 import { useTheme } from '@/hooks/use-theme';
@@ -610,11 +611,14 @@ type StepId = (typeof STEP_IDS)[number];
 
 /** Fields validated before leaving a step — keeps `trigger()` scoped per step. */
 const STEP_FIELDS: Record<StepId, FieldPath<ProductFormValues>[]> = {
-  general: ['type', 'sku', 'name', 'description'],
+  // `status` vive aquí, no en `visibility`: decidir si algo se vende es lo
+  // primero que se sabe de un producto, y escondido en el paso 5 hacía que
+  // todos nacieran en borrador sin que nadie lo eligiera.
+  general: ['type', 'sku', 'name', 'description', 'status'],
   pricing: ['price', 'comparePrice', 'costPrice', 'taxRate', 'taxCode'],
   category: ['categoryId'],
   inventory: ['trackInventory', 'stock', 'lowStockAlert', 'variants'],
-  visibility: ['status', 'isEcommerce'],
+  visibility: ['isEcommerce'],
 };
 
 /** `products.section*` — same labels the fields used to sit under in one long scroll. */
@@ -645,6 +649,7 @@ export function ProductForm({
   // ninguna activa no hay dónde escribirlos — ver `VariantsEditor`.
   const branchScoped = Boolean(session?.branchId);
 
+  const [captureVisible, setCaptureVisible] = useState(false);
   const [newCategoryVisible, setNewCategoryVisible] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const createCategory = useCreateCategory();
@@ -706,10 +711,23 @@ export function ProductForm({
     return options;
   }, [allowRecipeType, t]);
 
-  const statusOptions = useMemo<SelectOption[]>(
-    () => Object.values(ProductStatus).map((value) => ({ value, label: t(`products.status.${value}`) })),
-    [t],
-  );
+  /**
+   * Solo los dos estados que alguien elige a mano.
+   *
+   * `INACTIVE` y `ARCHIVED` existen en la API y se llega a ellos por otras vías
+   * —dar de baja, archivar—, no marcándolos en el alta. Ofrecer cuatro opciones
+   * donde la decisión real es «¿lo vendo o todavía no?» es lo que hacía que
+   * nadie tocara el campo.
+   *
+   * Si el producto llega ya en uno de los otros, se añade para no perderlo al
+   * guardar.
+   */
+  const statusOptions = useMemo<SelectOption[]>(() => {
+    const sellable: ProductStatus[] = [ProductStatus.ACTIVE, ProductStatus.DRAFT];
+    const current = getValues('status');
+    const values = sellable.includes(current) ? sellable : [...sellable, current];
+    return values.map((value) => ({ value, label: t(`products.statusChoice.${value}`) }));
+  }, [getValues, t]);
 
   /** Only read in edit mode, where the tabs replace the step title. */
   const stepTabs = useMemo(
@@ -773,6 +791,12 @@ export function ProductForm({
 
       {stepId === 'general' ? (
         <FieldGroup>
+          <OrbixSelect
+            control={control}
+            name="status"
+            label={t('products.fields.status')}
+            options={statusOptions}
+          />
           <OrbixSelect control={control} name="type" label={t('products.fields.type')} options={typeOptions} />
           <OrbixTextField
             control={control}
@@ -795,6 +819,18 @@ export function ProductForm({
               placeholder={t('products.fields.barcodePlaceholder')}
               autoCapitalize="characters"
               keyboardType="default"
+              // Trece dígitos tecleados a mano es donde se abandona un alta —y
+              // donde un dígito mal puesto rompe el escaneo para siempre.
+              rightAdornment={
+                <Pressable
+                  onPress={() => setCaptureVisible(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('scanner.open')}
+                  hitSlop={10}
+                >
+                  <ScanIcon size={18} color={theme.colors.mutedForeground} />
+                </Pressable>
+              }
             />
           ) : null}
           <OrbixTextField
@@ -930,7 +966,6 @@ export function ProductForm({
 
       {stepId === 'visibility' ? (
         <FieldGroup>
-          <OrbixSelect control={control} name="status" label={t('products.fields.status')} options={statusOptions} />
           <SwitchRow
             label={t('products.fields.isEcommerce')}
             hint={t('products.fields.isEcommerceHint')}
@@ -939,6 +974,18 @@ export function ProductForm({
           />
         </FieldGroup>
       ) : null}
+
+      <CodeCaptureSheet
+        visible={captureVisible}
+        onClose={() => setCaptureVisible(false)}
+        onCapture={(code) => {
+          // `shouldValidate` sí: un código leído puede pasarse de los 100
+          // caracteres que admite el esquema, y es mejor verlo ahora que al
+          // pulsar guardar tres pasos más adelante.
+          setValue('barcode', code, { shouldValidate: true, shouldDirty: true });
+          setCaptureVisible(false);
+        }}
+      />
 
       <OrbixModal
         visible={newCategoryVisible}

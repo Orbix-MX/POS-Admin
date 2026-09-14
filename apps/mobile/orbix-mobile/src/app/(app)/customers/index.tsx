@@ -8,7 +8,14 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, Pressable, RefreshControl, View } from 'react-native';
 
-import { BackButton, OrbixInput, OrbixScaffold, OrbixSkeleton, OrbixText } from '@/components';
+import {
+  BackButton,
+  EmptyState,
+  OrbixInput,
+  OrbixScaffold,
+  OrbixSkeleton,
+  OrbixText,
+} from '@/components';
 import { Ripple, useRipple } from '@/components/animations/ripple';
 import { PlusIcon, SearchIcon, UsersIcon } from '@/components/ui/icons';
 import { useCustomers } from '@/features/customers/use-customers';
@@ -150,12 +157,28 @@ export default function CustomersListScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: theme.spacing['3xl'] }}
           ListEmptyComponent={
-            <View style={{ alignItems: 'center', paddingVertical: theme.spacing['3xl'], gap: theme.spacing.sm }}>
-              <UsersIcon size={28} color={theme.colors.mutedForeground} />
-              <OrbixText size="sm" tone="mutedForeground">
-                {search ? t('customers.noResults') : t('customers.empty')}
-              </OrbixText>
-            </View>
+            <EmptyState
+              Icon={UsersIcon}
+              title={search ? t('customers.noResults') : t('customers.empty')}
+              hint={search ? undefined : t('customers.emptyHint')}
+              action={
+                !search && can('customers:create')
+                  ? { label: t('customers.create'), onPress: () => router.push('/(app)/customers/new') }
+                  : undefined
+              }
+              secondaryAction={
+                !search && can('customers:create')
+                  ? {
+                      label: t('import.customers.title'),
+                      onPress: () =>
+                        router.push({
+                          pathname: '/(app)/import/[entity]',
+                          params: { entity: 'customers' },
+                        }),
+                    }
+                  : undefined
+              }
+            />
           }
         />
       )}

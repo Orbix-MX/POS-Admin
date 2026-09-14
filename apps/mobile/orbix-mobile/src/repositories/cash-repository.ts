@@ -10,6 +10,7 @@
 import type {
   AuthorizePinRequest,
   CashCountDto,
+  CashHandoverDto,
   CashMovementDto,
   CashRegisterDto,
   CashSessionCapacityDto,
@@ -66,6 +67,16 @@ export interface CashMovement {
   paymentMethod: string;
   notes: string | null;
   createdAt: string;
+}
+
+/** Un tramo de custodia de la caja. Ver `CashHandoverDto`. */
+export interface CashHandover {
+  id: string;
+  userId: string | null;
+  name: string;
+  enteredAt: string;
+  /** `null` = seguía dentro. No es una hora de salida omitida. */
+  leftAt: string | null;
 }
 
 export interface CashCount {
@@ -164,6 +175,18 @@ function toMovement(dto: CashMovementDto): CashMovement {
   };
 }
 
+/** Nombre legible de quien tomó la caja, con el correo como respaldo. */
+function toHandover(dto: CashHandoverDto): CashHandover {
+  const full = `${dto.user?.firstName ?? ''} ${dto.user?.lastName ?? ''}`.trim();
+  return {
+    id: dto.id,
+    userId: dto.userId,
+    name: full || dto.user?.email || 'Sin usuario',
+    enteredAt: dto.enteredAt,
+    leftAt: dto.leftAt,
+  };
+}
+
 function toCount(dto: CashCountDto): CashCount {
   return {
     id: dto.id,
@@ -247,7 +270,14 @@ function toRegister(dto: CashRegisterDto): CashRegister {
  * necesite un modelo de dominio lo pide al repositorio, que es lo que mantiene
  * el conocimiento de las rutas en un solo sitio.
  */
-export const __test = { toSession, toListItem, toRegister, toMovement, toCount } as const;
+export const __test = {
+  toSession,
+  toListItem,
+  toRegister,
+  toMovement,
+  toCount,
+  toHandover,
+} as const;
 
 /* ── Repositorios ────────────────────────────────────────────────────────── */
 
@@ -304,6 +334,23 @@ export const cashSessionsRepository = {
   async listCounts(sessionId: string): Promise<CashCount[]> {
     const dto = await http.get<CashCountDto[]>(`/cash-sessions/${sessionId}/counts`);
     return dto.map(toCount);
+  },
+
+  /**
+   * Deja constancia de que este usuario tomó la caja abierta.
+   *
+   * Se llama al entrar, no al abrir: el caso que registra es el **relevo de
+   * turno**, donde la caja ya estaba abierta por otra persona. El servidor es
+   * idempotente, así que reabrir la app no duplica el tramo.
+   */
+  async registerHandover(cashSessionId?: string): Promise<void> {
+    await http.post('/cash-sessions/active/handover', { cashSessionId });
+  },
+
+  /** Quién estuvo en la caja durante la sesión, en orden de entrada. */
+  async listHandovers(sessionId: string): Promise<CashHandover[]> {
+    const dto = await http.get<CashHandoverDto[]>(`/cash-sessions/${sessionId}/handovers`);
+    return dto.map(toHandover);
   },
 } as const;
 

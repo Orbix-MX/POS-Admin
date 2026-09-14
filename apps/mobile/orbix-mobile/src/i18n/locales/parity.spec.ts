@@ -59,10 +59,14 @@ describe('paridad de locales', () => {
    * una edición se lleva por delante una rama. Subirla a mano al añadir un
    * módulo es el punto — obliga a mirar el número.
    *
-   * 430 antes del ciclo del día · 524 tras las fases 1-3 · 596 con todas.
+   * 430 antes del ciclo del día · 524 tras las fases 1-3 · 605 con la custodia
+   * de caja (§1 bis) · 619 con la puerta de entrada (fases 0-1, que además
+   * borran tres claves muertas del bloque decorativo de Inicio) · 634 con el
+   * escáner (fase 2) · 657 con la importación masiva (fases 3-4). Son rutas
+   * hoja, no dos-puntos del archivo.
    */
   it('conserva el volumen de claves esperado', () => {
-    expect(esPaths.length).toBeGreaterThanOrEqual(590);
+    expect(esPaths.length).toBeGreaterThanOrEqual(650);
   });
 
   it('tiene las claves que consume el ciclo del día', () => {
@@ -118,10 +122,109 @@ describe('paridad de locales', () => {
       'home.kpiExpectedCash',
       'home.noShiftTitle',
       'drawer.modules.tickets',
+      'cash.registers.title',
+      'cash.registers.auto',
+      'cash.registers.add',
+      'cash.registers.capacity',
+      'cash.byUser.title',
+      'cash.byUser.handovers',
+      'cash.byUser.netCash',
+      'cash.byUser.stillIn',
       'errors.moduleNotInPlan',
       // Las que ya existían y el ciclo del día reutiliza.
       'settings.categories.cash.title',
       'drawer.modules.caja',
+    ]) {
+      expect(esPaths).toContain(key);
+    }
+  });
+
+  it('tiene las claves que consume la puerta de entrada', () => {
+    for (const key of [
+      // El alta decide «¿se vende o no?» con su propio copy, aparte de las
+      // etiquetas técnicas de `products.status`.
+      'products.statusChoice.ACTIVE',
+      'products.statusChoice.DRAFT',
+      'products.draftBanner.title',
+      'products.draftBanner.action',
+      'products.draftBanner.done',
+      // Checklist de Inicio: una clave por paso, más el contador.
+      'home.firstSteps',
+      'home.checklist.progress',
+      'home.checklist.product',
+      'home.checklist.cash',
+      'home.checklist.sale',
+      'home.checklist.customer',
+      // Vacíos con salida: el `hint` es lo que distingue «no hay nada todavía»
+      // de «la búsqueda no encontró».
+      'products.empty',
+      'products.emptyHint',
+      'customers.empty',
+      'customers.emptyHint',
+      'pos.noProducts',
+      'pos.noProductsHint',
+      'orders.empty',
+      'orders.emptyHint',
+      'orders.emptyAction',
+    ]) {
+      expect(esPaths).toContain(key);
+    }
+  });
+
+  it('tiene las claves que consume el escáner', () => {
+    for (const key of [
+      'scanner.open',
+      'scanner.aim',
+      'scanner.capture',
+      'scanner.resolving',
+      'scanner.keepScanning',
+      // Plural real: «1 artículo» / «3 artículos». i18next resuelve el sufijo,
+      // así que las dos formas tienen que existir o la cuenta sale sin traducir.
+      'scanner.counted_one',
+      'scanner.counted_other',
+      'scanner.ambiguous',
+      'scanner.unknown.title',
+      'scanner.unknown.hint',
+      'scanner.unknown.create',
+      // El permiso denegado tiene dos salidas distintas: volver a pedirlo
+      // (Android) o abrir los ajustes del sistema (iOS, donde no se repregunta).
+      'scanner.permission.title',
+      'scanner.permission.hint',
+      'scanner.permission.allow',
+      'scanner.permission.openSettings',
+    ]) {
+      expect(esPaths).toContain(key);
+    }
+  });
+
+  it('tiene las claves que consume la importación masiva', () => {
+    for (const key of [
+      // Una sola pantalla para las dos entidades: solo cambian estos textos.
+      'import.products.title',
+      'import.products.hint',
+      'import.customers.title',
+      'import.customers.hint',
+      'import.step1',
+      'import.step1Hint',
+      'import.step2',
+      'import.step2Hint',
+      'import.downloadXlsx',
+      'import.downloadCsv',
+      'import.pickFile',
+      'import.savedTo',
+      'import.tooLarge',
+      // El recuento se enseña entero, errores incluidos: esconderlos hace que
+      // el hueco se descubra semanas después, vendiendo algo que no existe.
+      'import.doneClean',
+      'import.donePartial',
+      'import.rows',
+      'import.created',
+      'import.updated',
+      'import.failed',
+      'import.errorLine',
+      'import.moreErrors',
+      'import.copyErrors',
+      'import.errorsCopied',
     ]) {
       expect(esPaths).toContain(key);
     }

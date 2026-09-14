@@ -176,6 +176,7 @@ model Tenant {
   cashSessions       CashSession[]
   cashMovements      CashMovement[]
   cashCounts         CashCount[]
+  cashHandovers      CashSessionHandover[]
   cashRegisters      CashRegister[]
   services           Service[]
   serviceQuotes      ServiceQuote[]
@@ -326,6 +327,7 @@ model User {
   cashSessionsAuthorized    CashSession[]         @relation("CashSessionAuthorizedBy")
   cashCountsCounted         CashCount[]           @relation("CashCountCountedBy")
   cashCountsAuthorized      CashCount[]           @relation("CashCountAuthorizedBy")
+  cashHandovers             CashSessionHandover[] @relation("CashHandoverUser")
   servicesCreated           Service[]             @relation("ServiceCreatedBy")
   servicesUpdated           Service[]             @relation("ServiceUpdatedBy")
   serviceQuotesCreated      ServiceQuote[]        @relation("ServiceQuoteCreatedBy")
@@ -358,6 +360,7 @@ model User {
   googleLinkTickets   GoogleLinkTicket[]
   invitationsSent     TenantInvitation[]   @relation("InvitationInvitedBy")
   passwordResetTokens PasswordResetToken[]
+  phoneVerifications  PhoneVerification[]
 
   managedBranches   Branch[]           @relation("BranchManager")
   branchMemberships BranchMembership[]
@@ -1778,15 +1781,16 @@ model CashSession {
   createdAt              DateTime          @default(now())
   updatedAt              DateTime          @updatedAt
 
-  tenant               Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branch               Branch?        @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  openedBy             User?          @relation("CashSessionOpenedBy", fields: [openedById], references: [id], onDelete: SetNull)
-  closedBy             User?          @relation("CashSessionClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
-  authorizedBy         User?          @relation("CashSessionAuthorizedBy", fields: [authorizedById], references: [id], onDelete: SetNull)
-  cashRegister         CashRegister?  @relation(fields: [cashRegisterId], references: [id], onDelete: Restrict)
-  authorizedByEmployee Employee?      @relation("CashSessionAuthorizedByEmployee", fields: [authorizedByEmployeeId], references: [id], onDelete: SetNull)
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch               Branch?               @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  openedBy             User?                 @relation("CashSessionOpenedBy", fields: [openedById], references: [id], onDelete: SetNull)
+  closedBy             User?                 @relation("CashSessionClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+  authorizedBy         User?                 @relation("CashSessionAuthorizedBy", fields: [authorizedById], references: [id], onDelete: SetNull)
+  cashRegister         CashRegister?         @relation(fields: [cashRegisterId], references: [id], onDelete: Restrict)
+  authorizedByEmployee Employee?             @relation("CashSessionAuthorizedByEmployee", fields: [authorizedByEmployeeId], references: [id], onDelete: SetNull)
   movements            CashMovement[]
   counts               CashCount[]
+  handovers            CashSessionHandover[]
 
   @@map("cash_sessions")
 }
@@ -1823,6 +1827,41 @@ model CashCount {
 
   @@index([tenantId, cashSessionId, createdAt])
   @@map("cash_counts")
+}
+
+/// Quién estuvo delante del cajón abierto, y cuándo.
+///
+/// `CashSession` solo nombra a dos personas —`openedById` y `closedById`— y el
+/// dominio admite que sean distintas: un relevo de turno entra en la misma
+/// terminal y continúa la sesión. Con tres cajeros en un turno largo, el de en
+/// medio no aparecía en ninguna parte del corte; sus ventas lo decían una por
+/// una, pero reconstruirlo movimiento a movimiento es justo lo que nadie hace
+/// al cuadrar un faltante.
+///
+/// Complementa el desglose por usuario del `summary`, que solo ve a quien movió
+/// dinero: aquí se registra **presencia**, no actividad.
+model CashSessionHandover {
+  id            String    @id @default(uuid())
+  tenantId      String
+  cashSessionId String
+  userId        String?
+  enteredAt     DateTime  @default(now())
+  /// Cierra el tramo. `null` = seguía dentro.
+  ///
+  /// No se escribe "al salir": en un móvil esa señal no existe de forma fiable
+  /// —la app se mata, el teléfono se queda sin batería—. El tramo lo cierra la
+  /// entrada del siguiente o el cierre de la sesión, así que un `null` significa
+  /// "seguía dentro", nunca "salió a tal hora".
+  leftAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cashSession CashSession @relation(fields: [cashSessionId], references: [id], onDelete: Restrict)
+  user        User?       @relation("CashHandoverUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  /// El corte lee los tramos de una sesión en orden de entrada.
+  @@index([tenantId, cashSessionId, enteredAt])
+  @@map("cash_session_handovers")
 }
 
 model AccountPayable {
@@ -2757,6 +2796,36 @@ model TenantInvitation {
 /// cuenta y credenciales potencialmente comprometidas en juego, así que la
 /// ventana de uso del enlace se mantiene mínima. Igual que las demás
 /// credenciales de un solo uso del sistema, solo se guarda el hash SHA-256.
+/// Verificación de un teléfono por código SMS.
+///
+/// Mismo patrón que `PasswordResetToken`: solo se guarda el hash del código,
+/// nunca el código. Aquí importa más que en un enlace por correo, porque seis
+/// dígitos se adivinan: de ahí `attempts`, que cierra el intento tras unos
+/// pocos fallos en vez de dejar que alguien pruebe el millón de combinaciones.
+///
+/// `phone` se guarda en E.164 para que el límite por número no se pueda esquivar
+/// escribiéndolo con espacios o con el prefijo de otra forma.
+model PhoneVerification {
+  id         String    @id @default(uuid())
+  userId     String
+  /// E.164, normalizado. Es lo que limita el envío por número.
+  phone      String
+  codeHash   String    @map("code_hash")
+  attempts   Int       @default(0)
+  expiresAt  DateTime  @map("expires_at")
+  verifiedAt DateTime? @map("verified_at")
+  /// Se marca al pedir un código nuevo: el anterior deja de servir aunque no
+  /// haya caducado, para que un SMS viejo en la bandeja no compita con el nuevo.
+  consumedAt DateTime? @map("consumed_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([phone, createdAt])
+  @@map("phone_verifications")
+}
+
 model PasswordResetToken {
   id        String    @id @default(uuid())
   userId    String

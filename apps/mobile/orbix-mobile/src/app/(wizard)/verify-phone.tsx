@@ -1,16 +1,18 @@
 /**
  * Wizard step 3 — phone verification.
  *
- * The OTP endpoints do not exist yet (`POST /auth/phone/send-code` and
- * `/verify-code`), so the send attempt fails with `NotImplementedError`. Rather
- * than fake a code — which would teach users a flow that will change — the
- * screen degrades explicitly: it states that verification is unavailable and
- * lets the user continue with `phoneVerified: false`, which the backend can
- * later require before activating the tenant.
+ * Los endpoints ya existen (`POST /auth/phone/send-code` y `/verify-code`),
+ * pero **el envío depende de que haya un proveedor de SMS contratado**, y hoy
+ * no lo hay: sin él el servidor responde 503.
  *
- * Everything else is live: the six-box field, the auto-advance, the 60 s resend
- * cooldown and the verifying/verified transitions all run for real, so the day
- * the endpoints land only the two guard clauses come out.
+ * La pantalla degrada ante ese 503 exactamente como antes degradaba ante la
+ * ausencia del endpoint — dice que la verificación no está disponible y deja
+ * continuar con `phoneVerified: false`. No se falsea ningún código: enseñar un
+ * flujo que no es el real es peor que admitir que falta una pieza.
+ *
+ * Todo lo demás es de verdad: las seis casillas, el autoavance, el enfriamiento
+ * de 60 s y las transiciones verificando/verificado. El día que se contrate el
+ * proveedor, solo sale la cláusula del 503.
  */
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -35,7 +37,7 @@ import {
 import { useTheme } from '@/hooks/use-theme';
 import { useWizard } from '@/providers';
 import { NotImplementedError } from '@/services/api';
-import { toUserMessage } from '@/utils/error-message';
+import { isServiceUnavailable, toUserMessage } from '@/utils/error-message';
 
 const RESEND_SECONDS = 60;
 const OTP_LENGTH = 6;
@@ -84,7 +86,9 @@ export default function VerifyPhoneScreen() {
           setSecondsLeft(response.resendAfterSeconds || RESEND_SECONDS);
         },
         onError: (sendError) => {
-          if (sendError instanceof NotImplementedError) {
+          // 503 = no hay proveedor de SMS detrás. No es un fallo del usuario
+          // ni de la red: es una pieza que falta, y el wizard sigue sin ella.
+          if (isServiceUnavailable(sendError) || sendError instanceof NotImplementedError) {
             setVerificationUnavailable(true);
             return;
           }

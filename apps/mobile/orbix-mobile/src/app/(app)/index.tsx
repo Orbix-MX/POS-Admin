@@ -13,20 +13,17 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import {
   AppDrawer,
-  CreditCardIcon,
   KpiCard,
-  ListRow,
   MenuIcon,
   OrbixAvatar,
   OrbixButton,
   OrbixCard,
   OrbixScaffold,
   OrbixText,
-  PackageIcon,
-  UsersIcon,
 } from '@/components';
 import { Ripple, useRipple } from '@/components/animations/ripple';
 import { useDashboardStats } from '@/features/common/use-dashboard-stats';
+import { OnboardingChecklist } from '@/features/dashboard/onboarding-checklist';
 import { useDayPulse } from '@/features/dashboard/use-day-pulse';
 import { getHomeScreenPref, type HomeScreenPref } from '@/features/settings/use-settings-prefs';
 import { useAuth } from '@/hooks/use-auth';
@@ -192,32 +189,7 @@ export default function HomeScreen() {
         </View>
       </Animated.View>
 
-      <View style={{ gap: theme.spacing.sm }}>
-        <OrbixText
-          size="xs"
-          weight="semibold"
-          tone="mutedForeground"
-          style={{ letterSpacing: 0.5, textTransform: 'uppercase' }}
-        >
-          {t('home.firstSteps')}
-        </OrbixText>
-
-        <OrbixCard padded={false}>
-          <ListRow
-            icon={<PackageIcon size={14} color={theme.colors.brandBlue500} />}
-            label={t('home.addProducts')}
-          />
-          <ListRow
-            icon={<UsersIcon size={14} color={theme.colors.brandBlue500} />}
-            label={t('home.inviteTeam')}
-          />
-          <ListRow
-            icon={<CreditCardIcon size={14} color={theme.colors.brandBlue500} />}
-            label={t('home.setupPos')}
-            isLast
-          />
-        </OrbixCard>
-      </View>
+      <OnboardingChecklist />
 
       <View style={{ flex: 1 }} />
 

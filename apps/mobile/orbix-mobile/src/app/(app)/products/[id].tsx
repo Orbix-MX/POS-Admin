@@ -5,6 +5,8 @@ import { Pressable, View } from 'react-native';
 
 import {
   BackButton,
+  OrbixButton,
+  OrbixCard,
   OrbixLoading,
   OrbixModal,
   OrbixScaffold,
@@ -23,7 +25,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { usePermissions } from '@/hooks/use-permissions';
 import { useTheme } from '@/hooks/use-theme';
 import { toUserMessage } from '@/utils/error-message';
-import { ProductType } from '@/types/api';
+import { ProductStatus, ProductType } from '@/types/api';
 
 function numToStr(value: number | null): string {
   return value === null ? '' : String(value);
@@ -48,6 +50,8 @@ export default function EditProductScreen() {
 
   const update = useUpdateProduct(id);
   const remove = useDeleteProduct();
+  /** Publicar es un `PATCH` de un solo campo; reusa la mutación de edición. */
+  const publish = useUpdateProduct(id);
 
   const defaultValues = useMemo<ProductFormValues | null>(() => {
     if (!product) return null;
@@ -151,6 +155,37 @@ export default function EditProductScreen() {
           </Pressable>
         ) : null}
       </View>
+
+      {/* Un producto en borrador no aparece en el POS, y desde el detalle eso es
+          invisible: el formulario se ve igual. Decirlo aquí, con la salida a un
+          toque, es lo que evita que alguien lo dé por publicado. */}
+      {product?.status === ProductStatus.DRAFT && can('products:edit') ? (
+        <OrbixCard
+          style={{
+            gap: theme.spacing.sm,
+            borderColor: theme.colors.warningFg,
+            backgroundColor: theme.colors.warningBg,
+          }}
+        >
+          <OrbixText size="sm" weight="bold" style={{ color: theme.colors.warningFg }}>
+            {t('products.draftBanner.title')}
+          </OrbixText>
+          <OrbixText size="sm" style={{ color: theme.colors.warningFg }}>
+            {t('products.draftBanner.hint')}
+          </OrbixText>
+          <OrbixButton
+            label={t('products.draftBanner.action')}
+            size="sm"
+            loading={publish.isPending}
+            onPress={() =>
+              publish.mutate(
+                { status: ProductStatus.ACTIVE },
+                { onSuccess: () => toast.success(t('products.draftBanner.done')) },
+              )
+            }
+          />
+        </OrbixCard>
+      ) : null}
 
       <ProductImageField
         productId={id}

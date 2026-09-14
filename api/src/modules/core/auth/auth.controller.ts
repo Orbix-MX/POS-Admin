@@ -42,6 +42,8 @@ import { GoogleLinkTicketService } from './services/google-link-ticket.service';
 import { MfaService } from './services/mfa.service';
 import { MfaVerifyDto, MfaCodeDto } from './dto/mfa.dto';
 import { PasswordResetService } from './services/password-reset.service';
+import { PhoneVerificationService } from './services/phone-verification.service';
+import { SendPhoneCodeDto, VerifyPhoneCodeDto } from './dto/phone-verification.dto';
 import { Public } from '../../../common/decorators/public.decorator';
 import { AllowInvalidLicense } from '../../../common/decorators/allow-invalid-license.decorator';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
@@ -72,6 +74,7 @@ export class AuthController {
     private googleMobileAuth: GoogleMobileAuthService,
     private mfa: MfaService,
     private passwordReset: PasswordResetService,
+    private phoneVerification: PhoneVerificationService,
     private config: ConfigService,
   ) {}
 
@@ -127,6 +130,31 @@ export class AuthController {
   async disableMfa(@CurrentUser() user: AuthUser, @Body() dto: MfaCodeDto): Promise<{ message: string }> {
     await this.mfa.disable(user.id, dto.code);
     return { message: 'MFA desactivado' };
+  }
+
+  // ── Verificación de teléfono ─────────────────────────────────────────────────
+  //
+  // Autenticadas: se verifica el teléfono de QUIEN está en sesión, no uno
+  // cualquiera. El límite de este throttle es la primera barrera; el servicio
+  // impone además un enfriamiento por usuario y un tope por número, que es lo
+  // que impide usar el registro para mandarle SMS a un desconocido.
+
+  @NoPermissionsRequired()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('phone/send-code')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Manda un código de seis dígitos por SMS al teléfono indicado' })
+  async sendPhoneCode(@CurrentUser() user: AuthUser, @Body() dto: SendPhoneCodeDto) {
+    return this.phoneVerification.sendCode(user.id, dto.phone);
+  }
+
+  @NoPermissionsRequired()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('phone/verify-code')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Canjea el código recibido por SMS' })
+  async verifyPhoneCode(@CurrentUser() user: AuthUser, @Body() dto: VerifyPhoneCodeDto) {
+    return this.phoneVerification.verifyCode(user.id, dto.verificationId, dto.code);
   }
 
   // ── Reseteo de contraseña ────────────────────────────────────────────────────

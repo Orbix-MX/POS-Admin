@@ -105,6 +105,8 @@ export const queryKeys = {
       [...queryKeys.cash.sessions(tenantId, branchId), 'detail', id] as const,
     counts: (tenantId: TenantScope, branchId: BranchScope, sessionId: string | undefined) =>
       [...queryKeys.cash.sessions(tenantId, branchId), 'counts', sessionId] as const,
+    handovers: (tenantId: TenantScope, branchId: BranchScope, sessionId: string | undefined) =>
+      [...queryKeys.cash.sessions(tenantId, branchId), 'handovers', sessionId] as const,
     registers: (tenantId: TenantScope, branchId: BranchScope) =>
       [...queryKeys.cash.all, 'registers', tenantId, branchId] as const,
     capacity: (tenantId: TenantScope, branchId: BranchScope) =>

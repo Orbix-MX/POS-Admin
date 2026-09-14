@@ -10,7 +10,14 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, Pressable, RefreshControl, View } from 'react-native';
 
-import { BackButton, OrbixInput, OrbixScaffold, OrbixSkeleton, OrbixText } from '@/components';
+import {
+  BackButton,
+  EmptyState,
+  OrbixInput,
+  OrbixScaffold,
+  OrbixSkeleton,
+  OrbixText,
+} from '@/components';
 import { Ripple, useRipple } from '@/components/animations/ripple';
 import { PackageIcon, PlusIcon, SearchIcon } from '@/components/ui/icons';
 import { useProducts } from '@/features/products/use-products';
@@ -170,12 +177,32 @@ export default function ProductsListScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: theme.spacing['3xl'] }}
           ListEmptyComponent={
-            <View style={{ alignItems: 'center', paddingVertical: theme.spacing['3xl'], gap: theme.spacing.sm }}>
-              <PackageIcon size={28} color={theme.colors.mutedForeground} />
-              <OrbixText size="sm" tone="mutedForeground">
-                {search ? t('products.noResults') : t('products.empty')}
-              </OrbixText>
-            </View>
+            /* Sin resultados no es lo mismo que sin catálogo: lo primero se
+               arregla borrando la búsqueda, lo segundo creando un producto. */
+            <EmptyState
+              Icon={PackageIcon}
+              title={search ? t('products.noResults') : t('products.empty')}
+              hint={search ? undefined : t('products.emptyHint')}
+              action={
+                !search && can('products:create')
+                  ? { label: t('products.create'), onPress: () => router.push('/(app)/products/new') }
+                  : undefined
+              }
+              // Quien llega con un catálogo hecho no quiere teclearlo: el
+              // import es la diferencia entre probar la app y quedarse en ella.
+              secondaryAction={
+                !search && can('products:create')
+                  ? {
+                      label: t('import.products.title'),
+                      onPress: () =>
+                        router.push({
+                          pathname: '/(app)/import/[entity]',
+                          params: { entity: 'products' },
+                        }),
+                    }
+                  : undefined
+              }
+            />
           }
         />
       )}

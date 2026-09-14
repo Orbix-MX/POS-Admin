@@ -6,6 +6,7 @@ export default function SettingsLayout() {
       <Stack.Screen name="index" />
       <Stack.Screen name="general" />
       <Stack.Screen name="store" />
+      <Stack.Screen name="cash" />
     </Stack>
   );
 }

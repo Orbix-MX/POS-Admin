@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import ExcelJS from 'exceljs';
+import { Readable } from 'node:stream';
 import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { SlugUtil } from '../../../common/utils/slug.util';
@@ -26,6 +27,27 @@ const HEADERS = [
 ] as const;
 
 const TEMPLATE_ROWS = 500;
+
+/**
+ * Los dos formatos de la plantilla.
+ *
+ * El `.xlsx` es el bueno —lleva desplegables, las categorías reales del tenant
+ * y una hoja de instrucciones—, pero exige Excel o equivalente. El `.csv` no
+ * lleva nada de eso y es justamente su ventaja: lo abre cualquier cosa, se edita
+ * en un teléfono y es lo que exporta el sistema del que el negocio viene
+ * huyendo.
+ */
+export type ImportFormat = 'xlsx' | 'csv';
+
+/**
+ * Separadores que puede escribir Excel al «Guardar como CSV».
+ *
+ * No es una lista arbitraria: Excel usa el separador de listas del sistema, que
+ * en España y buena parte de Europa es `;` y no `,`. Un archivo guardado así se
+ * lee como UNA sola columna, y el import fallaría diciendo que falta la columna
+ * "SKU" cuando está ahí delante.
+ */
+const CSV_DELIMITERS = [',', ';', '	'] as const;
 const STATUS_VALUES: ProductStatus[] = ['DRAFT', 'ACTIVE', 'ARCHIVED'];
 const TAX_CODE_VALUES: TaxCode[] = ['IVA_16', 'IVA_11', 'IVA_8', 'EXCENTO'];
 
@@ -50,8 +72,12 @@ export class ProductsImportService {
     private variants: VariantInventoryResolver,
   ) {}
 
-  /** Builds a ready-to-fill .xlsx: headers + dropdowns + the tenant's real category names. */
-  async buildTemplate(): Promise<Buffer> {
+  /**
+   * Builds a ready-to-fill template: headers + dropdowns + the tenant's real
+   * category names for `.xlsx`; sólo la fila de cabeceras y una de ejemplo para
+   * `.csv`, que no admite validaciones ni hojas auxiliares.
+   */
+  async buildTemplate(format: ImportFormat = 'xlsx'): Promise<Buffer> {
     const tenantId = this.tenantContext.requireTenantId();
     const categories = await this.prisma.category.findMany({
       where: { tenantId, status: 'ACTIVE' },
@@ -80,6 +106,18 @@ export class ProductsImportService {
       'Código Impuesto': 'IVA_16',
       'Publicar en E-commerce': 'NO',
     });
+
+    if (format === 'csv') {
+      // Nada de lo que viene después existe en un CSV: ni desplegables, ni hoja
+      // de categorías, ni instrucciones. Se corta aquí en vez de generarlo para
+      // que ExcelJS lo tire al serializar.
+      //
+      // El BOM es deliberado: sin él, Excel abre el archivo en la codificación
+      // del sistema y «Categoría» o «Descripción» llegan con la tilde rota, que
+      // es justo la columna que el usuario tiene que reconocer.
+      const csv = await workbook.csv.writeBuffer({ sheetName: SHEET_PRODUCTS });
+      return Buffer.concat([Buffer.from('﻿', 'utf8'), Buffer.from(csv as ArrayBuffer)]);
+    }
 
     const catRange =
       categories.length > 0 ? `'${SHEET_CATEGORIES}'!$A$2:$A$${categories.length + 1}` : null;
@@ -138,16 +176,55 @@ export class ProductsImportService {
     return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 
-  /** Parses an uploaded .xlsx and upserts products by (tenant, SKU) — best-effort per row. */
-  async importFile(buffer: Buffer): Promise<ImportResult> {
-    const tenantId = this.tenantContext.requireTenantId();
-
+  /**
+   * Lee el archivo subido —`.xlsx` o `.csv`— a una hoja de ExcelJS.
+   *
+   * Separarlo así es lo que permite que el CSV no duplique ni una línea del
+   * import: a partir de aquí las dos rutas son la misma hoja, con las mismas
+   * columnas y las mismas reglas por fila.
+   */
+  private async readSheet(buffer: Buffer, format: ImportFormat): Promise<ExcelJS.Worksheet> {
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(buffer as any);
+
+    if (format === 'csv') {
+      // El BOM que escribe Excel se pega a la PRIMERA cabecera: sin quitarlo,
+      // la columna "SKU" llega como "﻿SKU" y el import muere diciendo que
+      // falta una columna que está a la vista.
+      let text = buffer.toString('utf8');
+      if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+
+      // Un CSV en blanco produce una hoja vacía, y la validación de columnas
+      // que viene después diría «falta la columna SKU» — que para quien acaba
+      // de subir un archivo vacío no explica nada.
+      if (!text.trim()) {
+        throw new BadRequestException('El archivo está vacío');
+      }
+
+      const [firstLine = ''] = text.split(/\r?\n/, 1);
+      // Gana el separador que más veces aparece en la cabecera. Contar sobre la
+      // cabecera y no sobre todo el archivo evita que las comas dentro de una
+      // descripción entre comillas decidan por nosotros.
+      const delimiter = CSV_DELIMITERS.reduce((best, candidate) =>
+        firstLine.split(candidate).length > firstLine.split(best).length ? candidate : best,
+      );
+
+      await workbook.csv.read(Readable.from([text]), { parserOptions: { delimiter } });
+    } else {
+      await workbook.xlsx.load(buffer as any);
+    }
+
     const sheet = workbook.getWorksheet(SHEET_PRODUCTS) ?? workbook.worksheets[0];
     if (!sheet) {
       throw new BadRequestException('El archivo no tiene hojas para leer');
     }
+    return sheet;
+  }
+
+  /** Parses an uploaded file and upserts products by (tenant, SKU) — best-effort per row. */
+  async importFile(buffer: Buffer, format: ImportFormat = 'xlsx'): Promise<ImportResult> {
+    const tenantId = this.tenantContext.requireTenantId();
+
+    const sheet = await this.readSheet(buffer, format);
 
     const columnIndex = new Map<string, number>();
     (sheet.getRow(1).values as unknown[]).forEach((value, idx) => {

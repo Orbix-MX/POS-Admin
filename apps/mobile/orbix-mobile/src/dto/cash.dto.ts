@@ -167,6 +167,48 @@ export interface CashSummaryCashBucketDto {
   total: number;
 }
 
+/**
+  * Lo que movió una persona durante el turno.
+  *
+  * Responde la pregunta del corte cuando no cuadra: «¿de quién es este
+  * faltante?». Solo ve a quien **movió dinero** — quien entró, consultó y no
+  * vendió aparece en la bitácora de relevos, no aquí.
+  */
+export interface CashUserBreakdownDto {
+  userId: string | null;
+  name: string;
+  sales: number;
+  cxc: number;
+  income: number;
+  expense: number;
+  withdrawal: number;
+  refund: number;
+  /** Efectivo en MXN que esta persona dejó en el cajón: metió menos sacó. */
+  netCash: number;
+  movementsCount: number;
+}
+
+/**
+ * Un tramo de custodia: alguien tomó la caja abierta.
+ *
+ * `leftAt: null` significa **«seguía dentro»**, nunca «salió a tal hora». En un
+ * móvil la señal de salida no es fiable —la app se mata, se acaba la batería—,
+ * así que el tramo lo cierra la entrada del siguiente o el cierre de la sesión.
+ */
+export interface CashHandoverDto {
+  id: string;
+  cashSessionId: string;
+  userId: string | null;
+  enteredAt: string;
+  leftAt: string | null;
+  user?: {
+    id: string;
+    firstName: string | null;
+    lastName: string | null;
+    email: string;
+  } | null;
+}
+
 export interface CashSessionSummaryDto {
   openingAmount: number;
   openingAmountUsd: number;
@@ -174,6 +216,8 @@ export interface CashSessionSummaryDto {
   expectedCash: number;
   expectedCashUsd: number;
   movementsCount: number;
+  /** Quién movió cuánto. Ausente en respuestas viejas del servidor. */
+  byUser?: CashUserBreakdownDto[];
   totals: {
     sales: CashSummaryBucketDto;
     cxc: CashSummaryBucketDto;

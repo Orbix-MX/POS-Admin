@@ -97,4 +97,50 @@ function commonAncestor(a, b) {
   return shared.join(path.sep) + path.sep;
 }
 
-module.exports = withNativeWind(config, { input: './src/styles/global.css' });
+/*
+ * Un solo React en el bundle.
+ *
+ * El monorepo tiene dos líneas de React a la vez y ninguna está mal: la móvil
+ * va clavada a `19.1.0` porque es la que fija el SDK 54 de Expo, y `web/` y
+ * `apps/pos-web/` piden `^19.2.5`. Como son paquetes distintos del workspace,
+ * pnpm instala las dos.
+ *
+ * El problema es cómo llega la segunda hasta aquí. Un paquete cuyo `react` es
+ * un *peer* no lleva el symlink dentro de su directorio del store: pnpm cuenta
+ * con que quien lo use lo resuelva desde arriba. `nativewind`,
+ * `@react-native-community/netinfo` y `@expo-google-fonts/dm-sans` están en ese
+ * caso, y al subir directorios desde el store acababan cogiendo el 19.2.6 de
+ * las apps web. Dos copias de React vivas en el mismo bundle significa dos
+ * dispatchers de hooks: el primer componente que renderiza NativeWind revienta
+ * con «Invalid hook call … more than one copy of React», y el layout raíz no
+ * llega a montar.
+ *
+ * Se ancla el `originModulePath` al propio paquete: desde ahí la resolución
+ * normal de Metro solo puede aterrizar en la copia de la app. Cubre también
+ * `react/jsx-runtime` y compañía, que el compilador de JSX importa por su
+ * cuenta.
+ *
+ * No es un pin de versión ni toca a las apps web: solo dice, para ESTE bundle,
+ * cuál de las dos copias vale.
+ */
+const REACT_DIR = path.dirname(require.resolve('react/package.json', { paths: [projectRoot] }));
+
+// Se envuelve DESPUÉS de `withNativeWind`: el preset instala su propio
+// `resolveRequest` y sobrescribiría este si se pusiera antes.
+const finalConfig = withNativeWind(config, { input: './src/styles/global.css' });
+
+const upstreamResolveRequest = finalConfig.resolver.resolveRequest;
+
+finalConfig.resolver.resolveRequest = (context, moduleName, platform) => {
+  const resolve = upstreamResolveRequest ?? context.resolveRequest;
+  if (moduleName === 'react' || moduleName.startsWith('react/')) {
+    return resolve(
+      { ...context, originModulePath: path.join(REACT_DIR, 'package.json') },
+      moduleName,
+      platform,
+    );
+  }
+  return resolve(context, moduleName, platform);
+};
+
+module.exports = finalConfig;

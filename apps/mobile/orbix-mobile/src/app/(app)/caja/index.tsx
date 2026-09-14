@@ -34,7 +34,9 @@ import { MovementSheet, type MovementKind } from '@/features/cash/movement-sheet
 import { MovementsList } from '@/features/cash/movements-list';
 import { OpenCashSessionPanel } from '@/features/cash/open-session-panel';
 import { SessionSummaryCard, StatusPill } from '@/features/cash/session-summary-card';
-import { useActiveCashSession } from '@/features/cash/use-cash-session';
+import { UserBreakdownCard } from '@/features/cash/user-breakdown-card';
+import { useCashHandovers } from '@/features/cash/use-cash-count';
+import { useActiveCashSession, useHandoverTracking } from '@/features/cash/use-cash-session';
 import { useAuth } from '@/hooks/use-auth';
 import { useCurrencyFormatVersion } from '@/hooks/use-currency-format-version';
 import { usePermissions } from '@/hooks/use-permissions';
@@ -87,6 +89,11 @@ export default function CajaScreen() {
   const movementSheet = useRef<OrbixBottomSheetRef>(null);
 
   const { data: session, isLoading, isFetching, error, refetch } = useActiveCashSession();
+  const { data: handovers } = useCashHandovers(session?.id);
+
+  // Deja constancia de que este usuario tomó la caja. Es el relevo de turno: la
+  // caja ya estaba abierta por otra persona y hasta ahora eso no dejaba rastro.
+  useHandoverTracking(session);
 
   const hasBranch = Boolean(authSession?.branchId);
   const canView = can('cash:view');
@@ -266,6 +273,20 @@ export default function CajaScreen() {
               openedBy: t('cash.openedBy'),
               usdDrawer: t('cash.usdDrawer'),
               noMovements: t('cash.noMovements'),
+            }}
+          />
+
+          <UserBreakdownCard
+            summary={session.summary}
+            handovers={handovers ?? []}
+            labels={{
+              title: t('cash.byUser.title'),
+              handoversTitle: t('cash.byUser.handovers'),
+              sales: t('cash.sales'),
+              movements: t('cash.movements'),
+              netCash: t('cash.byUser.netCash'),
+              stillIn: t('cash.byUser.stillIn'),
+              noUsers: t('cash.byUser.none'),
             }}
           />
 

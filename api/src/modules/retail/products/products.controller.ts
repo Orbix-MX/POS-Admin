@@ -16,21 +16,44 @@ import {
   FileTypeValidator,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody, ApiQuery } from '@nestjs/swagger';
 import { memoryStorage } from 'multer';
 import type { Response } from 'express';
 import { ProductsService } from './products.service';
-import { ProductsImportService } from './products-import.service';
+import { ProductsImportService, type ImportFormat } from './products-import.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { QueryProductDto } from './dto/query-product.dto';
+import { ResolveCodeDto } from './dto/resolve-code.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
 import { RequireModule } from '../../../common/guards/require-module.guard';
 import { RecipeItemDto, ComboItemDto } from './dto/create-product.dto';
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
 const MAX_IMPORT_SIZE = 10 * 1024 * 1024; // 10 MB
-const XLSX_MIME = /^application\/(vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet|vnd\.ms-excel|octet-stream)$/;
+/**
+ * Lo que se acepta subir.
+ *
+ * `octet-stream` está porque es lo que mandan varios navegadores y el picker de
+ * Android cuando no reconocen la extensión, y `vnd.ms-excel` porque Windows
+ * marca así los `.csv` cuando Excel está instalado — de ahí que el formato real
+ * NO se decida por el MIME, sino por la extensión del nombre original.
+ */
+const IMPORT_MIME =
+  /^(application\/(vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet|vnd\.ms-excel|octet-stream)|text\/(csv|plain|comma-separated-values))$/;
+
+/**
+ * El formato del archivo subido, por su extensión.
+ *
+ * El MIME no sirve para decidirlo: Windows anuncia los `.csv` como
+ * `application/vnd.ms-excel` si Excel está instalado, y el picker de Android
+ * manda `application/octet-stream` para los dos. La extensión es lo único que
+ * el usuario controla y que dice la verdad; si no hay ninguna reconocible se
+ * asume `.xlsx`, que es lo que descarga la plantilla por defecto.
+ */
+function importFormatOf(file: Express.Multer.File): ImportFormat {
+  return /\.csv$/i.test(file.originalname ?? '') ? 'csv' : 'xlsx';
+}
 
 @RequireModule('inventario')
 @ApiTags('Products')
@@ -68,12 +91,16 @@ export class ProductsController {
   @Get('import/template')
   @ApiBearerAuth()
   @RequirePermissions('products:create|products:edit')
-  @ApiOperation({ summary: 'Download the .xlsx template for bulk product import' })
-  async downloadImportTemplate(@Res() res: Response) {
-    const buffer = await this.productsImportService.buildTemplate();
+  @ApiOperation({ summary: 'Download the template for bulk product import (.xlsx or .csv)' })
+  @ApiQuery({ name: 'format', enum: ['xlsx', 'csv'], required: false })
+  async downloadImportTemplate(@Res() res: Response, @Query('format') format?: string) {
+    const csv = format === 'csv';
+    const buffer = await this.productsImportService.buildTemplate(csv ? 'csv' : 'xlsx');
     res.set({
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': 'attachment; filename="plantilla-productos.xlsx"',
+      'Content-Type': csv
+        ? 'text/csv; charset=utf-8'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="plantilla-productos.${csv ? 'csv' : 'xlsx'}"`,
       'Content-Length': buffer.length,
     });
     res.end(buffer);
@@ -91,13 +118,27 @@ export class ProductsController {
       new ParseFilePipe({
         validators: [
           new MaxFileSizeValidator({ maxSize: MAX_IMPORT_SIZE }),
-          new FileTypeValidator({ fileType: XLSX_MIME }),
+          // `fallbackToMimetype` no es opcional aquí: Nest 11 valida el tipo por
+          // los magic numbers del contenido, y un CSV es texto plano — no tiene
+          // firma que detectar, así que sin esto TODO CSV se rechaza con un 400
+          // que además dice «current file type is text/csv», como si el tipo
+          // estuviera mal. El `.xlsx` sigue validándose por su firma real (es un
+          // zip); solo el texto cae al mimetype declarado.
+          new FileTypeValidator({ fileType: IMPORT_MIME, fallbackToMimetype: true }),
         ],
       }),
     )
     file: Express.Multer.File,
   ) {
-    return this.productsImportService.importFile(file.buffer);
+    return this.productsImportService.importFile(file.buffer, importFormatOf(file));
+  }
+
+  @Get('resolve')
+  @ApiBearerAuth()
+  @RequirePermissions('products:view')
+  @ApiOperation({ summary: 'Resolve a scanned barcode or SKU to a product and its variant' })
+  resolve(@Query() dto: ResolveCodeDto) {
+    return this.productsService.resolveByCode(dto.code);
   }
 
   @Get(':id')

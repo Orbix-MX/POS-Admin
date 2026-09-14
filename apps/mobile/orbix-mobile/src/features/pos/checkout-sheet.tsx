@@ -16,7 +16,7 @@ import { MinusIcon, PackageIcon, PlusIcon } from '@/components/ui/icons';
 import { useTheme } from '@/hooks/use-theme';
 import type { Order } from '@/repositories/orders-repository';
 
-import { formatCurrency, type CartLine, type CartTotals } from './pos-totals';
+import { cartLineKey, formatCurrency, type CartLine, type CartTotals } from './pos-totals';
 
 export type CheckoutStage = 'cart' | 'processing' | 'done';
 export type PosPaymentMethod = 'CASH' | 'CARD' | 'TRANSFER';
@@ -45,8 +45,10 @@ interface CheckoutSheetProps {
   order: Order | null;
   errorMessage: string | null;
   canConfirm: boolean;
-  onIncrement: (productId: string) => void;
-  onDecrement: (productId: string) => void;
+  /** Reciben `cartLineKey(line)`, no el id de producto: dos presentaciones del
+   *  mismo producto son dos líneas y se suben por separado. */
+  onIncrement: (lineKey: string) => void;
+  onDecrement: (lineKey: string) => void;
   onConfirm: () => void;
   onClose: () => void;
   onNewSale: () => void;
@@ -72,14 +74,15 @@ interface CheckoutSheetProps {
 
 interface LineRowProps {
   line: CartLine;
-  onIncrement: (productId: string) => void;
-  onDecrement: (productId: string) => void;
+  onIncrement: (lineKey: string) => void;
+  onDecrement: (lineKey: string) => void;
 }
 
 function LineRow({ line, onIncrement, onDecrement }: LineRowProps) {
   const theme = useTheme();
-  const handleInc = useCallback(() => onIncrement(line.productId), [line.productId, onIncrement]);
-  const handleDec = useCallback(() => onDecrement(line.productId), [line.productId, onDecrement]);
+  const key = cartLineKey(line);
+  const handleInc = useCallback(() => onIncrement(key), [key, onIncrement]);
+  const handleDec = useCallback(() => onDecrement(key), [key, onDecrement]);
 
   return (
     <View
@@ -293,7 +296,7 @@ function CheckoutSheetComponent(props: CheckoutSheetProps) {
                 >
                   {lines.map((line) => (
                     <LineRow
-                      key={line.productId}
+                      key={cartLineKey(line)}
                       line={line}
                       onIncrement={onIncrement}
                       onDecrement={onDecrement}

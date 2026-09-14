@@ -70,6 +70,17 @@ export function buildProductSchema(t: TFunction) {
 
 export type ProductFormValues = z.infer<ReturnType<typeof buildProductSchema>>;
 
+/**
+ * Producto nuevo: **a la venta**, no borrador.
+ *
+ * Nacía en `DRAFT` y el POS filtra `status: 'ACTIVE'`, así que el primer
+ * producto de todo usuario nuevo era invendible: lo creaba, iba a cobrar, y no
+ * estaba. Era el abandono más temprano que tenía la app y el campo vivía en el
+ * paso 5 de 5, donde casi nadie llegaba.
+ *
+ * `isEcommerce` sigue en `false`: «a la venta» significa que se puede cobrar en
+ * el mostrador, no que esté publicado en internet.
+ */
 export const EMPTY_PRODUCT_FORM: ProductFormValues = {
   type: ProductType.SIMPLE,
   sku: '',
@@ -80,7 +91,7 @@ export const EMPTY_PRODUCT_FORM: ProductFormValues = {
   comparePrice: '',
   costPrice: '',
   categoryId: '',
-  status: ProductStatus.DRAFT,
+  status: ProductStatus.ACTIVE,
   stock: '0',
   trackInventory: true,
   lowStockAlert: '5',

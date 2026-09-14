@@ -28,6 +28,10 @@ export type AuditAction =
   // Transiciones del ciclo de caja (CASH-011).
   | 'CASH_COUNT_START'
   | 'CASH_COUNT_RESUME'
+  // Relevo de turno: quién tomó la caja abierta. `CashSession` solo nombra a
+  // quien abrió y a quien cerró, así que sin esto el operador de en medio de un
+  // turno largo no dejaba rastro.
+  | 'CASH_HANDOVER'
   // Identidad y RBAC. Sin estos, una escalación de privilegios no deja rastro:
   // quién le dio qué rol a quién, y cuándo, era irreconstruible.
   | 'USER_CREATE'

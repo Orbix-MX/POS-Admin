@@ -149,3 +149,26 @@ export interface CreateProductRequest {
 }
 
 export type UpdateProductRequest = Partial<CreateProductRequest>;
+
+/* ── Resolver un escaneo ─────────────────────────────────────────────────── */
+
+/** Qué campo casó con el código leído. El servidor prueba en este orden. */
+export type CodeMatch = 'variant.barcode' | 'variant.sku' | 'product.sku';
+
+export interface ResolvedCodeDto {
+  product: ProductDto;
+  /** Presentación que casó. `null` si el producto no tiene ninguna. */
+  variantId: string | null;
+  matchedBy: CodeMatch;
+  /**
+   * Otros artículos con el mismo código. Vacío en el caso sano; cuando no lo
+   * está, el servidor ya eligió el más antiguo y estos son los descartados.
+   */
+  alternatives: {
+    productId: string;
+    productName: string;
+    variantId: string | null;
+    variantName: string | null;
+    matchedBy: CodeMatch;
+  }[];
+}

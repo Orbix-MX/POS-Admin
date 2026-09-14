@@ -66,6 +66,27 @@ interface VariantBranchValues {
   cost?: number;
 }
 
+/** Qué campo casó con el código escaneado, en orden de prioridad. */
+export type CodeMatch = 'variant.barcode' | 'variant.sku' | 'product.sku';
+
+/**
+ * Un escaneo resuelto. `variantId` es null solo si el producto no tiene
+ * ninguna presentación, cosa que el alta no permite pero los datos heredados sí.
+ */
+export interface ResolvedCode {
+  product: Product;
+  variantId: string | null;
+  matchedBy: CodeMatch;
+  /** Otros artículos con el mismo código. Vacío en el caso sano. */
+  alternatives: {
+    productId: string;
+    productName: string;
+    variantId: string | null;
+    variantName: string | null;
+    matchedBy: CodeMatch;
+  }[];
+}
+
 @Injectable()
 export class ProductsService {
   constructor(
@@ -616,6 +637,116 @@ export class ProductsService {
         total,
         totalPages: Math.ceil(total / limit),
       },
+    };
+  }
+
+  /**
+   * Resuelve UN código escaneado a un producto y su presentación.
+   *
+   * No es una búsqueda: un escaneo acierta o no. Por eso no pagina, no aproxima
+   * y no devuelve una lista — un lector de mostrador que ofreciera "quizá te
+   * refieres a" obligaría a elegir con el dedo lo que el láser ya decidió.
+   *
+   * **Prioridad**, de más específico a menos: `variant.barcode` → `variant.sku`
+   * → `product.sku`. El código de barras manda porque es el que está impreso en
+   * la etiqueta que se acaba de leer; el SKU del producto padre va al final
+   * porque es un código de catálogo, no de artículo.
+   *
+   * **Empates.** La unicidad de códigos la impone `assertCodesFreeInTenant`, no
+   * un índice —`product_variants` no tiene `tenantId`, así que Postgres no puede
+   * imponerla—, y además no cruza `Product.sku` con `variant.barcode`. O sea:
+   * los duplicados son improbables pero posibles, y los datos importados de un
+   * sistema anterior nunca pasaron por esa validación. Cuando los hay, se
+   * devuelve el más antiguo —el que el negocio lleva usando— y los demás van en
+   * `alternatives` para que quien escanea lo sepa. Elegir en silencio cobraría
+   * el producto equivocado.
+   *
+   * La comparación ignora mayúsculas: los códigos de barras son numéricos, pero
+   * un SKU tecleado a mano no, y `abc-1` y `ABC-1` son el mismo artículo para
+   * cualquiera que esté en la caja.
+   */
+  async resolveByCode(code: string): Promise<ResolvedCode> {
+    const tenantId = this.tenantContext.requireTenantId();
+    const value = code.trim();
+    if (!value) throw new NotFoundException('Product not found');
+
+    const insensitive = { equals: value, mode: 'insensitive' as const };
+
+    // Una sola ida y vuelta por tabla, en paralelo: el orden de prioridad se
+    // aplica en memoria. Tres consultas encadenadas añadirían dos latencias de
+    // red a cada lectura de la cámara.
+    const [variants, products] = await Promise.all([
+      this.prisma.productVariant.findMany({
+        where: {
+          product: { tenantId },
+          OR: [{ barcode: insensitive }, { sku: insensitive }],
+        },
+        select: { id: true, productId: true, name: true, sku: true, barcode: true },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      }),
+      this.prisma.product.findMany({
+        where: { tenantId, sku: insensitive },
+        select: { id: true },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      }),
+    ]);
+
+    const same = (a: string | null | undefined) => a != null && a.toLowerCase() === value.toLowerCase();
+
+    const candidates: { productId: string; variantId: string | null; matchedBy: CodeMatch }[] = [
+      ...variants
+        .filter((v) => same(v.barcode))
+        .map((v) => ({ productId: v.productId, variantId: v.id, matchedBy: 'variant.barcode' as const })),
+      // Un SKU de variante que además casó por barcode ya entró arriba: sin este
+      // filtro el mismo artículo aparecería como su propio duplicado.
+      ...variants
+        .filter((v) => same(v.sku) && !same(v.barcode))
+        .map((v) => ({ productId: v.productId, variantId: v.id, matchedBy: 'variant.sku' as const })),
+      ...products.map((p) => ({ productId: p.id, variantId: null, matchedBy: 'product.sku' as const })),
+    ];
+
+    const winner = candidates[0];
+    if (!winner) throw new NotFoundException('Product not found');
+
+    const product = await this.prisma.product.findFirst({
+      where: { id: winner.productId, tenantId },
+      include: PRODUCT_INCLUDE,
+    });
+    // La variante existe pero su producto no se pudo releer: solo pasa si algo
+    // lo borró entre las dos consultas. Para quien escanea es un no-encontrado.
+    if (!product) throw new NotFoundException('Product not found');
+
+    const enriched = this.attachVariantStock(product, this.tenantContext.getBranchId() ?? null) as Product;
+
+    // Casó el código del producto padre, no el de una presentación: se cobra la
+    // default, que es la línea "el producto en sí".
+    const variantId =
+      winner.variantId ??
+      product.variants.find((v) => v.isDefault)?.id ??
+      product.variants[0]?.id ??
+      null;
+
+    const others = candidates.slice(1);
+    const otherNames = others.length
+      ? await this.prisma.product.findMany({
+          where: { id: { in: [...new Set(others.map((c) => c.productId))] }, tenantId },
+          select: { id: true, name: true },
+        })
+      : [];
+    const nameOf = new Map(otherNames.map((p) => [p.id, p.name]));
+    const variantName = new Map(variants.map((v) => [v.id, v.name]));
+
+    return {
+      product: enriched,
+      variantId,
+      matchedBy: winner.matchedBy,
+      alternatives: others.map((c) => ({
+        productId: c.productId,
+        productName: nameOf.get(c.productId) ?? '',
+        variantId: c.variantId,
+        variantName: c.variantId ? (variantName.get(c.variantId) ?? null) : null,
+        matchedBy: c.matchedBy,
+      })),
     };
   }
 
