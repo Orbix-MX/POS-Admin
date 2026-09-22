@@ -1,0 +1,7 @@
+# Normalización de fin de línea: el repo viaja entre máquinas Windows y el vault
+# se edita también desde Obsidian. LF en el repo y en el árbol de trabajo evita
+# diffs fantasma de CRLF entre equipos.
+* text=auto eol=lf
+
+# El índice es binario y está en .gitignore; por si alguien lo fuerza con -f.
+*.db binary

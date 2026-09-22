@@ -12,3 +12,25 @@ playwright-report
 
 # Virtual store de pnpm (ver .npmrc: virtual-store-dir=.p)
 /.p/
+
+# ---------------------------------------------------------------- Project Brain
+# El índice es una proyección desechable del vault: se reconstruye con `brain index`.
+# Borrarlo siempre es seguro; cada quien construye el suyo.
+brain/.brain/
+
+# Los entornos de Python se recrean con `uv sync`.
+# uv.lock y .python-version SÍ se versionan: fijan versiones para todo el equipo.
+brain/**/.venv/
+brain/**/__pycache__/
+brain/**/*.py[cod]
+brain/**/.pytest_cache/
+brain/**/.ruff_cache/
+brain/**/*.egg-info/
+
+# La configuración compartida del vault sí viaja (temas, plugins, gráfico).
+# El espacio de trabajo es de cada persona, y la papelera no es conocimiento.
+brain/vault/.obsidian/workspace.json
+brain/vault/.obsidian/workspace-mobile.json
+brain/vault/.obsidian/graph.json
+brain/vault/.obsidian/plugins/**/data.json
+brain/vault/.trash/

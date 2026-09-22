@@ -1,0 +1,82 @@
+# Project Brain — configuración del engine.
+# Fase 0: este archivo es el contrato entre el Vault y el motor. El engine (Fase 1) lo lee;
+# todo tiene valor por defecto, así que borrarlo no rompe nada.
+
+[vault]
+path = "vault"
+exclude = [".obsidian/**", "**/.trash/**"]
+
+[index]
+path = ".brain/index.db"
+
+# --- Taxonomía ------------------------------------------------------------------
+# El engine NO conoce estos nombres: los recibe de aquí. Cambiar esta sección
+# invalida el índice (cambia su huella) y fuerza una reconstrucción completa.
+#
+#   folder  : carpeta de primer nivel dentro del vault
+#   area    : identificador estable del área (lo que se guarda en el índice)
+#   scope   : de dónde sale el "alcance" de cada documento
+#             none  → sin alcance
+#             child → primer subdirectorio bajo el área (p. ej. el sistema)
+
+[[taxonomy.areas]]
+folder = "Home"
+area = "home"
+scope = "none"
+
+[[taxonomy.areas]]
+folder = "Domain"
+area = "domain"
+scope = "none"
+
+[[taxonomy.areas]]
+folder = "Systems"
+area = "systems"
+scope = "child"      # Systems/ERP API/... → scope = "ERP API"
+
+[[taxonomy.areas]]
+folder = "Architecture"
+area = "architecture"
+scope = "none"
+
+[[taxonomy.areas]]
+folder = "Decisions"
+area = "decisions"
+scope = "none"
+
+[[taxonomy.areas]]
+folder = "Guides"
+area = "guides"
+scope = "none"
+
+[[taxonomy.areas]]
+folder = "Logs"
+area = "logs"
+scope = "none"
+
+[[taxonomy.areas]]
+folder = "AI"
+area = "ai"
+scope = "child"      # AI/Commands/... → scope = "Commands"
+
+[[taxonomy.areas]]
+folder = "Templates"
+area = "templates"
+scope = "none"
+
+# --- Tipos de documento ---------------------------------------------------------
+# Un tipo fuera de esta lista no es un error: se indexa igual y `verify` (Fase 3)
+# lo reportará como aviso.
+
+[types]
+known = [
+  "home", "index", "business", "system", "module", "architecture",
+  "adr", "guide", "log", "template", "ai-context", "ai-command",
+]
+
+# --- Búsqueda -------------------------------------------------------------------
+
+[search]
+weights = { title = 8.0, headings = 3.0, tags = 2.0, body = 1.0 }
+snippet_tokens = 24
+default_limit = 20
