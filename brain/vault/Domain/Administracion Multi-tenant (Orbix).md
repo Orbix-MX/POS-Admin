@@ -2,7 +2,7 @@
 title: Administracion Multi-tenant (Orbix)
 type: business
 owner: Requiere validación
-updated: 2026-08-23
+updated: 2026-10-10
 tags: [negocio, orbix-erp, multi-tenant, plataforma]
 ---
 
@@ -13,7 +13,7 @@ tags: [negocio, orbix-erp, multi-tenant, plataforma]
 Tres procesos relacionados pero distintos: (1) cómo un tenant administra sus propios usuarios,
 roles y sucursales día a día, (2) cómo Orbix (como proveedor) provisiona y administra tenants
 desde el panel "Platform", y (3) cómo un cliente nuevo se da de alta él mismo desde la app
-móvil (self-service, plan FREE).
+móvil (self-service, prueba PRO de 14 días que luego baja a FREE).
 
 ## Objetivo
 
@@ -61,8 +61,11 @@ Usuario se registra (POST /auth/register, sin tenant aún)
   → wizard móvil captura lo esencial: nombre de empresa, teléfono, país,
     moneda, vertical/tipo de negocio
   → POST /tenants/onboarding (cualquier usuario autenticado sin tenant)
-  → transacción: Tenant en plan FREE fijo + Branch principal + membership
-    OWNER + rol "Owner" con todos los permisos + licencia FREE
+  → transacción: Tenant en prueba PRO (status TRIAL, trialEndsAt +14 días,
+    settings.selfServiceTrial) + Branch principal + membership OWNER +
+    rol "Owner" con todos los permisos + licencia PRO/TRIAL que vence a la vez
+  → al vencer la licencia, la siguiente validación la baja a FREE/ACTIVE
+    (ver [[ADR-0033 Fin de prueba del alta en la validacion de licencia (Orbix)]])
   → responde con access token ya scoped al tenant nuevo (evita el
     PATCH /auth/select-tenant/:slug manual)
 ```
@@ -89,13 +92,24 @@ el flujo de provisioning — el wizard móvil solo cubre el alta mínima.
   queda en STARTER.
 - El flujo Platform es completamente independiente: un `PlatformUser` no es un `User` de
   ningún tenant, y su JWT no sirve contra los endpoints normales.
-- El alta self-service (`POST /tenants/onboarding`) siempre crea el tenant en plan FREE —
-  el cliente no elige plan en el wizard, eso se gestiona después desde Platform. — Requiere
-  validación
-- Un mismo usuario no puede tener dos tenants propios en plan FREE activos simultáneamente
-  (`ownerUserId` + `plan=FREE` + status ACTIVE/TRIAL rechaza con 409); sí puede tener varios
-  si alguno fue upgradeado. — Requiere validación (regla inferida del contrato móvil, no
-  confirmada por producto)
+- El alta self-service (`POST /tenants/onboarding`) crea el tenant en **prueba PRO de 14
+  días**; al vencer **baja a FREE y sigue funcionando** (decisión de producto, 2026-10-05). El
+  cliente no elige plan en el wizard. Verificado con tests, con la API arrancada y desde la app
+  (2026-10-10). Detalle y motivo: [[ADR-0033 Fin de prueba del alta en la validacion de licencia (Orbix)]].
+- Las pruebas dadas desde Platform (`trialDays`) **no** bajan a FREE: al vencer, el tenant queda
+  `EXPIRED`. Lo que distingue una de otra es `Tenant.settings.selfServiceTrial`, clave que solo
+  escribe el servidor.
+- La licencia manda: `Tenant.trialEndsAt` refleja el vencimiento de la licencia `TRIAL` y se
+  actualiza al crearla o renovarla; editarlo a mano no cambia el acceso. Renovar una prueba la
+  mantiene en prueba; para pasarla a pagada se emite una licencia `ACTIVE`.
+- Un mismo usuario no puede tener dos tenants propios gratuitos **o en prueba** a la vez
+  (`ownerUserId` + (`plan=FREE` y status ACTIVE/TRIAL, o status TRIAL) → 409 "Ya tienes una
+  empresa en el plan gratuito o en prueba."); sin contar las pruebas, cada cuenta podría
+  encadenarlas. Sí puede tener varios si alguno pasó a un plan de pago. — Requiere validación
+  (la regla de "uno por dueño" sigue sin confirmar por producto)
+- La regla de arriba se comprueba antes de la transacción del alta: dos altas simultáneas del
+  mismo usuario podrían crear dos empresas. La app evita el doble toque; el servidor no.
+  — Pendiente
 - No existe todavía un seed de roles por vertical (RETAIL/RESTAURANT/GYM/SERVICES): tanto
   el provisioning desde Platform como el self-service crean un único rol con todos los
   permisos. Confirmado por inspección directa de datos (2026-08-09) que el nombre de ese rol

@@ -17,6 +17,11 @@ export interface LicenseValidation {
   status?: LicenseStatus;
   expiresAt?: Date | null;
   licenseId?: string;
+  /**
+   * La validación acaba de cambiar el plan/estado del tenant (fin de la prueba del alta).
+   * Quien ya tenía el tenant cargado debe releerlo antes de usar su plan.
+   */
+  tenantChanged?: boolean;
 }
 
 export interface CreateLicenseInput {
@@ -43,6 +48,16 @@ export interface RenewLicenseInput {
 }
 
 const NON_TERMINAL: LicenseStatus[] = ['TRIAL', 'ACTIVE', 'SUSPENDED'];
+
+/**
+ * Prueba del alta self-service (`POST /tenants/onboarding`): la empresa nace en PRO
+ * durante estos días y, al vencer, **baja a FREE y sigue funcionando** en vez de
+ * quedar `EXPIRED` como una prueba dada desde Platform. La marca va en
+ * `Tenant.settings`, que el alta ya rellena; así no hace falta otra columna.
+ */
+export const SELF_SERVICE_TRIAL_DAYS = 14;
+/** @odd prueba-alta-self-service T-001 */
+export const SELF_SERVICE_TRIAL_FLAG = 'selfServiceTrial';
 
 /**
  * Centralized licensing authority. The License is the source of truth; every
@@ -86,7 +101,13 @@ export class LicenseService {
   private async syncTenant(
     tx: Prisma.TransactionClient,
     tenantId: string,
-    license: { status: LicenseStatus; plan: TenantPlan; maxUsers: number | null; maxBranches: number | null },
+    license: {
+      status: LicenseStatus;
+      plan: TenantPlan;
+      maxUsers: number | null;
+      maxBranches: number | null;
+      expiresAt?: Date | null;
+    },
   ): Promise<void> {
     // Map absolute maxBranches → additive extraBranchLimit on top of plan base.
     let extraBranchLimit: number | undefined;
@@ -102,6 +123,12 @@ export class LicenseService {
         status: this.toTenantStatus(license.status),
         userLimitOverride: license.maxUsers ?? null,
         ...(extraBranchLimit !== undefined ? { extraBranchLimit } : {}),
+        // Una licencia de prueba fija el fin de la prueba del tenant: crear o extender
+        // una prueba no deja `trialEndsAt` desalineado con la licencia, que es la que
+        // manda (@odd prueba-alta-self-service T-001).
+        ...(license.status === 'TRIAL' && license.expiresAt !== undefined
+          ? { trialEndsAt: license.expiresAt }
+          : {}),
       },
     });
   }
@@ -189,6 +216,16 @@ export class LicenseService {
     if (license.startsAt.getTime() > now) return { ...base, reason: 'NOT_STARTED' };
 
     if (license.expiresAt && license.expiresAt.getTime() <= now) {
+      if (license.status === 'TRIAL' && (await this.isSelfServiceTrial(tenantId))) {
+        const free = await this.downgradeSelfServiceTrial(tenantId, license.id);
+        return {
+          valid: true,
+          status: free.status,
+          expiresAt: free.expiresAt,
+          licenseId: free.id,
+          tenantChanged: true,
+        };
+      }
       // Lazily expire (+ sync tenant) so the rest of the system reflects it.
       await this.prisma.$transaction(async (tx) => {
         await tx.license.update({ where: { id: license.id }, data: { status: 'EXPIRED' } });
@@ -198,6 +235,55 @@ export class LicenseService {
     }
 
     return { valid: true, status: license.status, expiresAt: license.expiresAt, licenseId: license.id };
+  }
+
+  /** @odd prueba-alta-self-service T-001 */
+  private async isSelfServiceTrial(tenantId: string): Promise<boolean> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { settings: true },
+    });
+    const settings = tenant?.settings as Record<string, unknown> | null | undefined;
+    return settings?.[SELF_SERVICE_TRIAL_FLAG] === true;
+  }
+
+  /**
+   * Fin de la prueba del alta: la licencia de prueba queda `EXPIRED` (historial) y
+   * se emite una FREE sin vencimiento. Se hace al validar, sin job: la validación
+   * corre en cada petición con tenant (`LicenseGuard`, `select-tenant`), así que la
+   * bajada ocurre en cuanto el negocio vuelve a usar la app.
+   *
+   * @odd prueba-alta-self-service T-001
+   */
+  private async downgradeSelfServiceTrial(tenantId: string, trialLicenseId: string) {
+    const licenseKey = await this.generateLicenseKey();
+    const free = await this.prisma.$transaction(async (tx) => {
+      // Solo baja quien cierra la prueba: dos validaciones simultáneas no deben
+      // emitir dos licencias FREE. La que llega tarde usa la que ya existe.
+      const closed = await tx.license.updateMany({
+        where: { id: trialLicenseId, status: 'TRIAL' },
+        data: { status: 'EXPIRED' },
+      });
+      if (closed.count === 0) return null;
+      const created = await tx.license.create({
+        data: { tenantId, licenseKey, status: 'ACTIVE', plan: 'FREE', startsAt: new Date(), expiresAt: null },
+      });
+      await this.syncTenant(tx, tenantId, created);
+      return created;
+    });
+    if (!free) {
+      this.invalidate(tenantId);
+      const current = await this.getCurrentLicense(tenantId);
+      if (!current) throw new NotFoundException('Tenant has no license');
+      return current;
+    }
+    await this.audit(undefined, tenantId, 'LICENSE_TRIAL_ENDED_TO_FREE', free.id, {
+      status: free.status,
+      plan: free.plan,
+      previousLicenseId: trialLicenseId,
+    });
+    this.invalidate(tenantId);
+    return free;
   }
 
   /** Throws a coded Forbidden-style error when the tenant has no valid license. */
@@ -288,6 +374,10 @@ export class LicenseService {
     }
 
     const plan = input.plan ?? current.plan;
+    // Extender una prueba no la convierte en licencia pagada: sigue siendo TRIAL y, si
+    // es la del alta, al vencer baja a FREE. Para pasarla a pagada se emite una licencia
+    // ACTIVE (`createLicense`). @odd prueba-alta-self-service T-001
+    const status: LicenseStatus = current.status === 'TRIAL' ? 'TRIAL' : 'ACTIVE';
     const maxUsers = input.maxUsers !== undefined ? input.maxUsers : current.maxUsers;
     const maxBranches = input.maxBranches !== undefined ? input.maxBranches : current.maxBranches;
     const maxDevices = input.maxDevices !== undefined ? input.maxDevices : current.maxDevices;
@@ -295,7 +385,7 @@ export class LicenseService {
     const license = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.license.update({
         where: { id: current.id },
-        data: { status: 'ACTIVE', expiresAt, plan, maxUsers, maxBranches, maxDevices, notes: input.notes ?? current.notes },
+        data: { status, expiresAt, plan, maxUsers, maxBranches, maxDevices, notes: input.notes ?? current.notes },
       });
       await this.syncTenant(tx, tenantId, updated);
       return updated;
@@ -304,6 +394,7 @@ export class LicenseService {
     await this.audit(platformUserId, tenantId, 'LICENSE_RENEWED', license.id, {
       expiresAt: expiresAt ? expiresAt.toISOString() : null,
       plan,
+      status,
     });
     this.invalidate(tenantId);
     return license;

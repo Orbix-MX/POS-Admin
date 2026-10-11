@@ -514,6 +514,12 @@ export class AuthService {
     if (!license.valid) {
       return this.generateToken({ sub: user.id, email: user.email });
     }
+    // @odd prueba-alta-self-service T-001
+    // La validación pudo bajar el tenant a FREE (fin de la prueba del alta): se relee
+    // para que el token y la respuesta no salgan con el plan anterior.
+    if (license.tenantChanged) {
+      membership.tenant = await this.prisma.tenant.findUniqueOrThrow({ where: { id: membership.tenantId } });
+    }
 
     const { plan, enabledModules: extraModules, businessVertical } = membership.tenant;
     const effectiveModules = this.computeEffectiveModules(plan, extraModules, businessVertical);
@@ -671,6 +677,12 @@ export class AuthService {
         },
         HttpStatus.FORBIDDEN,
       );
+    }
+    // @odd prueba-alta-self-service T-001
+    // La validación pudo bajar el tenant a FREE (fin de la prueba del alta): se relee
+    // para que el token y la respuesta no salgan con el plan anterior.
+    if (license.tenantChanged) {
+      membership.tenant = await this.prisma.tenant.findUniqueOrThrow({ where: { id: membership.tenantId } });
     }
 
     await this.prisma.user.update({

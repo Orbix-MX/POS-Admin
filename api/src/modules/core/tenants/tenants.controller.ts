@@ -43,7 +43,7 @@ export class TenantsController {
 
   @NoPermissionsRequired()
   @Post('onboarding')
-  @ApiOperation({ summary: 'Self-service: register a company (FREE plan, essentials only)' })
+  @ApiOperation({ summary: 'Self-service: register a company (14-day PRO trial, then FREE)' })
   onboard(@Body() dto: CreateTenantOnboardingDto, @CurrentUser() user: User) {
     return this.tenantsService.onboard(dto, user.id, user.email);
   }

@@ -2,7 +2,7 @@
 title: Decisiones (ADR)
 type: index
 owner: Requiere validación
-updated: 2026-08-23
+updated: 2026-10-10
 tags: [decisiones, adr, indice]
 ---
 
@@ -23,6 +23,7 @@ Orbix ERP no tenía ADR formales propios antes de este vault.
 | [[ADR-0023 Modelo unificado de Order para retail y restaurante (Orbix)\|0023]] | `Order` unificado para retail y restaurante | Aceptada |
 | [[ADR-0031 Alta de usuario solo por invitacion aceptada (Orbix)\|0031]] | Alta de usuario solo por invitación aceptada, nunca por contraseña fijada por un tercero | Aceptada |
 | [[ADR-0032 Envio de invitaciones por Gmail API en lugar de SMTP (Orbix)\|0032]] | Envío de invitaciones por Gmail API (OAuth2, scope `gmail.send`) en lugar de SMTP con contraseña de aplicación | Aceptada |
+| [[ADR-0033 Fin de prueba del alta en la validacion de licencia (Orbix)\|0033]] | La prueba PRO del alta self-service termina en la validación de la licencia (baja a FREE), sin job | Aceptada |
 
 ## Orbix ERP — Plataforma de IA (Fase 0)
 

@@ -9,7 +9,28 @@ import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { AuditContextService } from '../../../common/context/audit-context.service';
 import { PlanLimitsService } from '../../../common/services/plan-limits.service';
-import { LicenseService } from '../../../common/services/license.service';
+import {
+  LicenseService,
+  SELF_SERVICE_TRIAL_DAYS,
+  SELF_SERVICE_TRIAL_FLAG,
+} from '../../../common/services/license.service';
+
+/**
+ * Claves de `Tenant.settings` que solo escribe el servidor (`PATCH current/settings` las ignora).
+ * @odd prueba-alta-self-service T-001
+ */
+const SERVER_OWNED_SETTINGS: readonly string[] = [SELF_SERVICE_TRIAL_FLAG];
+
+/**
+ * Quita de una entrada del cliente las claves que solo escribe el servidor. Lo usan
+ * todos los caminos que mezclan el cuerpo de la petición en `Tenant.settings`.
+ * @odd prueba-alta-self-service T-001
+ */
+function withoutServerOwnedSettings(input: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(input).filter(([key]) => !SERVER_OWNED_SETTINGS.includes(key)),
+  );
+}
 import { PasswordUtil } from '../../../common/utils/password.util';
 import { SlugUtil } from '../../../common/utils/slug.util';
 import { R2Service } from '../../../storage/r2.service';
@@ -119,13 +140,21 @@ export class TenantsService {
     userId: string,
     userEmail: string,
   ): Promise<OnboardTenantResponseDto> {
+    // @odd prueba-alta-self-service T-001
+    // Una empresa gratuita por dueño, y la prueba cuenta como tal: el alta nace en
+    // prueba PRO y, si no contara, cada cuenta podría encadenar pruebas sin fin.
     const ownsFreeTenant = await this.prisma.tenant.findFirst({
-      where: { ownerUserId: userId, plan: 'FREE', status: { in: ['ACTIVE', 'TRIAL'] } },
+      where: {
+        ownerUserId: userId,
+        OR: [{ plan: 'FREE', status: { in: ['ACTIVE', 'TRIAL'] } }, { status: 'TRIAL' }],
+      },
       select: { id: true },
     });
     if (ownsFreeTenant) {
-      throw new ConflictException('Ya tienes una empresa registrada en el plan FREE.');
+      throw new ConflictException('Ya tienes una empresa en el plan gratuito o en prueba.');
     }
+
+    const trialEndsAt = new Date(Date.now() + SELF_SERVICE_TRIAL_DAYS * 24 * 60 * 60 * 1000);
 
     let slug = SlugUtil.generate(dto.name);
     let suffix = 1;
@@ -151,8 +180,10 @@ export class TenantsService {
         data: {
           name: dto.name,
           slug,
-          plan: 'FREE',
-          status: 'ACTIVE',
+          // Prueba PRO del alta; al vencer baja a FREE (LicenseService).
+          plan: 'PRO',
+          status: 'TRIAL',
+          trialEndsAt,
           businessVertical: dto.businessVertical,
           businessProfile: dto.businessProfile,
           settings: {
@@ -161,6 +192,7 @@ export class TenantsService {
             phone: dto.phone,
             countryCode: dto.countryCode,
             ...(dto.businessTypeId && { businessTypeId: dto.businessTypeId }),
+            [SELF_SERVICE_TRIAL_FLAG]: true,
           },
         },
       });
@@ -223,7 +255,11 @@ export class TenantsService {
       return { tenant, branch };
     });
 
-    await this.licenseService.createLicense(tenant.id, { plan: 'FREE', status: 'ACTIVE' });
+    await this.licenseService.createLicense(tenant.id, {
+      plan: 'PRO',
+      status: 'TRIAL',
+      expiresAt: trialEndsAt,
+    });
 
     const selectResult = await this.authService.selectTenant(userId, userEmail, tenant.slug);
     return { ...selectResult, branchId: branch.id };
@@ -354,14 +390,23 @@ export class TenantsService {
     return (tenant?.settings as Record<string, unknown>) ?? {};
   }
 
-  /** Merge patch into current tenant settings JSON */
+  /**
+   * Merge patch into current tenant settings JSON.
+   *
+   * Las claves que solo escribe el servidor se ignoran: `selfServiceTrial` decide si
+   * una prueba vencida baja a FREE o expira, y un administrador no debe poder
+   * cambiar eso desde aquí.
+   *
+   * @odd prueba-alta-self-service T-001
+   */
   async updateSettings(patch: Record<string, unknown>): Promise<Record<string, unknown>> {
     const tenantId = this.tenantContext.requireTenantId();
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { settings: true },
     });
-    const merged = { ...(tenant?.settings as Record<string, unknown> ?? {}), ...patch };
+    const allowed = withoutServerOwnedSettings(patch);
+    const merged = { ...(tenant?.settings as Record<string, unknown> ?? {}), ...allowed };
     await this.prisma.tenant.update({ where: { id: tenantId }, data: { settings: merged as Prisma.InputJsonValue } });
     return merged;
   }
@@ -414,7 +459,9 @@ export class TenantsService {
     const current = (tenant.settings as Record<string, unknown>) ?? {};
     const { name, restaurantServiceMode, ...scalars } = dto;
     const merged: Record<string, unknown> = { ...current };
-    for (const [k, v] of Object.entries(scalars)) {
+    // `Partial<TenantInfo>` es un tipo, no una clase DTO: el ValidationPipe no filtra
+    // claves, así que las del servidor se quitan aquí (@odd prueba-alta-self-service T-001).
+    for (const [k, v] of Object.entries(withoutServerOwnedSettings(scalars))) {
       if (v !== undefined) merged[k] = v;
     }
 
