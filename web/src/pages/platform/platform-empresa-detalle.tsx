@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Loader2, Building2, GitBranch, Users, Package, Activity,
   AlertTriangle, Plus, X, Check, LayoutDashboard, KeyRound, RefreshCw, Ban, Power, LayoutTemplate,
+  Info, Gift,
 } from 'lucide-react'
 import { DashboardsTab } from './platform-dashboards-tab'
 import { SiteAssignmentTab } from './platform-site-tab'
@@ -301,6 +302,19 @@ function IssueLicenseModal({ tenantId, defaultPlan, onDone, onClose }: IssueLice
   )
 }
 
+/**
+ * Qué deja una renovación, según la licencia actual y el plan elegido. La API
+ * (`renewLicense`) mantiene `TRIAL` si la actual es prueba y, si no, deja `ACTIVE`:
+ * pagada, que al vencer bloquea la empresa en vez de bajar a FREE.
+ * @odd prueba-alta-self-service T-002
+ */
+type RenewOutcome = 'trial' | 'paid' | 'free'
+
+function renewOutcome(current: License, plan: TenantPlan): RenewOutcome {
+  if (current.status === 'TRIAL') return 'trial'
+  return plan === 'FREE' ? 'free' : 'paid'
+}
+
 interface RenewLicenseModalProps {
   tenantId: string
   current: License
@@ -315,6 +329,7 @@ function RenewLicenseModal({ tenantId, current, onDone, onClose }: RenewLicenseM
   const [plan, setPlan] = useState<TenantPlan>(current.plan)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const outcome = renewOutcome(current, plan)
 
   const submit = async () => {
     setSaving(true); setError(null)
@@ -370,11 +385,114 @@ function RenewLicenseModal({ tenantId, current, onDone, onClose }: RenewLicenseM
           </select>
         </div>
 
+        {/* @odd prueba-alta-self-service T-002 — alargar una prueba vs pasar a pago */}
+        {outcome === 'trial' && (
+          <div role="note" data-testid="renew-trial-notice"
+            className="flex items-start gap-2 px-3 py-2 bg-indigo-950/40 border border-indigo-900/60 rounded-lg text-[12px] text-indigo-300">
+            <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <span>Sigue siendo prueba. Al vencer, si la empresa viene del alta desde la app baja a FREE; si no, expira.</span>
+          </div>
+        )}
+        {outcome === 'paid' && (
+          <div role="alert" data-testid="renew-paid-warning"
+            className="flex items-start gap-2 px-3 py-2 bg-amber-950/40 border border-amber-900/60 rounded-lg text-[12px] text-amber-300">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <span>
+              Esto deja una licencia <strong>de pago</strong> ({plan}, activa). Al vencer, la empresa queda
+              bloqueada: no baja a FREE. Para dar una prueba, usa «Dar prueba».
+            </span>
+          </div>
+        )}
+
         <div className="flex justify-end gap-2 pt-1">
           <button onClick={onClose} className="px-4 py-2 text-[12px] font-semibold text-zinc-400 hover:text-zinc-200 bg-zinc-800 border border-zinc-700 rounded-lg cursor-pointer">Cancelar</button>
           <button onClick={submit} disabled={saving}
             className="px-4 py-2 text-[12px] font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg border-none cursor-pointer disabled:opacity-50 flex items-center gap-1.5">
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Renovar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const TRIAL_PLANS = PLANS.filter(p => p !== 'FREE')
+const TRIAL_DAYS_MIN = 1
+const TRIAL_DAYS_MAX = 90
+
+interface GrantTrialModalProps {
+  tenantId: string
+  onDone: () => void
+  onClose: () => void
+}
+
+/**
+ * «Dar prueba»: emite una licencia `TRIAL` nueva (`POST .../license` con
+ * `{ plan, trialDays }`), el camino correcto para dar una prueba a una empresa que
+ * ya bajó a FREE. Renovar una licencia no TRIAL la deja pagada.
+ * @odd prueba-alta-self-service T-002
+ */
+function GrantTrialModal({ tenantId, onDone, onClose }: GrantTrialModalProps) {
+  const [plan, setPlan] = useState<TenantPlan>('PRO')
+  const [days, setDays] = useState('14')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const daysNum = Number(days)
+  const daysValid = days.trim() !== '' && Number.isInteger(daysNum)
+    && daysNum >= TRIAL_DAYS_MIN && daysNum <= TRIAL_DAYS_MAX
+
+  const submit = async () => {
+    if (!daysValid) return
+    setSaving(true); setError(null)
+    try {
+      await createTenantLicense(tenantId, { plan, trialDays: daysNum })
+      onDone()
+    } catch (e) { setError(errMessage(e)) }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-[480px] flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <div className="text-[14px] font-bold text-zinc-200">Dar prueba</div>
+          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 bg-transparent border-none cursor-pointer"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="text-[12px] text-zinc-500 -mt-2">
+          Emite una licencia de prueba y reemplaza la vigente (la anterior queda cancelada). Al vencer,
+          si la empresa viene del alta desde la app baja a FREE; si no, expira.
+        </div>
+
+        {error && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-red-950/40 border border-red-900/60 rounded-lg text-[12px] text-red-400">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {error}
+          </div>
+        )}
+
+        <div>
+          <label htmlFor="grant-trial-plan" className="text-[11px] font-semibold text-zinc-400 block mb-1">Plan</label>
+          <select id="grant-trial-plan" value={plan} onChange={e => setPlan(e.target.value as TenantPlan)}
+            className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-[13px] text-zinc-200 outline-none focus:border-indigo-500 cursor-pointer">
+            {TRIAL_PLANS.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </div>
+
+        <div>
+          <label htmlFor="grant-trial-days" className="text-[11px] font-semibold text-zinc-400 block mb-1">Días de prueba</label>
+          <input id="grant-trial-days" type="number" min={TRIAL_DAYS_MIN} max={TRIAL_DAYS_MAX} step={1}
+            value={days} onChange={e => setDays(e.target.value)}
+            className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-[13px] text-zinc-200 outline-none focus:border-indigo-500" />
+          {!daysValid && (
+            <div className="text-[11px] text-red-400 mt-1">Un número entero de {TRIAL_DAYS_MIN} a {TRIAL_DAYS_MAX} días.</div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button onClick={onClose} className="px-4 py-2 text-[12px] font-semibold text-zinc-400 hover:text-zinc-200 bg-zinc-800 border border-zinc-700 rounded-lg cursor-pointer">Cancelar</button>
+          <button onClick={submit} disabled={saving || !daysValid}
+            className="px-4 py-2 text-[12px] font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg border-none cursor-pointer disabled:opacity-50 flex items-center gap-1.5">
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Gift className="w-3.5 h-3.5" />} Dar prueba
           </button>
         </div>
       </div>
@@ -404,6 +522,7 @@ export function PlatformEmpresaDetalle() {
   const [licenseValidation, setLicenseValidation] = useState<LicenseValidation | null>(null)
   const [showIssueLicense, setShowIssueLicense] = useState(false)
   const [showRenewLicense, setShowRenewLicense] = useState(false)
+  const [showGrantTrial, setShowGrantTrial] = useState(false)
 
   // Plan change state
   const [newPlan, setNewPlan] = useState<TenantPlan | ''>('')
@@ -931,6 +1050,14 @@ export function PlatformEmpresaDetalle() {
                   >
                     <RefreshCw className="w-3.5 h-3.5" /> Renovar
                   </button>
+                  {/* @odd prueba-alta-self-service T-002 */}
+                  <button
+                    onClick={() => setShowGrantTrial(true)}
+                    disabled={saving}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 text-[12px] font-semibold rounded-lg border border-indigo-500/30 cursor-pointer disabled:opacity-50"
+                  >
+                    <Gift className="w-3.5 h-3.5" /> Dar prueba
+                  </button>
                   {(license.status === 'ACTIVE' || license.status === 'TRIAL') && (
                     <button
                       onClick={handleSuspendLicense}
@@ -1253,6 +1380,19 @@ export function PlatformEmpresaDetalle() {
             flash(true)
           }}
           onClose={() => setShowRenewLicense(false)}
+        />
+      )}
+
+      {/* Grant trial modal — @odd prueba-alta-self-service T-002 */}
+      {showGrantTrial && id && (
+        <GrantTrialModal
+          tenantId={id}
+          onDone={async () => {
+            setShowGrantTrial(false)
+            await Promise.all([loadLicense(), load()])
+            flash(true)
+          }}
+          onClose={() => setShowGrantTrial(false)}
         />
       )}
     </div>

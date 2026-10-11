@@ -161,6 +161,40 @@ sigue expirando.
   desde `Decisions/ADR.md` y desde el documento de dominio.
 - **Commit:** `534ea6f` feat(tenants): el alta self-service nace en prueba PRO y al vencer baja a FREE
 
+### T-002 · S-H — Platform distingue alargar una prueba de pasar a pago
+
+```
+via:     simple
+touches: web/platform
+status:  done
+ruta:    inline
+```
+
+**Done cuando:** en la pestaña Licencia de una empresa (`web/src/pages/platform/platform-empresa-detalle.tsx`),
+«Renovar» avisa qué deja la renovación —una `TRIAL` sigue siendo prueba (aviso informativo); una no
+`TRIAL` con plan resultante distinto de FREE queda **de pago** y al vencer bloquea la empresa (advertencia
+que remite a «Dar prueba»)— y la acción nueva «Dar prueba» (plan sin FREE, PRO por defecto; 1–90 días
+enteros, 14 por defecto) emite la prueba con `POST /platform/tenants/:id/license { plan, trialDays }` y
+refresca licencia y empresa como las demás acciones. La API no cambia.
+
+**Evidencia.**
+
+- **Test:** `npx playwright test e2e/platform-license-trial.spec.ts` (API mockeada con `page.route`) →
+  `3 passed`: renovar FREE `ACTIVE` sin aviso y, al elegir PRO, advertencia de pago; renovar `TRIAL` →
+  «Sigue siendo prueba»; «Dar prueba» con PRO/14 por defecto, sin FREE, rechaza 0/91/2.5, envía
+  exactamente `{ plan: 'PLUS', trialDays: 30 }` y vuelve a pedir la licencia. `npm run build` → `✓ built`.
+  `eslint` sobre los dos archivos: 1 error **previo** (`BRANCH_STATUS_OPTIONS` sin usar, ya en `HEAD`), 0
+  nuevos.
+- **Runtime:** no comprobado. No se inició sesión en Platform ni se usaron credenciales de `api/.env`
+  (fuera del alcance de la tarea); falta ver los avisos y «Dar prueba» contra la API real.
+- **Matiz:** la bajada a FREE depende de la marca del **tenant** (`settings.selfServiceTrial`), no de quién
+  emitió la prueba: una prueba dada desde Platform a una empresa del alta también baja a FREE al vencer. El
+  texto de los dos avisos (renovar y «Dar prueba») lo dice así: «si la empresa viene del alta desde la app
+  baja a FREE; si no, expira» (corregido tras la entrega del subagente).
+- **Rollback:** revertir `renewOutcome`, los dos avisos de `RenewLicenseModal`, `GrantTrialModal` y su botón
+  en `platform-empresa-detalle.tsx`, y borrar `web/e2e/platform-license-trial.spec.ts`. Sin datos ni API.
+- **Commit:**
+
 ---
 
 ## Progreso
@@ -168,6 +202,7 @@ sigue expirando.
 | Tarea | Vía | Estado | Ruta | Líneas | Commit |
 |---|---|---|---|---|---|
 | T-001 | completo | done (falta commit) | inline | ~150 + specs | |
+| T-002 | simple | done (falta commit) | inline | ~140 + e2e | |
 
 **Entrega:** ~350 previstas · 119 de código + ~300 de specs · umbral ~400 → dentro (los
 specs no se cuentan como revisión de lógica, pero están anotados).
