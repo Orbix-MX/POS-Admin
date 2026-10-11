@@ -1,0 +1,28 @@
+# Normalización de fin de línea.
+#
+# El repo ya guarda todo en LF; esto lo fija para que no dependa del
+# `core.autocrlf` de cada máquina. Sin este archivo, quien clone sin esa opción
+# empieza a commitear CRLF y aparecen diffs fantasma donde nadie tocó nada.
+#
+# `eol=lf` lleva el LF también al árbol de trabajo, no solo al repo — mismo
+# criterio que `brain/.gitattributes`, que ya lo aplicaba a su vault. Node,
+# pnpm, Vite y PowerShell 5.1+ leen LF sin problema en Windows.
+* text=auto eol=lf
+
+# Binarios: declararlos evita que un falso positivo de la detección automática
+# meta una conversión de saltos de línea dentro de un archivo que no es texto.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.pdf  binary
+*.woff binary
+*.woff2 binary
+*.ttf  binary
+*.otf  binary
+
+# El índice de Project Brain está en .gitignore; por si alguien lo fuerza con -f.
+*.db     binary
+*.sqlite binary
