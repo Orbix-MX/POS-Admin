@@ -15,6 +15,7 @@ import { UsersModule } from './modules/core/users/users.module';
 import { PermissionsModule } from './modules/core/permissions/permissions.module';
 import { RolesModule } from './modules/core/roles/roles.module';
 import { TenantsModule } from './modules/core/tenants/tenants.module';
+import { PlansModule } from './modules/core/plans/plans.module';
 import { BranchesModule } from './modules/core/branches/branches.module';
 import { CustomersModule } from './modules/core/customers/customers.module';
 import { CashSessionsModule } from './modules/core/cash-sessions/cash-sessions.module';
@@ -73,6 +74,7 @@ import { AiModule } from './ai/ai.module';
     PermissionsModule,
     RolesModule,
     TenantsModule,
+    PlansModule,
     BranchesModule,
     CustomersModule,
     CashSessionsModule,

@@ -102,13 +102,21 @@ el flujo de provisioning — el wizard móvil solo cubre el alta mínima.
 - La licencia manda: `Tenant.trialEndsAt` refleja el vencimiento de la licencia `TRIAL` y se
   actualiza al crearla o renovarla; editarlo a mano no cambia el acceso. Renovar una prueba la
   mantiene en prueba; para pasarla a pagada se emite una licencia `ACTIVE`.
-- Un mismo usuario no puede tener dos tenants propios gratuitos **o en prueba** a la vez
-  (`ownerUserId` + (`plan=FREE` y status ACTIVE/TRIAL, o status TRIAL) → 409 "Ya tienes una
-  empresa en el plan gratuito o en prueba."); sin contar las pruebas, cada cuenta podría
-  encadenarlas. Sí puede tener varios si alguno pasó a un plan de pago. — Requiere validación
-  (la regla de "uno por dueño" sigue sin confirmar por producto)
-- La regla de arriba se comprueba antes de la transacción del alta: dos altas simultáneas del
-  mismo usuario podrían crear dos empresas. La app evita el doble toque; el servidor no.
+- Un mismo usuario puede tener como máximo **dos** tenants propios gratuitos **o en prueba**
+  (decisión de producto 2026-10-10; `MAX_FREE_TENANTS_PER_OWNER` en `tenants.service.ts`). Se
+  cuentan `plan=FREE` con status ACTIVE/TRIAL y cualquier status TRIAL; con dos, el alta
+  responde 409 "Ya tienes 2 empresas en el plan gratuito o en prueba.". Sin contar las pruebas,
+  cada cuenta podría encadenarlas. Los que pasaron a un plan de pago no cuentan. Verificado con
+  la API arrancada (segunda alta 201, tercera 409).
+- **Planes y mejora (2026-10-10):** `GET /plans` (público) lista cada plan con sus módulos y
+  límites reales (`@orbix/types`) y el precio en MXN, `null` = "a consultar" mientras no haya
+  precios. `GET /auth/me/capabilities` dice si la empresa está en prueba (`status`,
+  `trialEndsAt`, `trialEndsTo`: FREE o EXPIRE) y toma el plan de la base, no del JWT.
+  "Mejorar plan" **no cobra**: la app registra una solicitud (`PlanUpgradeRequest`, una
+  pendiente por empresa) y Platform la atiende a mano (`/platform/upgrade-requests`). En prueba
+  se puede pedir el mismo plan de la prueba (quedarse en PRO); fuera, solo uno mayor.
+- La regla de arriba se comprueba antes de la transacción del alta: altas simultáneas del
+  mismo usuario podrían pasar del máximo. La app evita el doble toque; el servidor no.
   — Pendiente
 - No existe todavía un seed de roles por vertical (RETAIL/RESTAURANT/GYM/SERVICES): tanto
   el provisioning desde Platform como el self-service crean un único rol con todos los

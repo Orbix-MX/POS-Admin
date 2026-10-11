@@ -195,6 +195,7 @@ model Tenant {
   widgets           Widget[]
 
   licenses License[]
+  planUpgradeRequests PlanUpgradeRequest[]
   devices  Device[]
 
   owner User? @relation("TenantOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
@@ -361,6 +362,7 @@ model User {
   invitationsSent     TenantInvitation[]   @relation("InvitationInvitedBy")
   passwordResetTokens PasswordResetToken[]
   phoneVerifications  PhoneVerification[]
+  planUpgradeRequests PlanUpgradeRequest[]
 
   managedBranches   Branch[]           @relation("BranchManager")
   branchMemberships BranchMembership[]
@@ -2824,6 +2826,37 @@ model PhoneVerification {
   @@index([userId])
   @@index([phone, createdAt])
   @@map("phone_verifications")
+}
+
+enum PlanUpgradeRequestStatus {
+  PENDING
+  HANDLED
+  CANCELLED
+}
+
+/// Solicitud de "Mejorar plan" desde la app (S-E del alta self-service). Sin cobro:
+/// Platform la atiende a mano. Una pendiente por empresa; pedir otro plan la actualiza.
+model PlanUpgradeRequest {
+  id            String                   @id @default(uuid())
+  tenantId      String                   @map("tenant_id")
+  /// Plan del tenant al pedir, para saber desde dónde sube.
+  currentPlan   TenantPlan               @map("current_plan")
+  requestedPlan TenantPlan               @map("requested_plan")
+  requestedById String                   @map("requested_by_id")
+  note          String?
+  status        PlanUpgradeRequestStatus @default(PENDING)
+  /// PlatformUser que la atendió (no es FK: los usuarios de Platform viven aparte).
+  handledById   String?                  @map("handled_by_id")
+  handledAt     DateTime?                @map("handled_at")
+  createdAt     DateTime                 @default(now()) @map("created_at")
+  updatedAt     DateTime                 @updatedAt @map("updated_at")
+
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  requestedBy User   @relation(fields: [requestedById], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([status, createdAt])
+  @@map("plan_upgrade_requests")
 }
 
 model PasswordResetToken {

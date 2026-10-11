@@ -6,8 +6,9 @@ import { PlatformDashboardsModule } from './dashboards/platform-dashboards.modul
 import { PlatformLicensesModule } from './licenses/platform-licenses.module';
 import { PlatformDomainsModule } from './domains/platform-domains.module';
 import { PlatformTemplatesModule } from './templates/platform-templates.module';
+import { PlatformUpgradeRequestsModule } from './upgrade-requests/platform-upgrade-requests.module';
 
 @Module({
-  imports: [PlatformAuthModule, PlatformTenantsModule, PlatformBranchesModule, PlatformDashboardsModule, PlatformLicensesModule, PlatformDomainsModule, PlatformTemplatesModule],
+  imports: [PlatformAuthModule, PlatformTenantsModule, PlatformBranchesModule, PlatformDashboardsModule, PlatformLicensesModule, PlatformDomainsModule, PlatformTemplatesModule, PlatformUpgradeRequestsModule],
 })
 export class PlatformModule {}

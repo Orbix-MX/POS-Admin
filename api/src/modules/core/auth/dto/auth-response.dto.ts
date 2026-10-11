@@ -88,6 +88,16 @@ export class CapabilitiesResponseDto {
   @ApiProperty({ enum: PosOperationMode }) posOperationMode: PosOperationMode;
   @ApiProperty({ type: [String] }) enabledFeatures: TenantFeature[];
   @ApiProperty({ description: 'Capabilities derived from businessProfile' }) businessFeatures: BusinessFeatures;
+  /** @odd planes-self-service T-001 */
+  @ApiPropertyOptional({ description: 'Estado del tenant (TRIAL durante una prueba). Ausente sin tenant.' })
+  status?: string;
+  @ApiPropertyOptional({ description: 'Fin de la prueba (ISO) mientras status es TRIAL; null fuera de prueba.', nullable: true })
+  trialEndsAt?: string | null;
+  @ApiPropertyOptional({
+    description: 'Qué pasa al terminar la prueba: FREE (prueba del alta, sigue funcionando) o EXPIRE (prueba de Platform). null fuera de prueba.',
+    nullable: true,
+  })
+  trialEndsTo?: 'FREE' | 'EXPIRE' | null;
 }
 
 export class SelectBranchResponseDto {

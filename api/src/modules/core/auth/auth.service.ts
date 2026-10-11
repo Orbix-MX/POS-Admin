@@ -32,7 +32,7 @@ import {
 } from './dto/auth-response.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
 import { PlanLimitsService } from '../../../common/services/plan-limits.service';
-import { LicenseService } from '../../../common/services/license.service';
+import { LicenseService, SELF_SERVICE_TRIAL_FLAG } from '../../../common/services/license.service';
 import { TenantMembership, Tenant, TenantRole, TenantPlan, BusinessVertical, BusinessProfile, PosOperationMode, TenantFeature } from '@prisma/client';
 import { getModulesForPlan, getAllowedModulesForVertical } from '@orbix/types';
 import { buildFeaturesForProfile } from '../../../common/business-config/business-features';
@@ -797,7 +797,6 @@ export class AuthService {
     enabledModules: string[],
     tenantId?: string,
   ): Promise<CapabilitiesResponseDto> {
-    const planModules = getModulesForPlan(plan) as unknown as string[];
     // Los módulos extra (enabledModules) del JWT pueden estar desactualizados si se
     // habilitó/deshabilitó un módulo después de iniciar sesión. Se leen de la BD
     // cuando hay tenant para que el sidebar refleje el estado real sin re-login.
@@ -810,13 +809,26 @@ export class AuthService {
     let businessProfile: BusinessProfile = 'RETAIL';
     let posOperationMode: PosOperationMode = 'QUICK_SALE';
     let enabledFeatures: TenantFeature[] = [];
+    // @odd planes-self-service T-001 — estado y prueba, leídos de la base.
+    let effectivePlan = plan;
+    let trial: Pick<CapabilitiesResponseDto, 'status' | 'trialEndsAt' | 'trialEndsTo'> = {};
 
     if (tenantId) {
       const [cap, tenant] = await Promise.all([
         this.planLimits.getCapacity(tenantId),
         this.prisma.tenant.findUnique({
           where: { id: tenantId },
-          select: { businessVertical: true, businessProfile: true, posOperationMode: true, enabledFeatures: true, enabledModules: true },
+          select: {
+            businessVertical: true,
+            businessProfile: true,
+            posOperationMode: true,
+            enabledFeatures: true,
+            enabledModules: true,
+            plan: true,
+            status: true,
+            trialEndsAt: true,
+            settings: true,
+          },
         }),
       ]);
       maxUsers = cap.maxUsers;
@@ -828,15 +840,27 @@ export class AuthService {
         posOperationMode = tenant.posOperationMode;
         enabledFeatures = tenant.enabledFeatures;
         effectiveEnabledModules = tenant.enabledModules;
+        // El plan del JWT se queda viejo si la prueba terminó tras emitirlo; el de la
+        // base es el que aplica el servidor.
+        effectivePlan = tenant.plan;
+        const inTrial = tenant.status === 'TRIAL';
+        const settings = tenant.settings as Record<string, unknown> | null;
+        trial = {
+          status: tenant.status,
+          trialEndsAt: inTrial && tenant.trialEndsAt ? tenant.trialEndsAt.toISOString() : null,
+          trialEndsTo: inTrial ? (settings?.[SELF_SERVICE_TRIAL_FLAG] === true ? 'FREE' : 'EXPIRE') : null,
+        };
       }
     }
 
-    const effectiveModules = [...new Set([...planModules, ...effectiveEnabledModules])];
+    const effectiveModules = [
+      ...new Set([...(getModulesForPlan(effectivePlan) as unknown as string[]), ...effectiveEnabledModules]),
+    ];
 
     // Convergence: expose capabilities derived from the immutable business profile.
     const businessFeatures = buildFeaturesForProfile(businessProfile);
 
-    return { plan, enabledModules: effectiveEnabledModules, effectiveModules, maxUsers, activeUsers, overUserLimit, businessVertical, businessProfile, posOperationMode, enabledFeatures, businessFeatures };
+    return { plan: effectivePlan, enabledModules: effectiveEnabledModules, effectiveModules, maxUsers, activeUsers, overUserLimit, businessVertical, businessProfile, posOperationMode, enabledFeatures, businessFeatures, ...trial };
   }
 
   private generateToken(payload: JwtPayload): string {
