@@ -44,6 +44,7 @@ import { PlatformDashboard } from '@/pages/platform/platform-dashboard'
 import { PlatformEmpresas } from '@/pages/platform/platform-empresas'
 import { PlatformEmpresaDetalle } from '@/pages/platform/platform-empresa-detalle'
 import { PlatformAuditoria } from '@/pages/platform/platform-auditoria'
+import { PlatformSolicitudes } from '@/pages/platform/platform-solicitudes'
 import { PlatformPlantillas } from '@/pages/platform/platform-plantillas'
 import { TenantSuspended } from '@/pages/tenant-suspended'
 import { InvitacionAceptar } from '@/pages/invitacion'
@@ -95,6 +96,7 @@ const APP_SUFFIX = 'Orbix ERP'
 const PLATFORM_TITLES: Record<string, string> = {
   '/platform/dashboard': 'Platform Dashboard',
   '/platform/empresas': 'Empresas',
+  '/platform/solicitudes': 'Solicitudes de plan',
   '/platform/plantillas': 'Plantillas',
   '/platform/auditoria': 'Auditoría',
 }
@@ -289,6 +291,7 @@ function PlatformGate() {
         <Route path="/platform/dashboard" element={<PlatformDashboard />} />
         <Route path="/platform/empresas" element={<PlatformEmpresas />} />
         <Route path="/platform/empresas/:id" element={<PlatformEmpresaDetalle />} />
+        <Route path="/platform/solicitudes" element={<PlatformSolicitudes />} />
         <Route path="/platform/plantillas" element={<PlatformPlantillas />} />
         <Route path="/platform/auditoria" element={<PlatformAuditoria />} />
         <Route path="*" element={<Navigate to="/platform/dashboard" replace />} />

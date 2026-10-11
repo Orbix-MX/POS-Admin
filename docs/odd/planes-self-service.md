@@ -16,7 +16,7 @@ comparativa real de planes (FREE vs PRO, PLUS, ENTERPRISE), sin precios todavía
 que desbloquean M-5 (paso "Tu plan") y M-8 (aviso de prueba y pantalla Planes).
 
 **Alcance.** S-B (`capabilities` con estado de prueba), S-D (`GET /plans`), S-E (solicitud de
-mejora en tabla propia, decisión 2026-10-10). La bandeja en el web de Platform queda pendiente. Fuera: cobro (fase 2), precios (decisión
+mejora en tabla propia, decisión 2026-10-10). La bandeja en el web de Platform es T-004. Fuera: cobro (fase 2), precios (decisión
 2026-10-10: "Precio a consultar").
 
 **Restricciones.** C-021. Contratos publicados: `GET /auth/me/capabilities` **añade** campos y
@@ -123,6 +123,45 @@ con `prisma migrate deploy`: `migrate diff` contra la base traía además **deri
 
 ---
 
+### T-004 · Bandeja de solicitudes en el web de Platform
+
+```
+via:     simple
+touches: web/platform
+status:  done
+ruta:    inline
+```
+
+Pantalla `/platform/solicitudes` (entrada "Solicitudes" en el menú de Platform): pestañas
+Pendientes / Atendidas / Canceladas sobre `GET /platform/upgrade-requests?status=`; cada fila
+muestra empresa (enlace a su ficha, con su estado), plan actual → pedido, solicitante, nota y fecha;
+en pendientes, "Atendida" y "Cancelar" mandan `PATCH /platform/upgrade-requests/:id`. Atender no
+cambia la licencia: se activa desde la ficha de la empresa (renovar o "Dar prueba") y aquí solo se
+marca.
+
+**Done cuando:** Platform ve las solicitudes de la app y las marca resueltas.
+
+**Evidencia.**
+
+- **Test:** `npx playwright test e2e/platform-solicitudes.spec.ts` → 6 passed (lista con todos los
+  datos y enlace a la empresa; "Atendida" manda `HANDLED` y la quita; "Cancelar" manda
+  `CANCELLED`; las pestañas piden cada estado y las resueltas no tienen acciones; un 404 —otra
+  persona ya la resolvió— avisa y recarga; el menú tiene la entrada). Junto a los 3 de licencias:
+  9 passed. `npm run build` ✓; eslint de los archivos nuevos sin errores.
+- **Fallo encontrado por el test y corregido:** tras un 404 el aviso desaparecía al instante, porque
+  recargar la lista limpiaba el error justo después de ponerlo; ahora el aviso va después de la
+  recarga.
+- **Runtime:** sin token de Platform, `GET` y `PATCH` `/platform/upgrade-requests` → 401 (el
+  guard funciona). La consulta de la bandeja (misma de `PlanUpgradeRequestsService.list`)
+  contra la base real devuelve la solicitud pendiente de "Cafe Prueba Emulador" (PRO → PRO, en
+  prueba, con su solicitante). **Sin ver la pantalla contra la API real:** no hay super-admin de
+  prueba; falta que el usuario la abra en Platform.
+- **Rollback:** `pages/platform/platform-solicitudes.tsx`, `services/platform/platform-upgrade-requests-service.ts`,
+  la ruta y el título en `App.tsx`, la entrada en `platform-sidebar.tsx` y el e2e.
+- **Commit:**
+
+---
+
 ## Revisión de seguridad (2026-10-10)
 
 Inline sobre el diff de T-001…T-003: tenant siempre de `requireTenantId` (nunca del body);
@@ -140,13 +179,14 @@ Platform, sin cobro), `GET /plans` y el estado de prueba en `capabilities`.
 
 | Tarea | Vía | Estado | Ruta | Líneas | Commit |
 |---|---|---|---|---|---|
-| T-001 | completo | done (falta commit) | inline | ~45 + spec | |
-| T-002 | completo | done (falta commit) | inline | ~80 + spec | |
-| T-003 | completo | done en API (falta commit; bandeja web de Platform pendiente) | inline | ~180 + spec + migración | |
+| T-001 | completo | done (commit `bb08998`) | inline | ~45 + spec | |
+| T-002 | completo | done (commit `bb08998`) | inline | ~80 + spec | |
+| T-003 | completo | done (commit `bb08998`) | inline | ~180 + spec + migración | `bb08998` |
+| T-004 | simple | done (falta commit) | inline | ~190 | |
 
 **Entrega:** ~250 previstas · ~305 de código (sin specs ni migración) · umbral ~400 → dentro.
 
-**Siguiente paso:** commit; luego la bandeja de solicitudes en el web de Platform.
+**Siguiente paso:** commit de T-004; que el usuario abra `/platform/solicitudes` con una sesión de Platform.
 
 ---
 
