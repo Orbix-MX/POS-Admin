@@ -8,7 +8,7 @@ import { TenantsService } from './tenants.service';
  * Alta self-service en prueba (S-A de `orbix-mobile/docs/odd/alta-empresa.md`).
  *
  * La empresa nace en prueba PRO de 14 días, marcada para que al vencer baje a FREE
- * (ver `license.service.self-service-trial.spec.ts`). La regla "una empresa gratuita
+ * (ver `license.service.self-service-trial.spec.ts`). La regla "dos empresas gratuitas
  * por dueño" cuenta las pruebas: si no, cada cuenta podría encadenarlas sin fin.
  */
 
@@ -26,7 +26,7 @@ const dto = {
   businessTypeId: 'bakery',
 } as never;
 
-function buildService(opts: { ownsFreeOrTrial?: boolean; settings?: Record<string, unknown> } = {}) {
+function buildService(opts: { freeOrTrialOwned?: number; settings?: Record<string, unknown> } = {}) {
   const tx = {
     tenant: {
       create: jest.fn().mockResolvedValue({ id: 'tenant-new', slug: 'panaderia-la-espiga' }),
@@ -39,7 +39,7 @@ function buildService(opts: { ownsFreeOrTrial?: boolean; settings?: Record<strin
   };
   const prisma = {
     tenant: {
-      findFirst: jest.fn().mockResolvedValue(opts.ownsFreeOrTrial ? { id: 'tenant-old' } : null),
+      count: jest.fn().mockResolvedValue(opts.freeOrTrialOwned ?? 0),
       findUnique: jest.fn().mockImplementation(({ select }: { select?: Record<string, boolean> }) =>
         Promise.resolve(select?.settings ? { settings: opts.settings ?? {} } : null),
       ),
@@ -91,24 +91,33 @@ describe('TenantsService.onboard — prueba del alta', () => {
     expect(result).toMatchObject({ accessToken: 'tok', branchId: 'branch-1' });
   });
 
-  it('la regla de una empresa gratuita por dueño cuenta también las pruebas', async () => {
+  it('la regla de empresas gratuitas por dueño cuenta también las pruebas', async () => {
     const { service, prisma } = buildService();
 
     await service.onboard(dto, USER, 'ana@test.com');
 
-    expect(prisma.tenant.findFirst).toHaveBeenCalledWith({
+    expect(prisma.tenant.count).toHaveBeenCalledWith({
       where: {
         ownerUserId: USER,
         OR: [{ plan: 'FREE', status: { in: ['ACTIVE', 'TRIAL'] } }, { status: 'TRIAL' }],
       },
-      select: { id: true },
     });
   });
 
-  it('con una empresa gratuita o en prueba, responde 409 y no crea nada', async () => {
-    const { service, tx, licenseService } = buildService({ ownsFreeOrTrial: true });
+  it('con una empresa gratuita o en prueba todavía puede dar de alta la segunda', async () => {
+    const { service, tx } = buildService({ freeOrTrialOwned: 1 });
 
-    await expect(service.onboard(dto, USER, 'ana@test.com')).rejects.toBeInstanceOf(ConflictException);
+    await service.onboard(dto, USER, 'ana@test.com');
+
+    expect(tx.tenant.create).toHaveBeenCalled();
+  });
+
+  it('con dos gratuitas o en prueba, responde 409 y no crea nada', async () => {
+    const { service, tx, licenseService } = buildService({ freeOrTrialOwned: 2 });
+
+    await expect(service.onboard(dto, USER, 'ana@test.com')).rejects.toThrow(
+      new ConflictException('Ya tienes 2 empresas en el plan gratuito o en prueba.'),
+    );
     expect(tx.tenant.create).not.toHaveBeenCalled();
     expect(licenseService.createLicense).not.toHaveBeenCalled();
   });

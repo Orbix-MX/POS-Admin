@@ -21,6 +21,9 @@ import {
  */
 const SERVER_OWNED_SETTINGS: readonly string[] = [SELF_SERVICE_TRIAL_FLAG];
 
+/** Empresas gratuitas o en prueba que puede tener un mismo dueño (alta self-service). */
+export const MAX_FREE_TENANTS_PER_OWNER = 2;
+
 /**
  * Quita de una entrada del cliente las claves que solo escribe el servidor. Lo usan
  * todos los caminos que mezclan el cuerpo de la petición en `Tenant.settings`.
@@ -141,17 +144,19 @@ export class TenantsService {
     userEmail: string,
   ): Promise<OnboardTenantResponseDto> {
     // @odd prueba-alta-self-service T-001
-    // Una empresa gratuita por dueño, y la prueba cuenta como tal: el alta nace en
-    // prueba PRO y, si no contara, cada cuenta podría encadenar pruebas sin fin.
-    const ownsFreeTenant = await this.prisma.tenant.findFirst({
+    // Hasta MAX_FREE_TENANTS_PER_OWNER empresas gratuitas por dueño, y la prueba cuenta
+    // como tal: el alta nace en prueba PRO y, si no contara, cada cuenta podría
+    // encadenar pruebas sin fin. Decisión de producto 2026-10-10: dos por dueño.
+    const freeOrTrialTenants = await this.prisma.tenant.count({
       where: {
         ownerUserId: userId,
         OR: [{ plan: 'FREE', status: { in: ['ACTIVE', 'TRIAL'] } }, { status: 'TRIAL' }],
       },
-      select: { id: true },
     });
-    if (ownsFreeTenant) {
-      throw new ConflictException('Ya tienes una empresa en el plan gratuito o en prueba.');
+    if (freeOrTrialTenants >= MAX_FREE_TENANTS_PER_OWNER) {
+      throw new ConflictException(
+        `Ya tienes ${MAX_FREE_TENANTS_PER_OWNER} empresas en el plan gratuito o en prueba.`,
+      );
     }
 
     const trialEndsAt = new Date(Date.now() + SELF_SERVICE_TRIAL_DAYS * 24 * 60 * 60 * 1000);
