@@ -136,9 +136,14 @@ sigue expirando.
      `PRO/EXPIRED` + `FREE/ACTIVE`, auditoría `LICENSE_TRIAL_ENDED_TO_FREE`). Con la app abierta,
      Inicio seguía en "Plan PRO" (la app no relee el tenant mientras está abierta); al reabrirla,
      "Plan FREE". Pendiente para M-8: releer el tenant al volver a primer plano y al renovar.
-  - **Extender una prueba sin runtime:** el endpoint es de Platform y no hay super-admin de prueba
-    (el seed lo toma de `PLATFORM_ADMIN_*` en `.env`). Cubierto por test; pendiente que el usuario
-    lo ejecute desde Platform.
+  10. **Desde Platform** (2026-10-10, el usuario, "Cafe Prueba Emulador" ya en FREE): `renew` con
+      `plan: PRO` sobre la licencia FREE → `LICENSE_RENEWED {plan: PRO, status: ACTIVE}`: PRO
+      **pagada** de 1 día, que al vencer se bloquearía. Es el comportamiento diseñado (solo una
+      `TRIAL` se renueva como `TRIAL`), pero la pantalla no lo deja ver → pendiente **S-H** en
+      `orbix-mobile/docs/odd/alta-empresa.md`. Después: suspender y **crear** con `trialDays: 1` →
+      `LICENSE_CREATED {status: TRIAL}`, el camino correcto. A petición del usuario se dejó luego en
+      prueba PRO de 14 días con un script equivalente a `createLicense` (auditado, nota en la
+      licencia).
   - Prueba de Platform expirando: cubierta por test, sin runtime (no se provisionó un
     tenant desde Platform).
   - `capabilities` toma el plan del JWT: con un token emitido antes de la bajada sigue
@@ -154,7 +159,7 @@ sigue expirando.
   la licencia manda sobre `trialEndsAt`, la regla "uno por dueño" cuenta pruebas, la carrera
   pendiente) y **ADR-0033** (fin de prueba en la validación de licencia, sin job), enlazado
   desde `Decisions/ADR.md` y desde el documento de dominio.
-- **Commit:**
+- **Commit:** `534ea6f` feat(tenants): el alta self-service nace en prueba PRO y al vencer baja a FREE
 
 ---
 
