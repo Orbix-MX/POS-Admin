@@ -609,6 +609,7 @@ model InventoryMovement {
   branch    Branch?         @relation(fields: [branchId], references: [id], onDelete: SetNull)
   createdBy User?           @relation("MovementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
+  @@index([variantId])
   @@map("inventory_movements")
 }
 
@@ -901,7 +902,8 @@ model Supply {
   updatedAt   DateTime @updatedAt
 
   baseUnit      MeasurementUnit?    @relation("SupplyBaseUnit", fields: [baseUnitId], references: [id], onDelete: SetNull)
-  inventoryUnit MeasurementUnit?    @relation("SupplyInventoryUnit", fields: [inventoryUnitId], references: [id], onDelete: SetNull)
+  // ON UPDATE NO ACTION: la migración 20260601000000 la creó inline sin regla de update.
+  inventoryUnit MeasurementUnit?    @relation("SupplyInventoryUnit", fields: [inventoryUnitId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   allowedUnits  SupplyAllowedUnit[]
   tenant        Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch        Branch?             @relation("BranchSupplies", fields: [branchId], references: [id], onDelete: SetNull)
@@ -1295,7 +1297,9 @@ model DiningOrder {
   tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch        Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
   table         RestaurantTable?  @relation(fields: [tableId], references: [id], onDelete: Cascade)
-  waiter        Employee          @relation("DiningOrderWaiter", fields: [waiterId], references: [id])
+  // NO ACTION: así la creó la migración 20260613000000 (equivale a RESTRICT, que es lo que
+  // Prisma asumía; ver docs/odd/carreras-y-deriva.md).
+  waiter        Employee          @relation("DiningOrderWaiter", fields: [waiterId], references: [id], onDelete: NoAction)
   order         Order?            @relation(fields: [orderId], references: [id], onDelete: SetNull)
   items         DiningOrderItem[]
   kitchenRounds KitchenRound[]
@@ -1449,6 +1453,9 @@ model OrderItem {
   service     Service?          @relation(fields: [serviceId], references: [id])
   refundItems OrderRefundItem[]
 
+  // Declarado para coincidir con la migración 20260906120000 (el esquema no lo traía y
+  // `migrate diff` proponía borrarlo).
+  @@index([variantId])
   @@map("order_items")
 }
 
@@ -1750,8 +1757,9 @@ model CashSession {
   id                     String            @id @default(uuid())
   tenantId               String
   branchId               String?
-  /// Caja física a la que pertenece la sesión.
-  cashRegisterId         String?
+  /// Caja física a la que pertenece la sesión. Obligatoria desde la migración
+  /// 20260811190000 (NOT NULL tras el backfill); `open()` siempre la resuelve.
+  cashRegisterId         String
   status                 CashSessionStatus @default(ABIERTA)
   exchangeRateUsdMxn     Decimal           @default(1) @db.Decimal(10, 4)
   openingAmount          Decimal           @db.Decimal(10, 2)
@@ -1788,7 +1796,7 @@ model CashSession {
   openedBy             User?                 @relation("CashSessionOpenedBy", fields: [openedById], references: [id], onDelete: SetNull)
   closedBy             User?                 @relation("CashSessionClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
   authorizedBy         User?                 @relation("CashSessionAuthorizedBy", fields: [authorizedById], references: [id], onDelete: SetNull)
-  cashRegister         CashRegister?         @relation(fields: [cashRegisterId], references: [id], onDelete: Restrict)
+  cashRegister         CashRegister         @relation(fields: [cashRegisterId], references: [id], onDelete: Restrict)
   authorizedByEmployee Employee?             @relation("CashSessionAuthorizedByEmployee", fields: [authorizedByEmployeeId], references: [id], onDelete: SetNull)
   movements            CashMovement[]
   counts               CashCount[]

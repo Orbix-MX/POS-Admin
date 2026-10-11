@@ -21,8 +21,11 @@ import {
  */
 const SERVER_OWNED_SETTINGS: readonly string[] = [SELF_SERVICE_TRIAL_FLAG];
 
-/** Empresas gratuitas o en prueba que puede tener un mismo dueño (alta self-service). */
-export const MAX_FREE_TENANTS_PER_OWNER = 2;
+/**
+ * Pruebas de 14 días que puede usar un mismo dueño en el alta self-service. Un dueño puede
+ * tener cuantas empresas quiera; solo las primeras tienen prueba PRO, las demás nacen FREE.
+ */
+export const MAX_TRIALS_PER_OWNER = 2;
 
 /**
  * Quita de una entrada del cliente las claves que solo escribe el servidor. Lo usan
@@ -132,6 +135,29 @@ export class TenantsService {
   }
 
   /**
+   * ¿Esta alta lleva prueba PRO? Sí mientras el dueño haya usado menos de
+   * MAX_TRIALS_PER_OWNER. Se cuentan **todas** las pruebas que usó, también las ya
+   * terminadas (la marca `selfServiceTrial` se queda en la empresa al bajar a FREE): si
+   * solo contaran las vigentes, un dueño encadenaría pruebas sin fin. Decisión de producto
+   * 2026-10-11: n empresas por dueño, solo dos con prueba.
+   *
+   * @odd prueba-alta-self-service T-001
+   * @odd carreras-y-deriva T-001
+   */
+  private async ownerHasTrialLeft(
+    db: Pick<Prisma.TransactionClient, 'tenant'>,
+    userId: string,
+  ): Promise<boolean> {
+    const used = await db.tenant.count({
+      where: {
+        ownerUserId: userId,
+        settings: { path: [SELF_SERVICE_TRIAL_FLAG], equals: true },
+      },
+    });
+    return used < MAX_TRIALS_PER_OWNER;
+  }
+
+  /**
    * Self-service registration: caller is an already-authenticated user
    * without a tenant yet. Always provisions on the FREE plan with only the
    * essentials (name, owner, vertical, branch principal) — everything else
@@ -143,22 +169,6 @@ export class TenantsService {
     userId: string,
     userEmail: string,
   ): Promise<OnboardTenantResponseDto> {
-    // @odd prueba-alta-self-service T-001
-    // Hasta MAX_FREE_TENANTS_PER_OWNER empresas gratuitas por dueño, y la prueba cuenta
-    // como tal: el alta nace en prueba PRO y, si no contara, cada cuenta podría
-    // encadenar pruebas sin fin. Decisión de producto 2026-10-10: dos por dueño.
-    const freeOrTrialTenants = await this.prisma.tenant.count({
-      where: {
-        ownerUserId: userId,
-        OR: [{ plan: 'FREE', status: { in: ['ACTIVE', 'TRIAL'] } }, { status: 'TRIAL' }],
-      },
-    });
-    if (freeOrTrialTenants >= MAX_FREE_TENANTS_PER_OWNER) {
-      throw new ConflictException(
-        `Ya tienes ${MAX_FREE_TENANTS_PER_OWNER} empresas en el plan gratuito o en prueba.`,
-      );
-    }
-
     const trialEndsAt = new Date(Date.now() + SELF_SERVICE_TRIAL_DAYS * 24 * 60 * 60 * 1000);
 
     let slug = SlugUtil.generate(dto.name);
@@ -180,15 +190,22 @@ export class TenantsService {
     });
     const permissions = await this.prisma.permission.findMany();
 
-    const { tenant, branch } = await this.prisma.$transaction(async (tx) => {
+    const { tenant, branch, withTrial } = await this.prisma.$transaction(async (tx) => {
+      // Serializa las altas del mismo dueño: la segunda espera a que la primera confirme y
+      // entonces cuenta también su prueba. Sin esto, dos altas a la vez gastaban más pruebas
+      // de las permitidas.
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
+      const withTrial = await this.ownerHasTrialLeft(tx, userId);
+
       const tenant = await tx.tenant.create({
         data: {
           name: dto.name,
           slug,
-          // Prueba PRO del alta; al vencer baja a FREE (LicenseService).
-          plan: 'PRO',
-          status: 'TRIAL',
-          trialEndsAt,
+          // Con prueba: PRO 14 días y al vencer baja a FREE (LicenseService). Sin ella (el
+          // dueño ya usó sus pruebas): FREE desde el primer día.
+          plan: withTrial ? 'PRO' : 'FREE',
+          status: withTrial ? 'TRIAL' : 'ACTIVE',
+          ...(withTrial && { trialEndsAt }),
           businessVertical: dto.businessVertical,
           businessProfile: dto.businessProfile,
           settings: {
@@ -197,7 +214,7 @@ export class TenantsService {
             phone: dto.phone,
             countryCode: dto.countryCode,
             ...(dto.businessTypeId && { businessTypeId: dto.businessTypeId }),
-            [SELF_SERVICE_TRIAL_FLAG]: true,
+            ...(withTrial && { [SELF_SERVICE_TRIAL_FLAG]: true }),
           },
         },
       });
@@ -257,14 +274,15 @@ export class TenantsService {
         }
       }
 
-      return { tenant, branch };
+      return { tenant, branch, withTrial };
     });
 
-    await this.licenseService.createLicense(tenant.id, {
-      plan: 'PRO',
-      status: 'TRIAL',
-      expiresAt: trialEndsAt,
-    });
+    await this.licenseService.createLicense(
+      tenant.id,
+      withTrial
+        ? { plan: 'PRO', status: 'TRIAL', expiresAt: trialEndsAt }
+        : { plan: 'FREE', status: 'ACTIVE' },
+    );
 
     const selectResult = await this.authService.selectTenant(userId, userEmail, tenant.slug);
     return { ...selectResult, branchId: branch.id };

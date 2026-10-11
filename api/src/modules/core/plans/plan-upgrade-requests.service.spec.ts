@@ -1,4 +1,5 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PlanUpgradeRequestsService } from './plan-upgrade-requests.service';
 
 /**
@@ -74,6 +75,39 @@ describe('PlanUpgradeRequestsService.request', () => {
       data: { currentPlan: 'FREE', requestedPlan: 'ENTERPRISE', note: null },
     });
     expect(prisma.planUpgradeRequest.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('PlanUpgradeRequestsService.request — dos peticiones a la vez', () => {
+  const p2002 = () =>
+    new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+      code: 'P2002',
+      clientVersion: 'test',
+      meta: { target: 'plan_upgrade_requests_one_pending_per_tenant_key' },
+    });
+
+  it('si el índice la rechaza porque otra ganó, actualiza la que ganó en vez de fallar', async () => {
+    const { service, prisma } = build({ plan: 'FREE', status: 'ACTIVE' });
+    // Primer chequeo: no hay pendiente (la otra petición aún no insertó); tras perder, sí.
+    prisma.planUpgradeRequest.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'req-winner', status: 'PENDING' });
+    prisma.planUpgradeRequest.create.mockRejectedValueOnce(p2002());
+
+    await service.request('user-1', 'PLUS', 'segunda petición');
+
+    expect(prisma.planUpgradeRequest.update).toHaveBeenCalledWith({
+      where: { id: 'req-winner' },
+      data: { currentPlan: 'FREE', requestedPlan: 'PLUS', note: 'segunda petición' },
+    });
+  });
+
+  it('un error que no es de esa restricción se propaga', async () => {
+    const { service, prisma } = build({ plan: 'FREE', status: 'ACTIVE' });
+    prisma.planUpgradeRequest.create.mockRejectedValueOnce(new Error('conexión caída'));
+
+    await expect(service.request('user-1', 'PRO')).rejects.toThrow('conexión caída');
+    expect(prisma.planUpgradeRequest.update).not.toHaveBeenCalled();
   });
 });
 

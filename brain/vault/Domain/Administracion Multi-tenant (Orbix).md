@@ -2,7 +2,7 @@
 title: Administracion Multi-tenant (Orbix)
 type: business
 owner: Requiere validación
-updated: 2026-10-10
+updated: 2026-10-11
 tags: [negocio, orbix-erp, multi-tenant, plataforma]
 ---
 
@@ -102,12 +102,15 @@ el flujo de provisioning — el wizard móvil solo cubre el alta mínima.
 - La licencia manda: `Tenant.trialEndsAt` refleja el vencimiento de la licencia `TRIAL` y se
   actualiza al crearla o renovarla; editarlo a mano no cambia el acceso. Renovar una prueba la
   mantiene en prueba; para pasarla a pagada se emite una licencia `ACTIVE`.
-- Un mismo usuario puede tener como máximo **dos** tenants propios gratuitos **o en prueba**
-  (decisión de producto 2026-10-10; `MAX_FREE_TENANTS_PER_OWNER` en `tenants.service.ts`). Se
-  cuentan `plan=FREE` con status ACTIVE/TRIAL y cualquier status TRIAL; con dos, el alta
-  responde 409 "Ya tienes 2 empresas en el plan gratuito o en prueba.". Sin contar las pruebas,
-  cada cuenta podría encadenarlas. Los que pasaron a un plan de pago no cuentan. Verificado con
-  la API arrancada (segunda alta 201, tercera 409).
+- Un mismo usuario puede tener **cuantas empresas quiera**, pero solo **dos con prueba PRO**
+  (decisión de producto 2026-10-11; `MAX_TRIALS_PER_OWNER` en `tenants.service.ts`). Las
+  pruebas se cuentan **de por vida** —por la marca `selfServiceTrial`, que la empresa conserva
+  al bajar a FREE—: si solo contaran las vigentes, cada cuenta encadenaría pruebas. Con las dos
+  usadas, el alta **no se rechaza**: la empresa nace FREE/ACTIVE, sin prueba y sin marca.
+  Verificado con la API arrancada: cuatro altas seguidas dan PRO, PRO, FREE, FREE; cuatro
+  simultáneas dan dos con prueba y dos sin ella; y con las dos pruebas ya terminadas, la
+  tercera alta nace FREE. Borrar una empresa libera su prueba (la marca se va con ella).
+  — Requiere validación (qué hacer con empresas cuyo dueño cambia o se eliminan)
 - **Planes y mejora (2026-10-10):** `GET /plans` (público) lista cada plan con sus módulos y
   límites reales (`@orbix/types`) y el precio en MXN, `null` = "a consultar" mientras no haya
   precios. `GET /auth/me/capabilities` dice si la empresa está en prueba (`status`,
@@ -115,9 +118,12 @@ el flujo de provisioning — el wizard móvil solo cubre el alta mínima.
   "Mejorar plan" **no cobra**: la app registra una solicitud (`PlanUpgradeRequest`, una
   pendiente por empresa) y Platform la atiende a mano (`/platform/upgrade-requests`). En prueba
   se puede pedir el mismo plan de la prueba (quedarse en PRO); fuera, solo uno mayor.
-- La regla de arriba se comprueba antes de la transacción del alta: altas simultáneas del
-  mismo usuario podrían pasar del máximo. La app evita el doble toque; el servidor no.
-  — Pendiente
+- El máximo de dos se garantiza dentro de la transacción del alta: se bloquea la fila del
+  usuario (`SELECT … FOR UPDATE`) y se cuenta con ella bloqueada, así que dos altas simultáneas
+  se serializan (la segunda ve la empresa de la primera). Verificado con peticiones simultáneas
+  contra la API real: tres altas a la vez dan dos creadas y un 409. Misma idea para "Mejorar
+  plan": un índice único parcial garantiza una solicitud pendiente por empresa. Detalle en
+  `docs/odd/carreras-y-deriva.md`.
 - No existe todavía un seed de roles por vertical (RETAIL/RESTAURANT/GYM/SERVICES): tanto
   el provisioning desde Platform como el self-service crean un único rol con todos los
   permisos. Confirmado por inspección directa de datos (2026-08-09) que el nombre de ese rol

@@ -52,7 +52,7 @@ emitido antes de terminar la prueba seguía diciendo PRO.
   2026-10-25T01:39:37.555Z, trialEndsTo: FREE}` ("Cafe Prueba Emulador").
 - **Rollback:** el bloque de prueba en `getCapabilities` (`auth.service.ts`) y los tres campos
   de `CapabilitiesResponseDto`; la app los trata como opcionales.
-- **Commit:**
+- **Commit:** `bb08998` feat(plans): la app ve su prueba, compara planes y pide mejorar el suyo
 
 ### T-002 · S-D — `GET /plans` público
 
@@ -78,7 +78,7 @@ precio `null` en los de pago.
 - **Runtime (2026-10-10, API local):** `GET /api/plans` sin token → 200 `FREE 11 módulos/1
   usuario/0 · STARTER 12/5/null · PRO 20/10/null · PLUS 22/20/null · ENTERPRISE 22/ilimitado/null`.
 - **Rollback:** `api/src/modules/core/plans/` y su línea en `app.module.ts`.
-- **Commit:**
+- **Commit:** `bb08998` (mismo commit)
 
 ### T-003 · S-E — "Mejorar plan" registra una solicitud
 
@@ -115,11 +115,11 @@ con `prisma migrate deploy`: `migrate diff` contra la base traía además **deri
   `POST {plan: FREE}` → 400 "Elige un plan de pago."; `POST {plan: PRO, note}` → 201
   `PENDING`; `POST {plan: PLUS}` → 201, misma solicitud (id igual); `GET` → 200 `PLUS
   PENDING`. Endpoints de Platform sin runtime (no hay super-admin de prueba).
-- **Concurrencia:** dos `POST` simultáneos de la misma empresa podrían dejar dos pendientes
-  (sin índice único parcial). Bajo impacto: Platform atiende ambas. — Pendiente
+- **Concurrencia:** resuelta en `docs/odd/carreras-y-deriva.md` (índice único parcial: una
+  pendiente por empresa).
 - **Rollback:** revertir el código y una migración inversa (`DROP TABLE plan_upgrade_requests;
   DROP TYPE "PlanUpgradeRequestStatus"`); la tabla es nueva y nada más depende de ella.
-- **Commit:**
+- **Commit:** `bb08998` (mismo commit)
 
 ---
 
@@ -158,7 +158,7 @@ marca.
   prueba; falta que el usuario la abra en Platform.
 - **Rollback:** `pages/platform/platform-solicitudes.tsx`, `services/platform/platform-upgrade-requests-service.ts`,
   la ruta y el título en `App.tsx`, la entrada en `platform-sidebar.tsx` y el e2e.
-- **Commit:**
+- **Commit:** `fc9100d` feat(platform): la bandeja de solicitudes de plan llega al panel de Platform
 
 ---
 

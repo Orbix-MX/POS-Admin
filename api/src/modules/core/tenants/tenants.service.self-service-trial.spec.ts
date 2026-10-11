@@ -1,4 +1,3 @@
-import { ConflictException } from '@nestjs/common';
 import { SELF_SERVICE_TRIAL_DAYS, SELF_SERVICE_TRIAL_FLAG } from '../../../common/services/license.service';
 import { TenantsService } from './tenants.service';
 
@@ -8,8 +7,9 @@ import { TenantsService } from './tenants.service';
  * Alta self-service en prueba (S-A de `orbix-mobile/docs/odd/alta-empresa.md`).
  *
  * La empresa nace en prueba PRO de 14 días, marcada para que al vencer baje a FREE
- * (ver `license.service.self-service-trial.spec.ts`). La regla "dos empresas gratuitas
- * por dueño" cuenta las pruebas: si no, cada cuenta podría encadenarlas sin fin.
+ * (ver `license.service.self-service-trial.spec.ts`). Un dueño puede tener n empresas,
+ * pero solo dos con prueba: las siguientes nacen FREE. Las pruebas se cuentan de por vida
+ * (también las ya terminadas): si no, cada cuenta podría encadenarlas sin fin.
  */
 
 const USER = 'user-1';
@@ -26,9 +26,21 @@ const dto = {
   businessTypeId: 'bakery',
 } as never;
 
-function buildService(opts: { freeOrTrialOwned?: number; settings?: Record<string, unknown> } = {}) {
+function buildService(
+  opts: { trialsUsed?: number; settings?: Record<string, unknown> } = {},
+) {
+  const calls: string[] = [];
   const tx = {
+    $queryRaw: jest.fn().mockImplementation(() => {
+      calls.push('lock');
+      return Promise.resolve([]);
+    }),
     tenant: {
+      // Pruebas que el dueño ya usó (con la fila del usuario bloqueada, incluye las ya confirmadas).
+      count: jest.fn().mockImplementation(() => {
+        calls.push('count');
+        return Promise.resolve(opts.trialsUsed ?? 0);
+      }),
       create: jest.fn().mockResolvedValue({ id: 'tenant-new', slug: 'panaderia-la-espiga' }),
       update: jest.fn().mockResolvedValue({}),
     },
@@ -39,7 +51,6 @@ function buildService(opts: { freeOrTrialOwned?: number; settings?: Record<strin
   };
   const prisma = {
     tenant: {
-      count: jest.fn().mockResolvedValue(opts.freeOrTrialOwned ?? 0),
       findUnique: jest.fn().mockImplementation(({ select }: { select?: Record<string, boolean> }) =>
         Promise.resolve(select?.settings ? { settings: opts.settings ?? {} } : null),
       ),
@@ -65,7 +76,7 @@ function buildService(opts: { freeOrTrialOwned?: number; settings?: Record<strin
     authService as never,
     {} as never,
   );
-  return { service, prisma, tx, licenseService, authService };
+  return { service, prisma, tx, licenseService, authService, calls };
 }
 
 describe('TenantsService.onboard — prueba del alta', () => {
@@ -91,35 +102,58 @@ describe('TenantsService.onboard — prueba del alta', () => {
     expect(result).toMatchObject({ accessToken: 'tok', branchId: 'branch-1' });
   });
 
-  it('la regla de empresas gratuitas por dueño cuenta también las pruebas', async () => {
-    const { service, prisma } = buildService();
+  it('cuenta las pruebas que el dueño usó de por vida, también las ya terminadas', async () => {
+    const { service, tx } = buildService();
 
     await service.onboard(dto, USER, 'ana@test.com');
 
-    expect(prisma.tenant.count).toHaveBeenCalledWith({
-      where: {
-        ownerUserId: USER,
-        OR: [{ plan: 'FREE', status: { in: ['ACTIVE', 'TRIAL'] } }, { status: 'TRIAL' }],
-      },
+    // Por la marca de prueba del alta (se queda en la empresa al bajar a FREE), no por su
+    // estado actual: una prueba terminada sigue contando.
+    expect(tx.tenant.count).toHaveBeenCalledWith({
+      where: { ownerUserId: USER, settings: { path: [SELF_SERVICE_TRIAL_FLAG], equals: true } },
     });
   });
 
-  it('con una empresa gratuita o en prueba todavía puede dar de alta la segunda', async () => {
-    const { service, tx } = buildService({ freeOrTrialOwned: 1 });
+  it('la segunda empresa todavía lleva prueba', async () => {
+    const { service, tx } = buildService({ trialsUsed: 1 });
+
+    await service.onboard(dto, USER, 'ana@test.com');
+
+    expect(tx.tenant.create.mock.calls[0][0].data).toMatchObject({ plan: 'PRO', status: 'TRIAL' });
+  });
+
+  it('con las dos pruebas usadas la empresa se crea igual, como FREE y sin prueba', async () => {
+    const { service, tx, licenseService } = buildService({ trialsUsed: 2 });
+
+    const result = await service.onboard(dto, USER, 'ana@test.com');
+
+    const data = tx.tenant.create.mock.calls[0][0].data;
+    expect(data).toMatchObject({ plan: 'FREE', status: 'ACTIVE' });
+    expect(data).not.toHaveProperty('trialEndsAt');
+    // Sin marca: nunca bajará "de una prueba" ni gastará una prueba más.
+    expect(data.settings).not.toHaveProperty(SELF_SERVICE_TRIAL_FLAG);
+    expect(licenseService.createLicense).toHaveBeenCalledWith('tenant-new', { plan: 'FREE', status: 'ACTIVE' });
+    expect(result).toMatchObject({ accessToken: 'tok', branchId: 'branch-1' });
+  });
+
+  it('el límite son las pruebas, no las empresas: con muchas ya usadas sigue dando de alta FREE', async () => {
+    const { service, tx } = buildService({ trialsUsed: 7 });
 
     await service.onboard(dto, USER, 'ana@test.com');
 
     expect(tx.tenant.create).toHaveBeenCalled();
+    expect(tx.tenant.create.mock.calls[0][0].data.plan).toBe('FREE');
   });
 
-  it('con dos gratuitas o en prueba, responde 409 y no crea nada', async () => {
-    const { service, tx, licenseService } = buildService({ freeOrTrialOwned: 2 });
+  it('la decisión está dentro de la transacción: bloquea al usuario y cuenta antes de crear', async () => {
+    const { service, tx, calls } = buildService();
 
-    await expect(service.onboard(dto, USER, 'ana@test.com')).rejects.toThrow(
-      new ConflictException('Ya tienes 2 empresas en el plan gratuito o en prueba.'),
-    );
-    expect(tx.tenant.create).not.toHaveBeenCalled();
-    expect(licenseService.createLicense).not.toHaveBeenCalled();
+    await service.onboard(dto, USER, 'ana@test.com');
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    // El orden es lo que serializa dos altas simultáneas: bloqueo → conteo → alta.
+    expect(calls).toEqual(['lock', 'count']);
+    expect(tx.tenant.create).toHaveBeenCalled();
   });
 });
 

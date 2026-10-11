@@ -1,8 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { PlanUpgradeRequestStatus, TenantPlan } from '@prisma/client';
+import { Prisma, PlanUpgradeRequestStatus, TenantPlan } from '@prisma/client';
 import { PLAN_ORDER } from '@orbix/types';
 import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
+
+// Índice único parcial: una solicitud PENDING por empresa (migración
+// 20261011000000_plan_upgrade_request_one_pending).
+const ONE_PENDING_INDEX = 'plan_upgrade_requests_one_pending_per_tenant_key';
 
 /**
  * Solicitudes de "Mejorar plan" (S-E del alta self-service). Sin cobro: la app pide,
@@ -50,7 +54,27 @@ export class PlanUpgradeRequestsService {
     if (pending) {
       return this.prisma.planUpgradeRequest.update({ where: { id: pending.id }, data });
     }
-    return this.prisma.planUpgradeRequest.create({ data: { ...data, tenantId, requestedById: userId } });
+    try {
+      return await this.prisma.planUpgradeRequest.create({
+        data: { ...data, tenantId, requestedById: userId },
+      });
+    } catch (error) {
+      // Dos peticiones a la vez cruzaron el chequeo de arriba: el índice dejó pasar solo a
+      // una. Esta actualiza la que ganó en vez de duplicar o fallar. @odd carreras-y-deriva T-001
+      if (!this.isOnePendingViolation(error)) throw error;
+      const winner = await this.getPending();
+      if (!winner) throw error;
+      return this.prisma.planUpgradeRequest.update({ where: { id: winner.id }, data });
+    }
+  }
+
+  private isOnePendingViolation(error: unknown): boolean {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') return false;
+    const target = error.meta?.target;
+    if (typeof target === 'string') return target.includes(ONE_PENDING_INDEX);
+    if (Array.isArray(target)) return target.includes(ONE_PENDING_INDEX);
+    // Con índices parciales el target puede venir sin nombre: es la única restricción única.
+    return true;
   }
 
   /** Bandeja de Platform. */

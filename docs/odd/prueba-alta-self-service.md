@@ -53,9 +53,10 @@ prueba), no de forma. Sin migración.
   vencimiento de toda licencia `TRIAL` (crear o renovar), para que no se desalinee con la
   licencia, que es la que manda. Dar una prueba nueva a una empresa que ya bajó a FREE:
   `createLicense` con `plan: PRO` y `trialDays`.
-- **Regla "una gratuita por dueño":** cuenta también `status: TRIAL`; si no, cada cuenta
-  encadenaría pruebas. Mensaje del 409: "Ya tienes una empresa en el plan gratuito o en
-  prueba."
+- **Pruebas por dueño** (decisión 2026-10-11, sustituye a "una" y luego "dos gratuitas"): n
+  empresas por dueño, **solo dos con prueba**, contadas de por vida por la marca
+  `selfServiceTrial`; las siguientes nacen FREE. Ya no hay 409 por tope. Ver
+  `docs/odd/carreras-y-deriva.md`.
 - **Marca protegida:** `PATCH /tenants/current/settings` (`settings:manage`) y `PATCH
   /tenants/current/info` (`tenant:edit`, cuerpo `Partial<TenantInfo>`: un tipo, no una clase
   DTO, así que el ValidationPipe no filtra claves) mezclaban cualquier clave en `settings`.
@@ -193,7 +194,7 @@ refresca licencia y empresa como las demás acciones. La API no cambia.
   baja a FREE; si no, expira» (corregido tras la entrega del subagente).
 - **Rollback:** revertir `renewOutcome`, los dos avisos de `RenewLicenseModal`, `GrantTrialModal` y su botón
   en `platform-empresa-detalle.tsx`, y borrar `web/e2e/platform-license-trial.spec.ts`. Sin datos ni API.
-- **Commit:**
+- **Commit:** `769490a` feat(platform): la pantalla de licencia distingue alargar una prueba de pasar a pago
 
 ---
 
