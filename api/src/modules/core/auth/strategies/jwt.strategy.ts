@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PrismaService } from '../../../../database/prisma.service';
 import { TokenBlacklistService } from '../services/token-blacklist.service';
+import { OperatorSessionService } from '../../../../common/services/operator-session.service';
 import { TenantRole, TenantPlan } from '@prisma/client';
 
 const ALLOWED_TENANT_STATUSES = ['ACTIVE', 'TRIAL'] as const;
@@ -31,6 +32,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     private configService: ConfigService,
     private prisma: PrismaService,
     private tokenBlacklist: TokenBlacklistService,
+    private operatorSession: OperatorSessionService,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -54,7 +56,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     // Operator tokens (device PIN session) carry employee identity, not user identity.
+    // @odd acceso-residual-tras-baja T-002: el empleado dado de baja (o la empresa suspendida)
+    // pierde la sesión sin esperar al `exp` de 12 h. 401, no 403: el cliente ya expira solo la
+    // sesión de operador ante 401 y pide PIN de nuevo.
     if (payload.typ === 'operator') {
+      if (!payload.tenantId || !(await this.operatorSession.isActive(payload.tenantId, payload.sub))) {
+        throw new UnauthorizedException({
+          statusCode: 401,
+          code: 'OPERATOR_INACTIVE',
+          message: 'Tu sesión de operador ya no es válida. Ingresa tu PIN de nuevo.',
+        });
+      }
       return {
         id: payload.sub,
         role: 'DEVICE_OPERATOR' as const,
@@ -84,11 +96,23 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     if (payload.tenantId) {
-      const tenant = await this.prisma.tenant.findUnique({
-        where: { id: payload.tenantId },
-        select: { status: true },
+      // @odd acceso-residual-tras-baja T-001: una sola consulta (membresía + empresa) en lugar de la
+      // de empresa sola. Sin fila, o con la membresía desactivada/removida, el token anterior ya
+      // no sirve: antes seguía vivo hasta 24 h. 403 con `code` (no 401): un 401 haría que el
+      // cliente refresque y reciba un token sin empresa.
+      const membership = await this.prisma.tenantMembership.findUnique({
+        where: { tenantId_userId: { tenantId: payload.tenantId, userId: user.id } },
+        select: { status: true, tenant: { select: { status: true } } },
       });
-      if (!tenant || !(ALLOWED_TENANT_STATUSES as readonly string[]).includes(tenant.status)) {
+      if (!membership || membership.status !== 'ACTIVE') {
+        throw new ForbiddenException({
+          statusCode: 403,
+          code: 'MEMBERSHIP_INACTIVE',
+          message: 'Tu acceso a esta empresa fue desactivado. Contacta al administrador.',
+        });
+      }
+      const tenant = membership.tenant;
+      if (!(ALLOWED_TENANT_STATUSES as readonly string[]).includes(tenant.status)) {
         throw new ForbiddenException({
           statusCode: 403,
           code: 'TENANT_SUSPENDED',

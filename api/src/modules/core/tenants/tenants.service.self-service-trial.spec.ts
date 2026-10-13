@@ -75,6 +75,7 @@ function buildService(
     licenseService as never,
     authService as never,
     {} as never,
+    { invalidateUser: jest.fn() } as never,
   );
   return { service, prisma, tx, licenseService, authService, calls };
 }

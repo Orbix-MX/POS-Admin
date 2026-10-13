@@ -9,6 +9,7 @@ import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { AuditContextService } from '../../../common/context/audit-context.service';
 import { PlanLimitsService } from '../../../common/services/plan-limits.service';
+import { PermissionCacheService } from '../../../common/cache/permission-cache.service';
 import {
   LicenseService,
   SELF_SERVICE_TRIAL_DAYS,
@@ -80,6 +81,7 @@ export class TenantsService {
     private licenseService: LicenseService,
     private authService: AuthService,
     private r2: R2Service,
+    private permissionCache: PermissionCacheService,
   ) {}
 
   async create(dto: CreateTenantDto): Promise<Tenant> {
@@ -400,6 +402,8 @@ export class TenantsService {
     await this.prisma.tenantMembership.delete({
       where: { tenantId_userId: { tenantId, userId } },
     });
+    // @odd acceso-residual-tras-baja T-001: sin esto los permisos seguían en caché hasta 60 s.
+    await this.permissionCache.invalidateUser(userId, tenantId);
     await this.planLimits.recomputeOverLimit(tenantId);
   }
 

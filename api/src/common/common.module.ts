@@ -8,6 +8,7 @@ import { DomainResolverService } from './services/domain-resolver.service';
 import { BusinessConfigurationService } from './business-config/business-configuration.service';
 import { EffectivePermissionsService } from './services/effective-permissions.service';
 import { PermissionCacheService } from './cache/permission-cache.service';
+import { OperatorSessionService } from './services/operator-session.service';
 import {
   PERMISSION_CACHE_STORE,
   InMemoryPermissionCacheStore,
@@ -25,7 +26,7 @@ import {
   providers: [
     AuditContextService, TenantContextService, AuditService, PlanLimitsService, LicenseService,
     DomainResolverService, BusinessConfigurationService, EffectivePermissionsService,
-    PermissionCacheService,
+    PermissionCacheService, OperatorSessionService,
     // Swap this binding for a shared (Redis) store when the API runs on more
     // than one instance; nothing else needs to change.
     { provide: PERMISSION_CACHE_STORE, useClass: InMemoryPermissionCacheStore },
@@ -33,7 +34,7 @@ import {
   exports: [
     AuditContextService, TenantContextService, AuditService, PlanLimitsService, LicenseService,
     DomainResolverService, BusinessConfigurationService, EffectivePermissionsService,
-    PermissionCacheService,
+    PermissionCacheService, OperatorSessionService,
   ],
 })
 export class CommonModule {}

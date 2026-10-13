@@ -64,6 +64,7 @@ function buildService(opts: {
     audit as never,
     effectivePermissions as never,
     planLimits as never,
+    { invalidate: jest.fn() } as never,
   );
 
   return { service, prisma, effectivePermissions, planLimits, audit };

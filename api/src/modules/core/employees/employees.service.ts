@@ -11,6 +11,7 @@ import { AuditContextService } from '../../../common/context/audit-context.servi
 import { AuditService } from '../../../common/services/audit.service';
 import { EffectivePermissionsService } from '../../../common/services/effective-permissions.service';
 import { PlanLimitsService } from '../../../common/services/plan-limits.service';
+import { OperatorSessionService } from '../../../common/services/operator-session.service';
 import { PasswordUtil } from '../../../common/utils/password.util';
 import { PaginationDto, PaginatedResponse } from '../../../common/dto/pagination.dto';
 import { Employee, EmployeeStatus } from '@prisma/client';
@@ -40,6 +41,7 @@ export class EmployeesService {
     private audit: AuditService,
     private effectivePermissions: EffectivePermissionsService,
     private planLimits: PlanLimitsService,
+    private operatorSession: OperatorSessionService,
   ) {}
 
   /** Never leak the PIN hash to clients; surface a boolean instead. */
@@ -272,6 +274,9 @@ export class EmployeesService {
       },
     });
 
+    // El estado pudo cambiar (INACTIVE/SUSPENDED/ON_LEAVE ↔ ACTIVE): descarta el veredicto en caché.
+    this.operatorSession.invalidate(tenantId, id);
+
     if (dto.userId !== undefined && dto.userId !== employee.userId) {
       await this.audit.log({
         action: 'EMPLOYEE_UPDATE',
@@ -313,6 +318,8 @@ export class EmployeesService {
       where: { id },
       data: { status: EmployeeStatus.INACTIVE },
     });
+    // @odd acceso-residual-tras-baja T-002: su token de operador (12 h) deja de servir ya.
+    this.operatorSession.invalidate(tenantId, id);
     await this.audit.log({
       action: 'EMPLOYEE_DEACTIVATE',
       entityType: 'Employee',
