@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { useERPStore } from '@/store/erp-store'
 import { useAuthStore } from '@/store/auth-store'
 import { usePlatformAuthStore } from '@/store/platform-auth-store'
+import { MEMBERSHIP_REVOKED_EVENT, MEMBERSHIP_REVOKED_NOTICE } from '@/lib/api-client'
 import { type ReactNode, useEffect, useRef } from 'react'
 import { Sidebar } from '@/components/shared/sidebar'
 import { Topbar, MODULE_META } from '@/components/shared/topbar'
@@ -224,7 +225,7 @@ function ComandaGate() {
 }
 
 function TenantAuthGate() {
-  const { isAuthenticated, availableTenants, mfaTicket, capabilitiesLoaded, needsBranchSelection, availableBranches, loading, error, init, tenantSuspended, setTenantSuspended } = useAuthStore()
+  const { isAuthenticated, availableTenants, mfaTicket, capabilitiesLoaded, needsBranchSelection, availableBranches, loading, error, init, tenantSuspended, setTenantSuspended, endSession } = useAuthStore()
   const location = useLocation()
 
   // Se captura una sola vez, al montar: `OAuthCallback` limpia la URL a `/` en
@@ -250,6 +251,13 @@ function TenantAuthGate() {
     window.addEventListener('tenant:suspended', handler)
     return () => window.removeEventListener('tenant:suspended', handler)
   }, [setTenantSuspended])
+
+  // 403 MEMBERSHIP_INACTIVE: se le quitó el acceso a la empresa. Vuelve al login con el aviso.
+  useEffect(() => {
+    const handler = () => endSession(MEMBERSHIP_REVOKED_NOTICE)
+    window.addEventListener(MEMBERSHIP_REVOKED_EVENT, handler)
+    return () => window.removeEventListener(MEMBERSHIP_REVOKED_EVENT, handler)
+  }, [endSession])
 
   if (tenantSuspended) { document.title = `Empresa suspendida | ${APP_SUFFIX}`; return <TenantSuspended /> }
   if (!isAuthenticated && isOAuthCallback.current) return <OAuthCallback />

@@ -9,6 +9,15 @@ import {
   OPERATOR_EXPIRED_EVENT,
 } from '@/services/restaurant/operator-session-service'
 
+/**
+ * El API responde 403 `MEMBERSHIP_INACTIVE` cuando al usuario se le desactivó o se le quitó su acceso
+ * a la empresa. A diferencia de un 401, refrescar no ayuda (el refresco devolvería un token sin
+ * tenant): la sesión de esta empresa terminó. @odd acceso-residual-tras-baja T-003
+ */
+export const MEMBERSHIP_REVOKED_EVENT = 'session:membership-revoked'
+export const MEMBERSHIP_REVOKED_NOTICE =
+  'Tu acceso a esta empresa fue desactivado. Si crees que es un error, contacta al administrador.'
+
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
   headers: {
@@ -87,13 +96,16 @@ api.interceptors.response.use(
       clearRefreshToken()
       window.location.reload()
     }
-    if (error.response?.status === 403 && error.response?.data?.code === 'TENANT_SUSPENDED') {
+    const code = error.response?.data?.code
+    if (error.response?.status === 403 && (code === 'TENANT_SUSPENDED' || code === 'MEMBERSHIP_INACTIVE')) {
       const url: string = error.config?.url ?? ''
       const isAuthFlow = url.includes('/auth/login') || url.includes('/auth/select-tenant')
       if (!isAuthFlow) {
         clearAccessToken()
         clearRefreshToken()
-        window.dispatchEvent(new CustomEvent('tenant:suspended'))
+        window.dispatchEvent(
+          new CustomEvent(code === 'TENANT_SUSPENDED' ? 'tenant:suspended' : MEMBERSHIP_REVOKED_EVENT),
+        )
       }
     }
     return Promise.reject(error)

@@ -56,6 +56,8 @@ interface AuthState {
   confirmTenant: (slug: string) => Promise<void>
   confirmBranch: (branchId: string) => Promise<void>
   logout: () => Promise<void>
+  /** Cierra la sesión local sin llamar a la API (ya negó el acceso) y deja un aviso en el login. */
+  endSession: (notice: string) => void
   setTenantSuspended: (value: boolean) => void
 }
 
@@ -152,6 +154,30 @@ async function loadBranchesAndAutoSelect(
     set({ availableBranches: [], needsBranchSelection: false })
   }
 }
+
+/** Estado de "sin sesión": lo comparten `logout` y `endSession`. */
+const anonymousState = (): Partial<AuthState> => ({
+  isAuthenticated: false,
+  user: null,
+  tempToken: null,
+  mfaTicket: null,
+  availableTenants: null,
+  error: null,
+  plan: null,
+  enabledModules: [],
+  permissions: [],
+  overUserLimit: false,
+  capabilitiesLoaded: true,
+  currentBranch: null,
+  availableBranches: null,
+  needsBranchSelection: false,
+  businessVertical: 'RETAIL',
+  businessProfile: 'RETAIL',
+  posOperationMode: 'QUICK_SALE',
+  enabledFeatures: [],
+  businessFeatures: DEFAULT_BUSINESS_FEATURES,
+  tenantSuspended: false,
+})
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
@@ -304,33 +330,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
+  endSession: (notice) => {
+    clearAccessToken()
+    clearRefreshToken()
+    set({ ...anonymousState(), error: notice })
+  },
+
   logout: async () => {
     // El logout va antes de borrar nada: la petición necesita el access token
     // para autenticarse y el refresh token en el cuerpo para revocarse.
     await logoutApi().catch(() => {})
     clearAccessToken()
     clearRefreshToken()
-    set({
-      isAuthenticated: false,
-      user: null,
-      tempToken: null,
-      mfaTicket: null,
-      availableTenants: null,
-      error: null,
-      plan: null,
-      enabledModules: [],
-      permissions: [],
-      overUserLimit: false,
-      capabilitiesLoaded: true,
-      currentBranch: null,
-      availableBranches: null,
-      needsBranchSelection: false,
-      businessVertical: 'RETAIL',
-      businessProfile: 'RETAIL',
-      posOperationMode: 'QUICK_SALE',
-      enabledFeatures: [],
-      businessFeatures: DEFAULT_BUSINESS_FEATURES,
-      tenantSuspended: false,
-    })
+    set(anonymousState())
   },
 }))

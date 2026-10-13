@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useAuthStore } from '~/stores/session-store'
 import { useCashStore } from '~/stores/cash-store'
+import { MEMBERSHIP_REVOKED_EVENT, MEMBERSHIP_REVOKED_NOTICE } from '@web/lib/api-client'
 import { LoadingState } from '~/components/shared/StateBlock'
 import { NetworkStatusProvider } from './NetworkStatusProvider'
 
@@ -16,6 +17,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
   const capabilitiesLoaded = useAuthStore((s) => s.capabilitiesLoaded)
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const setTenantSuspended = useAuthStore((s) => s.setTenantSuspended)
+  const endSession = useAuthStore((s) => s.endSession)
   const resetCash = useCashStore((s) => s.reset)
   const [booted, setBooted] = useState(false)
 
@@ -30,6 +32,13 @@ export function AppProviders({ children }: { children: ReactNode }) {
     window.addEventListener('tenant:suspended', onSuspended)
     return () => window.removeEventListener('tenant:suspended', onSuspended)
   }, [setTenantSuspended])
+
+  // 403 MEMBERSHIP_INACTIVE: se le quitó el acceso a la empresa. Vuelve al login con el aviso.
+  useEffect(() => {
+    const onRevoked = () => endSession(MEMBERSHIP_REVOKED_NOTICE)
+    window.addEventListener(MEMBERSHIP_REVOKED_EVENT, onRevoked)
+    return () => window.removeEventListener(MEMBERSHIP_REVOKED_EVENT, onRevoked)
+  }, [endSession])
 
   // Al cerrar sesión, la caja del turno deja de tener sentido.
   useEffect(() => {
