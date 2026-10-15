@@ -2599,8 +2599,8 @@ model Device {
   branchId    String?      @map("branch_id")
   licenseId   String?      @map("license_id")
   deviceId    String       @map("device_id") // client-generated stable id / fingerprint
-  // Durable device credential — the app's principal. Returned once on activate
-  // and again on validate (keyed by deviceId). Revoked when status != ACTIVE.
+  // Durable device credential — the app's principal. Returned only by activate; validate
+  // takes it as proof of possession and never repeats it. Revoked when status != ACTIVE.
   // Designed to also back future offline operation / local validation.
   deviceToken String?      @unique @map("device_token")
   name        String?

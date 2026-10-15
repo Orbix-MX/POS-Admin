@@ -23,9 +23,9 @@ export class DevicesController {
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @Post('validate')
-  @ApiOperation({ summary: 'Validate this device on app start (registered? tenant/branch/token/license)' })
+  @ApiOperation({ summary: 'Validate this device on app start (registered? tenant/branch/license)' })
   validate(@Body() dto: ValidateDeviceDto) {
-    return this.devicesService.validate(dto.deviceId, dto.appVersion);
+    return this.devicesService.validate(dto.deviceId, dto.deviceToken, dto.appVersion);
   }
 
   @Public()

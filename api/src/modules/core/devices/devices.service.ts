@@ -39,7 +39,7 @@ export interface BranchSummary { id: string; name: string }
  * Device registry + device-as-principal validation for the comandera.
  *
  * The device is the durable principal: it holds an opaque `deviceToken` (issued
- * on activate, re-returned on validate) used to authenticate the app and, later,
+ * on activate, never repeated by validate) used to authenticate the app and, later,
  * for offline operation. Per-operator identity comes from the PIN (StaffModule).
  */
 @Injectable()
@@ -85,13 +85,22 @@ export class DevicesService {
   // ─── Boot: validate this device ──────────────────────────────────────────────
   /**
    * Called on app start with the device's stable id. Returns whether it is a
-   * registered, ACTIVE device and (if so) its tenant/branch/token + live license
-   * status so the app can decide: PIN screen vs activation screen.
+   * registered, ACTIVE device and (if so) its tenant/branch + live license status so
+   * the app can decide: PIN screen vs activation screen. The caller proves it is that
+   * device by sending its `deviceToken`; the token is never returned.
    */
-  async validate(deviceId: string, appVersion?: string) {
-    const device = await this.prisma.device.findFirst({ where: { deviceId } });
+  async validate(deviceId: string, deviceToken: string | undefined, appVersion?: string) {
+    // @odd credenciales-de-dispositivo T-002/T-004: el dispositivo prueba que posee el token. La
+    // búsqueda es por el token (único), así que queda acotada a su empresa, y un token que no
+    // corresponde a este `deviceId` responde igual que un dispositivo desconocido. El token nunca
+    // se devuelve: solo `activate` lo entrega.
+    // Sin token (app anterior a este campo) NO es un 400: la app lo leería como "sin red" y arrancaría
+    // desde su caché sin comprobar la licencia. `registered:false` la lleva a la pantalla de activación.
+    if (!deviceToken) return { registered: false as const };
 
-    if (!device || device.status !== 'ACTIVE' || !device.deviceToken) {
+    const device = await this.prisma.device.findUnique({ where: { deviceToken } });
+
+    if (!device || device.status !== 'ACTIVE' || device.deviceId !== deviceId) {
       return { registered: false as const };
     }
 
@@ -110,7 +119,6 @@ export class DevicesService {
       registered: true as const,
       tenant,
       branch,
-      deviceToken: device.deviceToken,
       licenseStatus,
     };
   }
@@ -247,8 +255,25 @@ export class DevicesService {
 
   // ─── Admin management (web) ───────────────────────────────────────────────────
   async list(tenantId: string) {
+    // @odd credenciales-de-dispositivo T-001: `select` explícito. El `deviceToken` es la credencial
+    // del dispositivo y `settings:view` es un permiso de lectura: un campo nuevo en la tabla no debe
+    // salir por aquí solo por existir.
     return this.prisma.device.findMany({
       where: { tenantId },
+      select: {
+        id: true,
+        branchId: true,
+        licenseId: true,
+        deviceId: true,
+        name: true,
+        model: true,
+        os: true,
+        appVersion: true,
+        type: true,
+        status: true,
+        lastSeenAt: true,
+        activatedAt: true,
+      },
       orderBy: [{ status: 'asc' }, { lastSeenAt: 'desc' }],
     });
   }
