@@ -62,6 +62,7 @@ function build({ registers = [{ id: 'reg-1', name: 'Caja 1' }], liveSession = nu
     { log: jest.fn() } as never,
     { assertCanOpenCashSession: jest.fn(), getCashSessionCapacity: jest.fn() } as never,
     { get: () => 'test-secret' } as never,
+    { assertNotLocked: jest.fn(), registerFailure: jest.fn(), registerSuccess: jest.fn() } as never,
   );
 
   return { service, sessionCreate, registerCreate, prisma };

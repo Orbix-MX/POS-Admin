@@ -50,6 +50,7 @@ function build(movements: Movement[], opening = 500, openingUsd = 0) {
     { log: jest.fn() } as never,
     { assertCanOpenCashSession: jest.fn(), getCashSessionCapacity: jest.fn() } as never,
     { get: () => 'test-secret' } as never,
+    { assertNotLocked: jest.fn(), registerFailure: jest.fn(), registerSuccess: jest.fn() } as never,
   );
 
   return { service, create };

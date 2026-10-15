@@ -58,6 +58,8 @@ export class CashSessionsController {
   // dentro (permiso propio del usuario, o PIN de un empleado que lo tenga), así
   // que nadie sin respaldo llega a ejecutar la operación.
   @NoPermissionsRequired()
+  // El ThrottlerGuard global ya aplica este límite: añadir @UseGuards(ThrottlerGuard) lo contaría dos veces.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Patch(':id/start-count')
   @ApiOperation({ summary: 'Congelar la caja para arquear (ABIERTA → EN_ARQUEO)' })
   startCount(@Param('id') id: string, @Body() dto?: AuthorizePinDto) {
@@ -68,6 +70,8 @@ export class CashSessionsController {
   // mismo PIN— que congelarla: si no, un cajero sin permiso dejaría la caja
   // parada sin poder devolverla a operación.
   @NoPermissionsRequired()
+  // El ThrottlerGuard global ya aplica este límite: añadir @UseGuards(ThrottlerGuard) lo contaría dos veces.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Patch(':id/resume')
   @ApiOperation({ summary: 'Volver a operar tras un arqueo de control (EN_ARQUEO → ABIERTA)' })
   resumeOperation(@Param('id') id: string, @Body() dto?: AuthorizePinDto) {
@@ -114,6 +118,8 @@ export class CashSessionsController {
   // dentro (permiso propio del usuario, o PIN de un empleado que lo tenga), así
   // que nadie sin respaldo llega a ejecutar la operación.
   @NoPermissionsRequired()
+  // El ThrottlerGuard global ya aplica este límite: añadir @UseGuards(ThrottlerGuard) lo contaría dos veces.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('active/count')
   @ApiOperation({ summary: 'Registrar arqueo físico sobre la caja abierta (parcial o final)' })
   createCount(@Body() dto: CreateCashCountDto) {
@@ -171,6 +177,8 @@ export class CashSessionsController {
   // dentro (permiso propio del usuario, o PIN de un empleado que lo tenga), así
   // que nadie sin respaldo llega a ejecutar la operación.
   @NoPermissionsRequired()
+  // El ThrottlerGuard global ya aplica este límite: añadir @UseGuards(ThrottlerGuard) lo contaría dos veces.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Patch(':id/close')
   @ApiOperation({ summary: 'Cerrar sesión de caja (corte)' })
   close(@Param('id') id: string, @Body() dto: CloseCashSessionDto) {

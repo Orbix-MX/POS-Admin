@@ -88,6 +88,7 @@ function build(opts: BuildOpts = {}) {
     { log: auditLog } as never,
     { assertCanOpenCashSession: jest.fn(), getCashSessionCapacity: jest.fn() } as never,
     { get: () => 'test-secret' } as never,
+    { assertNotLocked: jest.fn(), registerFailure: jest.fn(), registerSuccess: jest.fn() } as never,
   );
 
   return { service, updateMany, update, countCreate, auditLog };

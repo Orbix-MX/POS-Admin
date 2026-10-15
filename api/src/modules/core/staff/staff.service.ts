@@ -8,6 +8,7 @@ import { DevicesService } from '../devices/devices.service';
 import { EffectivePermissionsService } from '../../../common/services/effective-permissions.service';
 import { PermissionCacheService } from '../../../common/cache/permission-cache.service';
 import { AuditService } from '../../../common/services/audit.service';
+import { PinAttemptService, type PinAttemptScopeName } from '../../../common/services/pin-attempt.service';
 import { getModulesForPlan, getAllowedModulesForVertical } from '@orbix/types';
 
 /**
@@ -18,6 +19,9 @@ import { getModulesForPlan, getAllowedModulesForVertical } from '@orbix/types';
  * behaves the same regardless of which client minted it.
  */
 const OPERATOR_TOKEN_TTL = '12h';
+
+/** Quien intenta el PIN (y a quien se le cuenta el fallo): ver `PinAttemptService`. */
+type PinPrincipal = { scope: PinAttemptScopeName; key: string };
 
 /**
  * Operative PIN login. The DEVICE is the principal (validated via deviceToken);
@@ -35,11 +39,25 @@ export class StaffService {
     private readonly effectivePermissions: EffectivePermissionsService,
     private readonly permissionCache: PermissionCacheService,
     private readonly audit: AuditService,
+    private readonly pinAttempts: PinAttemptService,
   ) {}
 
   private hashPin(tenantId: string, pin: string): string {
     const pepper = process.env.STAFF_PIN_PEPPER ?? this.config.get<string>('jwt.secret') ?? 'orbix';
     return createHash('sha256').update(`${tenantId}:${pin}:${pepper}`).digest('hex');
+  }
+
+  /**
+   * Quién prueba PINs desde una sesión de usuario. Es la misma clave que usan las autorizaciones de caja,
+   * así que cambiar de endpoint no multiplica los intentos. Sin identidad no se evalúa ningún PIN.
+   *
+   * El `userId` lo trae el controlador del token (`@CurrentUser`), no `AuditContextService`: `DatabaseModule`
+   * declara una segunda instancia de ese servicio y, según el módulo, la inyectada es la que el interceptor
+   * nunca llena (`getUserId()` devolvía `undefined` y todo PIN se rechazaba).
+   */
+  private sessionPrincipal(userId: string | undefined): PinPrincipal {
+    if (!userId) throw new UnauthorizedException({ code: 'PIN_INVALID', message: 'PIN incorrecto.' });
+    return { scope: 'USER', key: userId };
   }
 
   /** Device-principal PIN login. Returns operator identity, permissions, and available branches. */
@@ -48,7 +66,11 @@ export class StaffService {
     const { device, tenantId } = await this.devicesService.authorizeByToken(deviceToken);
     // Mobile: no explicit branch is requested — the device scope + employee
     // primary branch resolve the default. Identical token minting as web.
-    return this.buildOperatorSession(tenantId, pin, { deviceBranchId: device.branchId });
+    // @odd bloqueo-por-intentos-de-pin T-002: el tope de intentos es del dispositivo que prueba PINs.
+    return this.buildOperatorSession(tenantId, pin, {
+      deviceBranchId: device.branchId,
+      principal: { scope: 'DEVICE', key: device.id },
+    });
   }
 
   /**
@@ -61,8 +83,11 @@ export class StaffService {
    * where web only knew a client-side PIN. `branchId` is validated against the
    * operator's available branches.
    */
-  async operatorLogin(tenantId: string, pin: string, branchId: string) {
-    return this.buildOperatorSession(tenantId, pin, { requestedBranchId: branchId });
+  async operatorLogin(tenantId: string, pin: string, branchId: string, userId: string) {
+    return this.buildOperatorSession(tenantId, pin, {
+      requestedBranchId: branchId,
+      principal: this.sessionPrincipal(userId),
+    });
   }
 
   /**
@@ -78,8 +103,11 @@ export class StaffService {
   private async buildOperatorSession(
     tenantId: string,
     pin: string,
-    opts: { deviceBranchId?: string | null; requestedBranchId?: string },
+    opts: { deviceBranchId?: string | null; requestedBranchId?: string; principal: PinPrincipal },
   ) {
+    // Antes de mirar el PIN: un principal en espera no puede seguir probando, ni siquiera con el correcto.
+    await this.pinAttempts.assertNotLocked(opts.principal.scope, opts.principal.key);
+
     const employee = await this.prisma.employee.findFirst({
       where: { tenantId, pinHash: this.hashPin(tenantId, pin), status: 'ACTIVE' },
       include: {
@@ -89,8 +117,10 @@ export class StaffService {
     });
 
     if (!employee) {
+      await this.pinAttempts.registerFailure(opts.principal.scope, opts.principal.key);
       throw new UnauthorizedException({ code: 'PIN_INVALID', message: 'PIN incorrecto.' });
     }
+    await this.pinAttempts.registerSuccess(opts.principal.scope, opts.principal.key);
 
     const permissions = employee.role?.permissions.map((rp) => rp.permission.key) ?? [];
 
@@ -181,14 +211,19 @@ export class StaffService {
    * web comanda can attribute dining orders to a waiter (Employee). The caller is
    * already authenticated as a user; the PIN just selects the operating waiter.
    */
-  async verifyPin(tenantId: string, pin: string) {
+  async verifyPin(tenantId: string, pin: string, userId: string) {
+    const principal = this.sessionPrincipal(userId);
+    await this.pinAttempts.assertNotLocked(principal.scope, principal.key);
+
     const employee = await this.prisma.employee.findFirst({
       where: { tenantId, pinHash: this.hashPin(tenantId, pin), status: 'ACTIVE' },
       select: { id: true, firstName: true, lastName: true, employeeNumber: true },
     });
     if (!employee) {
+      await this.pinAttempts.registerFailure(principal.scope, principal.key);
       throw new UnauthorizedException({ code: 'PIN_INVALID', message: 'PIN incorrecto.' });
     }
+    await this.pinAttempts.registerSuccess(principal.scope, principal.key);
     return { employee };
   }
 

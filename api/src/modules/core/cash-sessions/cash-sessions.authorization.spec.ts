@@ -61,6 +61,7 @@ function build({ userPermissions = [], userRole = 'STAFF', employee = null }: Op
     { log: jest.fn() } as never,
     { assertCanOpenCashSession: jest.fn(), getCashSessionCapacity: jest.fn() } as never,
     { get: () => 'irrelevante' } as never,
+    { assertNotLocked: jest.fn(), registerFailure: jest.fn(), registerSuccess: jest.fn() } as never,
   );
 
   // `resolveCashAuthorizer` es privado: se ejerce por su superficie real.

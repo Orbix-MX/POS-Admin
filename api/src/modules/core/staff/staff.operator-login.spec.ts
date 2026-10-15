@@ -73,6 +73,7 @@ function buildService(overrides: {
     effectivePermissions as never,
     permissionCache as never,
     { log: jest.fn() } as never,
+    { assertNotLocked: jest.fn(), registerFailure: jest.fn(), registerSuccess: jest.fn() } as never,
   );
 
   return { service, prisma, jwtService, devicesService };
@@ -82,7 +83,7 @@ describe('StaffService.operatorLogin — identidad de operador en web', () => {
   it('emite un JWT operator con sub = employee.id, tenantId y branchId solicitado', async () => {
     const { service, jwtService } = buildService();
 
-    const result = await service.operatorLogin(TENANT, '1234', BRANCH);
+    const result = await service.operatorLogin(TENANT, '1234', BRANCH, 'user-1');
 
     const claims = jwtService.verify(result.accessToken);
     expect(claims).toEqual(
@@ -102,13 +103,13 @@ describe('StaffService.operatorLogin — identidad de operador en web', () => {
 
   it('el token es del MISMO tipo que el de mobile (typ:operator) — paridad de auth', async () => {
     const { service, jwtService } = buildService();
-    const { accessToken } = await service.operatorLogin(TENANT, '1234', BRANCH);
+    const { accessToken } = await service.operatorLogin(TENANT, '1234', BRANCH, 'user-1');
     expect(jwtService.verify(accessToken).typ).toBe('operator');
   });
 
   it('expira (claim exp presente) — sesión acotada al turno', async () => {
     const { service, jwtService } = buildService();
-    const { accessToken } = await service.operatorLogin(TENANT, '1234', BRANCH);
+    const { accessToken } = await service.operatorLogin(TENANT, '1234', BRANCH, 'user-1');
     const claims: { exp: number; iat: number } = jwtService.verify(accessToken);
     expect(claims.exp).toBeGreaterThan(claims.iat);
     // 12h ± margen.
@@ -117,7 +118,7 @@ describe('StaffService.operatorLogin — identidad de operador en web', () => {
 
   it('rechaza PIN inválido con PIN_INVALID y no emite token', async () => {
     const { service } = buildService({ employee: null });
-    await expect(service.operatorLogin(TENANT, '9999', BRANCH)).rejects.toBeInstanceOf(
+    await expect(service.operatorLogin(TENANT, '9999', BRANCH, 'user-1')).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
   });
@@ -128,7 +129,7 @@ describe('StaffService.operatorLogin — identidad de operador en web', () => {
       availableBranches: [{ id: BRANCH, name: 'Matriz' }],
     });
 
-    const promise = service.operatorLogin(TENANT, '1234', OTHER_BRANCH);
+    const promise = service.operatorLogin(TENANT, '1234', OTHER_BRANCH, 'user-1');
     await expect(promise).rejects.toBeInstanceOf(BadRequestException);
     await expect(promise).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'BRANCH_NOT_ALLOWED' }),
@@ -139,7 +140,7 @@ describe('StaffService.operatorLogin — identidad de operador en web', () => {
 
   it('usa el tenantId de la sesión, no del body — busca al empleado en ese tenant', async () => {
     const { service, prisma } = buildService();
-    await service.operatorLogin(TENANT, '1234', BRANCH);
+    await service.operatorLogin(TENANT, '1234', BRANCH, 'user-1');
     expect(prisma.employee.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ tenantId: TENANT, status: 'ACTIVE' }) }),
     );

@@ -22,6 +22,7 @@ import {
   requireOpenSession,
 } from '../../../common/helpers/cash-session.helper';
 import { AuditService } from '../../../common/services/audit.service';
+import { PinAttemptService } from '../../../common/services/pin-attempt.service';
 import { PlanLimitsService } from '../../../common/services/plan-limits.service';
 
 const CASH_INCOME_TYPES = ['SALE', 'CXC_PAYMENT', 'INCOME'] as const;
@@ -95,6 +96,7 @@ export class CashSessionsService {
     private audit: AuditService,
     private planLimits: PlanLimitsService,
     private configService: ConfigService,
+    private pinAttempts: PinAttemptService,
   ) {}
 
   async open(dto: OpenCashSessionDto) {
@@ -769,6 +771,17 @@ export class CashSessionsService {
       });
     }
 
+    // @odd bloqueo-por-intentos-de-pin T-003: el tope de intentos es de quien prueba PINs, y es el mismo
+    // contador que el de operatorLogin/verifyPin (cambiar de endpoint no multiplica los intentos). Sin
+    // identidad no se evalúa ningún PIN.
+    if (!userId) {
+      throw new ForbiddenException({
+        code: 'AUTHORIZATION_INVALID',
+        message: 'PIN incorrecto o sin permiso para autorizar esta operación.',
+      });
+    }
+    await this.pinAttempts.assertNotLocked('USER', userId);
+
     const employee = await this.prisma.employee.findFirst({
       where: { tenantId, pinHash: this.hashPin(tenantId, pin), status: 'ACTIVE' },
       select: {
@@ -784,11 +797,13 @@ export class CashSessionsService {
     const authorized =
       employee?.role?.permissions.some((rp) => rp.permission.key === permission) ?? false;
     if (!employee || !authorized) {
+      await this.pinAttempts.registerFailure('USER', userId);
       throw new ForbiddenException({
         code: 'AUTHORIZATION_INVALID',
         message: 'PIN incorrecto o sin permiso para autorizar esta operación.',
       });
     }
+    await this.pinAttempts.registerSuccess('USER', userId);
 
     return { id: employee.id, firstName: employee.firstName, lastName: employee.lastName };
   }

@@ -54,6 +54,7 @@ function summaryService(): CashSessionsService {
     { log: jest.fn() } as never,
     {} as never,
     { get: () => 'secret' } as never,
+    { assertNotLocked: jest.fn(), registerFailure: jest.fn(), registerSuccess: jest.fn() } as never,
   );
 }
 
@@ -193,6 +194,7 @@ describe('B · bitácora de relevos — quién estuvo en la caja', () => {
       { log: jest.fn() } as never,
       {} as never,
       { get: () => 'secret' } as never,
+      { assertNotLocked: jest.fn(), registerFailure: jest.fn(), registerSuccess: jest.fn() } as never,
     );
 
     return { service, update, create, findFirstSession };

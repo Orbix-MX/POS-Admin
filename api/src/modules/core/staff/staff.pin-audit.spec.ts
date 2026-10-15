@@ -41,6 +41,7 @@ function buildService() {
     effectivePermissions as never,
     permissionCache as never,
     audit as never,
+    { assertNotLocked: jest.fn(), registerFailure: jest.fn(), registerSuccess: jest.fn() } as never,
   );
 
   return { service, audit, prisma, effectivePermissions };

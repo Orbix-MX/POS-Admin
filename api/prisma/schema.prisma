@@ -2867,6 +2867,30 @@ model PlanUpgradeRequest {
   @@map("plan_upgrade_requests")
 }
 
+/// Quién intenta un PIN: el dispositivo (login por PIN) o la sesión de usuario (operador, verificación y
+/// autorizaciones de caja; el contador es el mismo para todas esas superficies).
+enum PinAttemptScope {
+  DEVICE
+  USER
+}
+
+/// Intentos fallidos de PIN por quien los hace, no por empleado: el PIN identifica al empleado él solo, así
+/// que un fallo no tiene empleado al que contarse. Sin FK (la clave es polimórfica); una fila por principal.
+model PinAttempt {
+  id           String          @id @default(uuid())
+  scope        PinAttemptScope
+  /// deviceId (DEVICE) o userId (USER).
+  scopeKey     String          @map("scope_key")
+  attempts     Int             @default(0)
+  lockedUntil  DateTime?       @map("locked_until")
+  lastFailedAt DateTime        @default(now()) @map("last_failed_at")
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  @@unique([scope, scopeKey])
+  @@map("pin_attempts")
+}
+
 model PasswordResetToken {
   id        String    @id @default(uuid())
   userId    String

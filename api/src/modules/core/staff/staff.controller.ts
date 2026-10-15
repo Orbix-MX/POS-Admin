@@ -5,6 +5,7 @@ import { StaffService } from './staff.service';
 import { PinLoginDto, AssignPinDto, VerifyPinDto, OperatorLoginDto } from './dto/staff.dto';
 import { Public } from '../../../common/decorators/public.decorator';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
+import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 
 @ApiTags('Staff')
@@ -33,8 +34,8 @@ export class StaffController {
   @RequirePermissions('comanda:view')
   @Post('pin-verify')
   @ApiOperation({ summary: 'Verify an operative PIN and return the employee (no token)' })
-  verifyPin(@Body() dto: VerifyPinDto) {
-    return this.staffService.verifyPin(this.tenantContext.requireTenantId(), dto.pin);
+  verifyPin(@Body() dto: VerifyPinDto, @CurrentUser('id') userId: string) {
+    return this.staffService.verifyPin(this.tenantContext.requireTenantId(), dto.pin, userId);
   }
 
   // Operator login under a user session: mints an operator JWT for the waiter so
@@ -47,8 +48,8 @@ export class StaffController {
   @RequirePermissions('comanda:view')
   @Post('operator-login')
   @ApiOperation({ summary: 'Operator PIN login under a user session — mints an operator JWT (web parity with mobile)' })
-  operatorLogin(@Body() dto: OperatorLoginDto) {
-    return this.staffService.operatorLogin(this.tenantContext.requireTenantId(), dto.pin, dto.branchId);
+  operatorLogin(@Body() dto: OperatorLoginDto, @CurrentUser('id') userId: string) {
+    return this.staffService.operatorLogin(this.tenantContext.requireTenantId(), dto.pin, dto.branchId, userId);
   }
 
   // ── Admin (web): manage employee PINs ────────────────────────────────────────

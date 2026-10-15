@@ -108,6 +108,7 @@ function build({ status = 'ABIERTA', movements = [], opening = 1000, threshold }
     { log: auditLog } as never,
     { assertCanOpenCashSession: jest.fn(), getCashSessionCapacity: jest.fn() } as never,
     { get: () => 'test-secret' } as never,
+    { assertNotLocked: jest.fn(), registerFailure: jest.fn(), registerSuccess: jest.fn() } as never,
   );
 
   return { service, prisma, state, update, auditLog };
@@ -307,6 +308,7 @@ describe('closeWithAuth — un autorizador inválido no desloguea al operador', 
       { log: jest.fn() } as never,
       { assertCanOpenCashSession: jest.fn(), getCashSessionCapacity: jest.fn() } as never,
       { get: () => 'test-secret' } as never,
+      { assertNotLocked: jest.fn(), registerFailure: jest.fn(), registerSuccess: jest.fn() } as never,
     );
     return { service };
   }
@@ -373,6 +375,7 @@ describe('closeWithAuth — permiso dedicado para autorizar', () => {
       { log: jest.fn() } as never,
       { assertCanOpenCashSession: jest.fn(), getCashSessionCapacity: jest.fn() } as never,
       { get: () => 'test-secret' } as never,
+      { assertNotLocked: jest.fn(), registerFailure: jest.fn(), registerSuccess: jest.fn() } as never,
     );
     return { service };
   }
@@ -433,6 +436,7 @@ describe('closeWithAuth — H-03: cuenta y membresía del autorizador', () => {
       { log: jest.fn() } as never,
       { assertCanOpenCashSession: jest.fn(), getCashSessionCapacity: jest.fn() } as never,
       { get: () => 'test-secret' } as never,
+      { assertNotLocked: jest.fn(), registerFailure: jest.fn(), registerSuccess: jest.fn() } as never,
     );
     return { service, userUpdate };
   }
