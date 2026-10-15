@@ -71,17 +71,24 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
   bootstrap: async () => {
     set({ phase: 'booting', error: null });
     const deviceId = await getOrCreateDeviceId();
+    // @odd credenciales-de-dispositivo T-003/T-004: el token guardado prueba que este equipo es el
+    // activado; el API ya no lo devuelve. Sin él no hay nada que validar: hay que activar de nuevo.
+    const token = await deviceStorage.getDeviceToken();
+    if (!token) {
+      set({ phase: 'unregistered' });
+      return;
+    }
     try {
-      const res = await validateDevice(deviceId, getAppVersion());
-      if (res.registered && res.deviceToken) {
-        setDeviceAuthToken(res.deviceToken);
-        await deviceStorage.saveCredentials(res.deviceToken, res.tenant ?? null, res.branch ?? null);
+      const res = await validateDevice(deviceId, token, getAppVersion());
+      if (res.registered) {
+        setDeviceAuthToken(token);
+        await deviceStorage.saveCredentials(token, res.tenant ?? null, res.branch ?? null);
 
         // Restore persisted active branch; validate it's still valid after full login
         const persistedBranch = await deviceStorage.getActiveBranch();
 
         set({
-          deviceToken: res.deviceToken,
+          deviceToken: token,
           tenant: res.tenant ?? null,
           branch: res.branch ?? null,
           licenseStatus: res.licenseStatus ?? null,
@@ -137,7 +144,7 @@ export const useDeviceStore = create<DeviceState>((set, get) => ({
       let tenant = get().tenant;
       try {
         const deviceId = await getOrCreateDeviceId();
-        const res = await validateDevice(deviceId, getAppVersion());
+        const res = await validateDevice(deviceId, deviceToken, getAppVersion());
         if (res.tenant) {
           tenant = res.tenant;
           await deviceStorage.saveCredentials(deviceToken, res.tenant, res.branch ?? get().branch);

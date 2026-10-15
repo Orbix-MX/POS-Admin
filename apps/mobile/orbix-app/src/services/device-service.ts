@@ -44,7 +44,6 @@ export interface ValidateResponse {
   registered: boolean;
   tenant?: DeviceTenant | null;
   branch?: DeviceBranch | null;
-  deviceToken?: string;
   licenseStatus?: LicenseStatus;
 }
 
@@ -64,8 +63,17 @@ export interface Operator {
   availableBranches: DeviceBranch[];
 }
 
-export async function validateDevice(deviceId: string, appVersion?: string): Promise<ValidateResponse> {
-  const { data } = await apiClient.post<ValidateResponse>('/devices/validate', { deviceId, appVersion });
+/**
+ * `deviceToken` is the proof that this device is the one that activated: the API does not hand the
+ * credential to whoever only knows the `deviceId`, and the response never repeats it.
+ * @odd credenciales-de-dispositivo T-003/T-004
+ */
+export async function validateDevice(
+  deviceId: string,
+  deviceToken: string,
+  appVersion?: string,
+): Promise<ValidateResponse> {
+  const { data } = await apiClient.post<ValidateResponse>('/devices/validate', { deviceId, appVersion, deviceToken });
   return data;
 }
 
