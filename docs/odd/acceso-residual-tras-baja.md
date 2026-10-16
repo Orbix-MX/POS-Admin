@@ -145,7 +145,7 @@ nada, pero la sesión no se cierra sola.
 | Hallazgo | Dónde | Gravedad aparente |
 |---|---|---|
 | Token de acceso de 1 día y claims `plan`/`enabledModules` viejos: T-001 deja de depender de ello, pero siguen afectando a los guards de módulo y plan | `jwt.config.ts`, `require-module.guard.ts` | Baja |
-| `removeMember` deja huérfanas las asignaciones de rol; si se vuelve a añadir (`addMember`, que tampoco invalida) recupera los roles de antes | `tenants.service.ts` l.382, l.400 | Media |
+| `removeMember` deja huérfanas las asignaciones de rol; si la persona vuelve a entrar (por invitación aceptada: `addMember` se retiró en A-1 de `aislamiento-de-cupones`) recupera los roles de antes | `tenants.service.ts` (`removeMember`) | Media |
 | La caché de permisos es por instancia: un cambio de rol tarda hasta 60 s en otras réplicas (C-009) | `permission-cache.store.ts` | Baja |
 | `apps/mobile/orbix-app` y `orbix-mobile(deprecated)` no se revisaron | `apps/mobile/*` | Por determinar |
 
