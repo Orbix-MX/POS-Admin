@@ -1,5 +1,5 @@
 ﻿import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { CouponsService } from './coupons.service';
 import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
@@ -15,6 +15,7 @@ describe('CouponsService', () => {
       findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
       delete: jest.fn(),
       count: jest.fn(),
     },
@@ -25,6 +26,7 @@ describe('CouponsService', () => {
     order: {
       count: jest.fn(),
     },
+    $executeRaw: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -295,20 +297,51 @@ describe('CouponsService', () => {
     });
   });
 
+  /** @odd aislamiento-de-cupones T-001/T-002 */
   describe('incrementUsage', () => {
-    it('should increment coupon usage count', async () => {
-      mockPrismaService.coupon.update.mockResolvedValue({});
+    const sqlOf = (call: unknown[]) => (call[0] as TemplateStringsArray).join('?');
+
+    it('suma un uso con UNA sentencia acotada por empresa y por cupo', async () => {
+      mockPrismaService.$executeRaw.mockResolvedValue(1);
 
       await service.incrementUsage('1');
 
-      expect(mockPrismaService.coupon.update).toHaveBeenCalledWith({
-        where: { id: '1' },
-        data: {
-          usageCount: {
-            increment: 1,
-          },
-        },
+      const call = mockPrismaService.$executeRaw.mock.calls[0];
+      const sql = sqlOf(call);
+      expect(sql).toContain('"tenantId" =');
+      expect(sql).toContain('"usageCount" < "usageLimit"');
+      expect(sql).toContain('"usageLimit" IS NULL');
+      expect(call.slice(1)).toEqual(['1', 'tenant-1']); // id y tenantId van como parámetros, no concatenados
+    });
+
+    it('con tx usa el cliente de la transacción y no el global', async () => {
+      const tx = { $executeRaw: jest.fn().mockResolvedValue(1) };
+
+      await service.incrementUsage('1', tx as never);
+
+      expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.$executeRaw).not.toHaveBeenCalled();
+    });
+
+    it('un cupón que no es de esta empresa no se toca y falla con NotFound', async () => {
+      mockPrismaService.$executeRaw.mockResolvedValue(0);
+      mockPrismaService.coupon.findFirst.mockResolvedValue(null);
+
+      await expect(service.incrementUsage('cupon-de-otra-empresa')).rejects.toThrow(NotFoundException);
+      expect(mockPrismaService.coupon.findFirst).toHaveBeenCalledWith({
+        where: { id: 'cupon-de-otra-empresa', tenantId: 'tenant-1' },
+        select: { id: true },
       });
+    });
+
+    it('un cupón de la empresa sin cupo responde 409 COUPON_EXHAUSTED', async () => {
+      mockPrismaService.$executeRaw.mockResolvedValue(0);
+      mockPrismaService.coupon.findFirst.mockResolvedValue({ id: '1' });
+
+      const err = await service.incrementUsage('1').catch((e) => e);
+
+      expect(err).toBeInstanceOf(ConflictException);
+      expect(err.getResponse()).toMatchObject({ statusCode: 409, code: 'COUPON_EXHAUSTED' });
     });
   });
 });

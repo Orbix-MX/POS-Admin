@@ -1,11 +1,11 @@
-﻿import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+﻿import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { TenantContextService } from '../../../common/context/tenant-context.service';
 import { CreateCouponDto } from './dto/create-coupon.dto';
 import { UpdateCouponDto } from './dto/update-coupon.dto';
 import { QueryCouponDto } from './dto/query-coupon.dto';
 import { ValidateCouponDto } from './dto/validate-coupon.dto';
-import { Coupon } from '@prisma/client';
+import { Coupon, Prisma } from '@prisma/client';
 
 @Injectable()
 export class CouponsService {
@@ -192,10 +192,35 @@ export class CouponsService {
     return { valid: true, message: 'Cupón válido', coupon, discountAmount };
   }
 
-  async incrementUsage(id: string): Promise<void> {
-    await this.prisma.coupon.update({
-      where: { id },
-      data: { usageCount: { increment: 1 } },
+  /**
+   * Suma un uso al cupón. Solo lo llama el cobro de una orden (`OrdersService`), nunca un endpoint.
+   *
+   * @odd aislamiento-de-cupones T-001/T-002
+   *  - T-001: antes `update({ where: { id } })` sin `tenantId` (C-002) y expuesto por HTTP con un permiso de
+   *    lectura: una empresa agotaba los cupones de otra. Ahora la fila es `{ id, tenantId }`.
+   *  - T-002: el límite se valida al inicio de la orden y se consume al final, así que dos órdenes simultáneas
+   *    podían pasar ambas y superar `usageLimit`. El incremento es UNA sentencia que solo suma si queda cupo; sin
+   *    cupo, la orden se rechaza (`COUPON_EXHAUSTED`) y, al ir en su transacción (`tx`), no deja nada a medias. Y
+   *    si la orden se revierte por otro motivo, el uso tampoco se gasta.
+   */
+  async incrementUsage(id: string, tx?: Prisma.TransactionClient): Promise<void> {
+    const tenantId = this.tenantContext.requireTenantId();
+    const db = tx ?? this.prisma;
+
+    const updated = await db.$executeRaw`
+      UPDATE "coupons"
+         SET "usageCount" = "usageCount" + 1, "updatedAt" = NOW()
+       WHERE "id" = ${id} AND "tenantId" = ${tenantId}
+         AND ("usageLimit" IS NULL OR "usageCount" < "usageLimit")`;
+    if (updated > 0) return;
+
+    // 0 filas: o no es de esta empresa (o no existe), o ya no queda cupo.
+    const exists = await db.coupon.findFirst({ where: { id, tenantId }, select: { id: true } });
+    if (!exists) throw new NotFoundException('Cupón no encontrado');
+    throw new ConflictException({
+      statusCode: 409,
+      code: 'COUPON_EXHAUSTED',
+      message: 'El cupón se agotó antes de completar la venta.',
     });
   }
 

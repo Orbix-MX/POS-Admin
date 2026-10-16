@@ -74,13 +74,4 @@ export class CouponsController {
   validateCoupon(@Body() validateDto: ValidateCouponDto) {
     return this.couponsService.validateCoupon(validateDto);
   }
-
-  @Post(':id/increment-usage')
-  @ApiBearerAuth()
-  @RequirePermissions('coupons:view')
-  @ApiOperation({ summary: 'Increment coupon usage count' })
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async incrementUsage(@Param('id') id: string) {
-    await this.couponsService.incrementUsage(id);
-  }
 }

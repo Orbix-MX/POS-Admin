@@ -496,7 +496,9 @@ export class OrdersService {
       }
 
       if (couponId) {
-        await this.couponsService.incrementUsage(couponId);
+        // @odd aislamiento-de-cupones T-002: con `tx`, para que una orden revertida no gaste el uso; y rechaza
+        // la orden si el cupón se agotó entre validarlo y cobrar.
+        await this.couponsService.incrementUsage(couponId, tx);
       }
 
       if (customerId) {
