@@ -155,6 +155,42 @@ Los 16 agujeros son **12 causas**, más un hallazgo de paso. Casi todos exigen c
 | R2-001 | legibilidad | WARNING | fixed | fila de `acceso-residual-tras-baja` desfasada por el `addMember` retirado |
 | R2-002 | legibilidad | WARNING | fixed | "13 correcciones" no se derivaba de ninguna fila; ahora "A-1 hecha; 12 pendientes" |
 
+**A-3 y A-4 — hecho** (commit `b6f7583`; compras). Evidencia:
+- **Código:** `purchases.service.ts` — `create` y `update` (rama con y sin líneas) validan el proveedor y los productos de la empresa
+  (404); `receive` valida el `branchId` del body con `assertBranchBelongs` (404), **revalida las variantes guardadas en la orden** y
+  lleva `tenantId` en las escrituras (`product.updateMany`, `supplier.updateMany`): una orden ya guardada con un producto, un
+  proveedor o una variante ajenos no puede tocarlos y la recepción entera se revierte. La validación de productos es ahora un
+  **helper compartido** (`common/helpers/assert-products-belong.ts`), que sustituye las dos copias de restaurante y sucursales
+  (mismo 404 y mismo mensaje); compras adopta ese mismo 404 en lugar de un 400 propio.
+- **Test unitario (corre en el CI):** `purchases.tenant-isolation.spec.ts` (7).
+- **Test contra la base real:** `api/test/purchases-isolation.e2e-spec.ts` (10, dos empresas): proveedor/producto ajeno al crear, editar con
+  líneas válidas (camino legítimo), editar con proveedor ajeno solo, con líneas ajenas y con ambos a la vez, sucursal ajena, orden
+  envenenada con producto, con proveedor y con variante ajenos, y la recepción parcial + el resto, con sus huellas (recibos, movimientos,
+  inventario por sucursal, cuenta por pagar, totales del proveedor). Comprobado por mutación: sin el `tenantId` del proveedor fallan
+  2 pruebas; sin el proveedor en la validación de la rama con líneas, 1.
+- **Runtime (C-021):** `a3-verify.cjs`, 13/13 con la API arrancada (proveedor y producto ajenos 404, sucursal ajena 404, el flujo propio
+  crea, envía y recibe con el stock 10 → 14, y nada de la empresa víctima cambia).
+- **Honestidad sobre la evidencia:** (1) los e2e de `api/test` **no corren en el CI** (no tiene base de datos): se ejecutan a mano con
+  `jest --config test/jest-e2e.json`; vale también para los de PIN, cupones y cuenta compartida. (2) Los `*-verify.cjs` viven en el
+  scratchpad de la sesión y **no están en el repo**; la evidencia repetible son los e2e.
+
+**Ledger 4R de A-3/A-4**
+
+| id | lente | severidad | estado | evidencia |
+|---|---|---|---|---|
+| R1 | riesgo | — | sin CRITICAL | todos los accesos por id llevan `tenantId`; no hay otro id del body sin validar; ningún otro módulo crea órdenes de compra; los 404 no distinguen "no existe" de "es de otra empresa" |
+| R1-001 | riesgo | WARNING | fixed | una orden vieja con variante ajena pasaba la recepción; ahora se revalida y el e2e lo cubre |
+| R4 | resiliencia | — | ledger vacío | ningún cliente envía ids ajenos (el web usa selectores de la empresa y no manda `branchId`); el web muestra los errores; ninguna orden legítima falla; la recepción es atómica |
+| R3-001 | fiabilidad | CRITICAL | wont-fix | el e2e no corre en el CI (sin base de datos): decisión de infraestructura; se mitiga con el spec unitario y queda declarado arriba |
+| R3-002 | fiabilidad | CRITICAL | fixed | sin `tenantId` en el `updateMany` del proveedor no fallaba nada; ahora el e2e de la orden con proveedor ajeno lo detecta (mutación comprobada) |
+| R3-003 | fiabilidad | CRITICAL | fixed | editar con líneas y proveedor ajeno a la vez no se probaba; ahora sí (e2e y unitario) |
+| R3-004 | fiabilidad | CRITICAL | fixed | los caminos legítimos no tenían test: editar con líneas propias, crear con variante, recepción parcial y el resto |
+| R3-005 | fiabilidad | WARNING | fixed | limpieza frágil: ahora `try/finally`, protegida si `beforeAll` falla y con barrido previo de restos por el prefijo `e2e-compras-` |
+| R2-001 | legibilidad | CRITICAL | fixed | tercera copia de "productos de la empresa" con otro código de error; unificada en `assertProductsBelong` |
+| R2-002 | legibilidad | CRITICAL | fixed | el ODD citaba `a3-verify.cjs` como si estuviera en el repo; se declara que vive en el scratchpad de la sesión |
+| R2-003 | legibilidad | WARNING | fixed | el docblock del e2e decía "cae en cascada" y la limpieza era manual |
+| R2-004 | legibilidad | WARNING | info | `assertOwnedRefs` usa `this.prisma` fuera de la transacción en un caso y `tx` en otros: sin efecto |
+
 **Done cuando:** cada agujero tiene su prueba de dos empresas (antes: efecto; después: 404/409) y su commit; los puntos de
 endurecimiento están corregidos o declarados. **Rollback:** por commit. **Commit:**
 
@@ -166,7 +202,7 @@ endurecimiento están corregidos o declarados. **Rollback:** por commit. **Commi
 |---|---|---|---|---|---|
 | T-001 | completo | done    | inline | ~25 + tests | 8f2233f |
 | T-002 | completo | done    | inline | ~60 + tests | 8f2233f |
-| T-003 | completo | doing   | delegado | A-1 hecha; 12 pendientes | 02938e8, c8d51ea |
+| T-003 | completo | doing   | delegado | A-1, A-3 y A-4 hechas; 10 pendientes | 02938e8, c8d51ea, b6f7583 |
 
 **Entrega:** ~300 previstas · umbral ~400. **T-003 puede superar el umbral:** sus correcciones salen por commits
 aparte, uno por agujero, y se decide al ver cuántos hay.
@@ -175,7 +211,7 @@ aparte, uno por agujero, y se decide al ver cuántos hay.
 
 **Despliegue:** sin migración y sin clientes afectados; se confirma con `grep` en web, POS web y móvil antes de subir.
 
-**Siguiente paso:** A-3 y A-4 (compras), luego A-2 (caja) y el lote A-5 a A-12.
+**Siguiente paso:** A-2 (caja) y el lote A-5 a A-12.
 
 ---
 
@@ -194,6 +230,8 @@ aparte, uno por agujero, y se decide al ver cuántos hay.
 | No hay una defensa estructural contra el olvido de `tenantId` (p. ej. una extensión de Prisma que lo exija en los modelos tenant-owned): cada consulta depende de que alguien se acuerde | `database/prisma.service.ts` | Media: es la causa de este tipo de hallazgo |
 | No existe edición del **perfil propio** (email y nombre): una persona con cuenta compartida solo puede cambiarlos si tiene `users:edit` o con el soporte de Orbix. Falta un `PATCH /auth/me` con verificación del nuevo correo | `auth.controller.ts` | Media (la regla de A-1 la deja sin salida propia) |
 | El email se compara sensible a mayúsculas en `users.update` y `users.create` (`Bob@x.com` frente a `bob@x.com` crearía otra cuenta); solo el login con Google normaliza | `users.service.ts` | Baja |
+| `receive` valida la cantidad pendiente fuera de la transacción: dos recepciones simultáneas de la misma orden podrían pasarse | `purchases.service.ts` | Media (ya era así) |
+| Los e2e de `api/test` (PIN, cupones, cuenta compartida, compras) no corren en el CI porque no hay base de datos de pruebas | `.github/workflows/api-ci.yml` | Media (la red de aislamiento es manual) |
 | El `DatabaseModule` declara una segunda instancia de `AuditContextService` (C-003) | `database/database.module.ts` | Media (ver `bloqueo-por-intentos-de-pin`) |
 | En `validateCoupon` y `getAutoApplicableCoupons` el cliente ya se busca con `tenantId`; solo `order.count({ customerId, couponId })` (L132-133) no lo lleva, y es seguro porque el `couponId` viene de un cupón ya acotado por empresa | `coupons.service.ts` | Baja (lo revisará T-003) |
 | Cancelar o reembolsar una orden no devuelve el uso del cupón | `orders.service.ts` | Media (el cupón se agota antes de lo debido) |
