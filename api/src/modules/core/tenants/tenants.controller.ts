@@ -22,7 +22,6 @@ import { TenantsService } from './tenants.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { CreateTenantOnboardingDto } from './dto/onboard-tenant.dto';
-import { AddMemberDto } from './dto/add-member.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
@@ -185,12 +184,8 @@ export class TenantsController {
     return this.tenantsService.listMembers();
   }
 
-  @Post('current/members/:userId')
-  @RequirePermissions('users:create')
-  @ApiOperation({ summary: 'Add a user to the current tenant' })
-  addMember(@Param('userId') userId: string, @Body() dto: AddMemberDto) {
-    return this.tenantsService.addMember(userId, dto.role);
-  }
+  // Sin `POST current/members/:userId` (@odd aislamiento-de-cupones T-003 A-1): añadía a CUALQUIER usuario
+  // existente a esta empresa sin su consentimiento. Las altas van por invitación aceptada (ADR-0031).
 
   @Delete('current/members/:userId')
   @HttpCode(HttpStatus.NO_CONTENT)

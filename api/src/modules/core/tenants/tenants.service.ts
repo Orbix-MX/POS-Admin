@@ -2,7 +2,6 @@
   Injectable,
   NotFoundException,
   ConflictException,
-  BadRequestException,
 } from '@nestjs/common';
 import sharp from 'sharp';
 import { PrismaService } from '../../../database/prisma.service';
@@ -47,7 +46,7 @@ import { getTemplatesForVertical } from '../roles/role-templates.constants';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { CreateTenantOnboardingDto, OnboardTenantResponseDto } from './dto/onboard-tenant.dto';
-import { Prisma, Tenant, TenantRole } from '@prisma/client';
+import { Prisma, Tenant } from '@prisma/client';
 
 export type RestaurantServiceMode = 'TABLE_SERVICE' | 'COUNTER_SERVICE' | 'HYBRID';
 
@@ -353,40 +352,6 @@ export class TenantsService {
   async remove(id: string): Promise<void> {
     await this.findOne(id);
     await this.prisma.tenant.delete({ where: { id } });
-  }
-
-  /**
-   * Add a user to the current tenant.
-   *
-   * `role` llegaba como `@Body('role') role?: string` casteado `as any` sin
-   * validar — cualquiera con `users:create` podía fijarse `role: 'OWNER'` a sí
-   * mismo. `OWNER` no se otorga por este endpoint genérico: es
-   * `Tenant.ownerUserId`, y transferirlo es una operación aparte con sus
-   * propias reglas, no un valor más de un enum en un body.
-   */
-  async addMember(userId: string, role: TenantRole = 'STAFF'): Promise<void> {
-    if (role === 'OWNER') {
-      throw new BadRequestException('OWNER no se puede asignar desde este endpoint.');
-    }
-
-    const tenantId = this.tenantContext.requireTenantId();
-
-    const userExists = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
-    if (!userExists) throw new NotFoundException('User not found');
-
-    const existing = await this.prisma.tenantMembership.findUnique({
-      where: { tenantId_userId: { tenantId, userId } },
-      select: { status: true },
-    });
-    // A brand-new membership defaults to ACTIVE and consumes a seat.
-    if (!existing) await this.planLimits.assertCanAddActiveUser(tenantId);
-
-    await this.prisma.tenantMembership.upsert({
-      where: { tenantId_userId: { tenantId, userId } },
-      update: { role },
-      create: { tenantId, userId, role },
-    });
-    if (!existing) await this.planLimits.recomputeOverLimit(tenantId);
   }
 
   /** Remove a user from the current tenant */

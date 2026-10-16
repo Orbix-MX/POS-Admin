@@ -17,6 +17,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator';
+import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 
 class SetRolesDto {
   @IsArray()
@@ -90,8 +91,12 @@ export class UsersController {
   @Patch(':id')
   @RequirePermissions('users:edit')
   @ApiOperation({ summary: 'Update user' })
-  update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
-    return this.usersService.update(id, updateUserDto);
+  update(
+    @Param('id') id: string,
+    @Body() updateUserDto: UpdateUserDto,
+    @CurrentUser('id') actorId: string,
+  ) {
+    return this.usersService.update(id, updateUserDto, actorId);
   }
 
   @Delete(':id')

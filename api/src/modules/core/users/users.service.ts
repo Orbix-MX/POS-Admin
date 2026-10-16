@@ -165,12 +165,34 @@ export class UsersService {
     };
   }
 
-  async update(id: string, updateUserDto: UpdateUserDto): Promise<TenantScopedUser> {
+  async update(id: string, updateUserDto: UpdateUserDto, actorId?: string): Promise<TenantScopedUser> {
     const tenantId = this.tenantContext.requireTenantId();
     const user = await this.prisma.user.findFirst({
       where: { id, tenantMemberships: { some: { tenantId } } },
     });
     if (!user) throw new NotFoundException('User not found');
+
+    // @odd aislamiento-de-cupones T-003 A-1: email, nombre y apellido son de la cuenta GLOBAL, no de esta empresa.
+    // Una persona que trabaja en varias empresas (ADR-0031: el contador externo) no puede tener su correo cambiado
+    // por el administrador de una de ellas: con "olvidé mi contraseña" eso es tomar su cuenta y todas sus demás
+    // empresas. Solo la cambia ella misma; el estado por empresa (`status`) sí sigue siendo editable.
+    const changesIdentity =
+      (updateUserDto.email !== undefined && updateUserDto.email !== user.email) ||
+      (updateUserDto.firstName !== undefined && updateUserDto.firstName !== user.firstName) ||
+      (updateUserDto.lastName !== undefined && updateUserDto.lastName !== user.lastName);
+    if (changesIdentity && actorId !== id) {
+      const otherMemberships = await this.prisma.tenantMembership.count({
+        where: { userId: id, tenantId: { not: tenantId } },
+      });
+      if (otherMemberships > 0) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: 'ACCOUNT_SHARED',
+          message:
+            'Esta persona también trabaja en otra empresa de Orbix: su correo y su nombre solo los puede cambiar ella misma o el soporte de Orbix.',
+        });
+      }
+    }
 
     if (updateUserDto.email && updateUserDto.email !== user.email) {
       const existingUser = await this.prisma.user.findUnique({
