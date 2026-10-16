@@ -9,6 +9,8 @@ import { UpdatePurchaseOrderDto } from './dto/update-purchase-order.dto';
 import { QueryPurchaseOrdersDto } from './dto/query-purchase-orders.dto';
 import { ReceivePurchaseOrderDto } from './dto/receive-purchase-order.dto';
 import { VariantInventoryResolver } from '../inventory/variant-inventory.resolver';
+import { assertBranchBelongs } from '../../../common/helpers/assert-branch-belongs';
+import { assertProductsBelong } from '../../../common/helpers/assert-products-belong';
 
 @Injectable()
 export class PurchasesService {
@@ -36,6 +38,25 @@ export class PurchasesService {
     }
   }
 
+  /**
+   * El proveedor y los productos de una orden de compra vienen del body: se comprueba que son de ESTA empresa.
+   *
+   * @odd aislamiento-de-cupones T-003 (A-3) — antes solo se validaban las variantes. Con el UUID de un producto o
+   * un proveedor de otra empresa, la orden devolvía sus datos completos (costos incluidos) y, al recibirla, sumaba
+   * stock y reescribía el costo del producto ajeno y los totales del proveedor ajeno.
+   */
+  private async assertOwnedRefs(
+    db: Pick<Prisma.TransactionClient, 'supplier' | 'product'>,
+    tenantId: string,
+    refs: { supplierId?: string; productIds?: (string | undefined)[] },
+  ): Promise<void> {
+    if (refs.supplierId) {
+      const supplier = await db.supplier.findFirst({ where: { id: refs.supplierId, tenantId }, select: { id: true } });
+      if (!supplier) throw new NotFoundException('Proveedor no encontrado');
+    }
+    await assertProductsBelong(db, tenantId, refs.productIds ?? []);
+  }
+
   async create(dto: CreatePurchaseOrderDto) {
     const tenantId = this.tenantContext.requireTenantId();
     const userId = this.auditContext.getUserId();
@@ -53,6 +74,10 @@ export class PurchasesService {
     const total = subtotal + tax;
 
     return this.prisma.$transaction(async (tx) => {
+      await this.assertOwnedRefs(tx, tenantId, {
+        supplierId: dto.supplierId,
+        productIds: dto.items.map((i) => i.productId),
+      });
       await this.assertVariantsOfLines(tx, tenantId, dto.items);
 
       const order = await tx.purchaseOrder.create({
@@ -170,6 +195,10 @@ export class PurchasesService {
       const total = subtotal + tax;
 
       return this.prisma.$transaction(async (tx) => {
+        await this.assertOwnedRefs(tx, tenantId, {
+          supplierId: dto.supplierId,
+          productIds: newItems.map((i) => i.productId),
+        });
         await this.assertVariantsOfLines(tx, tenantId, newItems as { productId: string; variantId?: string | null }[]);
         await tx.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: id } });
         return tx.purchaseOrder.update({
@@ -200,6 +229,8 @@ export class PurchasesService {
         });
       });
     }
+
+    if (dto.supplierId) await this.assertOwnedRefs(this.prisma, tenantId, { supplierId: dto.supplierId });
 
     return this.prisma.purchaseOrder.update({
       where: { id },
@@ -262,6 +293,9 @@ export class PurchasesService {
   async receive(id: string, dto: ReceivePurchaseOrderDto) {
     const tenantId = this.tenantContext.requireTenantId();
     const userId = this.auditContext.getUserId();
+    // @odd aislamiento-de-cupones T-003 (A-4): el `branchId` del body debe ser de esta empresa; antes la recepción
+    // escribía inventario y movimientos en la sucursal de otra empresa.
+    if (dto.branchId) await assertBranchBelongs(this.prisma, tenantId, dto.branchId);
     const effectiveBranchId = dto.branchId ?? this.tenantContext.getBranchId() ?? null;
 
     // 1. Load order with items and existing receipts
@@ -322,6 +356,14 @@ export class PurchasesService {
 
     // 3. Execute in a single transaction
     const updatedOrder = await this.prisma.$transaction(async (tx) => {
+      // @odd aislamiento-de-cupones T-003: una orden guardada antes de validar al crear pudo quedar con una variante
+      // que no es del producto (o de la empresa); se revalida antes de escribir inventario.
+      await this.assertVariantsOfLines(
+        tx,
+        tenantId,
+        itemsToReceive.map((ri) => ({ productId: ri.productId, variantId: orderItemsByProduct.get(ri.productId)?.variantId })),
+      );
+
       // a. Create receipt
       const receipt = await tx.purchaseReceipt.create({
         data: {
@@ -404,14 +446,18 @@ export class PurchasesService {
         }
 
         // d. Espejo en el producto (legacy, se elimina en la fase contract)
-        await tx.product.update({
-          where: { id: ri.productId },
+        const mirrored = await tx.product.updateMany({
+          where: { id: ri.productId, tenantId },
           data: {
             stock: { increment: ri.quantityReceived },
             lastCost: unitCost,
             avgCost: newAvgCost,
           },
         });
+        // Una orden guardada con un producto ajeno no puede tocarlo: se aborta y la transacción se revierte.
+        if (mirrored.count === 0) {
+          throw new NotFoundException('Alguno de los productos no existe en esta empresa');
+        }
 
         // e. Create inventory movement
         await tx.inventoryMovement.create({
@@ -431,13 +477,14 @@ export class PurchasesService {
       }
 
       // g. Update supplier totals
-      await tx.supplier.update({
-        where: { id: order.supplierId },
+      const supplierUpdated = await tx.supplier.updateMany({
+        where: { id: order.supplierId, tenantId },
         data: {
           totalOrders: { increment: 1 },
           totalSpent: { increment: Number(order.total) },
         },
       });
+      if (supplierUpdated.count === 0) throw new NotFoundException('Proveedor no encontrado');
 
       // h-extra. Create AccountPayable if first receipt for this order
       const existingCxP = await tx.accountPayable.findUnique({

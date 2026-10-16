@@ -10,6 +10,7 @@ import { CheckoutComandaDto } from './dto/checkout-comanda.dto';
 import { DirectCheckoutDto } from './dto/direct-checkout.dto';
 import { InventoryConsumptionEngine } from '../retail/inventory/inventory-consumption.engine';
 import { OrderCheckoutEngine } from '../retail/checkout/order-checkout.engine';
+import { assertProductsBelong } from '../../common/helpers/assert-products-belong';
 
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
@@ -382,18 +383,11 @@ export class RestaurantService {
     tenantId: string,
     items: Array<{ productId?: string | null }>,
   ): Promise<void> {
-    const productIds = [
-      ...new Set(items.map((i) => i.productId).filter((id): id is string => Boolean(id))),
-    ];
-    if (productIds.length === 0) return;
-
-    const owned = await this.prisma.product.findMany({
-      where: { id: { in: productIds }, tenantId },
-      select: { id: true },
-    });
-    if (owned.length !== productIds.length) {
-      throw new NotFoundException('Alguno de los productos no existe en esta empresa');
-    }
+    await assertProductsBelong(
+      this.prisma,
+      tenantId,
+      items.map((i) => i.productId),
+    );
   }
 
   private async consumeInventoryForItems(

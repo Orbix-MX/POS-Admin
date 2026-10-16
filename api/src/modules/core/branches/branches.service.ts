@@ -10,6 +10,7 @@ import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { BulkUpdateInventoryDto, TransferStockDto } from './dto/update-inventory.dto';
 import { VariantInventoryResolver } from '../../retail/inventory/variant-inventory.resolver';
+import { assertProductsBelong } from '../../../common/helpers/assert-products-belong';
 import { Branch, BranchInventory, Prisma } from '@prisma/client';
 
 @Injectable()
@@ -309,13 +310,7 @@ export class BranchesService {
 
     // Los ids llegan en el body: se rechaza el lote completo si alguno no es de
     // este tenant, en vez de saltárselo en silencio.
-    const owned = await this.prisma.product.findMany({
-      where: { id: { in: productIds }, tenantId },
-      select: { id: true },
-    });
-    if (owned.length !== new Set(productIds).size) {
-      throw new NotFoundException('Alguno de los productos no existe en esta empresa');
-    }
+    await assertProductsBelong(this.prisma, tenantId, productIds);
 
     // Resuelto fuera de la transacción para no alargarla. Cada línea del conteo
     // apunta a UNA variante: la que traiga, o la default. Un mismo producto
