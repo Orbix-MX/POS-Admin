@@ -35,6 +35,8 @@ export function useUsuarios() {
   const [invitations, setInvitations] = useState<PendingInvitation[]>([])
   const [capacity, setCapacity] = useState<UserCapacity | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  // Error del guardado, mostrado DENTRO del modal de edición (el banner de la página queda detrás del modal).
+  const [editError, setEditError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -165,18 +167,19 @@ export function useUsuarios() {
     setEditModalOpen(true)
   }, [])
 
-  const handleCloseEdit = useCallback(() => { setEditModalOpen(false); setEditing(null); setEditForm(EMPTY_EDIT) }, [])
+  const handleCloseEdit = useCallback(() => { setEditModalOpen(false); setEditing(null); setEditForm(EMPTY_EDIT); setEditError(null) }, [])
 
   const handleUpdate = useCallback(async () => {
     if (!editing) return
     setSaving(true)
+    setEditError(null)
     try {
       const { roleId, ...rest } = editForm
       await updateUsuario(editing.id, rest as UpdateUsuarioInput)
       await setUserRoles(editing.id, roleId ? [roleId] : [])
       await loadUsuarios()
       handleCloseEdit()
-    } catch (e) { console.error(e) }
+    } catch (e) { setEditError(errMessage(e, 'No se pudieron guardar los cambios')) }
     finally { setSaving(false) }
   }, [editing, editForm, loadUsuarios, handleCloseEdit])
 
@@ -213,7 +216,7 @@ export function useUsuarios() {
   }, [])
 
   return {
-    usuarios, invitations, capacity, actionError, setActionError, inviteSuccess,
+    usuarios, invitations, capacity, actionError, setActionError, editError, inviteSuccess,
     resetSentTo, setResetSentTo, handleSendPasswordReset,
     loading, error, search, setSearch, rolFilter, setRolFilter,
     page, setPage, modalOpen, editModalOpen, selected, setSelected,

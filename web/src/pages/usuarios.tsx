@@ -22,7 +22,7 @@ export function Usuarios() {
   const { roles } = useRoles()
 
   const {
-    invitations, capacity, actionError, setActionError, inviteSuccess,
+    invitations, capacity, actionError, setActionError, editError, inviteSuccess,
     loading, error, search, setSearch, rolFilter, setRolFilter,
     page, setPage, modalOpen, editModalOpen, selected, setSelected,
     inviteForm, setInviteForm, editForm, setEditForm,
@@ -339,6 +339,11 @@ export function Usuarios() {
             </select>
           </div>
         </div>
+        {editError && (
+          <p role="alert" className="text-[12px] text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg px-3 py-2 mt-1">
+            {editError}
+          </p>
+        )}
         <div className="flex gap-2.5 justify-end mt-2">
           <button onClick={handleCloseEdit} className="px-4.5 py-2 border border-border rounded-lg bg-card text-[13px] cursor-pointer text-muted-foreground">Cancelar</button>
           <button onClick={handleUpdate} disabled={saving} className="px-4.5 py-2 bg-primary text-primary-foreground border-none rounded-lg text-[13px] font-semibold cursor-pointer disabled:opacity-60">
