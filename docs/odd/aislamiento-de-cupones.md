@@ -191,6 +191,36 @@ Los 16 agujeros son **12 causas**, más un hallazgo de paso. Casi todos exigen c
 | R2-003 | legibilidad | WARNING | fixed | el docblock del e2e decía "cae en cascada" y la limpieza era manual |
 | R2-004 | legibilidad | WARNING | info | `assertOwnedRefs` usa `this.prisma` fuera de la transacción en un caso y `tx` en otros: sin efecto |
 
+**A-2 — hecho** (commit `f05ee3a`; autorizador de caja). Evidencia:
+- **Código (`cash-sessions.service.ts`, `verifyAuthorizer`):** la pertenencia a la empresa (miembro ACTIVO) se comprueba **antes** de contar
+  un fallo de contraseña o de revelar nada. Todo lo que no sea un autorizador de esta empresa — cuenta inexistente, de otra empresa,
+  membresía inactiva — recibe el mismo mensaje genérico, con la contraseña correcta o no. Antes se bloqueaba (`failedLoginAttempts` y
+  `lockedUntil`) la cuenta de CUALQUIER usuario de la plataforma conociendo su correo, y una contraseña correcta ajena respondía con un
+  mensaje distinto, un oráculo para comprobar credenciales.
+- **Test unitario (corre en el CI):** `cash-sessions.authorizer-isolation.spec.ts` (9): cuenta ajena con contraseña mala o buena, membresía
+  inactiva, mensaje idéntico entre "no existe", "ajena" e "inactiva", y que el autorizador legítimo conserva su bloqueo y su mensaje por falta
+  de permiso. Comprobado por mutación: sin la comprobación de pertenencia fallan 4.
+- **Test contra la base real:** `api/test/cash-authorizer.e2e-spec.ts` (5): 8 contraseñas malas desde otra empresa no mueven los contadores de la
+  víctima, la contraseña correcta ajena recibe el mismo mensaje, la membresía inactiva no cuenta fallos, el autorizador de la empresa autoriza
+  y 5 fallos propios sí lo bloquean.
+- **Runtime (C-021):** `a2-verify.cjs`, 5/5 con la API arrancada: 8 contraseñas malas contra el correo de la dueña de otra empresa → 403
+  genéricos; **ella inicia sesión con normalidad** (antes quedaba bloqueada 5 min); su contraseña correcta recibe el mismo mensaje; el dueño de
+  la propia empresa se autoriza.
+- **Limitación conocida (no se cambia aquí):** el contador de fallos del autorizador es el del *login* de la cuenta. Un cajero de la MISMA empresa
+  puede bloquear al administrador escribiendo 5 contraseñas malas contra su correo al autorizar un corte. Es un compromiso de diseño anterior
+  (protege la contraseña del administrador); el remedio sería contar el fallo contra quien intenta, como se hizo con los PIN.
+- **Ledger 4R de A-2:**
+
+| id | lente | severidad | estado | evidencia |
+|---|---|---|---|---|
+| R1 | riesgo | — | sin CRITICAL | no hay otro sitio que busque cuentas por correo global y cuente fallos o bloquee; sin oráculo de mensaje ni de código HTTP; los tres llamadores (`verifyCloseAuth`, `closeWithAuth`, `withdrawForSupplies`) heredan el arreglo; ningún flujo legítimo cambia |
+| R1-001 | riesgo | WARNING | info | queda un diferencial de timing de una consulta (la de membresía solo corre si el correo existe y está activo); lo ve solo un usuario ya autenticado y antes era mayor |
+| R4 | resiliencia | — | ledger vacío | ningún cliente dependía del mensaje retirado; el web muestra el 403 tal cual; sin cambio de DTO ni de rutas; sin orden de despliegue |
+| R3-001 | fiabilidad | WARNING | info | en el CI el filtro por empresa de la membresía solo lo prueba una aserción sobre el mock; lo cubre el e2e |
+| R3-002 | fiabilidad | WARNING | info | el e2e no corre en el CI (ya declarado) |
+| R2-001 | legibilidad | WARNING | fixed | los docblocks de los e2e decían "barre sus restos" sin el límite de 10 min |
+| R2-002 | legibilidad | WARNING | fixed | el umbral de 10 min estaba suelto y duplicado; ahora `STALE_MS` en ambos e2e |
+
 **Done cuando:** cada agujero tiene su prueba de dos empresas (antes: efecto; después: 404/409) y su commit; los puntos de
 endurecimiento están corregidos o declarados. **Rollback:** por commit. **Commit:**
 
@@ -202,7 +232,7 @@ endurecimiento están corregidos o declarados. **Rollback:** por commit. **Commi
 |---|---|---|---|---|---|
 | T-001 | completo | done    | inline | ~25 + tests | 8f2233f |
 | T-002 | completo | done    | inline | ~60 + tests | 8f2233f |
-| T-003 | completo | doing   | delegado | A-1, A-3 y A-4 hechas; 10 pendientes | 02938e8, c8d51ea, b6f7583 |
+| T-003 | completo | doing   | delegado | A-1 a A-4 hechas; 9 pendientes | 02938e8, c8d51ea, b6f7583, f05ee3a |
 
 **Entrega:** ~300 previstas · umbral ~400. **T-003 puede superar el umbral:** sus correcciones salen por commits
 aparte, uno por agujero, y se decide al ver cuántos hay.
@@ -211,7 +241,7 @@ aparte, uno por agujero, y se decide al ver cuántos hay.
 
 **Despliegue:** sin migración y sin clientes afectados; se confirma con `grep` en web, POS web y móvil antes de subir.
 
-**Siguiente paso:** A-2 (caja) y el lote A-5 a A-12.
+**Siguiente paso:** el lote A-5 a A-12.
 
 ---
 
@@ -232,6 +262,7 @@ aparte, uno por agujero, y se decide al ver cuántos hay.
 | El email se compara sensible a mayúsculas en `users.update` y `users.create` (`Bob@x.com` frente a `bob@x.com` crearía otra cuenta); solo el login con Google normaliza | `users.service.ts` | Baja |
 | `receive` valida la cantidad pendiente fuera de la transacción: dos recepciones simultáneas de la misma orden podrían pasarse | `purchases.service.ts` | Media (ya era así) |
 | Los e2e de `api/test` (PIN, cupones, cuenta compartida, compras) no corren en el CI porque no hay base de datos de pruebas | `.github/workflows/api-ci.yml` | Media (la red de aislamiento es manual) |
+| Un cajero de la MISMA empresa puede bloquear la cuenta del administrador (5 contraseñas malas al autorizar un corte), porque el contador de fallos del autorizador es el del login de esa cuenta | `cash-sessions.service.ts` | Media (decisión de diseño) |
 | El `DatabaseModule` declara una segunda instancia de `AuditContextService` (C-003) | `database/database.module.ts` | Media (ver `bloqueo-por-intentos-de-pin`) |
 | En `validateCoupon` y `getAutoApplicableCoupons` el cliente ya se busca con `tenantId`; solo `order.count({ customerId, couponId })` (L132-133) no lo lleva, y es seguro porque el `couponId` viene de un cupón ya acotado por empresa | `coupons.service.ts` | Baja (lo revisará T-003) |
 | Cancelar o reembolsar una orden no devuelve el uso del cupón | `orders.service.ts` | Media (el cupón se agota antes de lo debido) |
