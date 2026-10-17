@@ -12,10 +12,12 @@ import { VariantInventoryResolver } from '../src/modules/retail/inventory/varian
  * sucursal de OTRA empresa, y la recepción no puede escribir en datos ajenos aunque la orden ya esté guardada con ids ajenos.
  *
  * Estos e2e NO corren en el CI (no tiene base de datos): se ejecutan a mano con `jest --config test/jest-e2e.json`. Crean sus
- * datos con el prefijo `e2e-compras-` y los borran al terminar; si una ejecución anterior murió a medias, el siguiente
- * `beforeAll` barre sus restos por ese prefijo.
+ * datos con el prefijo `e2e-compras-` y los borran al terminar. Si una ejecución anterior murió a medias, el siguiente
+ * `beforeAll` barre sus restos por ese prefijo, pero SOLO los de más de `STALE_MS`: una ejecución simultánea no pierde sus datos.
  */
 const PREFIX = 'e2e-compras-';
+/** Un resto de prueba más viejo que esto se considera de una ejecución caída (mismo umbral en todos los e2e con barrido previo). */
+const STALE_MS = 10 * 60_000;
 
 describe('PurchasesService — aislamiento entre empresas (e2e)', () => {
   let prisma: PrismaService | undefined;
@@ -78,7 +80,9 @@ describe('PurchasesService — aislamiento entre empresas (e2e)', () => {
   beforeAll(async () => {
     prisma = new PrismaService();
     await prisma.$connect();
-    await purge({ slug: { startsWith: PREFIX } }); // restos de una ejecución anterior que murió a medias
+    // Restos de una ejecución anterior que murió a medias. Solo los de más de 10 min: una ejecución simultánea (otra
+    // persona o el mismo comando en segundo plano) no debe perder sus datos por este barrido.
+    await purge({ slug: { startsWith: PREFIX }, createdAt: { lt: new Date(Date.now() - STALE_MS) } });
     A = await company();
     B = await company();
   });

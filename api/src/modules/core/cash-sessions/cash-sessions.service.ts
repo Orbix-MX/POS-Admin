@@ -576,6 +576,16 @@ export class CashSessionsService {
     // mismo mensaje genérico que el resto, no distinguible desde afuera.
     if (user.status !== 'ACTIVE' || !user.password) throw new ForbiddenException(GENERIC_ERROR);
 
+    // @odd aislamiento-de-cupones T-003 (A-2): lo primero es que sea un miembro ACTIVO de ESTA empresa, y sin efectos
+    // sobre la cuenta. Antes se contaba el fallo de contraseña (y se bloqueaba la cuenta) de CUALQUIER usuario de la
+    // plataforma con solo conocer su correo, y una contraseña correcta de una cuenta ajena respondía con un mensaje
+    // distinto: un oráculo para comprobar credenciales. Ahora todo lo que no sea un autorizador de esta empresa recibe
+    // el mismo mensaje genérico, con la contraseña correcta o no.
+    const membership = await this.prisma.tenantMembership.findFirst({
+      where: { userId: user.id, tenantId },
+    });
+    if (!membership || membership.status !== 'ACTIVE') throw new ForbiddenException(GENERIC_ERROR);
+
     if (user.lockedUntil && user.lockedUntil > new Date()) {
       throw new ForbiddenException(GENERIC_ERROR);
     }
@@ -583,13 +593,6 @@ export class CashSessionsService {
     if (!passwordValid) {
       await this.registerAuthorizerFailure(user.id, user.failedLoginAttempts);
       throw new ForbiddenException(GENERIC_ERROR);
-    }
-
-    const membership = await this.prisma.tenantMembership.findFirst({
-      where: { userId: user.id, tenantId },
-    });
-    if (!membership || membership.status !== 'ACTIVE') {
-      throw new ForbiddenException('El usuario autorizador no pertenece a esta organización');
     }
 
     if (user.role !== 'SUPER_ADMIN') {
